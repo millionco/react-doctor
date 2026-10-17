@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject, collectRuleHits, setupReactProject } from "../regressions/_helpers.js";
@@ -10,6 +10,10 @@ import { BASIC_REACT_DIRECTORY, describeRules } from "./_helpers.js";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-no-barrel-import-"));
 
 let basicReactDiagnostics: Diagnostic[];
+
+afterAll(() => {
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
 
 describe("runOxlint", () => {
   beforeAll(async () => {

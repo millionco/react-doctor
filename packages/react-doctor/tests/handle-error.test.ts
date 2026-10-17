@@ -19,8 +19,10 @@ interface EnvironmentSnapshot {
 describe("handleError", () => {
   let savedEnvironment: EnvironmentSnapshot;
   let savedExitCode: number | string | undefined;
+  let savedArguments: string[];
 
   beforeEach(() => {
+    savedArguments = [...process.argv];
     savedExitCode = process.exitCode;
     savedEnvironment = {
       [OTLP_ENDPOINT_ENVIRONMENT_VARIABLE]: process.env[OTLP_ENDPOINT_ENVIRONMENT_VARIABLE],
@@ -31,6 +33,7 @@ describe("handleError", () => {
   });
 
   afterEach(() => {
+    process.argv = savedArguments;
     process.exitCode = savedExitCode;
     for (const [environmentVariableName, value] of Object.entries(savedEnvironment)) {
       if (value === undefined) {
@@ -56,6 +59,25 @@ describe("handleError", () => {
     expect(body).toContain("OTLP exporter enabled: yes");
     expect(body).toContain("trace/span link, if exported:");
     expect(body).not.toContain("secret-token");
+  });
+
+  it("scrubs paths and secrets from the issue command context", () => {
+    process.argv = [
+      "/home/alice/.nvm/versions/node/v22/bin/node",
+      "/home/alice/project/node_modules/.bin/react-doctor",
+      "scan",
+      "--endpoint=https://user:pass@example.test/private",
+      "--token",
+      "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ",
+    ];
+
+    const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
+
+    expect(body).toContain("- command:");
+    expect(body).not.toContain("/home/alice");
+    expect(body).not.toContain("user:pass");
+    expect(body).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ");
+    expect(body).toContain("ghp_<redacted>");
   });
 
   it("adds the Sentry reference to the issue body when an event id is provided", () => {

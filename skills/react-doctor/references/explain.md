@@ -21,7 +21,7 @@ npx react-doctor@latest rules explain react-doctor/no-array-index-as-key
 5. Validate the change did what they wanted:
 
 ```bash
-npx react-doctor@latest --verbose --diff
+npx react-doctor@latest --verbose --scope changed
 ```
 
 ## Commands

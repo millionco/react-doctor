@@ -8,6 +8,7 @@ import {
   highlighter,
   isErrnoException,
   isReactDoctorError,
+  scrubSensitivePaths,
 } from "@react-doctor/core";
 import type { HandleErrorOptions } from "@react-doctor/core";
 import { VERSION } from "./version.js";
@@ -18,6 +19,7 @@ import {
   isNpmCacheCorruptionError,
 } from "./is-npm-cache-corruption-error.js";
 import { recordCount } from "./record-metric.js";
+import { scrubRunArguments } from "./scrub-run-arguments.js";
 
 // `shouldExit` is optional here (defaults to exiting) and the CLI adds a Sentry
 // event id, surfaced as a reference the user can quote so we can locate the
@@ -45,8 +47,8 @@ const formatErrorForReport = (error: unknown): string =>
 const formatSingleLine = (text: string): string => text.replaceAll(/\s+/g, " ").trim();
 
 const getErrorReportContext = (): ErrorReportContext => ({
-  cwd: process.cwd(),
-  command: process.argv.join(" "),
+  cwd: scrubSensitivePaths(process.cwd()),
+  command: scrubRunArguments(process.argv),
   nodeVersion: process.version,
   platform: process.platform,
   architecture: process.arch,

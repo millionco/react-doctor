@@ -1,3 +1,4 @@
+import { awaitedCallbacksMayPublishGuardObject } from "./utils/awaited-callbacks-may-publish-guard-object.js";
 import { defineRule } from "../../utils/define-rule.js";
 import {
   isDescendantScope,
@@ -505,6 +506,17 @@ export const asyncDeferAwait = defineRule({
         const consequentIdentifierNames = new Set<string>();
         collectReferenceIdentifierNames(guardStatement.consequent, consequentIdentifierNames);
         if (hasAnyIdentifierName(consequentIdentifierNames, window.awaitedBindingNames)) {
+          statementIndex = window.guardCandidateIndex - 1;
+          continue;
+        }
+
+        if (
+          awaitedCallbacksMayPublishGuardObject(
+            statements.slice(statementIndex, window.guardCandidateIndex),
+            guardStatement,
+            context,
+          )
+        ) {
           statementIndex = window.guardCandidateIndex - 1;
           continue;
         }

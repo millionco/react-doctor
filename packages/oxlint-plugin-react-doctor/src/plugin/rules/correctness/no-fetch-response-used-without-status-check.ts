@@ -19,6 +19,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
+import { isHandledFetchErrorPayloadContinuation } from "./utils/is-handled-fetch-error-payload-continuation.js";
 
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
@@ -896,6 +897,9 @@ const reportUnguarded = ({
       allStatusReferences.length > 0 &&
       consumptionResultIsGuardedBeforeUse(consumption, allStatusReferences)
     ) {
+      return true;
+    }
+    if (isHandledFetchErrorPayloadContinuation({ consumption, responseBinding, context })) {
       return true;
     }
     const consumptionRoot = findTransparentExpressionRoot(consumption);

@@ -1,3 +1,4 @@
+import { getOwnedNativeEmitterCleanup } from "./utils/get-owned-native-emitter-cleanup.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -1900,6 +1901,24 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
         const undisposedHazard = mountHazards.find((mountHazard) => {
           if (mountHazard.isAcquiredAfterSuspension) return true;
+          const nativeEmitterCleanup = getOwnedNativeEmitterCleanup(
+            mountHazard.node,
+            node,
+            context,
+          );
+          if (nativeEmitterCleanup) {
+            const cleanupFunction = findEnclosingFunction(nativeEmitterCleanup);
+            if (
+              cleanupFunction &&
+              !functionHasPotentialSynchronousThrow(
+                cleanupFunction,
+                node,
+                context.scopes,
+                nativeEmitterCleanup.range[0],
+              )
+            )
+              return false;
+          }
           if (mountHazard.releaseKeys.length === 0) return true;
           if (
             mountHazard.releaseKeys.some((releaseKey) =>

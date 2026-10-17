@@ -734,6 +734,7 @@ export const JSX_LEAF_POOL = [
 // Rare-but-parseable weirdness kept from the original generator, plus
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
+  `class NativeEmitterOwner extends React.Component { subscription = null; handleChange = () => {}; componentDidMount() { this.subscription = DeviceEventEmitter.addListener("change", this.handleChange); } componentWillUnmount() { if (this.subscription) { this.subscription.remove(); } } render() { return null; } }`,
   `const contextCallback = config.onSelect; const effectiveCallback = onSelect ?? contextCallback; const derivedHandler = useCallback(() => effectiveCallback?.(), [effectiveCallback]);`,
   `const membershipCandidates = [1, 2, 3, 4, 5, 6, 7, 8, 9]; const membershipValues = [1, 2, 3, 4, 5, 6, 7, 8, 9]; for (const membershipCandidate of membershipCandidates) { membershipValues.includes(membershipCandidate); }`,
   `const numericMembershipValues: number[] = []; const numericMembershipAllowed: number[] = []; numericMembershipValues.reduce((count, value) => numericMembershipAllowed.indexOf(value) !== -1 ? count + 1 : count, 0);`,
@@ -778,6 +779,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import { DeviceEventEmitter } from "react-native";`,
   `import { compile as compileFuzzMdx } from "@mdx-js/mdx"; const fuzzCompiledMdx = await compileFuzzMdx(tenantContent);`,
   `import { proxy as createFuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio"; const fuzzValtioState = createFuzzValtioProxy({ count: 0 });`,
   `import fetch from "node-fetch";`,

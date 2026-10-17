@@ -2449,7 +2449,7 @@ export const ResourcePanel = ({ category }: PanelProps) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
-  it("separate-policy-separate-token-controller-maps", () => {
+  it("separate-token-controller-maps-record-reset", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `import { useEffect, useRef, useState } from "react";
@@ -2504,9 +2504,9 @@ export const ResourcePanel = ({ category }: PanelProps) => {
       },
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
-  it("separate-policy-b-membership-removal-helper-and-immediate-cancel", () => {
+  it("separate-token-map-membership-removal-and-immediate-cancel", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `import { useEffect, useRef, useState } from "react";
@@ -2567,7 +2567,7 @@ export const ResourcePanel = ({ category }: PanelProps) => {
       },
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
   it("separate-policy-b-suspension-between-controller-insertion-and-mark", () => {
     const result = runRule(

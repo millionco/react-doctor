@@ -1035,7 +1035,11 @@ const supportedProgram = (program: EsTreeNode, context: RuleContext): boolean =>
   return supported;
 };
 
-const isLoadedReactProvider = (expression: EsTreeNode, context: RuleContext): boolean => {
+const isLoadedReactProvider = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  allowModuleRequire = false,
+): boolean => {
   let current = stripParenExpression(expression);
   const visitedSymbols = new Set<SymbolDescriptor>();
   while (true) {
@@ -1050,6 +1054,22 @@ const isLoadedReactProvider = (expression: EsTreeNode, context: RuleContext): bo
     if (isNodeOfType(current, "MemberExpression") && getStaticPropertyName(current) === "default") {
       current = stripParenExpression(current.object);
       continue;
+    }
+    if (
+      allowModuleRequire &&
+      isNodeOfType(current, "CallExpression") &&
+      !current.optional &&
+      isNodeOfType(current.callee, "MemberExpression") &&
+      !current.callee.optional &&
+      !current.callee.computed &&
+      getStaticPropertyName(current.callee) === "require" &&
+      isNodeOfType(current.callee.object, "Identifier") &&
+      current.callee.object.name === "module" &&
+      isRuntimeGlobalReference(current.callee.object, context) &&
+      current.arguments.length === SINGLE_ARGUMENT_COUNT
+    ) {
+      const [source] = current.arguments;
+      return isNodeOfType(source, "Literal") && source.value === "react";
     }
     return (
       isNodeOfType(current, "CallExpression") &&
@@ -1308,6 +1328,974 @@ const functionBindingSymbol = (
   return null;
 };
 
+interface TokenMapCertificate extends ControllerRecordCertificate {
+  tokenRegistry: SymbolDescriptor;
+  mark: SymbolDescriptor;
+  clear: SymbolDescriptor;
+  stale: SymbolDescriptor;
+}
+
+const tokenParameter = (
+  node: EsTreeNode | null | undefined,
+  keyword: string,
+  certificate: TokenMapCertificate,
+): node is EsTreeNodeOfType<"Identifier"> => {
+  if (!isNodeOfType(node, "Identifier")) return false;
+  const symbol = symbolFor(node, certificate);
+  return Boolean(
+    symbol?.kind === "parameter" &&
+    parameterAnnotation(node, certificate) === keyword &&
+    symbol.references.every((reference) => reference.flag === "read"),
+  );
+};
+
+const emptyRecord = (node: EsTreeNode | null | undefined): boolean =>
+  isNodeOfType(node, "ObjectExpression") && node.properties.length === EMPTY_ARGUMENT_COUNT;
+
+const tokenStoreCall = (
+  node: EsTreeNode | null | undefined,
+  store: SymbolDescriptor,
+  name: string,
+  argumentCount: number,
+  certificate: TokenMapCertificate,
+): node is EsTreeNodeOfType<"CallExpression"> =>
+  methodCall(node, name, argumentCount) &&
+  isNodeOfType(node.callee, "MemberExpression") &&
+  refCurrent(node.callee.object, store, certificate);
+
+const tokenHelperCall = (
+  node: EsTreeNode | null | undefined,
+  helper: SymbolDescriptor,
+  argumentsToMatch: readonly EsTreeNode[],
+  certificate: TokenMapCertificate,
+): node is EsTreeNodeOfType<"CallExpression"> =>
+  isNodeOfType(node, "CallExpression") &&
+  !node.optional &&
+  isNodeOfType(node.callee, "Identifier") &&
+  symbolFor(node.callee, certificate) === helper &&
+  node.arguments.length === argumentsToMatch.length &&
+  node.arguments.every((argument, index) =>
+    sameBinding(argument, argumentsToMatch[index], certificate),
+  );
+
+const recordAddition = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  key: EsTreeNode,
+  token: EsTreeNode,
+  certificate: TokenMapCertificate,
+): boolean => {
+  const [updater] = call.arguments;
+  if (
+    !isFunctionLike(updater) ||
+    updater.async ||
+    updater.generator ||
+    updater.params.length !== SINGLE_ARGUMENT_COUNT
+  )
+    return false;
+  const [previous] = updater.params;
+  const body = stripParenExpression(updater.body);
+  if (
+    !isNodeOfType(previous, "Identifier") ||
+    !isNodeOfType(body, "ObjectExpression") ||
+    body.properties.length !== RECORD_FIELD_COUNT
+  )
+    return false;
+  const [spread, property] = body.properties;
+  if (
+    !isNodeOfType(spread, "SpreadElement") ||
+    !sameBinding(spread.argument, previous, certificate) ||
+    !isNodeOfType(property, "Property") ||
+    !property.computed ||
+    property.kind !== "init" ||
+    property.method ||
+    !sameBinding(property.key, key, certificate) ||
+    !sameBinding(property.value, token, certificate) ||
+    !trackBinding(previous, certificate)
+  )
+    return false;
+  allowReferencesIn(body, certificate);
+  certificate.stateWrites.add(call);
+  return true;
+};
+
+const recordDeletion = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  key: EsTreeNode,
+  certificate: TokenMapCertificate,
+): boolean => {
+  const [updater] = call.arguments;
+  if (
+    !isFunctionLike(updater) ||
+    updater.async ||
+    updater.generator ||
+    updater.params.length !== SINGLE_ARGUMENT_COUNT ||
+    !isNodeOfType(updater.body, "BlockStatement")
+  )
+    return false;
+  const [previous] = updater.params;
+  if (!isNodeOfType(previous, "Identifier")) return false;
+  const statements = [...updater.body.body];
+  const [guard] = statements;
+  if (isNodeOfType(guard, "IfStatement")) {
+    const test = stripParenExpression(guard.test);
+    const membership = isNodeOfType(test, "UnaryExpression")
+      ? stripParenExpression(test.argument)
+      : null;
+    if (
+      guard.alternate ||
+      !isNodeOfType(test, "UnaryExpression") ||
+      test.operator !== "!" ||
+      !isNodeOfType(membership, "BinaryExpression") ||
+      membership.operator !== "in" ||
+      !sameBinding(membership.left, key, certificate) ||
+      !sameBinding(membership.right, previous, certificate) ||
+      !isNodeOfType(guard.consequent, "ReturnStatement") ||
+      !sameBinding(guard.consequent.argument, previous, certificate)
+    )
+      return false;
+    statements.shift();
+  }
+  const [copyStatement, deleteStatement, returnStatement] = statements;
+  const copy = singleDeclaration(copyStatement);
+  const removal = expressionStatement(deleteStatement);
+  if (
+    statements.length !== RESET_STATEMENT_COUNT ||
+    !copy ||
+    !isNodeOfType(copy.id, "Identifier") ||
+    !isNodeOfType(copy.init, "ObjectExpression") ||
+    copy.init.properties.length !== SINGLE_ARGUMENT_COUNT ||
+    !isNodeOfType(copy.init.properties[EMPTY_ARGUMENT_COUNT], "SpreadElement") ||
+    !sameBinding(copy.init.properties[EMPTY_ARGUMENT_COUNT].argument, previous, certificate) ||
+    !isNodeOfType(removal, "UnaryExpression") ||
+    removal.operator !== "delete" ||
+    !isNodeOfType(removal.argument, "MemberExpression") ||
+    !removal.argument.computed ||
+    removal.argument.optional ||
+    !sameBinding(removal.argument.object, copy.id, certificate) ||
+    !sameBinding(removal.argument.property, key, certificate) ||
+    !isNodeOfType(returnStatement, "ReturnStatement") ||
+    !sameBinding(returnStatement.argument, copy.id, certificate) ||
+    !trackBinding(previous, certificate)
+  )
+    return false;
+  const copySymbol = symbolFor(copy.id, certificate);
+  if (
+    copySymbol?.kind !== "const" ||
+    copySymbol.references.some((reference) => reference.flag !== "read")
+  )
+    return false;
+  certificate.controlledSymbols.add(copySymbol);
+  allowReferencesIn(updater.body, certificate);
+  certificate.stateWrites.add(call);
+  return true;
+};
+
+const tokenRecordWriter = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  certificate: TokenMapCertificate,
+): boolean => {
+  const updater = call.arguments.at(EMPTY_ARGUMENT_COUNT);
+  const owner = findEnclosingFunction(call);
+  if (
+    !isFunctionLike(owner) ||
+    owner.async ||
+    owner.generator ||
+    !isNodeOfType(owner.body, "BlockStatement")
+  )
+    return false;
+  const binding = functionBinding(owner, certificate);
+  const [key, token] = owner.params;
+  if (!binding || !tokenParameter(key, "TSStringKeyword", certificate)) return false;
+  const statements = owner.body.body;
+  if (
+    isFunctionLike(updater) &&
+    isNodeOfType(stripParenExpression(updater.body), "ObjectExpression")
+  ) {
+    const insertion = expressionStatement(statements.at(EMPTY_ARGUMENT_COUNT));
+    if (
+      certificate.mark !== certificate.setter ||
+      owner.params.length !== RECORD_FIELD_COUNT ||
+      !tokenParameter(token, "TSNumberKeyword", certificate) ||
+      statements.length !== RECORD_FIELD_COUNT ||
+      expressionStatement(statements.at(SINGLE_ARGUMENT_COUNT)) !== call ||
+      !tokenStoreCall(
+        insertion,
+        certificate.tokenRegistry,
+        "set",
+        RECORD_FIELD_COUNT,
+        certificate,
+      ) ||
+      !sameBinding(insertion.arguments.at(EMPTY_ARGUMENT_COUNT), key, certificate) ||
+      !sameBinding(insertion.arguments.at(SINGLE_ARGUMENT_COUNT), token, certificate) ||
+      !recordAddition(call, key, token, certificate)
+    )
+      return false;
+    certificate.mark = binding;
+    acceptRegistryCall(insertion, certificate);
+  } else {
+    const tokenDeletion = expressionStatement(statements.at(EMPTY_ARGUMENT_COUNT));
+    const controllerDeletion = expressionStatement(statements.at(SINGLE_ARGUMENT_COUNT));
+    if (
+      certificate.clear !== certificate.setter ||
+      owner.params.length !== SINGLE_ARGUMENT_COUNT ||
+      statements.length !== RESET_STATEMENT_COUNT ||
+      expressionStatement(statements.at(RECORD_FIELD_COUNT)) !== call ||
+      !tokenStoreCall(
+        tokenDeletion,
+        certificate.tokenRegistry,
+        "delete",
+        SINGLE_ARGUMENT_COUNT,
+        certificate,
+      ) ||
+      !tokenStoreCall(
+        controllerDeletion,
+        certificate.registry,
+        "delete",
+        SINGLE_ARGUMENT_COUNT,
+        certificate,
+      ) ||
+      !sameBinding(tokenDeletion.arguments.at(EMPTY_ARGUMENT_COUNT), key, certificate) ||
+      !sameBinding(controllerDeletion.arguments.at(EMPTY_ARGUMENT_COUNT), key, certificate) ||
+      !recordDeletion(call, key, certificate)
+    )
+      return false;
+    certificate.clear = binding;
+    acceptRegistryCall(tokenDeletion, certificate);
+    acceptRegistryCall(controllerDeletion, certificate);
+  }
+  return true;
+};
+
+const tokenRelease = (
+  statements: readonly EsTreeNode[],
+  certificate: TokenMapCertificate,
+): boolean => {
+  const [tokenStatement, releaseStatement, controllerStatement] = statements;
+  const tokenClear = expressionStatement(tokenStatement);
+  const release = expressionStatement(releaseStatement);
+  const controllerClear = expressionStatement(controllerStatement);
+  if (
+    statements.length !== RESET_STATEMENT_COUNT ||
+    !tokenStoreCall(
+      tokenClear,
+      certificate.tokenRegistry,
+      "clear",
+      EMPTY_ARGUMENT_COUNT,
+      certificate,
+    ) ||
+    !tokenStoreCall(release, certificate.registry, "forEach", SINGLE_ARGUMENT_COUNT, certificate) ||
+    !tokenStoreCall(
+      controllerClear,
+      certificate.registry,
+      "clear",
+      EMPTY_ARGUMENT_COUNT,
+      certificate,
+    )
+  )
+    return false;
+  const [callback] = release.arguments;
+  if (
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    callback.params.length !== SINGLE_ARGUMENT_COUNT
+  )
+    return false;
+  const [controller] = callback.params;
+  const body = stripParenExpression(callback.body);
+  const abort =
+    isNodeOfType(body, "BlockStatement") && body.body.length === SINGLE_ARGUMENT_COUNT
+      ? expressionStatement(body.body.at(EMPTY_ARGUMENT_COUNT))
+      : body;
+  if (
+    !isNodeOfType(controller, "Identifier") ||
+    !trackBinding(controller, certificate) ||
+    !abortCall(abort, controller, certificate)
+  )
+    return false;
+  acceptRegistryCall(tokenClear, certificate);
+  acceptRegistryCall(release, certificate);
+  acceptRegistryCall(controllerClear, certificate);
+  return true;
+};
+
+const tokenMembershipGuard = (
+  statement: EsTreeNode | null | undefined,
+  key: EsTreeNode,
+  negate: boolean,
+  certificate: TokenMapCertificate,
+): boolean => {
+  if (
+    !isNodeOfType(statement, "IfStatement") ||
+    statement.alternate ||
+    !bareReturn(statement.consequent)
+  )
+    return false;
+  const test = stripParenExpression(statement.test);
+  const lookup =
+    negate && isNodeOfType(test, "UnaryExpression") && test.operator === "!"
+      ? stripParenExpression(test.argument)
+      : test;
+  if (
+    (negate && lookup === test) ||
+    !tokenStoreCall(lookup, certificate.tokenRegistry, "has", SINGLE_ARGUMENT_COUNT, certificate) ||
+    !sameBinding(lookup.arguments.at(EMPTY_ARGUMENT_COUNT), key, certificate)
+  )
+    return false;
+  acceptRegistryCall(lookup, certificate);
+  return true;
+};
+
+const tokenStaleHelper = (owner: EsTreeNode, certificate: TokenMapCertificate): boolean => {
+  if (
+    !isFunctionLike(owner) ||
+    owner.async ||
+    owner.generator ||
+    owner.params.length !== RECORD_FIELD_COUNT
+  )
+    return false;
+  const [key, token] = owner.params;
+  const body = stripParenExpression(owner.body);
+  const result =
+    isNodeOfType(body, "BlockStatement") &&
+    body.body.length === SINGLE_ARGUMENT_COUNT &&
+    isNodeOfType(body.body[EMPTY_ARGUMENT_COUNT], "ReturnStatement")
+      ? body.body[EMPTY_ARGUMENT_COUNT].argument
+      : body;
+  if (
+    !tokenParameter(key, "TSStringKeyword", certificate) ||
+    !tokenParameter(token, "TSNumberKeyword", certificate) ||
+    !isNodeOfType(result, "BinaryExpression") ||
+    result.operator !== "!==" ||
+    !tokenStoreCall(
+      result.left,
+      certificate.tokenRegistry,
+      "get",
+      SINGLE_ARGUMENT_COUNT,
+      certificate,
+    ) ||
+    !sameBinding(result.left.arguments.at(EMPTY_ARGUMENT_COUNT), key, certificate) ||
+    !sameBinding(result.right, token, certificate)
+  )
+    return false;
+  const binding = functionBinding(owner, certificate);
+  if (!binding || certificate.stale !== certificate.setter) return false;
+  certificate.stale = binding;
+  acceptRegistryCall(result.left, certificate);
+  return true;
+};
+
+const tokenSettlement = (
+  guard: EsTreeNode | null | undefined,
+  clear: EsTreeNode | null | undefined,
+  key: EsTreeNode,
+  token: EsTreeNode,
+  certificate: TokenMapCertificate,
+): boolean => {
+  if (
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !bareReturn(guard.consequent) ||
+    !tokenHelperCall(stripParenExpression(guard.test), certificate.stale, [key, token], certificate)
+  )
+    return false;
+  const removal = expressionStatement(clear);
+  if (!tokenHelperCall(removal, certificate.clear, [key], certificate)) return false;
+  allowReferencesIn(guard.test, certificate);
+  allowReferencesIn(removal, certificate);
+  return true;
+};
+
+const hasDirectAwait = (statement: EsTreeNode | null | undefined): boolean => {
+  const value = statement
+    ? (expressionStatement(statement) ?? singleDeclaration(statement)?.init)
+    : null;
+  const expression = value ? stripParenExpression(value) : null;
+  const awaited =
+    isNodeOfType(expression, "AssignmentExpression") && expression.operator === "="
+      ? stripParenExpression(expression.right)
+      : expression;
+  return isNodeOfType(awaited, "AwaitExpression");
+};
+
+const tokenRequest = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  certificate: TokenMapCertificate,
+): boolean => {
+  const [key, controller] = call.arguments;
+  const owner = findEnclosingFunction(call);
+  if (
+    !key ||
+    !isNodeOfType(controller, "Identifier") ||
+    !tokenParameter(key, "TSStringKeyword", certificate) ||
+    !isFunctionLike(owner) ||
+    !owner.async ||
+    owner.generator ||
+    owner.params.length < SINGLE_ARGUMENT_COUNT ||
+    owner.params.length > RECORD_FIELD_COUNT ||
+    !owner.params.every((parameter) => tokenParameter(parameter, "TSStringKeyword", certificate)) ||
+    !isNodeOfType(owner.body, "BlockStatement") ||
+    call.parent?.parent !== owner.body ||
+    findEnclosingFunction(symbolFor(key, certificate)?.bindingIdentifier ?? call) !== owner ||
+    !controllerOrigin(controller, certificate)
+  )
+    return false;
+  const block = owner.body;
+  const position = block.body.findIndex((statement) => expressionStatement(statement) === call);
+  const mark = expressionStatement(block.body.at(position + SINGLE_ARGUMENT_COUNT));
+  const token = isNodeOfType(mark, "CallExpression")
+    ? mark.arguments.at(SINGLE_ARGUMENT_COUNT)
+    : null;
+  const tokenSymbol = token ? symbolFor(token, certificate) : null;
+  const update = tokenSymbol?.initializer;
+  const counter = isNodeOfType(update, "UpdateExpression") ? update.argument : null;
+  const counterSymbol = isNodeOfType(counter, "MemberExpression")
+    ? symbolFor(counter.object, certificate)
+    : null;
+  const counterInitializer = counterSymbol?.initializer;
+  const counterInitialValue = isNodeOfType(counterInitializer, "CallExpression")
+    ? counterInitializer.arguments.at(EMPTY_ARGUMENT_COUNT)
+    : null;
+  if (
+    !token ||
+    !tokenHelperCall(mark, certificate.mark, [key, token], certificate) ||
+    !trackBinding(token, certificate) ||
+    tokenSymbol?.kind !== "const" ||
+    findEnclosingFunction(tokenSymbol.declarationNode) !== owner ||
+    !isNodeOfType(update, "UpdateExpression") ||
+    update.operator !== "++" ||
+    !update.prefix ||
+    !counter ||
+    !counterSymbol ||
+    counterSymbol.kind !== "const" ||
+    findEnclosingFunction(counterSymbol.declarationNode) !== certificate.component ||
+    !refCurrent(counter, counterSymbol, certificate) ||
+    !isNodeOfType(counterInitializer, "CallExpression") ||
+    !canonicalReactCall(counterInitializer, "useRef", certificate.context) ||
+    counterInitializer.arguments.length !== SINGLE_ARGUMENT_COUNT ||
+    !isNodeOfType(counterInitialValue, "Literal") ||
+    counterInitialValue.value !== EMPTY_ARGUMENT_COUNT ||
+    findEnclosingFunction(
+      resolveConstIdentifierAlias(controller, certificate.context.scopes)?.declarationNode ?? call,
+    ) !== owner ||
+    !tokenMembershipGuard(block.body.at(EMPTY_ARGUMENT_COUNT), key, false, certificate)
+  )
+    return false;
+  const controllerRoot = resolveConstIdentifierAlias(controller, certificate.context.scopes);
+  for (const statement of block.body.slice(SINGLE_ARGUMENT_COUNT, position)) {
+    const declaration = singleDeclaration(statement);
+    const binding =
+      declaration && isNodeOfType(declaration.id, "Identifier")
+        ? symbolFor(declaration.id, certificate)
+        : null;
+    if (
+      !binding ||
+      (binding !== tokenSymbol &&
+        binding !== controllerRoot &&
+        !certificate.controlledSymbols.has(binding))
+    )
+      return false;
+  }
+  let requestPosition = position + RECORD_FIELD_COUNT;
+  while (isNodeOfType(block.body.at(requestPosition), "VariableDeclaration")) {
+    const statement = block.body.at(requestPosition);
+    if (
+      !isNodeOfType(statement, "VariableDeclaration") ||
+      statement.declarations.some((declaration) => declaration.init)
+    )
+      return false;
+    requestPosition += SINGLE_ARGUMENT_COUNT;
+  }
+  const request = block.body.at(requestPosition);
+  if (!isNodeOfType(request, "TryStatement") || request.finalizer || !request.handler) return false;
+  const tryStatements = request.block.body;
+  const awaitPosition = tryStatements.findIndex(hasDirectAwait);
+  if (awaitPosition !== EMPTY_ARGUMENT_COUNT) return false;
+  const catchStatements = request.handler.body.body;
+  if (
+    !tokenSettlement(
+      catchStatements.at(EMPTY_ARGUMENT_COUNT),
+      catchStatements.at(SINGLE_ARGUMENT_COUNT),
+      key,
+      token,
+      certificate,
+    )
+  )
+    return false;
+  if (tryStatements.length === RESET_STATEMENT_COUNT) {
+    if (
+      !tokenSettlement(
+        tryStatements.at(SINGLE_ARGUMENT_COUNT),
+        tryStatements.at(RECORD_FIELD_COUNT),
+        key,
+        token,
+        certificate,
+      )
+    )
+      return false;
+  } else if (tryStatements.length === SINGLE_ARGUMENT_COUNT) {
+    const catchLast = catchStatements.at(-SINGLE_ARGUMENT_COUNT);
+    if (
+      !bareReturn(catchLast) ||
+      !tokenSettlement(
+        block.body.at(requestPosition + SINGLE_ARGUMENT_COUNT),
+        block.body.at(requestPosition + RECORD_FIELD_COUNT),
+        key,
+        token,
+        certificate,
+      )
+    )
+      return false;
+  } else return false;
+  const binding = functionBinding(owner, certificate);
+  if (!binding) return false;
+  for (const reference of binding.references) {
+    const parent = reference.identifier.parent;
+    if (
+      !isNodeOfType(parent, "CallExpression") ||
+      parent.callee !== reference.identifier ||
+      parent.optional ||
+      parent.arguments.length !== owner.params.length
+    )
+      return false;
+    certificate.allowedReferences.add(reference.identifier);
+  }
+  certificate.controlledSymbols.add(counterSymbol);
+  if (isNodeOfType(counter, "MemberExpression")) certificate.allowedUpdates.add(counter.object);
+  allowReferencesIn(update, certificate);
+  allowReferencesIn(mark, certificate);
+  acceptRegistryCall(call, certificate);
+  return true;
+};
+
+const tokenCancellation = (owner: EsTreeNode, certificate: TokenMapCertificate): boolean => {
+  if (
+    !isFunctionLike(owner) ||
+    owner.async ||
+    owner.generator ||
+    owner.params.length !== SINGLE_ARGUMENT_COUNT ||
+    !isNodeOfType(owner.body, "BlockStatement") ||
+    owner.body.body.length !== RESET_STATEMENT_COUNT
+  )
+    return false;
+  const [key] = owner.params;
+  const [guard, abortStatement, clearStatement] = owner.body.body;
+  const abort = expressionStatement(abortStatement);
+  const getter =
+    isNodeOfType(abort, "CallExpression") && isNodeOfType(abort.callee, "MemberExpression")
+      ? stripParenExpression(abort.callee.object)
+      : null;
+  if (
+    !tokenParameter(key, "TSStringKeyword", certificate) ||
+    !tokenMembershipGuard(guard, key, true, certificate) ||
+    !isNodeOfType(abort, "CallExpression") ||
+    !isNodeOfType(abort.callee, "MemberExpression") ||
+    abort.arguments.length !== EMPTY_ARGUMENT_COUNT ||
+    abort.callee.computed ||
+    getStaticPropertyName(abort.callee) !== "abort" ||
+    abort.optional ||
+    !abort.callee.optional ||
+    !tokenStoreCall(getter, certificate.registry, "get", SINGLE_ARGUMENT_COUNT, certificate) ||
+    !sameBinding(getter.arguments.at(EMPTY_ARGUMENT_COUNT), key, certificate) ||
+    !tokenHelperCall(expressionStatement(clearStatement), certificate.clear, [key], certificate)
+  )
+    return false;
+  const binding = functionBinding(owner, certificate);
+  if (!binding) return false;
+  acceptRegistryCall(getter, certificate);
+  if (clearStatement) allowReferencesIn(clearStatement, certificate);
+  for (const reference of binding.references) {
+    const parent = reference.identifier.parent;
+    if (
+      !isNodeOfType(parent, "CallExpression") ||
+      parent.callee !== reference.identifier ||
+      parent.optional ||
+      parent.arguments.length !== SINGLE_ARGUMENT_COUNT
+    )
+      return false;
+    certificate.allowedReferences.add(reference.identifier);
+  }
+  return true;
+};
+
+const hasTokenComputedProviderUse = (member: EsTreeNode, context: RuleContext): boolean => {
+  const pending: EsTreeNode[] = [member];
+  const visited = new Set<SymbolDescriptor>();
+  while (pending.length > EMPTY_ARGUMENT_COUNT) {
+    const current = pending.pop();
+    if (!current) continue;
+    const value = findTransparentExpressionRoot(current);
+    const parent = value.parent;
+    if (
+      ((isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
+        parent.callee === value) ||
+      (isNodeOfType(parent, "MemberExpression") && parent.object === value)
+    )
+      return true;
+    if (
+      (isNodeOfType(parent, "LogicalExpression") &&
+        (parent.left === value || parent.right === value)) ||
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        (parent.consequent === value || parent.alternate === value))
+    ) {
+      pending.push(parent);
+    } else if (
+      isNodeOfType(parent, "VariableDeclarator") &&
+      parent.init === value &&
+      isNodeOfType(parent.id, "Identifier")
+    ) {
+      const symbol = context.scopes.symbolFor(parent.id);
+      if (
+        !symbol ||
+        symbol.kind !== "const" ||
+        symbol.references.some((reference) => reference.flag !== "read")
+      )
+        return true;
+      if (!visited.has(symbol)) {
+        visited.add(symbol);
+        for (const reference of symbol.references) pending.push(reference.identifier);
+      }
+    }
+  }
+  return false;
+};
+
+interface TokenMapComponentIndex {
+  staleHelpers: Map<SymbolDescriptor, EsTreeNode[]>;
+  cancellationHelpers: Map<SymbolDescriptor, EsTreeNode[]>;
+  insertions: Map<SymbolDescriptor, EsTreeNodeOfType<"CallExpression">[]>;
+  cleanups: Map<SymbolDescriptor, EsTreeNode[]>;
+}
+
+const supportedTokenPrograms = new WeakMap<ScopeAnalysis, boolean>();
+const tokenMapComponents = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, TokenMapComponentIndex>
+>();
+
+const supportedTokenProgram = (program: EsTreeNode, context: RuleContext): boolean => {
+  const cached = supportedTokenPrograms.get(context.scopes);
+  if (cached !== undefined) return cached;
+  let supported = true;
+  walkAst(program, (node) => {
+    if (!supported) return false;
+    if (isTypeScriptTypePosition(node)) return false;
+    if (
+      isNodeOfType(node, "MemberExpression") &&
+      ((isMemberMutationTarget(node) &&
+        (getStaticPropertyName(node) === "useState" ||
+          getStaticPropertyName(node) === "useRef" ||
+          getStaticPropertyName(node) === "useEffect" ||
+          getStaticPropertyName(node) === "useCallback") &&
+        isLoadedReactProvider(node.object, context, true)) ||
+        (node.computed &&
+          getResolvedStaticPropertyName(node, context.scopes, {
+            allowConstTemplateLiteral: true,
+            allowConstNumericLiteral: true,
+            stringifyNonStringLiterals: true,
+          }) === null &&
+          hasTokenComputedProviderUse(node, context)))
+    )
+      supported = false;
+  });
+  supportedTokenPrograms.set(context.scopes, supported);
+  return supported;
+};
+
+const indexTokenMapComponent = (
+  component: EsTreeNode,
+  context: RuleContext,
+): TokenMapComponentIndex => {
+  let components = tokenMapComponents.get(context.scopes);
+  if (!components) {
+    components = new WeakMap();
+    tokenMapComponents.set(context.scopes, components);
+  }
+  const cached = components.get(component);
+  if (cached) return cached;
+  const index: TokenMapComponentIndex = {
+    staleHelpers: new Map(),
+    cancellationHelpers: new Map(),
+    insertions: new Map(),
+    cleanups: new Map(),
+  };
+  const storeForCall = (call: EsTreeNode | null | undefined): SymbolDescriptor | null => {
+    if (!isNodeOfType(call, "CallExpression") || !isNodeOfType(call.callee, "MemberExpression"))
+      return null;
+    const receiver = call.callee.object;
+    return isNodeOfType(receiver, "MemberExpression") &&
+      !receiver.computed &&
+      !receiver.optional &&
+      getStaticPropertyName(receiver) === "current" &&
+      isNodeOfType(receiver.object, "Identifier")
+      ? context.scopes.symbolFor(receiver.object)
+      : null;
+  };
+  walkAst(component, (node) => {
+    if (methodCall(node, "set", RECORD_FIELD_COUNT)) {
+      const symbol = storeForCall(node);
+      if (symbol) {
+        const calls = index.insertions.get(symbol) ?? [];
+        calls.push(node);
+        index.insertions.set(symbol, calls);
+      }
+    }
+    if (!isFunctionLike(node)) return;
+    const body = stripParenExpression(node.body);
+    if (findEnclosingFunction(node) === component) {
+      if (
+        isNodeOfType(body, "BinaryExpression") &&
+        body.operator === "!==" &&
+        methodCall(body.left, "get", SINGLE_ARGUMENT_COUNT)
+      ) {
+        const symbol = storeForCall(body.left);
+        if (symbol) {
+          const functions = index.staleHelpers.get(symbol) ?? [];
+          functions.push(node);
+          index.staleHelpers.set(symbol, functions);
+        }
+      }
+      const first = isNodeOfType(body, "BlockStatement")
+        ? body.body.at(EMPTY_ARGUMENT_COUNT)
+        : null;
+      const guard = isNodeOfType(first, "IfStatement") ? stripParenExpression(first.test) : null;
+      const membership = isNodeOfType(guard, "UnaryExpression")
+        ? stripParenExpression(guard.argument)
+        : null;
+      if (
+        node.params.length === SINGLE_ARGUMENT_COUNT &&
+        methodCall(membership, "has", SINGLE_ARGUMENT_COUNT)
+      ) {
+        const symbol = storeForCall(membership);
+        if (symbol) {
+          const functions = index.cancellationHelpers.get(symbol) ?? [];
+          functions.push(node);
+          index.cancellationHelpers.set(symbol, functions);
+        }
+      }
+    }
+    const first = isNodeOfType(body, "BlockStatement")
+      ? expressionStatement(body.body.at(EMPTY_ARGUMENT_COUNT))
+      : null;
+    if (methodCall(first, "clear", EMPTY_ARGUMENT_COUNT)) {
+      const symbol = storeForCall(first);
+      if (symbol) {
+        const functions = index.cleanups.get(symbol) ?? [];
+        functions.push(node);
+        index.cleanups.set(symbol, functions);
+      }
+    }
+  });
+  components.set(component, index);
+  return index;
+};
+
+const certifyOwnedTokenMapRecordReset = (write: EsTreeNode, context: RuleContext): boolean => {
+  if (
+    !isNodeOfType(write, "CallExpression") ||
+    write.optional ||
+    write.arguments.length !== SINGLE_ARGUMENT_COUNT ||
+    !emptyRecord(write.arguments.at(EMPTY_ARGUMENT_COUNT))
+  )
+    return false;
+  const pair = resolveReactUseStatePair(write.callee, context.scopes);
+  const component = pair ? findEnclosingFunction(pair.declarator) : null;
+  const owner = findEnclosingFunction(write);
+  const program = findProgramRoot(write);
+  if (
+    !pair?.stateSymbol ||
+    pair.stateSymbol.kind !== "const" ||
+    pair.setterSymbol.kind !== "const" ||
+    !component ||
+    !isFunctionLike(owner) ||
+    owner.async ||
+    owner.generator ||
+    owner.params.length !== EMPTY_ARGUMENT_COUNT ||
+    !isNodeOfType(owner.body, "BlockStatement") ||
+    owner.body.body.length !== REMOVAL_STATEMENT_COUNT ||
+    !isNodeOfType(pair.declarator.init, "CallExpression") ||
+    !canonicalReactCall(pair.declarator.init, "useState", context) ||
+    pair.declarator.init.arguments.length !== SINGLE_ARGUMENT_COUNT ||
+    !emptyRecord(pair.declarator.init.arguments.at(EMPTY_ARGUMENT_COUNT)) ||
+    !program ||
+    !supportedProgram(program, context)
+  )
+    return false;
+  if (!supportedTokenProgram(program, context)) return false;
+  const [tokenStatement, releaseStatement, , resetStatement] = owner.body.body;
+  const tokenClear = expressionStatement(tokenStatement);
+  const release = expressionStatement(releaseStatement);
+  if (
+    expressionStatement(resetStatement) !== write ||
+    !methodCall(tokenClear, "clear", EMPTY_ARGUMENT_COUNT) ||
+    !isNodeOfType(tokenClear.callee, "MemberExpression") ||
+    !methodCall(release, "forEach", SINGLE_ARGUMENT_COUNT) ||
+    !isNodeOfType(release.callee, "MemberExpression")
+  )
+    return false;
+  const certificate: TokenMapCertificate = {
+    context,
+    component,
+    registry: pair.setterSymbol,
+    tokenRegistry: pair.setterSymbol,
+    setter: pair.setterSymbol,
+    mark: pair.setterSymbol,
+    clear: pair.setterSymbol,
+    stale: pair.setterSymbol,
+    allowedReferences: new Set(),
+    allowedUpdates: new Set(),
+    controlledSymbols: new Set([pair.setterSymbol]),
+    registryCalls: new Set(),
+    stateWrites: new Set([write]),
+    removalFunctions: new Map(),
+    insertionFunctions: new Map(),
+  };
+  const tokenRegistry = directRef(tokenClear.callee.object, certificate);
+  const controllerRegistry = directRef(release.callee.object, certificate);
+  if (!tokenRegistry || !controllerRegistry || tokenRegistry === controllerRegistry) return false;
+  certificate.registry = controllerRegistry;
+  certificate.tokenRegistry = tokenRegistry;
+  if (
+    !trackBinding(tokenRegistry.bindingIdentifier, certificate) ||
+    !trackBinding(controllerRegistry.bindingIdentifier, certificate) ||
+    !tokenRelease(owner.body.body.slice(EMPTY_ARGUMENT_COUNT, RESET_STATEMENT_COUNT), certificate)
+  )
+    return false;
+  const resetBinding = functionBinding(owner, certificate);
+  if (!resetBinding) return false;
+  for (const reference of resetBinding.references) {
+    const parent = reference.identifier.parent;
+    const effect = findEnclosingFunction(reference.identifier);
+    const call = effect?.parent;
+    const dependency = parent?.parent;
+    if (
+      (isNodeOfType(parent, "ArrayExpression") &&
+        isNodeOfType(dependency, "CallExpression") &&
+        (canonicalReactCall(dependency, "useEffect", context) ||
+          canonicalReactCall(dependency, "useCallback", context)) &&
+        dependency.arguments.at(SINGLE_ARGUMENT_COUNT) === parent) ||
+      (isFunctionLike(effect) &&
+        !effect.async &&
+        !effect.generator &&
+        effect.params.length === EMPTY_ARGUMENT_COUNT &&
+        isNodeOfType(call, "CallExpression") &&
+        canonicalReactCall(call, "useEffect", context) &&
+        call.arguments.length === RECORD_FIELD_COUNT &&
+        call.arguments.at(EMPTY_ARGUMENT_COUNT) === effect &&
+        isNodeOfType(parent, "CallExpression") &&
+        parent.callee === reference.identifier &&
+        parent.arguments.length === EMPTY_ARGUMENT_COUNT &&
+        !parent.optional)
+    )
+      certificate.allowedReferences.add(reference.identifier);
+    else return false;
+  }
+  const componentIndex = indexTokenMapComponent(component, context);
+  for (const reference of pair.setterSymbol.references) {
+    const call = reference.identifier.parent;
+    if (!isSetterCall(call, certificate) || call.callee !== reference.identifier) return false;
+    if (call !== write && !tokenRecordWriter(call, certificate)) return false;
+    certificate.allowedReferences.add(reference.identifier);
+  }
+  if (certificate.mark === certificate.setter || certificate.clear === certificate.setter)
+    return false;
+  for (const candidate of componentIndex.staleHelpers.get(tokenRegistry) ?? []) {
+    const body = isFunctionLike(candidate) ? stripParenExpression(candidate.body) : null;
+    if (
+      isNodeOfType(body, "BinaryExpression") &&
+      body.operator === "!==" &&
+      tokenStoreCall(body.left, tokenRegistry, "get", SINGLE_ARGUMENT_COUNT, certificate)
+    ) {
+      if (!tokenStaleHelper(candidate, certificate)) return false;
+    }
+  }
+  if (certificate.stale === certificate.setter) return false;
+  const insertions = componentIndex.insertions.get(controllerRegistry) ?? [];
+  if (
+    insertions.length === EMPTY_ARGUMENT_COUNT ||
+    !insertions.every((call) => tokenRequest(call, certificate))
+  )
+    return false;
+  for (const candidate of componentIndex.cancellationHelpers.get(tokenRegistry) ?? []) {
+    if (!isFunctionLike(candidate) || !isNodeOfType(candidate.body, "BlockStatement")) continue;
+    const first = candidate.body.body.at(EMPTY_ARGUMENT_COUNT);
+    if (
+      candidate.params.length === SINGLE_ARGUMENT_COUNT &&
+      isNodeOfType(first, "IfStatement") &&
+      isNodeOfType(stripParenExpression(first.test), "UnaryExpression")
+    ) {
+      if (!tokenCancellation(candidate, certificate)) return false;
+    }
+  }
+  for (const node of componentIndex.cleanups.get(tokenRegistry) ?? []) {
+    if (
+      !isFunctionLike(node) ||
+      node.async ||
+      node.generator ||
+      node.params.length !== EMPTY_ARGUMENT_COUNT ||
+      !isNodeOfType(node.body, "BlockStatement") ||
+      node.body.body.length !== RESET_STATEMENT_COUNT
+    )
+      continue;
+    const first = expressionStatement(node.body.body.at(EMPTY_ARGUMENT_COUNT));
+    if (!tokenStoreCall(first, tokenRegistry, "clear", EMPTY_ARGUMENT_COUNT, certificate)) continue;
+    const effect = node.parent;
+    const effectCallback = isNodeOfType(effect, "ReturnStatement")
+      ? findEnclosingFunction(effect)
+      : effect;
+    const effectCall = effectCallback?.parent;
+    if (
+      !isFunctionLike(effectCallback) ||
+      effectCallback.async ||
+      effectCallback.generator ||
+      effectCallback.params.length !== EMPTY_ARGUMENT_COUNT ||
+      !isNodeOfType(effectCall, "CallExpression") ||
+      !canonicalReactCall(effectCall, "useEffect", context) ||
+      effectCall.arguments.length !== RECORD_FIELD_COUNT ||
+      effectCall.arguments.at(EMPTY_ARGUMENT_COUNT) !== effectCallback ||
+      !(
+        effectCallback.body === node ||
+        (isNodeOfType(effect, "ReturnStatement") && effect.argument === node)
+      )
+    )
+      continue;
+    tokenRelease(node.body.body, certificate);
+  }
+  for (const reference of pair.stateSymbol.references) {
+    const member = reference.identifier.parent;
+    const comparison = member?.parent;
+    const other = isNodeOfType(comparison, "BinaryExpression")
+      ? comparison.left === member
+        ? comparison.right
+        : comparison.left
+      : null;
+    if (
+      reference.flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== reference.identifier ||
+      member.optional ||
+      isWithinAssignmentTarget(member) ||
+      !isNodeOfType(comparison, "BinaryExpression") ||
+      (comparison.operator !== "===" && comparison.operator !== "!==") ||
+      !isNodeOfType(other, "Identifier") ||
+      other.name !== "undefined" ||
+      !isRuntimeGlobalReference(other, context)
+    )
+      return false;
+  }
+  for (const symbol of certificate.controlledSymbols) {
+    for (const reference of symbol.references) {
+      if (isTypeScriptTypePosition(reference.identifier)) continue;
+      if (
+        (reference.flag !== "read" && !certificate.allowedUpdates.has(reference.identifier)) ||
+        !certificate.allowedReferences.has(reference.identifier)
+      )
+        return false;
+    }
+  }
+  return true;
+};
+
 export const isOwnedControllerRecordReset = (write: EsTreeNode, context: RuleContext): boolean => {
   let results = controllerRecordCertificates.get(context.scopes);
   if (!results) {
@@ -1316,7 +2304,10 @@ export const isOwnedControllerRecordReset = (write: EsTreeNode, context: RuleCon
   }
   const cached = results.get(write);
   if (cached !== undefined) return cached;
-  const result = certifyOwnedControllerRecordReset(write, context);
+  const result =
+    isNodeOfType(write, "CallExpression") && emptyRecord(write.arguments.at(EMPTY_ARGUMENT_COUNT))
+      ? certifyOwnedTokenMapRecordReset(write, context)
+      : certifyOwnedControllerRecordReset(write, context);
   results.set(write, result);
   return result;
 };

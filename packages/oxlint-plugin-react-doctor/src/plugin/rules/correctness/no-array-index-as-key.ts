@@ -1,7 +1,9 @@
+import { STRING_SPLIT_MAX_ARGUMENT_COUNT } from "../../constants/thresholds.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
+import { isLocalRecordStringMember } from "../../utils/is-local-record-string-member.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -693,7 +695,13 @@ const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean 
   return false;
 };
 
-const isPlainStringTokenReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
+const isPlainStringTokenReceiver = (
+  receiver: EsTreeNode,
+  context: RuleContext,
+  allowLocalRecordString: boolean,
+  tokenCallback: EsTreeNode | null,
+  depth = 0,
+): boolean => {
   if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
   const candidate = stripParenExpression(receiver);
   if (isNodeOfType(candidate, "Identifier")) {
@@ -702,7 +710,13 @@ const isPlainStringTokenReceiver = (receiver: EsTreeNode, depth = 0): boolean =>
       binding?.initializer &&
       isConstDeclaredBinding(binding) &&
       !isBindingReassignedOrMutated(candidate, candidate.name) &&
-      isPlainStringTokenReceiver(binding.initializer, depth + 1),
+      isPlainStringTokenReceiver(
+        binding.initializer,
+        context,
+        allowLocalRecordString,
+        tokenCallback,
+        depth + 1,
+      ),
     );
   }
   if (
@@ -711,14 +725,35 @@ const isPlainStringTokenReceiver = (receiver: EsTreeNode, depth = 0): boolean =>
   )
     return false;
   const method = getStaticPropertyName(candidate.callee);
-  if (method === "split") return isProvablyStringValued(candidate.callee.object, 0);
+  if (method === "split") {
+    const separator = candidate.arguments[0];
+    return (
+      isProvablyStringValued(candidate.callee.object, 0) ||
+      (allowLocalRecordString &&
+        !candidate.optional &&
+        !candidate.callee.optional &&
+        candidate.arguments.length <= STRING_SPLIT_MAX_ARGUMENT_COUNT &&
+        (!candidate.arguments[1] ||
+          (isNodeOfType(candidate.arguments[1], "Literal") &&
+            typeof candidate.arguments[1].value === "number")) &&
+        (!separator ||
+          (isNodeOfType(separator, "Literal") && typeof separator.value === "string")) &&
+        isLocalRecordStringMember(candidate.callee.object, context, tokenCallback))
+    );
+  }
   const predicate = candidate.arguments[0];
   return (
     method === "filter" &&
     isNodeOfType(predicate, "Identifier") &&
     predicate.name === "Boolean" &&
     !findVariableInitializer(predicate, "Boolean") &&
-    isPlainStringTokenReceiver(candidate.callee.object, depth + 1)
+    isPlainStringTokenReceiver(
+      candidate.callee.object,
+      context,
+      allowLocalRecordString,
+      tokenCallback,
+      depth + 1,
+    )
   );
 };
 
@@ -2023,11 +2058,36 @@ export const noArrayIndexAsKey = defineRule({
               const jsxElement = openingElement.parent;
               if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
                 const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
+                const allowLocalRecordString =
+                  isInlineTextRun &&
+                  openingElement.attributes.every(
+                    (attribute) =>
+                      isNodeOfType(attribute, "JSXAttribute") &&
+                      isNodeOfType(attribute.name, "JSXIdentifier") &&
+                      (attribute.name.name === "key" || attribute.name.name === "className"),
+                  ) &&
+                  jsxElement.children.every(
+                    (child) =>
+                      isNodeOfType(child, "JSXText") ||
+                      (isNodeOfType(child, "JSXExpressionContainer") &&
+                        isNodeOfType(child.expression, "Identifier") &&
+                        itemNames.has(child.expression.name) &&
+                        Boolean(
+                          context.scopes
+                            .symbolFor(child.expression)
+                            ?.references.every((reference) => reference.flag === "read"),
+                        )),
+                  );
                 let primitiveItemNames = EMPTY_NAME_SET;
                 if (
                   iteratorCallee &&
                   isNodeOfType(iteratorCallee, "MemberExpression") &&
-                  isPlainStringTokenReceiver(iteratorCallee.object)
+                  isPlainStringTokenReceiver(
+                    iteratorCallee.object,
+                    context,
+                    allowLocalRecordString,
+                    indexUse.binding.bindingFunction,
+                  )
                 )
                   primitiveItemNames = itemNames;
                 else if (keyTemplate)

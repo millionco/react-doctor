@@ -1,3 +1,4 @@
+import { getOwnedCancellationConjunctionPrefix } from "./utils/get-owned-cancellation-conjunction-prefix.js";
 import { isEffectLocalCancellationGuard } from "../../utils/is-effect-local-cancellation-guard.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
@@ -772,8 +773,28 @@ const doesCleanupForceGuardValue = (
   expectedValue: boolean,
   cleanupWrites: ReadonlyMap<string, boolean>,
   context: RuleContext,
-): boolean =>
-  doesBooleanExpressionForceValue(
+): boolean => {
+  if (!expectedValue) {
+    const containingFunction = findEnclosingFunction(test);
+    const effectCallback =
+      containingFunction && findContainingEffectCallback(containingFunction, context);
+    const prefix =
+      effectCallback && getOwnedCancellationConjunctionPrefix(test, effectCallback, context);
+    if (
+      prefix &&
+      doesBooleanExpressionForceValue(
+        prefix,
+        false,
+        (candidate, expectedAtomicValue) => {
+          const targetKey = serializeReferenceKey({ node: candidate, scopes: context.scopes });
+          return targetKey !== null && cleanupWrites.get(targetKey) === expectedAtomicValue;
+        },
+        context,
+      )
+    )
+      return true;
+  }
+  return doesBooleanExpressionForceValue(
     test,
     expectedValue,
     (candidate, expectedAtomicValue) => {
@@ -792,6 +813,7 @@ const doesCleanupForceGuardValue = (
       );
     },
   );
+};
 
 interface SequenceSnapshot {
   counterKey: string;

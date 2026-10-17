@@ -11,6 +11,8 @@ import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import { isLocalHookNumericResult } from "./utils/is-local-hook-numeric-result.js";
 
 const ARITHMETIC_BINARY_OPERATORS = new Set(["-", "*", "/", "%"]);
 const NUMERIC_COERCION_CALLEE_NAMES = new Set(["Number", "parseInt", "parseFloat"]);
@@ -195,6 +197,67 @@ const conditionProvesPositive = (
     return conditionProvesPositive(initializer, targetPath, remainingHops - 1, context);
   }
   return false;
+};
+
+const conditionProvesLocalCountPositive = (
+  condition: EsTreeNode,
+  identifier: EsTreeNodeOfType<"Identifier">,
+  remainingHops: number,
+  context: RuleContext,
+): boolean => {
+  if (remainingHops <= 0) return false;
+  const candidate = stripParenExpression(condition);
+  if (isNodeOfType(candidate, "BinaryExpression")) {
+    return (
+      comparisonProvesPositive(candidate, identifier.name) &&
+      [candidate.left, candidate.right].some((operand) => {
+        const reference = stripParenExpression(operand);
+        return (
+          isNodeOfType(reference, "Identifier") &&
+          context.scopes.symbolFor(reference) === context.scopes.symbolFor(identifier)
+        );
+      })
+    );
+  }
+  if (isNodeOfType(candidate, "LogicalExpression") && candidate.operator === "&&") {
+    return (
+      conditionProvesLocalCountPositive(candidate.left, identifier, remainingHops - 1, context) ||
+      conditionProvesLocalCountPositive(candidate.right, identifier, remainingHops - 1, context)
+    );
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(candidate);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    symbol.references.some(
+      (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
+    )
+  )
+    return false;
+  return conditionProvesLocalCountPositive(
+    symbol.initializer,
+    identifier,
+    remainingHops - 1,
+    context,
+  );
+};
+
+const precedingOperandPreventsLocalCountLeak = (
+  condition: EsTreeNode,
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const candidate = stripParenExpression(condition);
+  if (isNodeOfType(candidate, "Literal") && !candidate.value) return true;
+  if (
+    isNodeOfType(candidate, "Identifier") &&
+    candidate.name === "undefined" &&
+    context.scopes.isGlobalReference(candidate)
+  )
+    return true;
+  return conditionProvesLocalCountPositive(candidate, identifier, PROVENANCE_HOP_LIMIT, context);
 };
 
 const isNonEmptyArrayLiteral = (node: EsTreeNode): boolean => {
@@ -584,9 +647,23 @@ export const jsxNumericAndLeakedRender = defineRule({
       const renderOperand = operands[operands.length - 1];
       if (!renderOperand || !isRenderExpression(renderOperand)) return;
 
-      const leakingOperand = operands
+      const legacyLeakingOperand = operands
         .slice(0, -1)
         .find((guardOperand) => isSyntacticallyNumeric(guardOperand, context));
+      const leakingOperand =
+        legacyLeakingOperand ??
+        operands.slice(0, -1).find((guardOperand) => {
+          const identifier = stripParenExpression(guardOperand);
+          return (
+            isNodeOfType(identifier, "Identifier") &&
+            isLocalHookNumericResult(identifier, context) &&
+            !operands
+              .slice(0, operands.indexOf(guardOperand))
+              .some((preceding) =>
+                precedingOperandPreventsLocalCountLeak(preceding, identifier, context),
+              )
+          );
+        });
       if (!leakingOperand) return;
       if (renderSideReadsMemberOfGuardPath(leakingOperand, renderOperand)) return;
       const precedingOperands = operands.slice(0, operands.indexOf(leakingOperand));

@@ -734,6 +734,8 @@ export const JSX_LEAF_POOL = [
 // Rare-but-parseable weirdness kept from the original generator, plus
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
+  `const useFuzzCount = (items) => { const count = Array.isArray(items) ? items.length : undefined; return { count }; }; const FuzzCountView = ({ items }) => { const { count } = useFuzzCount(items); return <section>{count && <output>Ready</output>}</section>; }; const fuzzCountElement = <FuzzCountView items={items} />;`,
+  `const useFuzzSafeCount = (items) => { const count = Array.isArray(items) ? items.length : undefined; return { count }; }; const FuzzSafeCountView = ({ items }) => { const { count } = useFuzzSafeCount(items); const hasEntries = count > 0; return <section>{hasEntries && count && <output>Ready</output>}</section>; }; const fuzzSafeCountElement = <FuzzSafeCountView items={items} />;`,
   `const contextCallback = config.onSelect; const effectiveCallback = onSelect ?? contextCallback; const derivedHandler = useCallback(() => effectiveCallback?.(), [effectiveCallback]);`,
   `const membershipCandidates = [1, 2, 3, 4, 5, 6, 7, 8, 9]; const membershipValues = [1, 2, 3, 4, 5, 6, 7, 8, 9]; for (const membershipCandidate of membershipCandidates) { membershipValues.includes(membershipCandidate); }`,
   `const numericMembershipValues: number[] = []; const numericMembershipAllowed: number[] = []; numericMembershipValues.reduce((count, value) => numericMembershipAllowed.indexOf(value) !== -1 ? count + 1 : count, 0);`,

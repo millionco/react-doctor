@@ -169,6 +169,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "ink-use-string-width-for-cursor",
       "ink-use-suspend-terminal",
       "ink-valid-aria-semantics",
+      "jsx-numeric-and-leaked-render",
       "nextjs-async-dynamic-api-not-awaited",
       "nextjs-missing-metadata",
       "nextjs-no-img-element",

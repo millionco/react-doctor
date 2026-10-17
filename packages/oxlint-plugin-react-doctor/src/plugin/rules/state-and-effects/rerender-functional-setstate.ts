@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
+import { hasOnlyExclusiveConstantSetterSiblings } from "../../utils/has-only-exclusive-constant-setter-siblings.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -179,7 +180,8 @@ export const rerenderFunctionalSetstate = defineRule({
       // an update.
       const canSyncArithmeticGoStale = (): boolean =>
         isInsideDeferredCallback(node) ||
-        hasMultipleSetterCallsInEnclosingFunction(node, calleeName);
+        (hasMultipleSetterCallsInEnclosingFunction(node, calleeName) &&
+          !hasOnlyExclusiveConstantSetterSiblings(node, context.scopes));
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&

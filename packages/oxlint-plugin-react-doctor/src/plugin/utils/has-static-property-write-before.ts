@@ -1,3 +1,4 @@
+import { isMemberMutationTarget } from "./is-member-mutation-target.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
@@ -255,18 +256,6 @@ const isFunctionSynchronouslyInvokedBefore = (
     synchronousNode,
   ).length > 0;
 
-const isMemberWriteTarget = (memberExpression: EsTreeNode): boolean => {
-  const parent = memberExpression.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "AssignmentExpression")) return parent.left === memberExpression;
-  if (isNodeOfType(parent, "UpdateExpression")) return parent.argument === memberExpression;
-  return (
-    isNodeOfType(parent, "UnaryExpression") &&
-    parent.operator === "delete" &&
-    parent.argument === memberExpression
-  );
-};
-
 const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
   let parent = identifier.parent;
   while (parent && stripParenExpression(parent) === identifier) {
@@ -276,7 +265,7 @@ const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
     !parent ||
     !isNodeOfType(parent, "MemberExpression") ||
     stripParenExpression(parent.object) !== identifier ||
-    !isMemberWriteTarget(parent)
+    !isMemberMutationTarget(parent)
   ) {
     return null;
   }

@@ -420,6 +420,8 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  'import { useEffect } from "react";\nimport { useRouter } from "next/router";\nexport const getServerSideProps = async () => ({ props: { nextPath: "/library", item: null } });\nconst LibraryPage = ({ nextPath, item }) => {\n  const router = useRouter();\n  useEffect(() => {\n    if (nextPath && !item) {\n      router.replace(nextPath);\n    }\n  }, [nextPath, item]);\n  return null;\n};\nexport default LibraryPage;\n',
+  'import { useEffect } from "react";\nimport { useRouter } from "next/router";\nexport const getServerSideProps = async () => ({ props: { nextPath: "/library", item: null } });\nconst LibraryPage = ({ nextPath, item }) => {\n  const router = useRouter();\n  useEffect(() => {\n    if (nextPath && !item) {\n      router.replace(nextPath);\n      toast("Moving");\n    }\n  }, [nextPath, item]);\n  return null;\n};\nexport default LibraryPage;\n',
   `export default function FuzzDedupPage({ items }) {
   return <FuzzList items={items} sortedItems={items.toSorted()} />;
 }`,

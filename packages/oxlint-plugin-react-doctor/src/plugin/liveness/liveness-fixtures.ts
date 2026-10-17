@@ -832,6 +832,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "function Game({ card }) {\n        const [goldCardCount, setGoldCardCount] = useState(0);\n        const [round, setRound] = useState(1);\n        useEffect(() => { if (card.gold) setGoldCardCount(goldCardCount + 1); }, [card]);\n        useEffect(() => { if (goldCardCount > 3) setRound(round + 1); }, [goldCardCount]);\n        return null;\n      }",
   },
   "no-effect-event-handler": {
+    settings: { "react-doctor": { capabilities: ["react", "nextjs"] } },
     code: "\nimport { useEffect } from \"react\";\nconst Checkout = ({ status }) => {\n  useEffect(() => {\n    if (status !== 'submitted') {\n      return;\n    }\n    toast('Order submitted!');\n  }, [status]);\n  return null;\n};\n",
   },
   "no-effect-event-in-deps": {

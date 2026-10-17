@@ -1,3 +1,4 @@
+import { isReadonlyOwnerSnapshotGuardedClear } from "../../utils/is-readonly-owner-snapshot-guarded-clear.js";
 import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -627,7 +628,14 @@ const findUnsafeRequestScopedClear = (
           argument &&
           !isFunctionLike(stripParenExpression(argument)) &&
           expressionContainsNull(argument) &&
-          !callIsOwnershipGuarded(call, child),
+          !callIsOwnershipGuarded(call, child) &&
+          !isReadonlyOwnerSnapshotGuardedClear(
+            call,
+            child,
+            state.componentFunction,
+            state.setterSymbol,
+            context,
+          ),
         );
       }) ?? null;
     return unsafeClear ? false : undefined;

@@ -13,6 +13,7 @@ import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-funct
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { resolveLocalHostPropHandler } from "./utils/resolve-local-host-prop-handler.js";
 
 const MESSAGE =
   "This async handler awaits a mutating request and only flips state after the await, so a fast double-click or double Enter fires the request twice. Add a leading `if (busy) return` guard (or set a flag before the await and disable the control) to close the re-entry window.";
@@ -113,9 +114,9 @@ const awaitedExpressionIsMutatingNetworkOp = (
       if (methodName === "mutate" && (stripped.arguments?.length ?? 0) === 0) {
         return false;
       }
-      let receiverBase: EsTreeNode = callee.object as EsTreeNode;
+      let receiverBase = stripParenExpression(callee.object);
       while (isNodeOfType(receiverBase, "MemberExpression")) {
-        receiverBase = receiverBase.object as EsTreeNode;
+        receiverBase = stripParenExpression(receiverBase.object);
       }
       if (
         isNodeOfType(receiverBase, "Identifier") &&
@@ -453,7 +454,15 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         }
         const value = node.value;
         if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return;
-        const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode, context);
+        const handlerFunction =
+          resolveHandlerFunction(value.expression as EsTreeNode, context) ??
+          resolveLocalHostPropHandler({
+            attribute: node,
+            context,
+            eventHandlerNames: REENTRY_GUARDED_EVENT_HANDLER_NAMES,
+            stateHookNames: STATE_DISPATCHER_HOOK_NAMES,
+            matchesStateSetterCall: (candidate) => isStateSetterCall(candidate, context),
+          });
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
         analyzeAsyncHandler(context, handlerFunction);

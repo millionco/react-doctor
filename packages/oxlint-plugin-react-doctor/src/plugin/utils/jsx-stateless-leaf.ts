@@ -187,6 +187,7 @@ interface RowContentScanOptions {
   // Calls whose callee roots at these names (`{fn(...)}` where `fn` IS
   // the iteration item) are renderer-list content.
   callCalleeRootNames?: ReadonlySet<string>;
+  primitiveChild?: (expression: EsTreeNode) => boolean;
 }
 
 const rootIdentifierNameOf = (expression: EsTreeNode): string | null => {
@@ -239,6 +240,7 @@ export const containsStatefulDescendant = (
     }
     if (isNodeOfType(node, "JSXExpressionContainer")) {
       const expression = node.expression as EsTreeNode;
+      if (options.primitiveChild?.(expression)) continue;
       if (isNodeOfType(expression, "MemberExpression")) {
         if (options.allowAnyMemberRead === true) continue;
         const rootName = rootIdentifierNameOf(expression);

@@ -6,6 +6,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
+import { isAlwaysMatchingLiteralStarRegexCall } from "./utils/is-always-matching-literal-star-regex-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
@@ -310,7 +311,11 @@ const isRegexResultDerefGuarded = (
   return someDominatingTestHasCall(node, (call) => areGuardExpressionsEqual(call, regexResultCall));
 };
 
-const isAlwaysMatchRegexResult = (regexResultCall: EsTreeNode, partIndex: number): boolean => {
+const isAlwaysMatchRegexResult = (
+  regexResultCall: EsTreeNode,
+  partIndex: number,
+  context: RuleContext,
+): boolean => {
   if (partIndex !== 0) return false;
   if (!isNodeOfType(regexResultCall, "CallExpression")) return false;
   if (!isNodeOfType(regexResultCall.callee, "MemberExpression")) return false;
@@ -325,7 +330,10 @@ const isAlwaysMatchRegexResult = (regexResultCall: EsTreeNode, partIndex: number
   if (!regexOperand || !isNodeOfType(regexOperand, "Literal") || !("regex" in regexOperand)) {
     return false;
   }
-  return isAlwaysMatchingRegexPattern(regexOperand.regex?.pattern, regexOperand.regex?.flags);
+  return (
+    isAlwaysMatchingRegexPattern(regexOperand.regex?.pattern, regexOperand.regex?.flags) ||
+    isAlwaysMatchingLiteralStarRegexCall(regexResultCall, context)
+  );
 };
 
 // `"1.2.3".split(".")[1]` — splitting a string literal by a string-literal
@@ -664,7 +672,11 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         if (isRegexResultCall(base)) {
           if (
             isNumericLiteral(index) &&
-            isAlwaysMatchRegexResult(base, Number((index as EsTreeNodeOfType<"Literal">).value))
+            isAlwaysMatchRegexResult(
+              base,
+              Number((index as EsTreeNodeOfType<"Literal">).value),
+              context,
+            )
           ) {
             return;
           }

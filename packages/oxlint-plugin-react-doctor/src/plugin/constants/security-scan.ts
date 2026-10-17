@@ -59,3 +59,5 @@ export const BROWSER_ARTIFACT_PATH_PATTERNS = [
 
 export const AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN =
   /\b(?:exec|execSync|spawn|child_process|eval|new Function|vm\.run|readFile|writeFile|fs\.read|fs\.write|fetch|axios|http\.request|sandbox|runCode|executeCode)\b/;
+
+export const HTML_JSON_STRINGIFY_LOOKAHEAD_CHARS = 300;

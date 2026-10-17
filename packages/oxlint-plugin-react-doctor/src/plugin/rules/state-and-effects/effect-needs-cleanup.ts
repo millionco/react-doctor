@@ -1176,7 +1176,6 @@ const isKnownReactNavigationReceiver = (
   if (isNodeOfType(receiver, "Identifier")) {
     const receiverSymbol = context.scopes.symbolFor(receiver);
     if (!receiverSymbol || visitedSymbolIds.has(receiverSymbol.id)) return false;
-    if (receiver.name === "navigation") return true;
     visitedSymbolIds.add(receiverSymbol.id);
     const receiverInitializer = receiverSymbol.initializer
       ? stripParenExpression(receiverSymbol.initializer)
@@ -1190,10 +1189,14 @@ const isKnownReactNavigationReceiver = (
     ) {
       return true;
     }
-    return Boolean(
+    if (
       receiverInitializer &&
-      isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds),
-    );
+      isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds)
+    ) {
+      return true;
+    }
+    if (!receiverInitializer && receiver.name === "navigation") return true;
+    return false;
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const receiverCallee = stripParenExpression(receiver.callee);

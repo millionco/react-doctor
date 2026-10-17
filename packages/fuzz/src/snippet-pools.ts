@@ -164,6 +164,8 @@ export const STATE_SNIPPET_POOL = [
   `const fuzzReadOnlyColumns = [["first"], ["second"]]; const fuzzReadOnlyColumnsNode = <Grid columns={fuzzReadOnlyColumns} />;`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
+  `const FuzzEffectDependencyRefPanel = (props) => { const refs = useRef([]); const makeItemRef = () => { const observedRef = createRef(); refs.current.push(observedRef); return observedRef; }; if (props.active) makeItemRef(); useEffect(() => handle(refs.current), [props.active]); return <div />; }; const fuzzEffectDependencyRefNode = <FuzzEffectDependencyRefPanel active={condition} />;`,
+  `const fuzzRenderHelperRefs = useRef([]); const makeFuzzRenderHelperRef = () => { const observedRef = createRef(); fuzzRenderHelperRefs.current.push(observedRef); return observedRef; }; const renderFuzzRefItem = () => <div ref={makeFuzzRenderHelperRef()}>Item</div>; const fuzzRefItemNode = renderFuzzRefItem(); useEffect(() => handle(fuzzRenderHelperRefs.current), []);`,
   `const [fuzzStableStateRef] = useState(createRef()); const fuzzStableStateRefNode = <button ref={fuzzStableStateRef}>Open</button>;`,
   `const useFuzzInitialRef = () => createRef(); const [fuzzStableLazyStateRef] = useState(useFuzzInitialRef); const fuzzStableLazyStateRefNode = <button ref={fuzzStableLazyStateRef}>Open</button>;`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,

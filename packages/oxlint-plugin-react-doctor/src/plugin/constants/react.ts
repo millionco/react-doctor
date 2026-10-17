@@ -44,6 +44,9 @@ export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
 
 export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
+export const EFFECT_HOOK_DEPENDENCY_ARGUMENT_INDEX = 1;
+export const EFFECT_HOOK_DEPENDENCY_ARGUMENT_COUNT = 2;
+
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
 export const UNARY_LISTENER_ARGUMENT_COUNT = 1;

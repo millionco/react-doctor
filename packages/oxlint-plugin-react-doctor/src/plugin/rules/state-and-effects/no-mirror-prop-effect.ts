@@ -1,3 +1,5 @@
+import { isClosedRenamedMirror } from "./utils/is-closed-renamed-mirror.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
@@ -53,6 +55,9 @@ interface MirrorBinding {
   setterName: string;
   initializer: EsTreeNode;
   propRootName: string;
+  setterIdentifier: EsTreeNodeOfType<"Identifier">;
+  stateCall: EsTreeNodeOfType<"CallExpression">;
+  isConstDeclaration: boolean;
 }
 
 // Docs-validation r2 FP (EditorialCheckCard):
@@ -100,8 +105,7 @@ export const noMirrorPropEffect = defineRule({
           const setterElement = elements[1];
           if (
             !isNodeOfType(valueElement, "Identifier") ||
-            !isNodeOfType(setterElement, "Identifier") ||
-            !isSetterIdentifier(setterElement.name)
+            !isNodeOfType(setterElement, "Identifier")
           ) {
             continue;
           }
@@ -116,6 +120,9 @@ export const noMirrorPropEffect = defineRule({
             setterName: setterElement.name,
             initializer,
             propRootName,
+            setterIdentifier: setterElement,
+            stateCall: declarator.init,
+            isConstDeclaration: statement.kind === "const",
           });
         }
       }
@@ -154,7 +161,6 @@ export const noMirrorPropEffect = defineRule({
         const expression = unwrapDiscardedExpression(expressionNode);
         if (!isNodeOfType(expression, "CallExpression")) continue;
         if (!isNodeOfType(expression.callee, "Identifier")) continue;
-        if (!isSetterIdentifier(expression.callee.name)) continue;
         if (!expression.arguments?.length) continue;
         const setterArgument = expression.arguments[0];
 
@@ -162,6 +168,18 @@ export const noMirrorPropEffect = defineRule({
         const matchedBinding = mirrorBindings.find(
           (binding) =>
             binding.setterName === calleeName &&
+            (isSetterIdentifier(calleeName) ||
+              isClosedRenamedMirror({
+                initializer: binding.initializer,
+                setterIdentifier: binding.setterIdentifier,
+                stateCall: binding.stateCall,
+                setterCall: expression,
+                effectCall,
+                callback,
+                dependencies: depsNode,
+                isConstDeclaration: binding.isConstDeclaration,
+                scopes: context.scopes,
+              })) &&
             depIdentifierNames.has(binding.propRootName) &&
             hasOnlyMirrorDeps(depIdentifierNames, binding) &&
             areExpressionsStructurallyEqual(binding.initializer, setterArgument),

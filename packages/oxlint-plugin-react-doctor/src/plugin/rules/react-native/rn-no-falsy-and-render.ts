@@ -1,3 +1,4 @@
+import { isExplicitStringForwardRefProp } from "./utils/is-explicit-string-forward-ref-prop.js";
 import { isBooleanResultExpression } from "../../utils/is-boolean-result-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
@@ -275,6 +276,12 @@ export const rnNoFalsyAndRender = defineRule({
         // A numeric-sounding name that provably holds a boolean never renders a
         // bare `0`, so flagging it would be a false positive.
         if (isNodeOfType(left, "Identifier") && isProvablyBooleanIdentifier(left)) return;
+
+        if (
+          isNodeOfType(left, "Identifier") &&
+          isExplicitStringForwardRefProp(left, context.scopes)
+        )
+          return;
 
         context.report({
           node: left,

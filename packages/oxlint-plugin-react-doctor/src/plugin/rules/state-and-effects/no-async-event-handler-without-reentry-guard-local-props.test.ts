@@ -24,17 +24,17 @@ const cases = [
   {
     name: "direct-host-awaited-inline-fulfillment",
     code: 'import { useState } from "react";\nimport api from "example-client";\nconst Example = () => { const [ready, setReady] = useState(false);  const send = async (event) => { event.preventDefault(); await api.post("/items").then(() => { setReady(true); }); }; return <form onSubmit={send}/>; };\nexport default Example;\n',
-    count: 0,
+    count: 1,
   },
   {
     name: "local-prop-plus-awaited-inline-fulfillment",
     code: 'import { useState } from "react";\nimport api from "example-client";\nconst Example = () => { const [ready, setReady] = useState(false);  const send = async (event) => { event.preventDefault(); await api.post("/items").then(() => { setReady(true); }); }; return <Forward onSend={send}/>; };\nexport default Example;\nconst Forward = ({ onSend }) => <form onSubmit={onSend}/>;\n',
-    count: 0,
+    count: 1,
   },
   {
     name: "earlier-independent-post-before-fulfillment-state",
     code: 'import { useState } from "react";\nimport api from "example-client";\nconst Example = () => { const [ready, setReady] = useState(false);  const send = async (event) => { event.preventDefault(); await api.post("/prepare"); await api.post("/items").then(() => { setReady(true); }); }; return <Forward onSend={send}/>; };\nexport default Example;\nconst Forward = ({ onSend }) => <form onSubmit={onSend}/>;\n',
-    count: 0,
+    count: 1,
   },
   {
     name: "renamed-local-prop-binding",
@@ -144,12 +144,12 @@ const cases = [
   {
     name: "concise-inline-fulfillment-state",
     code: 'import { useState } from "react";\nimport api from "example-client";\nconst Example = () => { const [ready, setReady] = useState(false);  const send = async (event) => { event.preventDefault(); await api.post("/items").then(() => setReady(true)); }; return <form onSubmit={send}/>; };\nexport default Example;\n',
-    count: 0,
+    count: 1,
   },
   {
     name: "ordinary-function-inline-fulfillment-state",
     code: 'import { useState } from "react";\nimport api from "example-client";\nconst Example = () => { const [ready, setReady] = useState(false);  const send = async (event) => { event.preventDefault(); await api.post("/items").then(function (response) { setReady(true); }); }; return <form onSubmit={send}/>; };\nexport default Example;\n',
-    count: 0,
+    count: 1,
   },
   {
     name: "duplicate-caller-selected-prop",

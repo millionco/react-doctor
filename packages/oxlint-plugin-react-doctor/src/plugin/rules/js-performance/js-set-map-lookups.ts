@@ -11,6 +11,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNativeObjectKeysIterationReceiver } from "../../utils/is-native-object-keys-iteration-receiver.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -1753,6 +1754,7 @@ export const jsSetMapLookups = defineRule({
       if (isLikelyStringReceiver(receiver, context.scopes)) return;
       if (isDeclaredStringReceiver(receiver)) return;
       if (isFreshArrayReceiver(receiver, context.scopes)) return;
+      if (isNativeObjectKeysIterationReceiver(receiver, context.scopes)) return;
       if (isTypeScriptRestHelperLookup(node, receiver, context.scopes)) return;
       if (isSmallInlineLiteralArray(receiver)) return;
       if (isScreamingSnakeCaseConstantReceiver(receiver)) return;

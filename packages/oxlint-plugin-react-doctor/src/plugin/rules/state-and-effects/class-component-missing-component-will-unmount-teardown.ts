@@ -1,3 +1,4 @@
+import { collectPlatformCleanedNativeAcquisitions } from "./utils/collect-platform-cleaned-native-acquisitions.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -1851,6 +1852,7 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
     ClassBody(node: EsTreeNodeOfType<"ClassBody">) {
       const classNode = node.parent;
       if (!classNode || !isEs6Component(classNode)) return;
+      const platformCleanedAcquisitions = collectPlatformCleanedNativeAcquisitions(node, context);
 
       const members = node.body ?? [];
       const componentWillUnmountMember = members.find(
@@ -1900,6 +1902,7 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
         const undisposedHazard = mountHazards.find((mountHazard) => {
           if (mountHazard.isAcquiredAfterSuspension) return true;
+          if (platformCleanedAcquisitions.has(mountHazard.node)) return false;
           if (mountHazard.releaseKeys.length === 0) return true;
           if (
             mountHazard.releaseKeys.some((releaseKey) =>

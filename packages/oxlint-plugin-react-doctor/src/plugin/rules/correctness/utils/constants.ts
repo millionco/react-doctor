@@ -1,0 +1,4 @@
+export const FIRST_DELIMITED_PART_INDEX = 1;
+export const MISSING_DELIMITER_POSITION = -1;
+export const SINGLE_DELIMITER_ARGUMENT_COUNT = 1;
+export const NO_ARGUMENTS_COUNT = 0;

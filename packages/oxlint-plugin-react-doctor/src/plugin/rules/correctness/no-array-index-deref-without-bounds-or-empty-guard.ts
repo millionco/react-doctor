@@ -1,3 +1,4 @@
+import { isReadonlyIndexOfDelimiterGuarded } from "./utils/is-readonly-index-of-delimiter-guarded.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -686,6 +687,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
           if (isStaticallyPresentSplitPart(base, partIndex)) return;
           if (isKnownFormatSplitPart(base, partIndex, context)) return;
           if (isSplitPartDerefGuarded(node, base)) return;
+          if (isReadonlyIndexOfDelimiterGuarded(node, base, partIndex, context.scopes)) return;
           if (isInsideFilteredIterationCallback(node, base)) return;
           context.report({ node, message: MESSAGE });
           return;

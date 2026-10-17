@@ -1,30 +1,32 @@
 import { HTML_TAGS } from "../../../constants/html-tags.js";
-import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { serializeReferenceKey } from "../../../utils/serialize-reference-key.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
-interface NullDetachActionInput {
+export interface NullDetachActionInput {
   attribute: EsTreeNode;
   scopes: ScopeAnalysis;
 }
 
-interface StoreAction {
+export interface StoreAction {
   receiver: EsTreeNode;
   key: EsTreeNode;
   value: EsTreeNode | null;
 }
 
-const getSingleStatement = (statement: EsTreeNode | null | undefined): EsTreeNode | null => {
+const readonlyExternalBindings = new WeakMap<SymbolDescriptor, boolean>();
+
+export const getSingleStatement = (statement: EsTreeNode | null | undefined): EsTreeNode | null => {
   if (!statement) return null;
   if (!isNodeOfType(statement, "BlockStatement")) return statement;
   const [onlyStatement, ...remainingStatements] = statement.body;
   return onlyStatement && !remainingStatements.length ? onlyStatement : null;
 };
 
-const readStoreAction = (
+export const readStoreAction = (
   action: EsTreeNode | null | undefined,
   methodName: string,
 ): StoreAction | null => {
@@ -53,7 +55,7 @@ const readStoreAction = (
     : null;
 };
 
-const getExternalReferenceKey = (
+export const getExternalReferenceKey = (
   rawExpression: EsTreeNode,
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -70,7 +72,13 @@ const getExternalReferenceKey = (
   }
   if (!isNodeOfType(expression, "Identifier")) return null;
   const symbol = scopes.symbolFor(expression);
-  if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return null;
+  if (!symbol) return null;
+  let readonly = readonlyExternalBindings.get(symbol);
+  if (readonly === undefined) {
+    readonly = !symbol.references.some((reference) => reference.flag !== "read");
+    readonlyExternalBindings.set(symbol, readonly);
+  }
+  if (!readonly) return null;
   let declarationAncestor: EsTreeNode | null | undefined = symbol.declarationNode;
   while (declarationAncestor) {
     if (declarationAncestor === callback) return null;
@@ -107,7 +115,9 @@ const targetSameStoreEntry = (
   );
 };
 
-const readReturnedAction = (statement: EsTreeNode | null | undefined): StoreAction | null => {
+export const readReturnedAction = (
+  statement: EsTreeNode | null | undefined,
+): StoreAction | null => {
   if (!statement || !isNodeOfType(statement, "ReturnStatement") || !statement.argument) return null;
   const returnedFunction = stripParenExpression(statement.argument);
   if (

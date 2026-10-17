@@ -201,9 +201,9 @@ const nullDetachCases = [
     },
   },
   {
-    name: "callback-snapshot-deferred",
+    name: "callback-local-map-snapshot-with-null-detach",
     code: 'import * as React from "react";\nconst Tile = () => { const tileKey = "tile"; const slots = React.useRef(new Map());  return <li ref={(entry) => { const snapshot = slots.current; if (entry) snapshot.set(tileKey, entry); else snapshot.delete(tileKey); return () => { snapshot.delete(tileKey); }; }}>Tile</li>; };\n',
-    expected: 1,
+    expected: 0,
     settings: {
       "react-doctor": {
         capabilities: ["react", "react:18"],

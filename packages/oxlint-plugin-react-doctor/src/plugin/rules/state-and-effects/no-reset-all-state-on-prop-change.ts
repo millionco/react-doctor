@@ -34,6 +34,7 @@ import {
 } from "./utils/effect/react.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
+import { hasUnresetNativeComponentState } from "./utils/has-unreset-native-component-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-reset-all-state-on-prop-change.js`.
@@ -1290,6 +1291,18 @@ const findPropUsedToResetAllState = (
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
 
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
+  if (
+    componentFunctionNode &&
+    hasUnresetNativeComponentState({
+      analysis,
+      context,
+      componentFunction: componentFunctionNode,
+      effectCall: useEffectNode,
+      resetSetterReferences: stateSetterRefs,
+    })
+  ) {
+    return null;
+  }
   if (
     componentFunctionNode &&
     areAllResetStateReadsHiddenUntilReset(

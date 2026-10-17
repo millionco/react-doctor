@@ -324,13 +324,24 @@ const isMappableOxlintDiagnostic = (value: unknown): boolean =>
 // incomplete and a clean report would be a false clean.
 const isEngineFailureDiagnostic = (value: unknown): boolean =>
   !isRecord(value) ||
-  typeof value.filename !== "string" ||
-  value.filename.length === 0 ||
   (typeof value.message === "string" &&
     value.message.startsWith("Error running JS plugin.") &&
     (typeof value.code !== "string" || value.code.length === 0) &&
     Array.isArray(value.labels) &&
     value.labels.length === 0);
+
+// Oxlint emits summary diagnostics about its own oxlint-suppressions.json
+// when the file doesn't match the current run (e.g. "There are suppressions
+// that do not occur anymore." or "There are new violations not covered by
+// the suppressions file."). These have empty filenames and should be ignored
+// since React Doctor uses its own config, not the project's suppressions file.
+const isSuppressionsFileDiagnostic = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.filename === "string" &&
+  value.filename.length === 0 &&
+  typeof value.message === "string" &&
+  (value.message.includes("suppressions that do not occur anymore") ||
+    value.message.includes("new violations not covered by the suppressions file"));
 
 const isOxlintOutput = (value: unknown): value is OxlintOutput =>
   isRecord(value) && Array.isArray(value.diagnostics);
@@ -386,6 +397,10 @@ export const parseOxlintOutput = (
       }),
     });
   }
+
+  const filteredDiagnostics = parsed.diagnostics.filter(
+    (diagnostic) => !isSuppressionsFileDiagnostic(diagnostic),
+  );
 
   // HACK: oxlint reports diagnostics for every JS/TS extension it
   // scanned (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.mjs`) plus React Doctor's
@@ -447,7 +462,7 @@ export const parseOxlintOutput = (
   };
 
   const readContextRanges = createDiagnosticContextReader(diagnosticContextDirectory);
-  const sourceMappedDiagnostics = parsed.diagnostics.flatMap((rawDiagnostic) => {
+  const sourceMappedDiagnostics = filteredDiagnostics.flatMap((rawDiagnostic) => {
     if (!isMappableOxlintDiagnostic(rawDiagnostic)) return [];
     const { plugin, rule } = parseRuleCode(rawDiagnostic.code);
     const primarySpan = rawDiagnostic.labels[0]?.span;

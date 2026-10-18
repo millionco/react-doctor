@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Chart, LineController } from "chart.js";
 Chart.register(LineController);
-export const PlotPanel = ({ data, tone, darkMode }) => {
+export const PlotPanel = ({ data, tone, darkMode: _darkMode }) => {
   interface useEffect {
     readonly brand: string;
   }

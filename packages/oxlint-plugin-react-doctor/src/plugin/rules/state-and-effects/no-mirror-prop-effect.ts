@@ -2,6 +2,7 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getBodyArrayPropMirror } from "./utils/get-body-array-prop-mirror.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
@@ -53,6 +54,7 @@ interface MirrorBinding {
   setterName: string;
   initializer: EsTreeNode;
   propRootName: string;
+  bodyEffectCall?: EsTreeNode;
 }
 
 // Docs-validation r2 FP (EditorialCheckCard):
@@ -109,13 +111,18 @@ export const noMirrorPropEffect = defineRule({
           if (!isReactHookCall(declarator.init, "useState", context.scopes)) continue;
           const initializer = declarator.init.arguments?.[0];
           if (!initializer) continue;
-          const propRootName = getPropRootName(initializer, propNames);
+          const legacyPropRootName = getPropRootName(initializer, propNames);
+          const bodyPropMirror = legacyPropRootName
+            ? null
+            : getBodyArrayPropMirror({ initializer, componentBody, scopes: context.scopes });
+          const propRootName = legacyPropRootName ?? bodyPropMirror?.propRootName;
           if (!propRootName) continue;
           mirrorBindings.push({
             valueName: valueElement.name,
             setterName: setterElement.name,
             initializer,
             propRootName,
+            bodyEffectCall: bodyPropMirror?.effectCall,
           });
         }
       }
@@ -161,6 +168,7 @@ export const noMirrorPropEffect = defineRule({
         const calleeName = expression.callee.name;
         const matchedBinding = mirrorBindings.find(
           (binding) =>
+            (!binding.bodyEffectCall || binding.bodyEffectCall === effectCall) &&
             binding.setterName === calleeName &&
             depIdentifierNames.has(binding.propRootName) &&
             hasOnlyMirrorDeps(depIdentifierNames, binding) &&

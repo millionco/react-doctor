@@ -10,7 +10,7 @@ import styled from "styled-components";
 interface TextChunksProps {
   source: string;
 }
-const Glyph = styled.span``;
+const _Glyph = styled.span``;
 function readChunks(input: string): string[] {
   return input.match(/.{1,8}/g) ?? [];
 }
@@ -21,7 +21,7 @@ export const TextChunks = ({ source }: TextChunksProps) => {
   const groups = readChunks(source).map(readPairs);
   return (
     <section>
-      {groups.map((group, index) => (
+      {groups.map((group, _index) => (
         <div>
           {group.map((token, idx) => (
             <span key={idx}>{token}</span>

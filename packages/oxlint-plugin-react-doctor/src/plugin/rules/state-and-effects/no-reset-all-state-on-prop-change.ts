@@ -32,6 +32,7 @@ import {
   isState,
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
+import { hasKeyedImmutableRecordReset } from "./utils/has-keyed-immutable-record-reset.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
@@ -1340,6 +1341,12 @@ export const noResetAllStateOnPropChange = defineRule({
         effectFn,
       );
       if (!propUsedToReset) return;
+      const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
+      if (
+        componentFunctionNode &&
+        hasKeyedImmutableRecordReset(componentFunctionNode, node, context)
+      )
+        return;
       context.report({
         node,
         message: `Your users briefly see stale state when a prop changes because this useEffect clears all state.`,

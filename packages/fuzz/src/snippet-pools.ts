@@ -314,6 +314,23 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  'import { useEffect as useNestedRecordEffect, useState as useNestedRecordState } from "react";\ninterface FuzzNestedRecordData { id: string; requestId?: string | null; label?: string; backref?: FuzzNestedRecordData }\nexport const FuzzNestedRecordParent = ({ record }: { record: FuzzNestedRecordData }) => <FuzzNestedRecordCard key={record.requestId ?? record.id} record={record} />;\nfunction FuzzNestedRecordCard({ record }: { record: FuzzNestedRecordData }) {\n  const { label, backref } = record;\n  const recordKey = record.requestId ?? record.id;\n  const [ready, setReady] = useNestedRecordState(false);\n  const [error, setError] = useNestedRecordState<string | null>(null);\n  useNestedRecordEffect(() => { setReady(false); setError(null); }, [recordKey]);\n  if (backref) return <button onClick={() => { setReady(true); setError("edited"); }}>{backref.label ?? (ready ? error : "idle")}</button>;\n  return <button onClick={() => { setReady(true); setError("edited"); }}>{label ?? (ready ? error : "idle")}</button>;\n}',
+  `import { useEffect as useKeyedRecordEffect, useState as useKeyedRecordState } from "react";
+interface FuzzKeyedRecordData { id: string; requestId?: string | null; label?: string }
+export const FuzzKeyedRecordParent = ({ record }: { record: FuzzKeyedRecordData }) => <FuzzKeyedRecordCard key={record.requestId ?? record.id} record={record} />;
+function FuzzKeyedRecordCard({ record }: { record: FuzzKeyedRecordData }) {
+  interface record {}
+  const { label } = record;
+  const recordKey = record.requestId ?? record.id;
+  interface recordKey {}
+  const [ready, setReady] = useKeyedRecordState(false);
+  const [error, setError] = useKeyedRecordState<string | null>(null);
+  useKeyedRecordEffect(() => { setReady(false); setError(null); }, [recordKey]);
+  return <button onClick={() => { setReady(true); setError("edited"); }}>{label ?? (ready ? error : "idle")}</button>;
+}
+
+interface FuzzKeyedRecordCard {}`,
+  `export const FuzzCommentedStringProp = () => <button title={/* preserve this explanation */ "label"} />;`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

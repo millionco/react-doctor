@@ -7,4 +7,4 @@
 import * as path from "node:path";
 const rootPath = path.resolve("/tmp/assets");
 ({ rootPath } = { rootPath: "/changed" });
-const matcher = new RegExp(`${rootPath}/bundle/.*`);
+const _matcher = new RegExp(`${rootPath}/bundle/.*`);

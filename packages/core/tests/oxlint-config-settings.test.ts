@@ -172,6 +172,73 @@ describe("createOxlintConfig customRulesOnly", () => {
 });
 
 describe("createOxlintConfig settings", () => {
+  it.each<Partial<ProjectInfo>>([
+    { reactVersion: "17.0.1", reactMajorVersion: 17, styledComponentsVersion: "5.3.3" },
+    { reactVersion: "18.3.1", reactMajorVersion: 18 },
+    { reactVersion: "19.0.0", reactMajorVersion: 19 },
+    { hasReactCompiler: true },
+    { hasReactNativeWorkspace: true },
+    { preactVersion: "10.26.0", preactMajorVersion: 10 },
+    { reactVersion: null, reactMajorVersion: null, styledComponentsVersion: undefined },
+  ])("forwards discovered runtime profile facts for %j", (projectOverrides) => {
+    const project = buildProject({
+      framework: "vite",
+      hasReactNativeWorkspace: false,
+      ...projectOverrides,
+    });
+    const config = createOxlintConfig({ pluginPath: "/tmp/plugin.js", project });
+
+    expect(config.settings["react-doctor"]).toMatchObject({
+      framework: project.framework,
+      reactVersion: project.reactVersion,
+      reactMajorVersion: project.reactMajorVersion,
+      styledComponentsVersion: project.styledComponentsVersion ?? null,
+      preactVersion: project.preactVersion,
+      preactMajorVersion: project.preactMajorVersion,
+      hasReactCompiler: project.hasReactCompiler,
+      hasReactNativeWorkspace: project.hasReactNativeWorkspace,
+    });
+  });
+
+  it("keeps discovered profile facts authoritative over adopted settings", () => {
+    const project = buildProject({
+      framework: "vite",
+      reactVersion: "17.0.1",
+      reactMajorVersion: 17,
+      styledComponentsVersion: "5.3.3",
+      hasReactNativeWorkspace: false,
+    });
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project,
+      adoptedSettings: {
+        "react-doctor": {
+          reactVersion: "19.0.0",
+          reactMajorVersion: 19,
+          styledComponentsVersion: "6.0.0",
+          preactVersion: "10.26.0",
+          preactMajorVersion: 10,
+          hasReactCompiler: true,
+          hasReactNativeWorkspace: true,
+        },
+        react: { version: "16.2.0" },
+      },
+    });
+
+    expect(config.settings["react-doctor"]).toMatchObject({
+      reactVersion: "17.0.1",
+      reactMajorVersion: 17,
+      styledComponentsVersion: "5.3.3",
+      preactVersion: null,
+      preactMajorVersion: null,
+      hasReactCompiler: false,
+      hasReactNativeWorkspace: false,
+    });
+    expect(config.settings.react).toEqual({ version: "16.2.0" });
+    expect(config.settings["react-doctor"]).not.toHaveProperty("displayName");
+    expect(config.settings["react-doctor"]).not.toHaveProperty("noUnsafe");
+  });
+
   it("uses curated behavior for faithfully ported rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

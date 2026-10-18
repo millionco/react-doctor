@@ -672,6 +672,20 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const first = values.find(Boolean).id;",
   },
   "no-array-index-as-key": {
+    settings: {
+      "react-doctor": {
+        portedRuleMode: "curated",
+        capabilities: ["react"],
+        reactVersion: "17.0.1",
+        reactMajorVersion: 17,
+        styledComponentsVersion: "5.3.3",
+        framework: "unknown",
+        hasReactCompiler: false,
+        hasReactNativeWorkspace: false,
+        preactVersion: null,
+        preactMajorVersion: null,
+      },
+    },
     code: 'const STEPS = [\n  { title: "Install", body: "npm i" },\n  { title: "Run", body: "npm start" },\n];\nconst Steps = () => (\n  <ol>\n    {STEPS.map((step, index) => (\n      <StepCard key={index} title={step.title} body={step.body} />\n    ))}\n  </ol>\n);\n',
   },
   "no-array-index-deref-without-bounds-or-empty-guard": {

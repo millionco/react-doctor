@@ -1,3 +1,4 @@
+import { isClosedPrimitiveTextLeafKey } from "./utils/is-closed-primitive-text-leaf-key.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -2065,6 +2066,11 @@ export const noArrayIndexAsKey = defineRule({
             return;
           }
         }
+
+        if (
+          isClosedPrimitiveTextLeafKey(node, context, (input) => isProvablyStringValued(input, 0))
+        )
+          return;
 
         reportIndexKey(node, indexName);
       },

@@ -1,3 +1,4 @@
+import { hasReturnedMotionScrollDisposer } from "./utils/has-returned-motion-scroll-disposer.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -6811,7 +6812,8 @@ const findFirstUsageWithoutCleanup = (
   for (const usage of usages) {
     if (
       !effectHasCleanupForUsage(callback, usage, context, usages) &&
-      !hasSplitLifecycleCleanup(callback, usage, context)
+      !hasSplitLifecycleCleanup(callback, usage, context) &&
+      !hasReturnedMotionScrollDisposer(callback, usage.node, context)
     ) {
       return usage;
     }

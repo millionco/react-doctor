@@ -314,6 +314,8 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useScroll, useMotionValue } from "motion/react"; import { useEffect } from "react"; const FuzzReturnedMotionDisposer = () => { interface useScroll {} interface scrollY {} const { scrollY } = useScroll(); useEffect(() => { interface EffectNote {} type EffectKind = string; return scrollY.on("change", (current) => { void current; }); }, [scrollY]); return null; };`,
+  `import { useScroll, useMotionValue } from "motion/react"; import { useEffect } from "react"; const FuzzComputedMotionProvider = (props) => { const { scrollY } = useScroll(); const companion = useMotionValue(0); const companionAlias = companion; companionAlias[props.prototypeKey][props.subscriptionKey] = (event, listener) => { document.addEventListener("click", listener); return () => {}; }; useEffect(() => { return scrollY.on("change", (current) => { void current; }); }, [scrollY]); return null; };`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

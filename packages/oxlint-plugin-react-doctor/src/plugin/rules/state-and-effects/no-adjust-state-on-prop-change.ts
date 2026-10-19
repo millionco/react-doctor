@@ -138,7 +138,7 @@ export const noAdjustStateOnPropChange = defineRule({
         context.report({
           node: fact.callExpression,
           message:
-            "This effect adjusts state after a prop changes, so users briefly see the stale value.",
+            "Updating state in an effect after a prop changes can trigger another render and show stale values.",
         });
       }
     },

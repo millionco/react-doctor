@@ -314,6 +314,47 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import React, { Component } from 'react';
+import Flickity from 'flickity';
+
+interface Function {}
+Function("return 1")();
+interface GalleryProps { options?: object; onAcquire?: (widget: unknown) => void; }
+
+class Gallery extends Component<GalleryProps> {
+  container: HTMLDivElement | null = null;
+  widget: any = null;
+  componentDidMount() {
+    if (!this.container) return;
+    this.widget = new Flickity(this.container, {});
+  }
+
+  render() { return <div ref={element => { this.container = element; }} />; }
+}
+export default Gallery;
+`,
+  `/** @jsx customFactory */
+import React, { Component } from 'react';
+import Flickity from 'flickity';
+
+const customFactory = () => null;
+interface GalleryProps { options?: object; onAcquire?: (widget: unknown) => void; }
+
+class Gallery extends Component<GalleryProps> {
+  container: HTMLDivElement | null = null;
+  widget: any = null;
+  componentDidMount() {
+    if (!this.container) return;
+    this.widget = new Flickity(this.container, {});
+  }
+
+  render() { return <div ref={element => { this.container = element; }} />; }
+}
+export default Gallery;
+`,
+  `export const FuzzCommentLiteral = () => <div>{/* retain literal context */ 'hello'}</div>;
+`,
+
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

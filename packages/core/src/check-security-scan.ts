@@ -98,8 +98,7 @@ const createSecurityScanSession = (
     return status === true;
   };
 
-  const scanFileByRule = function* (file: ScannedFile | null): Generator<void, void, void> {
-    if (file === null) return;
+  const scanFileByRule = function* (file: ScannedFile): Generator<void, void, void> {
     for (const { entry, scan, committedFilesOnly } of enabledScanRules) {
       for (const finding of scan(file)) {
         // A committed-file rule's finding doesn't apply to a path git ignores

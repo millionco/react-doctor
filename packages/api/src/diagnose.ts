@@ -61,6 +61,7 @@ interface DiagnoseLayerInput {
   readonly config: ReactDoctorConfig | null;
   readonly shouldRunLint: boolean;
   readonly shouldRunDeadCode: boolean;
+  readonly shouldComputeScore: boolean;
   readonly oxlintConcurrency: number;
   readonly oxlintSpawnSlots: OxlintSpawnSlotsHandle;
   readonly configOverrideTarget?: Pick<
@@ -78,6 +79,9 @@ const resolveShouldRunDeadCode = (
   options: DiagnoseOptions,
   effectiveConfig: ReactDoctorConfig | null,
 ): boolean => options.deadCode ?? effectiveConfig?.deadCode ?? true;
+
+const resolveShouldComputeScore = (effectiveConfig: ReactDoctorConfig | null): boolean =>
+  effectiveConfig?.noScore !== true;
 
 const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
   const configLayer =
@@ -105,7 +109,7 @@ const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
     Layer.succeed(OxlintSpawnSlots, input.oxlintSpawnSlots),
     Progress.layerNoop,
     Reporter.layerNoop,
-    Score.layerHttp,
+    input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null),
     input.config?.supplyChain?.enabled !== false ? SupplyChain.layerNode : SupplyChain.layerOf([]),
   );
 };
@@ -119,6 +123,7 @@ const buildInspectProgram = (
   const effectiveConfig = configOverride ?? scanTarget.userConfig;
   const includePaths = options.includePaths ?? [];
   const shouldRunDeadCode = resolveShouldRunDeadCode(options, effectiveConfig);
+  const shouldComputeScore = resolveShouldComputeScore(effectiveConfig);
 
   return runInspect({
     directory: scanTarget.resolvedDirectory,
@@ -132,7 +137,7 @@ const buildInspectProgram = (
     ignoredTags: new Set(effectiveConfig?.ignore?.tags ?? []),
     runDeadCode: shouldRunDeadCode,
     isCi: false,
-    resolveLocalGithubViewerPermission: true,
+    resolveLocalGithubViewerPermission: shouldComputeScore,
   });
 };
 
@@ -173,6 +178,7 @@ const diagnoseDirectory = async (
   const program = buildInspectProgram(scanTarget, options);
   const shouldRunLint = resolveShouldRunLint(options, scanTarget.userConfig);
   const shouldRunDeadCode = resolveShouldRunDeadCode(options, scanTarget.userConfig);
+  const shouldComputeScore = resolveShouldComputeScore(scanTarget.userConfig);
   const oxlintConcurrency = Effect.runSync(OxlintConcurrency);
   const oxlintSpawnSlots = createOxlintSpawnSlots(oxlintConcurrency);
 
@@ -184,6 +190,7 @@ const diagnoseDirectory = async (
             config: scanTarget.userConfig,
             shouldRunLint,
             shouldRunDeadCode,
+            shouldComputeScore,
             oxlintConcurrency,
             oxlintSpawnSlots,
           }),
@@ -234,6 +241,7 @@ const diagnoseProject = async (
     const mergedOptions = { ...baseOptions, ...perProjectOptions };
     const shouldRunLint = resolveShouldRunLint(mergedOptions, effectiveConfig);
     const shouldRunDeadCode = resolveShouldRunDeadCode(mergedOptions, effectiveConfig);
+    const shouldComputeScore = resolveShouldComputeScore(effectiveConfig);
 
     const canReusePrecomputedSourceFiles =
       path.resolve(projectDefinition.directory) === path.resolve(scanTarget.resolvedDirectory);
@@ -253,6 +261,7 @@ const diagnoseProject = async (
           config: effectiveConfig,
           shouldRunLint,
           shouldRunDeadCode,
+          shouldComputeScore,
           oxlintConcurrency,
           oxlintSpawnSlots,
           configOverrideTarget: {
@@ -264,6 +273,7 @@ const diagnoseProject = async (
           config: effectiveConfig,
           shouldRunLint,
           shouldRunDeadCode,
+          shouldComputeScore,
           oxlintConcurrency,
           oxlintSpawnSlots,
         };

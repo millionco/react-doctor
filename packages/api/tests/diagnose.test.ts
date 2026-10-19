@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   diagnose,
   NoReactDependencyError,
@@ -27,6 +27,10 @@ fs.writeFileSync(
 
 afterAll(() => {
   fs.rmSync(noReactTempDirectory, { recursive: true, force: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("diagnose", () => {
@@ -413,6 +417,27 @@ describe("diagnose({ projects })", () => {
     expect(
       projectResult.diagnostics.filter((diagnostic) => diagnostic.filePath !== "package.json"),
     ).toHaveLength(0);
+  });
+
+  it("respects batch config noScore: true without calling the score service", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("score service should not be called");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await diagnose({
+      projects: [{ directory: path.join(FIXTURES_DIRECTORY, "basic-react") }],
+      config: { noScore: true, supplyChain: { enabled: false } },
+      deadCode: false,
+      lint: false,
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.score).toBeNull();
+    const projectResult = result.projects[0];
+    expect(projectResult.ok).toBe(true);
+    if (!projectResult.ok) return;
+    expect(projectResult.score).toBeNull();
   });
 
   it("layers per-project configs on top of a batch-level config", async () => {

@@ -1250,13 +1250,13 @@ const collectTsconfigReferencedPackages = (
       if (!parsed) continue;
 
       if (typeof parsed.extends === "string") {
-        const extendsPackage = extractExtendsPackageName(parsed.extends);
+        const extendsPackage = extractPackageName(parsed.extends);
         if (extendsPackage) referenced.add(extendsPackage);
       }
       if (Array.isArray(parsed.extends)) {
         for (const extendsEntry of parsed.extends) {
           if (typeof extendsEntry === "string") {
-            const extendsPackage = extractExtendsPackageName(extendsEntry);
+            const extendsPackage = extractPackageName(extendsEntry);
             if (extendsPackage) referenced.add(extendsPackage);
           }
         }
@@ -1338,15 +1338,6 @@ const collectTsconfigReferencedPackages = (
   }
 
   return referenced;
-};
-
-const extractExtendsPackageName = (extendsValue: string): string | undefined => {
-  if (extendsValue.startsWith(".") || extendsValue.startsWith("/")) return undefined;
-  if (extendsValue.startsWith("@")) {
-    const parts = extendsValue.split("/");
-    return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : undefined;
-  }
-  return extendsValue.split("/")[0];
 };
 
 const SOURCE_FILE_GLOBS = [

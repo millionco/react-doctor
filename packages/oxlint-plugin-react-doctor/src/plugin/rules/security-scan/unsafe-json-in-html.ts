@@ -50,7 +50,7 @@ const isFullyStaticJsonArgument = (argumentText: string): boolean => {
 // return-value check looks strictly after the call's matching `)`.
 const RETURN_ESCAPE_PATTERN = /^[\s)]*\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)/;
 const RETURN_REPLACEALL_ESCAPE_PATTERN =
-  /^[\s)]*\.replaceAll\s*\(\s*["']<["']\s*,\s*["'](?:\\u003[cC]|&lt;)["']\s*\)/;
+  /^[\s)]*\.replaceAll\s*\(\s*["']<["']\s*,\s*["'](?:\\\\u003[cC]|&lt;)["']\s*\)/;
 // HTML-escape helpers are trusted even as methods (`utils.escapeHtml(...)`),
 // but the generic serializer names must be bare calls — a `.serialize(...)`
 // method is unrelated to serialize-javascript and may not HTML-escape.

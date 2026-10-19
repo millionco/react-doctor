@@ -91,7 +91,7 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
   });
 
   it("stays silent when replaceAll escapes < with \\u003c", () => {
-    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+    const content = String.raw`export const Seo = ({ jsonLd }: { jsonLd: object }) => (
   <script
     type="application/ld+json"
     dangerouslySetInnerHTML={{
@@ -103,8 +103,21 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
     expect(scan(content, "src/seo.tsx")).toHaveLength(0);
   });
 
+  it("still flags when replaceAll replaces < with a string literal that evaluates back to <", () => {
+    const content = String.raw`export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll("<", "\u003c")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
+
   it("stays silent when replaceAll escapes < with \\u003C (uppercase)", () => {
-    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+    const content = String.raw`export const Seo = ({ jsonLd }: { jsonLd: object }) => (
   <script
     type="application/ld+json"
     dangerouslySetInnerHTML={{

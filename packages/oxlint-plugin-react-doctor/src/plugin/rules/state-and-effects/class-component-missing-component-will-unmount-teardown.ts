@@ -1,3 +1,4 @@
+import { collectStableMatcherCleanedNativeAcquisitions } from "./utils/collect-stable-matcher-cleaned-native-acquisitions.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -1852,6 +1853,11 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
       const classNode = node.parent;
       if (!classNode || !isEs6Component(classNode)) return;
 
+      const stableMatcherAcquisitions = collectStableMatcherCleanedNativeAcquisitions({
+        classBody: node,
+        context,
+        resolveMember: (memberName) => classMemberFunction(node, memberName),
+      });
       const members = node.body ?? [];
       const componentWillUnmountMember = members.find(
         (member) => getClassMemberName(member) === "componentWillUnmount",
@@ -1900,6 +1906,7 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
         const undisposedHazard = mountHazards.find((mountHazard) => {
           if (mountHazard.isAcquiredAfterSuspension) return true;
+          if (stableMatcherAcquisitions.has(mountHazard.node)) return false;
           if (mountHazard.releaseKeys.length === 0) return true;
           if (
             mountHazard.releaseKeys.some((releaseKey) =>

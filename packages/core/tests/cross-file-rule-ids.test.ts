@@ -176,6 +176,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-adjust-state-on-prop-change",
       "no-barrel-import",
       "no-create-ref-in-function-component",
+      "no-deprecated-tailwind-class",
       "no-derived-state",
       "no-derived-state-effect",
       "no-dynamic-import-path",

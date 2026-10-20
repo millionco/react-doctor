@@ -314,6 +314,10 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import fuzzStyledImage from "styled-components"; const FuzzReservedPictureFrame = fuzzStyledImage.div\`display: block; width: 88px; height: 88px; flex-shrink: 0; & img { max-width: 100%; max-height: 100%; }\`; export const FuzzReservedPicture = () => <FuzzReservedPictureFrame><img src="/picture.png" alt="" /></FuzzReservedPictureFrame>;`,
+  "import styled from 'styled-components'; const Frame = styled.div`display:block;width:88px;height:88px;flex-shrink:0;& img {max-width:100%;max-height:100%;}`;const Other=styled.div`& + div {height:auto !important;}`;export const Picture=()=> <section><Other /><Frame><img src='/a.png' alt='' /></Frame></section>;",
+  'import styled from "styled-components";const Other=styled.div`@import url("/sizing.css");`;const Frame=styled.div`width:88px;height:88px;flex-shrink:0;& img{max-width:100%;max-height:100%;}`;export const View=()=> <section><Other/><Frame><img src="/a.png" alt=""/></Frame></section>;',
+  'import styled from "styled-components";const Outer=styled.div`@import url("/sizing.css");`;const Frame=styled.div`width:88px;height:88px;flex-shrink:0;& img{max-width:100%;max-height:100%;}`;export const View=()=> <Outer><Frame><img src="/a.png" alt=""/></Frame></Outer>;',
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

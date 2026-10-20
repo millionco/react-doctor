@@ -19,6 +19,7 @@ import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwi
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
+import { hasReservedStyledParentImageBox } from "./utils/has-reserved-styled-parent-image-box.js";
 import { resolveEffectiveTailwindClassNameToken } from "./utils/resolve-effective-tailwind-class-name-token.js";
 import {
   createStaticCssStyleResolver,
@@ -832,6 +833,7 @@ export const noImgWithoutDimensions = defineRule({
         if (
           hasReservedImageBox(node, context, hasTailwind) ||
           hasReservedParentBox(node, context, hasTailwind) ||
+          hasReservedStyledParentImageBox(node, context) ||
           hasReservedExternalCssBox(node, context, staticCssStyleResolver)
         ) {
           return;

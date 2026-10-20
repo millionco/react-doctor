@@ -598,6 +598,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
+    ["no-derived-useState", (input) => collectFunctionExportDependencies(input, 0)],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],

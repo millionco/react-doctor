@@ -1,0 +1,1 @@
+export const REACT_STATIC_PLUGIN_MAJOR_VERSION = 7;

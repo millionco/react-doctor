@@ -21,6 +21,7 @@ const USER_CONFIG = {
   rules: {
     "react-doctor/no-barrel-import": "warn",
     "react-doctor/no-mutating-reducer-state": "warn",
+    "react-doctor/no-array-index-as-key": "warn",
   },
 } as const;
 
@@ -334,4 +335,132 @@ export const Panel = ({ children }) => <Text>{children}</Text>;
       ),
     ).toBe(false);
   });
+});
+
+interface InheritedStringCacheCase {
+  name: string;
+  operation: "content" | "delete" | "appear" | "config" | "same-size";
+  beforeWarnings: number;
+  afterWarnings: number;
+}
+
+const INHERITED_STRING_CACHE_CASES: InheritedStringCacheCase[] = [
+  { name: "provider contents change", operation: "content", beforeWarnings: 0, afterWarnings: 1 },
+  { name: "provider disappears", operation: "delete", beforeWarnings: 0, afterWarnings: 1 },
+  { name: "provider appears", operation: "appear", beforeWarnings: 1, afterWarnings: 0 },
+  {
+    name: "tsconfig alias target changes",
+    operation: "config",
+    beforeWarnings: 0,
+    afterWarnings: 1,
+  },
+  {
+    name: "same-size provider changes with its timestamp restored",
+    operation: "same-size",
+    beforeWarnings: 0,
+    afterWarnings: 1,
+  },
+];
+
+const STRING_TOKEN_FIELDS = "export interface TokenFields { value: string; }\n";
+const NUMBER_TOKEN_FIELDS = "export interface TokenFields { value: number; }\n";
+const INHERITED_STRING_TOKEN_VIEW = `import type { TokenFields } from "@tokens/schema";
+interface TokenViewProps extends TokenFields {}
+export const TokenView = ({ value }: TokenViewProps) => (
+  <p>{value.split(/([,;])/g).map((part, index) => <span key={index}>{part}</span>)}</p>
+);
+`;
+
+describe("inherited string token sidecar dependencies", () => {
+  it.each(INHERITED_STRING_CACHE_CASES)(
+    "$name invalidates an unchanged consumer at the next scan boundary",
+    async ({ operation, beforeWarnings, afterWarnings }) => {
+      const projectDir = setupFixture(`inherited-string-${operation}`);
+      const consumerPath = path.join(projectDir, "src/TokenView.tsx");
+      const providerPath = path.join(projectDir, "src/token-fields.ts");
+      const aliasConfigPath = path.join(projectDir, "tsconfig.tokens.json");
+      const preservedTimestamp = new Date("2025-01-01T00:00:00.000Z");
+      writeFile(consumerPath, INHERITED_STRING_TOKEN_VIEW);
+      writeFile(path.join(projectDir, "src/numeric-fields.ts"), NUMBER_TOKEN_FIELDS);
+      writeFile(
+        path.join(projectDir, "tsconfig.json"),
+        JSON.stringify({
+          extends: "./tsconfig.tokens.json",
+          compilerOptions: { jsx: "preserve", strict: false, target: "es2022", module: "esnext" },
+        }),
+      );
+      writeFile(
+        aliasConfigPath,
+        JSON.stringify({
+          compilerOptions: { baseUrl: ".", paths: { "@tokens/schema": ["src/token-fields.ts"] } },
+        }),
+      );
+      if (operation !== "appear") writeFile(providerPath, STRING_TOKEN_FIELDS);
+      if (operation === "same-size") {
+        expect(Buffer.byteLength(STRING_TOKEN_FIELDS)).toBe(Buffer.byteLength(NUMBER_TOKEN_FIELDS));
+        fs.utimesSync(providerPath, preservedTimestamp, preservedTimestamp);
+      }
+
+      const before = await scan(projectDir);
+      expect(ruleHitsOn(before, "no-array-index-as-key", "src/TokenView.tsx")).toHaveLength(
+        beforeWarnings,
+      );
+      let warmReplayed = 0;
+      let warmConsidered = 0;
+      const warm = await scan(projectDir, {
+        onSidecarStats: (replayedFileCount, consideredFileCount) => {
+          warmReplayed = replayedFileCount;
+          warmConsidered = consideredFileCount;
+        },
+      });
+      expect(serialize(warm)).toBe(serialize(before));
+      expect(ruleHitsOn(warm, "no-array-index-as-key", "src/TokenView.tsx")).toHaveLength(
+        beforeWarnings,
+      );
+      expect(warmConsidered).toBeGreaterThan(0);
+      expect(warmReplayed).toBe(warmConsidered);
+
+      if (operation === "delete") {
+        fs.unlinkSync(providerPath);
+      } else if (operation === "config") {
+        writeFile(
+          aliasConfigPath,
+          JSON.stringify({
+            compilerOptions: {
+              baseUrl: ".",
+              paths: { "@tokens/schema": ["src/numeric-fields.ts"] },
+            },
+          }),
+        );
+      } else {
+        writeFile(providerPath, operation === "appear" ? STRING_TOKEN_FIELDS : NUMBER_TOKEN_FIELDS);
+        if (operation === "same-size") {
+          fs.utimesSync(providerPath, preservedTimestamp, preservedTimestamp);
+          expect(fs.statSync(providerPath).mtimeMs).toBe(preservedTimestamp.getTime());
+          expect(fs.statSync(providerPath).size).toBe(Buffer.byteLength(STRING_TOKEN_FIELDS));
+        }
+      }
+      expect(fs.readFileSync(consumerPath, "utf8")).toBe(INHERITED_STRING_TOKEN_VIEW);
+
+      let replayed = 0;
+      let considered = 0;
+      const incremental = await scan(projectDir, {
+        onSidecarStats: (replayedFileCount, consideredFileCount) => {
+          replayed = replayedFileCount;
+          considered = consideredFileCount;
+        },
+      });
+      expect(ruleHitsOn(incremental, "no-array-index-as-key", "src/TokenView.tsx")).toHaveLength(
+        afterWarnings,
+      );
+      const full = await scanFull(projectDir);
+      expect(ruleHitsOn(full, "no-array-index-as-key", "src/TokenView.tsx")).toHaveLength(
+        afterWarnings,
+      );
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(considered).toBeGreaterThan(0);
+      expect(replayed).toBeGreaterThan(0);
+      expect(replayed).toBeLessThan(considered);
+    },
+  );
 });

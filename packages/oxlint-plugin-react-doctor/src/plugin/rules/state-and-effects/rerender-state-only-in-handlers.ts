@@ -1,4 +1,8 @@
-import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import {
+  BUILTIN_HOOK_NAMES,
+  EFFECT_HOOK_NAMES,
+  UNARY_PAYLOAD_CALLBACK_ARGUMENT_COUNT,
+} from "../../constants/react.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
@@ -12,6 +16,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectLocalPayloadSourceSymbol } from "./utils/get-effect-local-payload-source-symbol.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { collectRenderReachableExpressions } from "./utils/collect-render-reachable-expressions.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
@@ -75,6 +80,33 @@ const collectComponentStateUsageInfo = (
 ): ComponentStateUsageInfo => {
   const { scopes } = context;
   const componentFunction = context.cfg.enclosingFunction(componentBody);
+  const callbackParameterSymbols = new Set<SymbolDescriptor>();
+  if (isFunctionLike(componentFunction)) {
+    const [componentParameter] = componentFunction.params;
+    if (isNodeOfType(componentParameter, "ObjectPattern")) {
+      for (const property of componentParameter.properties) {
+        if (
+          !isNodeOfType(property, "Property") ||
+          property.computed ||
+          !isNodeOfType(property.value, "Identifier")
+        )
+          continue;
+        const parameterSymbol = scopes.symbolFor(property.value);
+        if (
+          parameterSymbol?.kind === "parameter" &&
+          parameterSymbol.scope.node === componentFunction &&
+          parameterSymbol.declarationNode === componentParameter &&
+          parameterSymbol.bindingIdentifier === property.value &&
+          parameterSymbol.references.every(
+            (reference) =>
+              reference.flag === "read" && !isBindingAssignmentTarget(reference.identifier),
+          )
+        ) {
+          callbackParameterSymbols.add(parameterSymbol);
+        }
+      }
+    }
+  }
   const calledSetterNames = new Set<string>();
   const customHookArgumentNames = new Set<string>();
   const effectInfos: EffectDependencyInfo[] = [];
@@ -111,6 +143,7 @@ const collectComponentStateUsageInfo = (
     const dependencyNames = new Set<string>();
     const dependencySymbols = new Set<SymbolDescriptor>();
     const payloadReadSymbols = new Set<SymbolDescriptor>();
+    const sourceSymbolsByPayloadAlias = new Map<SymbolDescriptor, SymbolDescriptor | null>();
     for (const argument of child.arguments ?? []) {
       if (!isNodeOfType(argument, "ArrayExpression")) continue;
       for (const element of argument.elements ?? []) {
@@ -193,7 +226,33 @@ const collectComponentStateUsageInfo = (
           return;
         }
         const payloadSymbol = scopes.symbolFor(bodyNode);
-        if (payloadSymbol) payloadReadSymbols.add(payloadSymbol);
+        if (!payloadSymbol) return;
+        payloadReadSymbols.add(payloadSymbol);
+        if (
+          !isNodeOfType(parent, "CallExpression") ||
+          parent.optional ||
+          parent.arguments.length !== UNARY_PAYLOAD_CALLBACK_ARGUMENT_COUNT ||
+          !isNodeOfType(parent.callee, "Identifier")
+        )
+          return;
+        const callbackSymbol = scopes.symbolFor(parent.callee);
+        const statement = parent.parent;
+        if (
+          !callbackSymbol ||
+          !callbackParameterSymbols.has(callbackSymbol) ||
+          !isNodeOfType(statement, "ExpressionStatement") ||
+          statement.expression !== parent ||
+          statement.parent !== effectCallback.body
+        )
+          return;
+        if (!sourceSymbolsByPayloadAlias.has(payloadSymbol)) {
+          sourceSymbolsByPayloadAlias.set(
+            payloadSymbol,
+            getEffectLocalPayloadSourceSymbol({ payloadSymbol, effectCallback, context }),
+          );
+        }
+        const sourceSymbol = sourceSymbolsByPayloadAlias.get(payloadSymbol);
+        if (sourceSymbol) payloadReadSymbols.add(sourceSymbol);
       });
       if (hasOpaqueCallbackInputs) payloadReadSymbols.clear();
     }

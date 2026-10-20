@@ -46,6 +46,7 @@ export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
+export const UNARY_PAYLOAD_CALLBACK_ARGUMENT_COUNT = 1;
 export const UNARY_LISTENER_ARGUMENT_COUNT = 1;
 export const UNARY_LISTENER_HANDLER_ARGUMENT_INDEX = 0;
 export const EVENT_LISTENER_HANDLER_ARGUMENT_INDEX = 1;

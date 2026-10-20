@@ -15,7 +15,7 @@ describe("promise-returning find APIs", () => {
   it.each([
     `const items = []; items.find(predicate).then(handle);`,
     `items.find(item => item.active).then(handle);`,
-    `items.find(predicate).name;`,
+    `const items = []; items.find(predicate).name;`,
     `const predicate = item => item.active; items.find(predicate).then(handle);`,
     `function predicate(item) { return item.active; } items.find(predicate).catch(handle);`,
     `items.find(Boolean).finally(handle);`,

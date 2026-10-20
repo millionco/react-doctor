@@ -18,6 +18,7 @@ import {
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { collectSynchronouslyInvokedLocalFunctions } from "../../utils/collect-effect-invoked-functions.js";
+import { createStateUpdaterEntryExclusionResolver } from "../../utils/create-state-updater-entry-exclusion-resolver.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -128,6 +129,7 @@ const programsActivatingDayjsBadMutable = new WeakSet<EsTreeNode>();
 interface ExecutedFunctionAnalysis {
   arrayParameterSymbolIds: Set<number>;
   functions: Set<EsTreeNode>;
+  entryExclusions: Map<EsTreeNode, ReadonlySet<EsTreeNode>>;
 }
 
 const isReactStateSetterCall = (
@@ -1595,9 +1597,14 @@ const getExternallyVisiblePropertyWrite = (
     : null;
 };
 
-const isStaticallyUnreachable = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+const isStaticallyUnreachable = (
+  node: EsTreeNode,
+  boundary: EsTreeNode,
+  excludedRoots?: ReadonlySet<EsTreeNode>,
+): boolean => {
   let current: EsTreeNode | null | undefined = node;
   while (current && current !== boundary) {
+    if (excludedRoots?.has(current)) return true;
     const parent: EsTreeNode | null | undefined = current.parent;
     if (parent && isNodeOfType(parent, "IfStatement")) {
       const test = stripParenExpression(parent.test);
@@ -2104,6 +2111,7 @@ const collectExecutedFunctions = (
   updaterParameterIsArray: boolean,
   invocationReferenceNode: EsTreeNode,
   context: RuleContext,
+  allowEntryExclusions = true,
 ): ExecutedFunctionAnalysis => {
   const executedFunctions = new Set<EsTreeNode>([updaterFunction]);
   const arrayParameterSymbolIds = new Set<number>();
@@ -2116,12 +2124,40 @@ const collectExecutedFunctions = (
     }
   }
   const pendingFunctions = [updaterFunction];
+  const entryExclusions = new Map<EsTreeNode, ReadonlySet<EsTreeNode>>([
+    [updaterFunction, new Set()],
+  ]);
+  const resolveEntryExclusions = createStateUpdaterEntryExclusionResolver(context);
+  let entryAnalysisFailed = false;
+  const enqueueFunction = (functionNode: EsTreeNode, call?: EsTreeNode): void => {
+    let exclusions: ReadonlySet<EsTreeNode> = new Set();
+    if (allowEntryExclusions && call && !entryAnalysisFailed) {
+      try {
+        exclusions = resolveEntryExclusions(call, functionNode);
+      } catch {
+        entryAnalysisFailed = true;
+      }
+    }
+    const previous = entryExclusions.get(functionNode);
+    if (!previous) {
+      entryExclusions.set(functionNode, exclusions);
+      executedFunctions.add(functionNode);
+      pendingFunctions.push(functionNode);
+      return;
+    }
+    const joined = new Set([...previous].filter((root) => exclusions.has(root)));
+    if (joined.size !== previous.size) {
+      entryExclusions.set(functionNode, joined);
+      pendingFunctions.push(functionNode);
+    }
+  };
   while (pendingFunctions.length > 0) {
     const currentFunction = pendingFunctions.pop();
     if (!currentFunction) break;
     const currentFunctionCfg = context.cfg.cfgFor(currentFunction);
     walkOwnFunctionScope(currentFunction, (child: EsTreeNode) => {
-      if (isStaticallyUnreachable(child, currentFunction)) return;
+      if (isStaticallyUnreachable(child, currentFunction, entryExclusions.get(currentFunction)))
+        return;
       if (
         currentFunctionCfg &&
         !nodeIsReachable(child, currentFunctionCfg, reachableBlockIdsByCfg)
@@ -2138,10 +2174,7 @@ const collectExecutedFunctions = (
           const executor = child.arguments?.[0];
           if (executor && !isNodeOfType(executor, "SpreadElement")) {
             const executorFunction = resolveLocalFunction(executor, context);
-            if (executorFunction && !executedFunctions.has(executorFunction)) {
-              executedFunctions.add(executorFunction);
-              pendingFunctions.push(executorFunction);
-            }
+            if (executorFunction) enqueueFunction(executorFunction);
           }
         }
         return;
@@ -2151,10 +2184,7 @@ const collectExecutedFunctions = (
         const updaterArgument = child.arguments?.[0];
         if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
         const nestedUpdater = resolveLocalFunction(updaterArgument, context);
-        if (nestedUpdater && !executedFunctions.has(nestedUpdater)) {
-          executedFunctions.add(nestedUpdater);
-          pendingFunctions.push(nestedUpdater);
-        }
+        if (nestedUpdater) enqueueFunction(nestedUpdater);
         return;
       }
       const callee = stripParenExpression(child.callee);
@@ -2181,10 +2211,7 @@ const collectExecutedFunctions = (
           if (parameterSymbol) arrayParameterSymbolIds.add(parameterSymbol.id);
         }
       }
-      if (directFunction && !executedFunctions.has(directFunction)) {
-        executedFunctions.add(directFunction);
-        pendingFunctions.push(directFunction);
-      }
+      if (directFunction) enqueueFunction(directFunction, child);
       const arrayReceiver = isNodeOfType(callee, "MemberExpression")
         ? stripParenExpression(callee.object)
         : null;
@@ -2205,10 +2232,7 @@ const collectExecutedFunctions = (
           !isNodeOfType(mapperArgument, "SpreadElement")
         ) {
           const mapperFunction = resolveLocalFunction(mapperArgument, context);
-          if (mapperFunction && !executedFunctions.has(mapperFunction)) {
-            executedFunctions.add(mapperFunction);
-            pendingFunctions.push(mapperFunction);
-          }
+          if (mapperFunction) enqueueFunction(mapperFunction);
         }
       }
       if (
@@ -2229,12 +2253,19 @@ const collectExecutedFunctions = (
       const callbackArgument = child.arguments?.[0];
       if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) return;
       const callbackFunction = resolveLocalFunction(callbackArgument, context);
-      if (!callbackFunction || executedFunctions.has(callbackFunction)) return;
-      executedFunctions.add(callbackFunction);
-      pendingFunctions.push(callbackFunction);
+      if (callbackFunction) enqueueFunction(callbackFunction);
     });
   }
-  return { arrayParameterSymbolIds, functions: executedFunctions };
+  if (entryAnalysisFailed && allowEntryExclusions) {
+    return collectExecutedFunctions(
+      updaterFunction,
+      updaterParameterIsArray,
+      invocationReferenceNode,
+      context,
+      false,
+    );
+  }
+  return { arrayParameterSymbolIds, functions: executedFunctions, entryExclusions };
 };
 
 export const noSideEffectInStateUpdaterFunction = defineRule({
@@ -2265,7 +2296,14 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
         for (const executedFunction of executedFunctions) {
           const functionCfg = context.cfg.cfgFor(executedFunction);
           walkOwnFunctionScope(executedFunction, (child: EsTreeNode) => {
-            if (isStaticallyUnreachable(child, executedFunction)) return;
+            if (
+              isStaticallyUnreachable(
+                child,
+                executedFunction,
+                executedFunctionAnalysis.entryExclusions.get(executedFunction),
+              )
+            )
+              return;
             if (functionCfg && !nodeIsReachable(child, functionCfg, reachableBlockIdsByCfg)) return;
             const propertyWrite = getExternallyVisiblePropertyWrite(
               child,

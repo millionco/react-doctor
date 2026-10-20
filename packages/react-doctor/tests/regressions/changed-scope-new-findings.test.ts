@@ -248,21 +248,22 @@ describe("changed scope compares findings through the CLI", () => {
     }
   });
 
-  it("keeps the HostedCart findings after reformatting and reports only an added derived state", () => {
-    const sourcePath = path.join(directory, "src/HostedCart.tsx");
-    writeFile(sourcePath, HOSTED_CART);
-    commitAll(directory, "base cart findings");
-    const base = scan(directory);
-    expect(base.report.diagnostics.some((finding) => finding.rule === "exhaustive-deps")).toBe(
-      true,
-    );
-    expect(
-      base.report.diagnostics.some(
-        (finding) => finding.rule === "no-set-state-after-await-in-effect",
-      ),
-    ).toBe(true);
-    writeJson(reportFile, base.report);
-    for (const appended of ["", NEW_DERIVED_STATE]) {
+  it.each(["", NEW_DERIVED_STATE])(
+    "keeps the HostedCart findings after reformatting and reports only an added derived state: %j",
+    (appended) => {
+      const sourcePath = path.join(directory, "src/HostedCart.tsx");
+      writeFile(sourcePath, HOSTED_CART);
+      commitAll(directory, "base cart findings");
+      const base = scan(directory);
+      expect(base.report.diagnostics.some((finding) => finding.rule === "exhaustive-deps")).toBe(
+        true,
+      );
+      expect(
+        base.report.diagnostics.some(
+          (finding) => finding.rule === "no-set-state-after-await-in-effect",
+        ),
+      ).toBe(true);
+      writeJson(reportFile, base.report);
       writeFile(sourcePath, REFORMATTED_HOSTED_CART + appended);
       const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
       const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
@@ -275,8 +276,8 @@ describe("changed scope compares findings through the CLI", () => {
         expect(result.status).toBe(appended ? 1 : 0);
         if (appended) expect(result.report.diagnostics[0]?.line).toBe(15);
       }
-    }
-  });
+    },
+  );
 
   it.each([
     { ignore: { rules: ["react-hooks/exhaustive-deps"] } },

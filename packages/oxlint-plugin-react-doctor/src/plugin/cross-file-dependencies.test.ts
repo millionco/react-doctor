@@ -57,6 +57,37 @@ const collectFor = (absoluteFilePath: string, ruleIds: ReadonlyArray<string>) =>
 
 const fixturePath = (relativePath: string): string => path.join(temporaryDirectory, relativePath);
 
+describe("no-derived-state SDK version dependencies", () => {
+  it.each([null, "null", '{"version":"2.34.0"}'])(
+    "records and replays installed metadata probes for type-only SDK imports: %s",
+    (installedManifest) => {
+      writeFixtureFile(
+        "package.json",
+        JSON.stringify({
+          dependencies: { "twilio-video": "^2.34.0" },
+        }),
+      );
+      const sourcePath = writeFixtureFile(
+        "src/snapshot.tsx",
+        `
+import type { Participant } from "twilio-video";
+export const readSnapshot = (remote: Participant) => remote.networkQualityLevel;
+`,
+      );
+      const installedPath = fixturePath("node_modules/twilio-video/package.json");
+      if (installedManifest !== null) {
+        writeFixtureFile("node_modules/twilio-video/package.json", installedManifest);
+      }
+      const cold = collectFor(sourcePath, ["no-derived-state"]);
+      const warm = collectFor(sourcePath, ["no-derived-state"]);
+      expect(cold).not.toBeNull();
+      expect(cold?.existencePaths.has(installedPath)).toBe(true);
+      expect(cold?.contentPaths.has(installedPath)).toBe(true);
+      expect(warm).toEqual(cold);
+    },
+  );
+});
+
 describe("collectCrossFileDependencyProbes — driver", () => {
   it("returns null for a rule without a collector (must degrade to unbounded)", () => {
     const appPath = writeFixtureFile("App.tsx", "export const App = () => null;\n");

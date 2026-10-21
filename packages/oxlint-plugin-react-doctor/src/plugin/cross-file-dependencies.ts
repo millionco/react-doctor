@@ -1,3 +1,4 @@
+import { hasSupportedTwilioVideoSnapshotApi } from "./rules/state-and-effects/utils/has-supported-twilio-video-snapshot-api.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -195,6 +196,13 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   readNearestPackageManifest(absoluteFilePath);
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const collectDerivedStateDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  if (flattenImportEntries(input.staticImports).some((entry) => entry.source === "twilio-video")) {
+    hasSupportedTwilioVideoSnapshotApi(input.absoluteFilePath);
   }
 };
 
@@ -597,7 +605,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
-    ["no-derived-state", collectEffectValueHelperDependencies],
+    ["no-derived-state", collectDerivedStateDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],

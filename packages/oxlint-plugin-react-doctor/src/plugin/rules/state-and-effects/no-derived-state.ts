@@ -9,6 +9,7 @@ import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
+import { isMatchedSdkStateSnapshot } from "./utils/is-matched-sdk-state-snapshot.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator")) return "<state>";
@@ -86,6 +87,7 @@ export const noDerivedState = defineRule({
           ) {
             continue;
           }
+          if (isMatchedSdkStateSnapshot({ context, effectCall: node, fact })) continue;
           reportStateWrite(fact.callExpression, fact.stateDeclarator);
         }
       },

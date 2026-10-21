@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import { runOxlint } from "@react-doctor/core";
+import { buildTestProject } from "../_helpers.js";
 
 import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_helpers.js";
 
@@ -138,4 +140,83 @@ export const TodoList = ({ todos, filter }: { todos: string[]; filter: string })
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toEqual([]);
   });
+});
+
+describe("SDK snapshots with default derived-state sibling rules", () => {
+  it.each([
+    {
+      name: "matched subscription",
+      cleanupCallback: "receiveScore",
+      independentPlacement: "none",
+      expectedPrimary: 0,
+      expectedCompanion: 0,
+    },
+    {
+      name: "different cleanup callback",
+      cleanupCallback: "otherReceiveScore",
+      independentPlacement: "none",
+      expectedPrimary: 1,
+      expectedCompanion: 1,
+    },
+    {
+      name: "independent copy in another effect",
+      cleanupCallback: "receiveScore",
+      independentPlacement: "separate",
+      expectedPrimary: 1,
+      expectedCompanion: 1,
+    },
+    {
+      name: "independent copy in the same effect",
+      cleanupCallback: "receiveScore",
+      independentPlacement: "same",
+      expectedPrimary: 2,
+      expectedCompanion: 1,
+    },
+  ])(
+    "$name",
+    async ({ cleanupCallback, independentPlacement, expectedPrimary, expectedCompanion }) => {
+      const projectDir = setupReactProject(
+        tempRoot,
+        `sdk-snapshot-${cleanupCallback}-${independentPlacement}`,
+        {
+          packageJsonExtras: { dependencies: { react: "^19.2.0", "twilio-video": "^2.34.0" } },
+          files: {
+            "src/Signal.tsx": `import { useEffect, useState } from "react";
+import type { Participant } from "twilio-video";
+export const useSignal = (remote: Participant, label: string) => {
+  const [score, setScore] = useState(remote.networkQualityLevel);
+  const [caption, setCaption] = useState(label);
+  useEffect(() => {
+    const receiveScore = (sample: number) => setScore(sample);
+    ${cleanupCallback === "otherReceiveScore" ? "const otherReceiveScore = (sample: number) => setScore(sample);" : ""}
+    ${independentPlacement === "same" ? "setCaption(label);" : ""}
+    setScore(remote.networkQualityLevel);
+    remote.on("networkQualityLevelChanged", receiveScore);
+    return () => { remote.off("networkQualityLevelChanged", ${cleanupCallback}); };
+  }, [remote${independentPlacement === "same" ? ", label" : ""}]);
+  ${independentPlacement === "separate" ? "useEffect(() => setCaption(label), [label]);" : ""}
+  return [score, caption];
+};`,
+          },
+        },
+      );
+      const diagnostics = await runOxlint({
+        rootDirectory: projectDir,
+        project: buildTestProject({ rootDirectory: projectDir }),
+      });
+      const primaryDiagnostics = diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "no-derived-state",
+      );
+      const companionDiagnostics = diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "no-derived-state-effect",
+      );
+      expect(primaryDiagnostics).toHaveLength(expectedPrimary);
+      expect(companionDiagnostics).toHaveLength(expectedCompanion);
+      if (independentPlacement !== "none") {
+        expect(
+          primaryDiagnostics.some((diagnostic) => diagnostic.message.includes('"caption"')),
+        ).toBe(true);
+      }
+    },
+  );
 });

@@ -314,6 +314,19 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useEffect as useFuzzSdkEffect, useState as useFuzzSdkState } from "react";
+import type { Participant as FuzzSdkParticipant } from "twilio-video";
+export const useFuzzSdkSnapshot = (remote: FuzzSdkParticipant) => {
+  const [score, setScore] = useFuzzSdkState(remote.networkQualityLevel);
+  useFuzzSdkEffect(() => {
+    const receiveScore = (sample: number) => setScore(sample);
+    setScore(remote.networkQualityLevel);
+    remote.on("networkQualityLevelChanged", receiveScore);
+    return () => { remote.off("networkQualityLevelChanged", receiveScore); };
+  }, [remote]);
+  return score;
+};`,
+  `type FuzzErasedCapability = ({ Function: nestedFunction }: { Function: string }) => void; const fuzzInertCapabilityLabels = { Function: "description", constructor: "description", React: "description" }; const fuzzTransparentValue = (readFuzzSnapshot() as number);`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

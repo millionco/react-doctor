@@ -1,8 +1,13 @@
+import { getImportedRequestActionEvidence } from "../../utils/get-imported-request-action-evidence.js";
+import type { ImportedRequestActionEvidence } from "../../utils/get-imported-request-action-evidence.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -18,6 +23,12 @@ const MESSAGE =
   "This async handler awaits a mutating request and only flips state after the await, so a fast double-click or double Enter fires the request twice. Add a leading `if (busy) return` guard (or set a flag before the await and disable the control) to close the re-entry window.";
 
 const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit"]);
+const INACTIVE_IMPORTED_HANDLER_ATTRIBUTE_NAMES = new Set([
+  "disabled",
+  "inert",
+  "hidden",
+  "aria-disabled",
+]);
 const MUTATING_REQUEST_METHOD_NAMES = new Set([
   "post",
   "put",
@@ -246,11 +257,19 @@ const expressionWritesReentryGuard = (expression: EsTreeNode, context: RuleConte
   );
 };
 
-const collectOrderedHandlerEvents = (root: EsTreeNode, context: RuleContext): EsTreeNode[] => {
+const collectOrderedHandlerEvents = (
+  root: EsTreeNode,
+  context: RuleContext,
+  evidence: ImportedRequestActionEvidence,
+): EsTreeNode[] => {
   const events: EsTreeNode[] = [];
   walkAst(root, (child: EsTreeNode) => {
     if (child !== root && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "AwaitExpression") || isStateSetterCall(child, context)) {
+    if (
+      isNodeOfType(child, "AwaitExpression") ||
+      isStateSetterCall(child, context) ||
+      evidence.stateActions.has(child)
+    ) {
       events.push(child);
     }
   });
@@ -291,6 +310,7 @@ const analyzeHandlerStatements = (
   statements: EsTreeNode[],
   initialStates: HandlerPathState[],
   context: RuleContext,
+  evidence: ImportedRequestActionEvidence,
 ): { states: HandlerPathState[]; unsafeAwait: EsTreeNode | null } => {
   let states = initialStates;
   for (const statement of statements) {
@@ -300,7 +320,12 @@ const analyzeHandlerStatements = (
       continue;
     }
     if (isNodeOfType(statement, "BlockStatement")) {
-      const nested = analyzeHandlerStatements(statement.body as EsTreeNode[], states, context);
+      const nested = analyzeHandlerStatements(
+        statement.body as EsTreeNode[],
+        states,
+        context,
+        evidence,
+      );
       if (nested.unsafeAwait) return nested;
       states = nested.states;
       continue;
@@ -320,6 +345,7 @@ const analyzeHandlerStatements = (
           : [statement.consequent as EsTreeNode],
         states.map((state) => ({ ...state })),
         context,
+        evidence,
       );
       if (consequent.unsafeAwait) return consequent;
       const alternate = statement.alternate
@@ -329,6 +355,7 @@ const analyzeHandlerStatements = (
               : [statement.alternate as EsTreeNode],
             states.map((state) => ({ ...state })),
             context,
+            evidence,
           )
         : { states: states.map((state) => ({ ...state })), unsafeAwait: null };
       if (alternate.unsafeAwait) return alternate;
@@ -343,6 +370,7 @@ const analyzeHandlerStatements = (
           collectSwitchPathStatements(statement.cases, caseIndex),
           states.map((state) => ({ ...state })),
           context,
+          evidence,
         );
         if (switched.unsafeAwait) return switched;
         switchStates.push(...switched.states);
@@ -354,13 +382,19 @@ const analyzeHandlerStatements = (
       continue;
     }
     if (isNodeOfType(statement, "TryStatement")) {
-      const tried = analyzeHandlerStatements(statement.block.body as EsTreeNode[], states, context);
+      const tried = analyzeHandlerStatements(
+        statement.block.body as EsTreeNode[],
+        states,
+        context,
+        evidence,
+      );
       if (tried.unsafeAwait) return tried;
       const caught = statement.handler
         ? analyzeHandlerStatements(
             statement.handler.body.body as EsTreeNode[],
             tried.states.map((state) => ({ ...state })),
             context,
+            evidence,
           )
         : { states: [], unsafeAwait: null };
       if (caught.unsafeAwait) return caught;
@@ -371,16 +405,20 @@ const analyzeHandlerStatements = (
           statement.finalizer.body as EsTreeNode[],
           states,
           context,
+          evidence,
         );
         if (finalized.unsafeAwait) return finalized;
         states = finalized.states;
       }
       continue;
     }
-    const events = collectOrderedHandlerEvents(statement, context);
+    const events = collectOrderedHandlerEvents(statement, context, evidence);
     for (const event of events) {
       if (isNodeOfType(event, "AwaitExpression")) {
-        if (awaitedExpressionIsMutatingNetworkOp(event.argument, context)) {
+        if (
+          awaitedExpressionIsMutatingNetworkOp(event.argument, context) ||
+          evidence.mutatingAwaits.has(event)
+        ) {
           states = states.map((state) =>
             state.hasReentryGuard ? state : { ...state, mutatingAwait: event },
           );
@@ -417,7 +455,11 @@ const analyzeHandlerStatements = (
   return { states, unsafeAwait: null };
 };
 
-const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
+const analyzeAsyncHandler = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+  canUseImportedEvidence: boolean,
+): void => {
   if (!isFunctionLike(functionNode)) return;
   if (!(functionNode as { async?: boolean }).async) return;
   if (!isNodeOfType(functionNode.body, "BlockStatement")) return;
@@ -426,6 +468,9 @@ const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): vo
     functionNode.body.body as EsTreeNode[],
     [{ hasReentryGuard: false, mutatingAwait: null }],
     context,
+    canUseImportedEvidence
+      ? getImportedRequestActionEvidence(functionNode, context)
+      : { mutatingAwaits: new Set<EsTreeNode>(), stateActions: new Set<EsTreeNode>() },
   );
   if (analysis.unsafeAwait) context.report({ node: analysis.unsafeAwait, message: MESSAGE });
 };
@@ -456,7 +501,34 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode, context);
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
-        analyzeAsyncHandler(context, handlerFunction);
+        const eventName = node.name.name;
+        let canUseImportedEvidence =
+          getAuthoritativeJsxAttribute(openingElement.attributes, eventName) === node &&
+          !hasJsxSpreadAttribute(openingElement.attributes) &&
+          !openingElement.attributes.some(
+            (attribute) =>
+              attribute !== node &&
+              isNodeOfType(attribute, "JSXAttribute") &&
+              getJsxAttributeName(attribute.name) === eventName,
+          );
+        for (
+          let ancestor: EsTreeNode | null | undefined = openingElement.parent;
+          canUseImportedEvidence && ancestor;
+          ancestor = ancestor.parent
+        ) {
+          if (!isNodeOfType(ancestor, "JSXElement")) continue;
+          if (
+            ancestor.openingElement.attributes.some(
+              (attribute) =>
+                isNodeOfType(attribute, "JSXAttribute") &&
+                INACTIVE_IMPORTED_HANDLER_ATTRIBUTE_NAMES.has(
+                  getJsxAttributeName(attribute.name) ?? "",
+                ),
+            )
+          )
+            canUseImportedEvidence = false;
+        }
+        analyzeAsyncHandler(context, handlerFunction, canUseImportedEvidence);
       },
     };
   },

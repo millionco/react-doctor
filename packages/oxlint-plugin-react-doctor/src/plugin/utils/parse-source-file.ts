@@ -205,6 +205,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
 
 // Exposed for tests. Production callers don't need to clear the
 // cache — the mtime/size key handles invalidation.
-export const __clearParseSourceFileCacheForTests = (): void => {
+export const resetParseSourceFileCache = (): void => {
   parseCache.clear();
 };
+
+export const __clearParseSourceFileCacheForTests = resetParseSourceFileCache;

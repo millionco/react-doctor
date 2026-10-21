@@ -1,3 +1,6 @@
+import { getImportedRequestActionEvidence } from "./utils/get-imported-request-action-evidence.js";
+import { analyzeControlFlow } from "./semantic/control-flow-graph.js";
+import type { RuleContext } from "./utils/rule-context.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -573,6 +576,24 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectImportedRequestActionDependencies: CrossFileDependencyCollector = (input) => {
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  const context: RuleContext = {
+    filename: input.absoluteFilePath,
+    sourceCode: { ast: program, getText: () => input.sourceText },
+    scopes,
+    get cfg() {
+      return analyzeControlFlow(program);
+    },
+    report: () => {},
+  };
+  walkAst(program, (node) => {
+    if (isFunctionLike(node) && node.async) getImportedRequestActionEvidence(node, context);
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -586,6 +607,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["no-async-event-handler-without-reentry-guard", collectImportedRequestActionDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],

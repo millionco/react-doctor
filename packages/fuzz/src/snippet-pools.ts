@@ -314,6 +314,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  'declare const Function: FunctionConstructor;\nFunction("Array.prototype.find = () => ({label: \'safe\'})")();\nexport const read = () => { const rows = [{label:"only"}]; let calls=0; if(rows.some(() => ++calls === 1)) return rows.find(() => ++calls === 1).label; return "none"; };',
   'class Setup { constructor(public value = Function("Array.prototype.find = () => ({ name: \'custom\' })")()) {} }\nnew Setup();\nconst ITEMS = [{ name: "first", enabled: false }];\nexport const read = () => ITEMS.find((item) => item.enabled).name;\n',
   'interface Function {}\nFunction("Array.prototype.find = () => ({ name: \'custom\' })")();\nconst ITEMS = [{ name: "first", enabled: false }];\nexport const read = () => ITEMS.find((item) => item.enabled).name;\n',
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,

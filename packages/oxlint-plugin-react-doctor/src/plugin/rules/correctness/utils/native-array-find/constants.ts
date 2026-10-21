@@ -32,3 +32,11 @@ export const RUNTIME_TYPESCRIPT_PROVIDER_NODES = new Set([
   "TSImportEqualsDeclaration",
   "TSModuleDeclaration",
 ]);
+export const REPEATED_FIND_GUARD_METHOD_NAMES = new Set([
+  ...FIND_METHOD_NAMES,
+  "some",
+  "findIndex",
+]);
+export const REPEATED_FIND_SINGLE_ITEM_COUNT = 1;
+export const REPEATED_FIND_COUNTER_INITIAL_VALUE = 0;
+export const REPEATED_FIND_COUNTER_MATCH_VALUE = 1;

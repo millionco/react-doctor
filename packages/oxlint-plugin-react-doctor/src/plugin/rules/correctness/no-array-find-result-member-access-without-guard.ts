@@ -1,3 +1,4 @@
+import { hasNonrepeatableNativeFindPredicate } from "./utils/has-nonrepeatable-native-find-predicate.js";
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { FIND_METHOD_NAMES } from "./utils/native-array-find/constants.js";
@@ -232,7 +233,10 @@ const isInlineJsxFunction = (functionNode: EsTreeNode): boolean => {
 // return, else branch, ternary alternate after `!x` / `=== undefined`) and
 // the `some(pred)`-before-`find(pred)` equivalence: the find expression is
 // proven non-undefined before the dereference, so the access cannot throw.
-const isGuardedByRepeatedFindTest = (findCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+const isGuardedByRepeatedFindTest = (
+  findCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
   const findCallee = findCall.callee as EsTreeNodeOfType<"MemberExpression">;
   const isIdenticalFindCall = (candidate: EsTreeNode): boolean =>
     isNodeOfType(candidate, "CallExpression") && areNodesStructurallyIdentical(candidate, findCall);
@@ -250,6 +254,7 @@ const isGuardedByRepeatedFindTest = (findCall: EsTreeNodeOfType<"CallExpression"
   const predicateIsStable = (candidate: EsTreeNodeOfType<"CallExpression">): boolean => {
     const predicate = candidate.arguments?.[0];
     if (!predicate) return false;
+    if (hasNonrepeatableNativeFindPredicate(candidate, findCall, context)) return false;
     if (isNodeOfType(predicate, "Identifier") || isNodeOfType(predicate, "MemberExpression")) {
       return true;
     }
@@ -447,7 +452,7 @@ export const noArrayFindResultMemberAccessWithoutGuard = defineRule({
         !consumer.optional;
       if (!isUnguardedMemberRead && !isUnguardedCall) return;
       if (isBooleanFindOverTruthyArrayLiteral(node)) return;
-      if (isGuardedByRepeatedFindTest(node)) return;
+      if (isGuardedByRepeatedFindTest(node, context)) return;
       context.report({ node, message: MESSAGE });
     },
   }),

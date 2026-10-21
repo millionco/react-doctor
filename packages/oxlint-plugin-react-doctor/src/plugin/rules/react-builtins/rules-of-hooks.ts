@@ -3,6 +3,9 @@ import { isAngularComponentClass } from "../../utils/is-angular-component-class.
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNitroRuntimeAppGetter } from "../../utils/is-nitro-runtime-app-getter.js";
+import { hasReadonlySymbolReferences } from "../../utils/has-readonly-symbol-references.js";
+import { resolveRuntimeValueBinding } from "../../utils/resolve-runtime-value-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
@@ -203,6 +206,19 @@ const isHookCall = (
     //     stance on `useBasename` from `history` etc.
     const symbol = scopes.symbolFor(callee);
     if (symbol) {
+      if (
+        symbol.kind === "const" ||
+        symbol.kind === "ts-interface" ||
+        symbol.kind === "ts-type-alias"
+      ) {
+        const runtimeBinding = resolveRuntimeValueBinding(scopes.scopeFor(callee), callee.name);
+        if (
+          runtimeBinding &&
+          isNitroRuntimeAppGetter(runtimeBinding) &&
+          hasReadonlySymbolReferences(symbol)
+        )
+          return null;
+      }
       if (symbol.kind === "import") {
         const importedApi = resolveImportedApiReference(callee, scopes);
         if (

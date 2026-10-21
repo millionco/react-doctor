@@ -226,6 +226,26 @@ describe("scope-analysis", () => {
       expect(catchScope.kind).toBe("catch");
       expect(catchScope.symbolsByName.get("err")?.kind).toBe("catch-clause-parameter");
     });
+
+    it.each([
+      "try {} catch ({value = selected()}) {}",
+      "try {} catch ({[selected()]: value}) {}",
+      "try {} catch ([value = selected()]) {}",
+    ])("resolves catch binding expressions: %s", (statement) => {
+      const analysis = analyze(`const selected = () => {}; ${statement}`);
+      const selected = analysis.rootScope.symbolsByName.get("selected");
+      expect(selected?.references).toHaveLength(1);
+      expect(selected?.references[0]?.scope.kind).toBe("catch");
+    });
+
+    it("resolves catch defaults against catch bindings before outer bindings", () => {
+      const analysis = analyze(`const selected = () => {};
+        try {} catch ({selected = fallback, value = selected()}) {}`);
+      const catchClause = findFirstNamedNode(analysis.program, "CatchClause")!;
+      const catchScope = analysis.scopeFor(catchClause);
+      expect(analysis.rootScope.symbolsByName.get("selected")?.references).toEqual([]);
+      expect(catchScope.symbolsByName.get("selected")?.references).toHaveLength(1);
+    });
   });
 
   describe("reference resolution", () => {
@@ -404,5 +424,59 @@ describe("scope-analysis", () => {
       const inJsx = ids[0]!;
       expect(analysis.symbolFor(inJsx)?.kind).toBe("const");
     });
+  });
+});
+
+describe("runtime enum bodies and constructor parameter properties", () => {
+  it("records outer references in enum initializers", () => {
+    const analysis = analyze(`const selected=()=>0; enum Choice { Value=selected() }`);
+    const selected = analysis.rootScope.symbolsByName.get("selected");
+    expect(selected?.references).toHaveLength(1);
+    expect(selected?.references[0]?.scope.kind).toBe("ts-enum");
+  });
+
+  it.each(["Panel", '"Panel"'])("binds the %s enum member before sibling references", (member) => {
+    const analysis = analyze(`const Panel=()=>0; enum Choice { ${member}=1, Next=Panel }`);
+    const declaration = findFirstNamedNode(analysis.program, "TSEnumDeclaration")!;
+    const enumScope = analysis.scopeFor(declaration);
+    expect(analysis.rootScope.symbolsByName.get("Panel")?.references).toEqual([]);
+    expect(enumScope.symbolsByName.get("Panel")?.kind).toBe("ts-enum");
+    expect(enumScope.symbolsByName.get("Panel")?.references).toHaveLength(1);
+  });
+
+  it("binds a parameter property and records its outer default expression", () => {
+    const analysis = analyze(
+      `const selected=()=>0; class Choice {constructor(public value=selected()){}}`,
+    );
+    const constructor = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+    const parameterScope = analysis.ownScopeFor(constructor);
+    expect(parameterScope?.symbolsByName.get("value")?.kind).toBe("parameter");
+    expect(analysis.rootScope.symbolsByName.get("selected")?.references).toHaveLength(1);
+    expect(analysis.rootScope.symbolsByName.get("selected")?.references[0]?.scope).toBe(
+      parameterScope,
+    );
+  });
+
+  it("resolves constructor body references to the parameter property instead of an outer name", () => {
+    const analysis = analyze(
+      `const Panel=()=>0; class Choice {constructor(public Panel=()=>0){Panel()}}`,
+    );
+    const constructor = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+    const parameterScope = analysis.ownScopeFor(constructor);
+    expect(analysis.rootScope.symbolsByName.get("Panel")?.references).toEqual([]);
+    expect(parameterScope?.symbolsByName.get("Panel")?.kind).toBe("parameter");
+    expect(parameterScope?.symbolsByName.get("Panel")?.references).toHaveLength(1);
+  });
+
+  it("keeps parameter-property decorators in the enclosing scope and defaults in the function", () => {
+    const analysis = analyze(
+      `const selected=()=>0; class Choice {constructor(@selected() public value=selected()){}}`,
+    );
+    const selected = analysis.rootScope.symbolsByName.get("selected");
+    expect(selected?.references).toHaveLength(2);
+    expect(selected?.references.map((reference) => reference.scope.kind).sort()).toEqual([
+      "class",
+      "function",
+    ]);
   });
 });

@@ -464,3 +464,192 @@ describe("inherited string token sidecar dependencies", () => {
     },
   );
 });
+
+interface FormFacadeCacheCase {
+  name: string;
+  operation: "same-size" | "delete" | "shadow" | "alias";
+  relativeWarnings: number;
+  aliasWarnings: number;
+}
+
+const FORM_FACADE_CACHE_CASES: FormFacadeCacheCase[] = [
+  {
+    name: "same-size facade mutation and reversal",
+    operation: "same-size",
+    relativeWarnings: 1,
+    aliasWarnings: 1,
+  },
+  {
+    name: "facade deletion and reappearance",
+    operation: "delete",
+    relativeWarnings: 1,
+    aliasWarnings: 1,
+  },
+  {
+    name: "relative candidate appearance and removal",
+    operation: "shadow",
+    relativeWarnings: 1,
+    aliasWarnings: 0,
+  },
+  {
+    name: "tsconfig alias retarget and reversal",
+    operation: "alias",
+    relativeWarnings: 0,
+    aliasWarnings: 1,
+  },
+];
+
+const FORM_SAFE_FACADE = `import {createFormHook} from "@tanstack/react-form";
+export const {withForm}=createFormHook({});
+`;
+const FORM_UNPROVEN_FACADE = `import {createFormHook} from "@tanstack/react-faux";
+export const {withForm}=createFormHook({});
+`;
+const FORM_RELATIVE_CONSUMER = `import {useState} from "react";
+import {withForm} from "./form";
+const Form=withForm({render:()=>{useState(0);return <div/>}});
+export const RelativePanel=()=><Form/>;
+`;
+const FORM_ALIAS_CONSUMER = `import {useState} from "react";
+import {withForm} from "@forms/api";
+const Form=withForm({render:()=>{useState(0);return <div/>}});
+export const AliasPanel=()=><Form/>;
+`;
+const FORM_RULE_ID = "rules-of-hooks";
+const FORM_RELATIVE_CONSUMER_PATH = "src/RelativePanel.tsx";
+const FORM_ALIAS_CONSUMER_PATH = "src/AliasPanel.tsx";
+const FORM_SCAN_CONCURRENCY = 1;
+const FORM_PRESERVED_TIMESTAMP = new Date("2025-01-01T00:00:00.000Z");
+
+const scanFormFacade = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+    userConfig: { rules: { ...USER_CONFIG.rules, "react-doctor/rules-of-hooks": "warn" } },
+    concurrency: FORM_SCAN_CONCURRENCY,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+
+const formAliasConfig = (target: string): string =>
+  JSON.stringify({
+    compilerOptions: {
+      jsx: "preserve",
+      strict: false,
+      target: "es2022",
+      module: "esnext",
+      baseUrl: ".",
+      paths: { "@forms/api": [target] },
+    },
+  });
+
+describe("TanStack form facade sidecar dependencies", () => {
+  it.each(FORM_FACADE_CACHE_CASES)(
+    "$name invalidates unchanged JSX consumers at a scan boundary",
+    async ({ operation, relativeWarnings, aliasWarnings }) => {
+      const projectDir = setupFixture(`form-facade-${operation}`);
+      const providerPath = path.join(projectDir, "src/form/index.ts");
+      const shadowPath = path.join(projectDir, "src/form.ts");
+      const configPath = path.join(projectDir, "tsconfig.forms.json");
+      writeFile(
+        path.join(projectDir, "tsconfig.json"),
+        JSON.stringify({
+          extends: "./tsconfig.forms.json",
+          compilerOptions: { jsx: "preserve", strict: false, target: "es2022", module: "esnext" },
+        }),
+      );
+      writeFile(providerPath, FORM_SAFE_FACADE);
+      writeFile(path.join(projectDir, "src/alternate-form.ts"), FORM_UNPROVEN_FACADE);
+      writeFile(path.join(projectDir, FORM_RELATIVE_CONSUMER_PATH), FORM_RELATIVE_CONSUMER);
+      writeFile(path.join(projectDir, FORM_ALIAS_CONSUMER_PATH), FORM_ALIAS_CONSUMER);
+      writeFile(configPath, formAliasConfig("src/form/index.ts"));
+      if (operation === "same-size") {
+        expect(Buffer.byteLength(FORM_SAFE_FACADE)).toBe(Buffer.byteLength(FORM_UNPROVEN_FACADE));
+        fs.utimesSync(providerPath, FORM_PRESERVED_TIMESTAMP, FORM_PRESERVED_TIMESTAMP);
+      }
+
+      const before = await scanFormFacade(projectDir);
+      expect(ruleHitsOn(before, FORM_RULE_ID, FORM_RELATIVE_CONSUMER_PATH)).toHaveLength(0);
+      expect(ruleHitsOn(before, FORM_RULE_ID, FORM_ALIAS_CONSUMER_PATH)).toHaveLength(0);
+      let warmReplayed = 0;
+      let warmConsidered = 0;
+      const warm = await scanFormFacade(projectDir, {
+        onSidecarStats: (replayedFileCount, consideredFileCount) => {
+          warmReplayed = replayedFileCount;
+          warmConsidered = consideredFileCount;
+        },
+      });
+      expect(serialize(warm)).toBe(serialize(before));
+      expect(warmConsidered).toBeGreaterThan(0);
+      expect(warmReplayed).toBe(warmConsidered);
+
+      if (operation === "delete") fs.unlinkSync(providerPath);
+      else if (operation === "shadow") writeFile(shadowPath, FORM_UNPROVEN_FACADE);
+      else if (operation === "alias")
+        writeFile(configPath, formAliasConfig("src/alternate-form.ts"));
+      else {
+        writeFile(providerPath, FORM_UNPROVEN_FACADE);
+        fs.utimesSync(providerPath, FORM_PRESERVED_TIMESTAMP, FORM_PRESERVED_TIMESTAMP);
+        expect(fs.statSync(providerPath).mtimeMs).toBe(FORM_PRESERVED_TIMESTAMP.getTime());
+        expect(fs.statSync(providerPath).size).toBe(Buffer.byteLength(FORM_SAFE_FACADE));
+      }
+      expect(fs.readFileSync(path.join(projectDir, FORM_RELATIVE_CONSUMER_PATH), "utf8")).toBe(
+        FORM_RELATIVE_CONSUMER,
+      );
+      expect(fs.readFileSync(path.join(projectDir, FORM_ALIAS_CONSUMER_PATH), "utf8")).toBe(
+        FORM_ALIAS_CONSUMER,
+      );
+      let replayed = 0;
+      let considered = 0;
+      const incremental = await scanFormFacade(projectDir, {
+        onSidecarStats: (replayedFileCount, consideredFileCount) => {
+          replayed = replayedFileCount;
+          considered = consideredFileCount;
+        },
+      });
+      const full = await scanFormFacade(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      expect(ruleHitsOn(incremental, FORM_RULE_ID, FORM_RELATIVE_CONSUMER_PATH)).toHaveLength(
+        relativeWarnings,
+      );
+      expect(ruleHitsOn(incremental, FORM_RULE_ID, FORM_ALIAS_CONSUMER_PATH)).toHaveLength(
+        aliasWarnings,
+      );
+      expect(ruleHitsOn(full, FORM_RULE_ID, FORM_RELATIVE_CONSUMER_PATH)).toHaveLength(
+        relativeWarnings,
+      );
+      expect(ruleHitsOn(full, FORM_RULE_ID, FORM_ALIAS_CONSUMER_PATH)).toHaveLength(aliasWarnings);
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(considered).toBeGreaterThan(0);
+      expect(replayed).toBeGreaterThan(0);
+      expect(replayed).toBeLessThan(considered);
+
+      if (operation === "shadow") fs.unlinkSync(shadowPath);
+      else if (operation === "alias") writeFile(configPath, formAliasConfig("src/form/index.ts"));
+      else {
+        writeFile(providerPath, FORM_SAFE_FACADE);
+        if (operation === "same-size")
+          fs.utimesSync(providerPath, FORM_PRESERVED_TIMESTAMP, FORM_PRESERVED_TIMESTAMP);
+      }
+      const reversed = await scanFormFacade(projectDir);
+      const reversedFull = await scanFormFacade(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      expect(ruleHitsOn(reversed, FORM_RULE_ID, FORM_RELATIVE_CONSUMER_PATH)).toHaveLength(0);
+      expect(ruleHitsOn(reversed, FORM_RULE_ID, FORM_ALIAS_CONSUMER_PATH)).toHaveLength(0);
+      expect(ruleHitsOn(reversedFull, FORM_RULE_ID, FORM_RELATIVE_CONSUMER_PATH)).toHaveLength(0);
+      expect(ruleHitsOn(reversedFull, FORM_RULE_ID, FORM_ALIAS_CONSUMER_PATH)).toHaveLength(0);
+      expect(serialize(reversed)).toBe(serialize(reversedFull));
+      expect(fs.readFileSync(path.join(projectDir, FORM_RELATIVE_CONSUMER_PATH), "utf8")).toBe(
+        FORM_RELATIVE_CONSUMER,
+      );
+      expect(fs.readFileSync(path.join(projectDir, FORM_ALIAS_CONSUMER_PATH), "utf8")).toBe(
+        FORM_ALIAS_CONSUMER,
+      );
+    },
+  );
+});

@@ -1,4 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { collectTanstackFormRenderFunctions } from "../../utils/collect-tanstack-form-render-functions.js";
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -831,6 +832,7 @@ const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpressio
 const findEnclosingFunctionInfo = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  renderFunctions: ReadonlySet<EsTreeNode>,
 ): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -847,6 +849,7 @@ const findEnclosingFunctionInfo = (
         hasResolvedName: resolvedName !== null,
         isAsync: Boolean(current.async),
         isComponentOrHook:
+          renderFunctions.has(current) ||
           isReactHocCallbackArgument(current, scopes) ||
           (resolvedName === null ? false : isComponentOrHookDisplayName(displayName, current)),
       };
@@ -913,11 +916,13 @@ const isInsideLoop = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => 
 const findEnclosingComponentOrHookFunction = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  renderFunctions: ReadonlySet<EsTreeNode>,
 ): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
-      if (isReactHocCallbackArgument(current, scopes)) return current;
+      if (renderFunctions.has(current) || isReactHocCallbackArgument(current, scopes))
+        return current;
       const resolvedName = inferFunctionName(current);
       if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
         return current;
@@ -932,9 +937,10 @@ const isSameComponentOrHookScope = (
   symbol: SymbolDescriptor,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  renderFunctions: ReadonlySet<EsTreeNode>,
 ): boolean =>
-  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes) ===
-  findEnclosingComponentOrHookFunction(referenceNode, scopes);
+  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes, renderFunctions) ===
+  findEnclosingComponentOrHookFunction(referenceNode, scopes, renderFunctions);
 
 const isAllowedEffectEventHook = (
   hookName: string,
@@ -1030,11 +1036,19 @@ export const rulesOfHooks = defineRule({
         hostContext.report(descriptor);
       },
     };
+    let renderFunctions: ReadonlySet<EsTreeNode> = new Set();
     const settings = resolveSettings(context.settings);
     const additionalEffectHooksRegex = buildAdditionalEffectHooksRegex(
       settings.additionalEffectHooks,
     );
     return {
+      Program(node) {
+        renderFunctions = collectTanstackFormRenderFunctions(
+          node,
+          context.scopes,
+          context.filename,
+        );
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const hookContext = isHookCall(node, context.scopes, settings);
         if (!hookContext) return;
@@ -1064,7 +1078,7 @@ export const rulesOfHooks = defineRule({
             return;
         }
 
-        const enclosing = findEnclosingFunctionInfo(node, context.scopes);
+        const enclosing = findEnclosingFunctionInfo(node, context.scopes, renderFunctions);
 
         if (!enclosing) {
           if (isPackageImportedNonReactHookCallee(node)) return;
@@ -1101,7 +1115,8 @@ export const rulesOfHooks = defineRule({
           !enclosing.isComponentOrHook &&
           enclosing.hasResolvedName &&
           RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
-          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes) === null &&
+          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes, renderFunctions) ===
+            null &&
           countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
             MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
@@ -1114,7 +1129,11 @@ export const rulesOfHooks = defineRule({
           let outerWalker: EsTreeNode | null = enclosing.node;
           let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
-            const parentInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+            const parentInfo = findEnclosingFunctionInfo(
+              outerWalker,
+              context.scopes,
+              renderFunctions,
+            );
             if (!parentInfo) break;
             outerWalker = parentInfo.node;
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
@@ -1147,7 +1166,11 @@ export const rulesOfHooks = defineRule({
             let outerWalker: EsTreeNode | null = enclosing.node;
             let outerIsComponentOrHook = false;
             while (outerWalker) {
-              const outerInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+              const outerInfo = findEnclosingFunctionInfo(
+                outerWalker,
+                context.scopes,
+                renderFunctions,
+              );
               if (!outerInfo) break;
               if (outerInfo.isComponentOrHook) {
                 outerIsComponentOrHook = true;
@@ -1197,7 +1220,7 @@ export const rulesOfHooks = defineRule({
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
         if (!symbol || !symbolHasReactUseEffectEventOrigin(symbol, context.scopes)) return;
-        if (!isSameComponentOrHookScope(symbol, node, context.scopes)) return;
+        if (!isSameComponentOrHookScope(symbol, node, context.scopes, renderFunctions)) return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 
         context.report({

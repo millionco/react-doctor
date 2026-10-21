@@ -1,3 +1,4 @@
+import { collectTanstackFormRenderFunctions } from "./utils/collect-tanstack-form-render-functions.js";
 import { isInheritedStringTokenReceiver } from "./utils/is-inherited-string-token-receiver.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
@@ -219,6 +220,7 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
+  collectTanstackFormRenderFunctions(program, scopes, absoluteFilePath);
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
     const imported = resolveImportedApiReference(node.callee, scopes);

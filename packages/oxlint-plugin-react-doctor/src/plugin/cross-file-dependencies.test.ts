@@ -942,3 +942,37 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+describe("TanStack form facade hook dependency probes", () => {
+  it.each(["./form", "@forms/api"])(
+    "tracks the selected facade and resolution for %s",
+    (source) => {
+      const configPath = writeFixtureFile(
+        "tsconfig.json",
+        JSON.stringify({
+          compilerOptions: { baseUrl: ".", paths: { "@forms/api": ["src/form/index.ts"] } },
+        }),
+      );
+      const providerPath = writeFixtureFile(
+        "src/form/index.ts",
+        `
+      import {createFormHook} from "@tanstack/react-form";
+      export const {withForm}=createFormHook({});
+    `,
+      );
+      const consumerPath = writeFixtureFile(
+        "src/Panel.tsx",
+        `
+      import {withForm} from "${source}"; import {useState} from "react";
+      const Form=withForm({render:()=>{useState(0);return <div/>}});
+      export const Panel=()=><Form/>;
+    `,
+      );
+      const trace = collectFor(consumerPath, ["rules-of-hooks"]);
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(providerPath)).toBe(true);
+      if (source === "@forms/api") expect(trace?.contentPaths.has(configPath)).toBe(true);
+      else expect(trace?.existencePaths.has(fixturePath("src/form.ts"))).toBe(true);
+    },
+  );
+});

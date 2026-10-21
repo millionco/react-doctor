@@ -1,8 +1,9 @@
+import { isSlateCurrentFocusProvider } from "./rules/state-and-effects/utils/is-slate-current-focus-provider.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
-import { analyzeScopes } from "./semantic/scope-analysis.js";
+import { analyzeScopes, type ScopeAnalysis } from "./semantic/scope-analysis.js";
 import { awaitedStatementsMayShareWork } from "./utils/awaited-statements-may-share-work.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
@@ -196,6 +197,30 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectSlateCurrentFocusDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  const program = input.getProgram();
+  let scopes: ScopeAnalysis | undefined;
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "CallExpression") || node.optional) return;
+    const member = node.callee;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.computed ||
+      member.optional ||
+      !isNodeOfType(member.object, "Identifier") ||
+      !isNodeOfType(member.property, "Identifier") ||
+      member.property.name !== "isFocused"
+    )
+      return;
+    if (!scopes) {
+      attachParentReferences(program);
+      scopes = analyzeScopes(program);
+    }
+    isSlateCurrentFocusProvider({ filename: input.absoluteFilePath, scopes }, member.object);
+  });
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -601,7 +626,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
-    ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-reset-all-state-on-prop-change", collectSlateCurrentFocusDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],

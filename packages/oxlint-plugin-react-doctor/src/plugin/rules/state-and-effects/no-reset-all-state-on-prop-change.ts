@@ -32,6 +32,7 @@ import {
   isState,
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
+import { isMatchedSlateCurrentFocusRead } from "./utils/is-matched-slate-current-focus-read.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
@@ -792,6 +793,7 @@ const isSetStateToInitialValue = (
       return false;
     }
   }
+  if (isMatchedSlateCurrentFocusRead(context, useStateDecl, callExpr)) return false;
   return getNodeText(setStateToValue) === getNodeText(stateInitialValue);
 };
 

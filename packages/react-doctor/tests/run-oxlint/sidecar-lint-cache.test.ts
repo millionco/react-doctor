@@ -1,14 +1,21 @@
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
-import { buildDiagnosticIdentity, runOxlint } from "@react-doctor/core";
+import { buildDiagnosticIdentity, createOxlintSpawnSlots, runOxlint } from "@react-doctor/core";
 import { buildTestProject, setupReactProject, writeFile } from "../regressions/_helpers.js";
+
+const realSpawnObserver = vi.spyOn(childProcess, "spawn");
+syncBuiltinESMExports();
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-sidecar-cache-e2e-"));
 
 afterAll(() => {
+  realSpawnObserver.mockRestore();
+  syncBuiltinESMExports();
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -334,4 +341,216 @@ export const Panel = ({ children }) => <Text>{children}</Text>;
       ),
     ).toBe(false);
   });
+});
+
+interface SlateFocusCacheCase {
+  name: string;
+  facet: "facade" | "manifest";
+  operation: "content" | "delete" | "appear" | "same-size";
+}
+
+const SLATE_FOCUS_CACHE_CASES: SlateFocusCacheCase[] = [
+  { name: "facade content changes", facet: "facade", operation: "content" },
+  { name: "facade disappears", facet: "facade", operation: "delete" },
+  { name: "facade appears", facet: "facade", operation: "appear" },
+  {
+    name: "facade changes with equal size and restored timestamp",
+    facet: "facade",
+    operation: "same-size",
+  },
+  { name: "SDK declaration changes", facet: "manifest", operation: "content" },
+  { name: "SDK declaration disappears", facet: "manifest", operation: "delete" },
+  { name: "SDK declaration appears", facet: "manifest", operation: "appear" },
+  {
+    name: "SDK declaration changes with equal size and restored timestamp",
+    facet: "manifest",
+    operation: "same-size",
+  },
+];
+
+const CURRENT_FOCUS_VIEW = `import { useEffect, useState } from "react";
+import { FocusApi } from "./focus-api";
+export const FocusPanel = ({ entity }: { entity: object }) => {
+  const [focused, setFocused] = useState(FocusApi.isFocused(entity));
+  useEffect(() => { setFocused(FocusApi.isFocused(entity)); }, [entity]);
+  return <output>{String(focused)}</output>;
+};
+`;
+const CURRENT_FOCUS_FACADE = `import { DOMEditor } from "slate-dom";
+export const FocusApi = DOMEditor;
+`;
+const MUTABLE_FOCUS_FACADE = `import { DOMEditor } from "slate-dom";
+export let   FocusApi = DOMEditor;
+`;
+const SUPPORTED_FOCUS_MANIFEST = '{"private":true,"dependencies":{"slate-dom":"^0.126.0"}}\n';
+const UNSUPPORTED_FOCUS_MANIFEST = '{"private":true,"dependencies":{"slate-dom":"^0.127.0"}}\n';
+const FOCUS_RULE_ID = "no-reset-all-state-on-prop-change";
+const FOCUS_CONSUMER_PATH = "src/focus/FocusPanel.tsx";
+const FOCUS_SCAN_CONCURRENCY = 1;
+const FOCUS_SINGLE_WARNING_COUNT = 1;
+const FOCUS_NO_WARNING_COUNT = 0;
+const FOCUS_PRESERVED_TIMESTAMP = new Date("2025-01-01T00:00:00.000Z");
+
+const observedRealWorkers = () =>
+  realSpawnObserver.mock.results.flatMap((result, resultIndex) => {
+    const argumentsList = realSpawnObserver.mock.calls[resultIndex]?.[1];
+    if (
+      result.type !== "return" ||
+      !Array.isArray(argumentsList) ||
+      !argumentsList.some((argument) => path.basename(argument) === "oxlint-worker.js")
+    )
+      return [];
+    return [result.value];
+  });
+
+const scanCurrentFocus = async (projectDir: string, options: ScanOptions = {}) => {
+  const spawnSlots = createOxlintSpawnSlots(FOCUS_SCAN_CONCURRENCY);
+  const diagnostics = await runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+    userConfig: {
+      rules: {
+        ...USER_CONFIG.rules,
+        "react-doctor/no-reset-all-state-on-prop-change": "warn",
+      },
+    },
+    concurrency: FOCUS_SCAN_CONCURRENCY,
+    spawnSlots,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+  return { diagnostics, filesystemCacheEpoch: spawnSlots.filesystemCacheEpoch };
+};
+
+const isCurrentFocusLintMessage = (
+  message: unknown,
+  projectDir: string,
+  filesystemCacheEpoch: number,
+): boolean =>
+  typeof message === "object" &&
+  message !== null &&
+  "type" in message &&
+  message.type === "job" &&
+  "cwd" in message &&
+  message.cwd === projectDir &&
+  "filesystemCacheEpoch" in message &&
+  message.filesystemCacheEpoch === filesystemCacheEpoch &&
+  "argumentsList" in message &&
+  Array.isArray(message.argumentsList) &&
+  message.argumentsList.some(
+    (argument: unknown) => typeof argument === "string" && argument.endsWith("FocusPanel.tsx"),
+  );
+
+describe("slate current focus pooled sidecar dependencies", () => {
+  it.each(SLATE_FOCUS_CACHE_CASES)(
+    "$name invalidates the unchanged consumer on the same real worker",
+    async ({ facet, operation }) => {
+      const projectDir = setupFixture(`slate-focus-${facet}-${operation}`);
+      const consumerPath = path.join(projectDir, FOCUS_CONSUMER_PATH);
+      const facadePath = path.join(projectDir, "src/focus/focus-api.ts");
+      const manifestPath = path.join(projectDir, "src/focus/package.json");
+      const dependencyPath = facet === "facade" ? facadePath : manifestPath;
+      const supportedContents =
+        facet === "facade" ? CURRENT_FOCUS_FACADE : SUPPORTED_FOCUS_MANIFEST;
+      const unsupportedContents =
+        facet === "facade" ? MUTABLE_FOCUS_FACADE : UNSUPPORTED_FOCUS_MANIFEST;
+      const beforeWarningCount =
+        operation === "appear" ? FOCUS_SINGLE_WARNING_COUNT : FOCUS_NO_WARNING_COUNT;
+      const afterWarningCount =
+        operation === "appear" ? FOCUS_NO_WARNING_COUNT : FOCUS_SINGLE_WARNING_COUNT;
+      writeFile(consumerPath, CURRENT_FOCUS_VIEW);
+      writeFile(facadePath, CURRENT_FOCUS_FACADE);
+      writeFile(manifestPath, SUPPORTED_FOCUS_MANIFEST);
+      if (operation === "appear") fs.unlinkSync(dependencyPath);
+      if (operation === "same-size") {
+        expect(Buffer.byteLength(supportedContents)).toBe(Buffer.byteLength(unsupportedContents));
+        fs.utimesSync(dependencyPath, FOCUS_PRESERVED_TIMESTAMP, FOCUS_PRESERVED_TIMESTAMP);
+      }
+
+      const before = await scanCurrentFocus(projectDir);
+      expect(ruleHitsOn(before.diagnostics, FOCUS_RULE_ID, FOCUS_CONSUMER_PATH)).toHaveLength(
+        beforeWarningCount,
+      );
+      const liveWorkers = observedRealWorkers().filter(
+        (worker) => worker.connected && worker.exitCode === null && worker.signalCode === null,
+      );
+      expect(liveWorkers).toHaveLength(FOCUS_SCAN_CONCURRENCY);
+      const worker = liveWorkers[0];
+      if (worker === undefined) throw new Error("The real pooled worker was not observed");
+      const workerPid = worker.pid;
+      expect(workerPid).toBeGreaterThan(0);
+      const workerCountBefore = observedRealWorkers().length;
+      const realWorkerSends = vi.spyOn(worker, "send");
+      try {
+        let warmReplayed = 0;
+        let warmConsidered = 0;
+        const warm = await scanCurrentFocus(projectDir, {
+          onSidecarStats: (replayedFileCount, consideredFileCount) => {
+            warmReplayed = replayedFileCount;
+            warmConsidered = consideredFileCount;
+          },
+        });
+        expect(warm.filesystemCacheEpoch).not.toBe(before.filesystemCacheEpoch);
+        expect(serialize(warm.diagnostics)).toBe(serialize(before.diagnostics));
+        expect(warmConsidered).toBeGreaterThan(0);
+        expect(warmReplayed).toBe(warmConsidered);
+
+        if (operation === "delete") fs.unlinkSync(dependencyPath);
+        else
+          writeFile(
+            dependencyPath,
+            operation === "appear" ? supportedContents : unsupportedContents,
+          );
+        if (operation === "same-size") {
+          fs.utimesSync(dependencyPath, FOCUS_PRESERVED_TIMESTAMP, FOCUS_PRESERVED_TIMESTAMP);
+          expect(fs.statSync(dependencyPath).mtimeMs).toBe(FOCUS_PRESERVED_TIMESTAMP.getTime());
+          expect(fs.statSync(dependencyPath).size).toBe(Buffer.byteLength(supportedContents));
+        }
+        expect(fs.readFileSync(consumerPath, "utf8")).toBe(CURRENT_FOCUS_VIEW);
+
+        let replayed = 0;
+        let considered = 0;
+        const incremental = await scanCurrentFocus(projectDir, {
+          onSidecarStats: (replayedFileCount, consideredFileCount) => {
+            replayed = replayedFileCount;
+            considered = consideredFileCount;
+          },
+        });
+        expect(incremental.filesystemCacheEpoch).not.toBe(warm.filesystemCacheEpoch);
+        expect(
+          ruleHitsOn(incremental.diagnostics, FOCUS_RULE_ID, FOCUS_CONSUMER_PATH),
+        ).toHaveLength(afterWarningCount);
+        expect(
+          realWorkerSends.mock.calls.some(([message]) =>
+            isCurrentFocusLintMessage(message, projectDir, incremental.filesystemCacheEpoch),
+          ),
+        ).toBe(true);
+        const full = await scanCurrentFocus(projectDir, {
+          perFileLintCacheEnabled: false,
+          sidecarLintCacheEnabled: false,
+        });
+        expect(full.filesystemCacheEpoch).not.toBe(incremental.filesystemCacheEpoch);
+        expect(
+          realWorkerSends.mock.calls.some(([message]) =>
+            isCurrentFocusLintMessage(message, projectDir, full.filesystemCacheEpoch),
+          ),
+        ).toBe(true);
+        expect(ruleHitsOn(full.diagnostics, FOCUS_RULE_ID, FOCUS_CONSUMER_PATH)).toHaveLength(
+          afterWarningCount,
+        );
+        expect(serialize(incremental.diagnostics)).toBe(serialize(full.diagnostics));
+        expect(considered).toBeGreaterThan(0);
+        expect(replayed).toBeGreaterThan(0);
+        expect(replayed).toBeLessThan(considered);
+        expect(observedRealWorkers()).toHaveLength(workerCountBefore);
+        expect(worker.pid).toBe(workerPid);
+        expect(worker.connected).toBe(true);
+        expect(worker.exitCode).toBeNull();
+        expect(worker.signalCode).toBeNull();
+      } finally {
+        realWorkerSends.mockRestore();
+      }
+    },
+  );
 });

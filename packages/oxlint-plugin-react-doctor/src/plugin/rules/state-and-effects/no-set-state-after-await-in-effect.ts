@@ -1,3 +1,4 @@
+import { hasClosedCancelledNativeSleepLoop } from "../../utils/has-closed-cancelled-native-sleep-loop.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -1318,6 +1319,17 @@ const hasUnsafePostAwaitSetter = (
     asyncFunction,
     context,
   );
+  if (
+    hasClosedCancelledNativeSleepLoop({
+      asyncFunction,
+      effectCallback,
+      cleanupFunctions,
+      context,
+      isStateDispatcherCall,
+    })
+  ) {
+    return false;
+  }
   const cleanupWrites = collectCleanupGuardWrites(cleanupFunctions, context);
   const postSuspensionWrites = collectPostSuspensionWrittenReferenceKeys(
     asyncFunction,

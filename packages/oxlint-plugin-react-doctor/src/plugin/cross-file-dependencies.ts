@@ -630,6 +630,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "no-direct-state-mutation",
   "anchor-target-exists",
   "nextjs-no-img-element",
   "no-img-without-dimensions",

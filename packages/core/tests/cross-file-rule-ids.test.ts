@@ -178,6 +178,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-create-ref-in-function-component",
       "no-derived-state",
       "no-derived-state-effect",
+      "no-direct-state-mutation",
       "no-dynamic-import-path",
       "no-event-handler",
       "no-full-lodash-import",

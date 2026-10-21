@@ -22,6 +22,7 @@ import {
   WORKTREE_STATUS_GIT_ARGUMENTS,
 } from "./constants.js";
 import { getPackageJsonPath, isRecord, runGitAsync } from "./git-hook-shared.js";
+import { canUseWorkspaceIndependentScanCache } from "./can-use-workspace-independent-scan-cache.js";
 import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
 import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
@@ -437,6 +438,7 @@ export const buildScanResultCacheKey = async (
   input: ScanResultCacheKeyInput,
 ): Promise<string | null> => {
   if (isCacheGloballyDisabled() || input.options.baselineReport) return null;
+  if (!canUseWorkspaceIndependentScanCache(input.projectDirectory)) return null;
   const isTrustworthyPromise = isGitIdentityTrustworthy(input.projectDirectory);
   const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
     input.projectDirectory,

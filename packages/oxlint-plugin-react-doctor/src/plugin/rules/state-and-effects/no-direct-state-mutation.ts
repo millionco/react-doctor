@@ -1,3 +1,4 @@
+import { isWorkspaceRefVisibilityAssignment } from "../../utils/is-workspace-ref-visibility-assignment.js";
 import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -266,6 +267,12 @@ export const noDirectStateMutation = defineRule({
             parent.left === expressionRoot &&
             isNodeOfType(expressionRoot, "MemberExpression")
           ) {
+            const setterIdentifier = binding.declarator.id.elements?.[1];
+            if (
+              setterIdentifier &&
+              isWorkspaceRefVisibilityAssignment(context, parent, stateIdentifier, setterIdentifier)
+            )
+              continue;
             context.report({
               node: parent,
               message: `React can't tell you changed "${binding.valueName}" in place, so this update can be skipped or lost.`,

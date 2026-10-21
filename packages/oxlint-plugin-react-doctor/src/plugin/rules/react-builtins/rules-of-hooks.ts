@@ -28,6 +28,7 @@ import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
@@ -206,6 +207,28 @@ const isHookCall = (
     //     stance on `useBasename` from `history` etc.
     const symbol = scopes.symbolFor(callee);
     if (symbol) {
+      if (
+        symbol.kind === "import" ||
+        symbol.kind === "ts-interface" ||
+        symbol.kind === "ts-type-alias"
+      ) {
+        const runtimeBinding = resolveRuntimeValueBinding(scopes.scopeFor(callee), callee.name);
+        const importDeclaration = runtimeBinding && getImportDeclarationForSymbol(runtimeBinding);
+        if (
+          runtimeBinding &&
+          importDeclaration &&
+          importDeclaration.importKind !== "type" &&
+          isNodeOfType(runtimeBinding.declarationNode, "ImportSpecifier") &&
+          runtimeBinding.declarationNode.importKind !== "type" &&
+          getImportedName(runtimeBinding.declarationNode) === "useDeviceLanguage" &&
+          (importDeclaration.source.value === "firebase/auth" ||
+            importDeclaration.source.value ===
+              "@react-native-firebase/app/dist/module/internal/web/firebaseAuth") &&
+          hasReadonlySymbolReferences(runtimeBinding) &&
+          hasReadonlySymbolReferences(symbol)
+        )
+          return null;
+      }
       if (
         symbol.kind === "const" ||
         symbol.kind === "ts-interface" ||

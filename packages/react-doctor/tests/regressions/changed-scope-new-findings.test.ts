@@ -248,7 +248,10 @@ describe("changed scope compares findings through the CLI", () => {
     }
   });
 
-  it("keeps the HostedCart findings after reformatting and reports only an added derived state", () => {
+  it.each([
+    { name: "no added derived state", appendedSource: "" },
+    { name: "an added derived state", appendedSource: NEW_DERIVED_STATE },
+  ])("keeps the HostedCart findings after reformatting with $name", ({ appendedSource }) => {
     const sourcePath = path.join(directory, "src/HostedCart.tsx");
     writeFile(sourcePath, HOSTED_CART);
     commitAll(directory, "base cart findings");
@@ -262,19 +265,17 @@ describe("changed scope compares findings through the CLI", () => {
       ),
     ).toBe(true);
     writeJson(reportFile, base.report);
-    for (const appended of ["", NEW_DERIVED_STATE]) {
-      writeFile(sourcePath, REFORMATTED_HOSTED_CART + appended);
-      const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
-      const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
-      const fullSavedResult = scan(directory, ["--baseline", reportFile]);
-      for (const result of [gitResult, savedResult, fullSavedResult]) {
-        expect(result.report.diagnostics.map((finding) => finding.rule)).toEqual(
-          appended ? ["no-derived-state"] : [],
-        );
-        expect(result.report.summary.totalDiagnosticCount).toBe(appended ? 1 : 0);
-        expect(result.status).toBe(appended ? 1 : 0);
-        if (appended) expect(result.report.diagnostics[0]?.line).toBe(15);
-      }
+    writeFile(sourcePath, REFORMATTED_HOSTED_CART + appendedSource);
+    const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
+    const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
+    const fullSavedResult = scan(directory, ["--baseline", reportFile]);
+    for (const result of [gitResult, savedResult, fullSavedResult]) {
+      expect(result.report.diagnostics.map((finding) => finding.rule)).toEqual(
+        appendedSource ? ["no-derived-state"] : [],
+      );
+      expect(result.report.summary.totalDiagnosticCount).toBe(appendedSource ? 1 : 0);
+      expect(result.status).toBe(appendedSource ? 1 : 0);
+      if (appendedSource) expect(result.report.diagnostics[0]?.line).toBe(15);
     }
   });
 

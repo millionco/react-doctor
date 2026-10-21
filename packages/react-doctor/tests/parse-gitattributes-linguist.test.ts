@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -5,82 +6,124 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 import { parseGitattributesLinguistPaths } from "@react-doctor/core";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-gitattributes-"));
+const ATTRIBUTE_STATES = [
+  "",
+  "=true",
+  "=false",
+  "=0",
+  "=off",
+  "=no",
+  "=unset",
+  "=unspecified",
+  "-",
+  "!",
+];
+const SOURCE_PATHS = [
+  "app.tsx",
+  "src/app.tsx",
+  "src/deep/app.tsx",
+  "src/.hidden.tsx",
+  "other/file.tsx",
+];
 
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-const writeFixture = (name: string, content: string): string => {
-  const filePath = path.join(tempRoot, name);
-  fs.writeFileSync(filePath, content);
-  return filePath;
-};
-
 describe("parseGitattributesLinguistPaths", () => {
-  it("extracts paths marked linguist-vendored (no value, default true)", () => {
-    const filePath = writeFixture(
-      "vendored.gitattributes",
-      "vendor/** linguist-vendored\nthird_party/** linguist-vendored=true\n",
-    );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual(["vendor/**", "third_party/**"]);
+  it("matches Git's per-attribute precedence for ordered overrides", () => {
+    expect(spawnSync("git", ["init", "--quiet"], { cwd: tempRoot }).status).toBe(0);
+    const filePath = path.join(tempRoot, ".gitattributes");
+    for (const generatedState of ATTRIBUTE_STATES) {
+      for (const vendoredState of ATTRIBUTE_STATES) {
+        const attributes = [
+          ["linguist-generated", generatedState],
+          ["linguist-vendored", vendoredState],
+        ].map(([attribute, state]) =>
+          state === "-" || state === "!" ? `${state}${attribute}` : `${attribute}${state}`,
+        );
+        fs.writeFileSync(
+          filePath,
+          [
+            "*.tsx linguist-generated linguist-vendored",
+            `src/** ${attributes.join(" ")}`,
+            "src/deep/** !linguist-generated -linguist-vendored",
+          ].join("\n"),
+        );
+        const result = spawnSync(
+          "git",
+          ["check-attr", "-z", "--stdin", "linguist-generated", "linguist-vendored"],
+          {
+            cwd: tempRoot,
+            encoding: "utf-8",
+            input: `${SOURCE_PATHS.join("\0")}\0`,
+          },
+        );
+        expect(result.status).toBe(0);
+        const fields = result.stdout.split("\0");
+        const ignoredPaths = new Set<string>();
+        for (let index = 0; index + 2 < fields.length; index += 3) {
+          if (["set", "true"].includes(fields[index + 2])) ignoredPaths.add(fields[index]);
+        }
+        expect(parseGitattributesLinguistPaths(filePath, SOURCE_PATHS)).toEqual(
+          SOURCE_PATHS.filter((sourcePath) => ignoredPaths.has(sourcePath)),
+        );
+      }
+    }
   });
 
-  it("extracts paths marked linguist-generated", () => {
-    const filePath = writeFixture(
-      "generated.gitattributes",
-      "**/*.gen.ts linguist-generated\nproto/** linguist-generated=true\n",
+  it("preserves order within a line and ignores unrelated attributes", () => {
+    const filePath = path.join(tempRoot, "ordered.attributes");
+    fs.writeFileSync(
+      filePath,
+      [
+        "# Generated sources",
+        "",
+        "*.tsx linguist-generated=false linguist-generated=true",
+        "src/** linguist-generated=true linguist-generated=false text=auto",
+        "src/app.tsx linguist-vendored",
+        "src/app.tsx linguist-generated=false",
+      ].join("\n"),
     );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual(["**/*.gen.ts", "proto/**"]);
+    expect(parseGitattributesLinguistPaths(filePath, SOURCE_PATHS)).toEqual([
+      "app.tsx",
+      "src/app.tsx",
+      "other/file.tsx",
+    ]);
   });
 
-  it("does NOT extract paths marked linguist-vendored=false (explicit opt-in to linting)", () => {
-    const filePath = writeFixture(
-      "opt-in.gitattributes",
-      "src/foo.tsx linguist-vendored=false\nsrc/bar.tsx linguist-generated=false\n",
-    );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual([]);
+  it("keeps root anchoring and does not make directory attributes recursive", () => {
+    const filePath = path.join(tempRoot, "paths.attributes");
+    fs.writeFileSync(filePath, "/app.tsx linguist-generated\nsrc/ linguist-vendored\n");
+    expect(parseGitattributesLinguistPaths(filePath, SOURCE_PATHS)).toEqual(["app.tsx"]);
   });
 
-  it("ignores comments and blank lines", () => {
-    const filePath = writeFixture(
-      "comments.gitattributes",
-      "# Vendored libraries\nvendor/** linguist-vendored\n\n# Build outputs\ndist/** linguist-generated\n",
+  it("matches quoted paths with spaces without changing attribute name case", () => {
+    const filePath = path.join(tempRoot, "quoted.attributes");
+    fs.writeFileSync(
+      filePath,
+      [
+        "*.tsx linguist-generated",
+        '"src/with space.tsx" !linguist-generated',
+        "src/other.tsx Linguist-Generated=false",
+      ].join("\n"),
     );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual(["vendor/**", "dist/**"]);
+    expect(
+      parseGitattributesLinguistPaths(filePath, ["src/with space.tsx", "src/other.tsx"]),
+    ).toEqual(["src/other.tsx"]);
   });
 
-  it("ignores lines without linguist-* attributes (e.g., text=auto, eol=lf)", () => {
-    const filePath = writeFixture(
-      "non-linguist.gitattributes",
-      "* text=auto\n*.sh text eol=lf\nvendor/** linguist-vendored\n",
-    );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual(["vendor/**"]);
+  it("treats parentheses as literal Git pattern characters", () => {
+    const filePath = path.join(tempRoot, "literal.attributes");
+    fs.writeFileSync(filePath, "src/(app).tsx linguist-generated\n");
+    expect(parseGitattributesLinguistPaths(filePath, ["src/app.tsx", "src/(app).tsx"])).toEqual([
+      "src/(app).tsx",
+    ]);
   });
 
-  it("returns [] when the file does not exist", () => {
-    expect(parseGitattributesLinguistPaths(path.join(tempRoot, "missing.gitattributes"))).toEqual(
+  it("returns no ignored paths when the file is missing", () => {
+    expect(parseGitattributesLinguistPaths(path.join(tempRoot, "missing"), SOURCE_PATHS)).toEqual(
       [],
     );
-  });
-
-  it("ignores lines with only a path spec and no attributes", () => {
-    const filePath = writeFixture("orphan.gitattributes", "vendor/**\n");
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual([]);
-  });
-
-  it("accepts case-insensitive linguist attributes (=TRUE, =FALSE, etc.)", () => {
-    const filePath = writeFixture(
-      "case-insensitive.gitattributes",
-      "vendor/** linguist-vendored=TRUE\nbuild/** Linguist-Generated=true\nlive/** linguist-vendored=FALSE\n",
-    );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual(["vendor/**", "build/**"]);
-  });
-
-  it("accepts =1 / =0 numeric truthiness", () => {
-    const filePath = writeFixture(
-      "numeric.gitattributes",
-      "vendor/** linguist-vendored=1\nlive/** linguist-vendored=0\n",
-    );
-    expect(parseGitattributesLinguistPaths(filePath)).toEqual(["vendor/**"]);
   });
 });

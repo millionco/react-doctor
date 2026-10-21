@@ -1,5 +1,5 @@
+import { resolveLang } from "./resolve-lang.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { parseSync, rawTransferSupported } from "oxc-parser";
 import type { ParserOptions } from "oxc-parser";
 import {
@@ -9,24 +9,6 @@ import {
 import { attachParentReferences } from "./attach-parent-references.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-
-const FILENAME_TO_LANG: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
-  ".ts": "ts",
-  ".tsx": "tsx",
-  ".js": "js",
-  ".jsx": "jsx",
-  ".mjs": "js",
-  ".cjs": "js",
-  ".mts": "ts",
-  ".cts": "ts",
-};
-
-// Exported so the cross-file dependency collectors parse a file with the
-// SAME language selection as the rules' own cross-file parses.
-export const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
-  const extension = path.extname(filename).toLowerCase();
-  return FILENAME_TO_LANG[extension] ?? "tsx";
-};
 
 // oxc's default transfer hands the AST over as one JSON string that
 // `JSON.parse` rebuilds on first `.program` access; raw transfer deserializes
@@ -47,6 +29,8 @@ let shouldUseRawTransfer = process.platform !== "win32" && rawTransferSupported(
 interface CrossFileParseOptions extends ParserOptions {
   readonly experimentalRawTransfer?: boolean;
 }
+
+export { resolveLang };
 
 const buildCrossFileParseOptions = (
   filename: string,

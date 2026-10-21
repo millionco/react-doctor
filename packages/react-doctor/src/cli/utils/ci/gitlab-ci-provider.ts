@@ -17,9 +17,9 @@ const getGitlabConfigPath = (projectRoot: string): string =>
   path.join(projectRoot, GITLAB_CONFIG_FILENAME);
 
 // A diff-based scope needs a base to compare against; on a merge-request
-// pipeline GitLab exposes the target branch as this variable. A whole-project
+// pipeline GitLab exposes the merge base SHA as this variable. A whole-project
 // scan ("full") ignores the base, so it's left off.
-const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
+const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"';
 
 // True when `line` RUNS React Doctor — via a runner (`npx` / `pnpm dlx` /
 // `yarn dlx` / `bunx`) or a bare `react-doctor` command. The leading `- `
@@ -111,7 +111,10 @@ const applyGate = (content: string, gate: CiGate): CiEditResult | null => {
 
   command = upsertFlag(command, "blocking", gate.blocking);
   command = upsertFlag(command, "scope", gate.scope);
-  command = command.replace(/\s*--base[ =]"\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"/, "");
+  command = command.replace(
+    /\s*--base[ =]"\$CI_MERGE_REQUEST_(DIFF_BASE_SHA|TARGET_BRANCH_NAME)"/,
+    "",
+  );
   if (gate.scope !== "full" && !/--base\b/.test(command)) command = `${command}${BASE_FLAG}`;
 
   lines[index] = `${command}${comment}`;

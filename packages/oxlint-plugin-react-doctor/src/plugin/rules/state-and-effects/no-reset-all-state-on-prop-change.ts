@@ -33,6 +33,7 @@ import {
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
+import { hasPostcommitFocusRequestConsumption } from "./utils/has-postcommit-focus-request-consumption.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
@@ -1288,6 +1289,17 @@ const findPropUsedToResetAllState = (
   // delta audit).
   const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
+
+  if (
+    stateSetterRefs.length === 1 &&
+    hasPostcommitFocusRequestConsumption(
+      useEffectNode,
+      getUseStateDecl(analysis, stateSetterRefs[0]),
+      context,
+    )
+  ) {
+    return null;
+  }
 
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
   if (

@@ -58,3 +58,47 @@ export const REF_NOTIFICATION_UNSUPPORTED_RENDER_CONTROL_TYPES: ReadonlySet<stri
   "TryStatement",
   "WithStatement",
 ]);
+
+export const FOCUS_REQUEST_TOP_LEVEL_STATEMENT_COUNT = 3;
+export const FOCUS_REQUEST_GUARDED_STATEMENT_COUNT = 5;
+export const FOCUS_REQUEST_DEPENDENCY_COUNT = 2;
+export const FOCUS_REQUEST_MAP_REFERENCE_COUNT = 3;
+export const FOCUS_REQUEST_SETTER_REFERENCE_COUNT = 2;
+export const FOCUS_REQUEST_WRITER_STATEMENT_COUNT = 2;
+export const FOCUS_REQUEST_UNSUPPORTED_GLOBALS: ReadonlySet<string> = new Set([
+  "document",
+  "process",
+  "global",
+  "Proxy",
+  "customElements",
+]);
+export const FOCUS_REQUEST_UNSUPPORTED_PROPERTIES: ReadonlySet<string> = new Set([
+  "map",
+  "filter",
+  "join",
+  "indexOf",
+  "length",
+  "valueOf",
+  "toString",
+  "toPrimitive",
+  "constructor",
+  "__proto__",
+  "prototype",
+  "__defineGetter__",
+  "__defineSetter__",
+]);
+export const FOCUS_REQUEST_UNSUPPORTED_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "onFocus",
+  "onFocusCapture",
+  "onBlur",
+  "onBlurCapture",
+  "is",
+  "dangerouslySetInnerHTML",
+  "srcDoc",
+]);
+export const FOCUS_REQUEST_ARRAY_READ_METHODS: ReadonlySet<string> = new Set([
+  "map",
+  "filter",
+  "join",
+]);
+export const FOCUS_REQUEST_PASSIVE_FETCHER_FIELDS: ReadonlySet<string> = new Set(["data", "state"]);

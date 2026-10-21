@@ -1,3 +1,4 @@
+import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -1176,7 +1177,6 @@ const isKnownReactNavigationReceiver = (
   if (isNodeOfType(receiver, "Identifier")) {
     const receiverSymbol = context.scopes.symbolFor(receiver);
     if (!receiverSymbol || visitedSymbolIds.has(receiverSymbol.id)) return false;
-    if (receiver.name === "navigation") return true;
     visitedSymbolIds.add(receiverSymbol.id);
     const receiverInitializer = receiverSymbol.initializer
       ? stripParenExpression(receiverSymbol.initializer)
@@ -1190,10 +1190,14 @@ const isKnownReactNavigationReceiver = (
     ) {
       return true;
     }
-    return Boolean(
+    if (
       receiverInitializer &&
-      isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds),
-    );
+      isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds)
+    ) {
+      return true;
+    }
+    if (!receiverInitializer && receiver.name === "navigation") return true;
+    return false;
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const receiverCallee = stripParenExpression(receiver.callee);
@@ -1226,7 +1230,8 @@ const isKnownCallableSubscriptionResult = (
   return (
     callee.property.name === "addListener" &&
     usage.node.arguments.length >= 2 &&
-    isKnownReactNavigationReceiver(callee.object, context)
+    (isKnownReactNavigationReceiver(callee.object, context) ||
+      hasClosedLocalCallableListenerRegistration(usage.node, context))
   );
 };
 

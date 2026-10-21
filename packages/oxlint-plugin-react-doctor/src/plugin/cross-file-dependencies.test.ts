@@ -942,3 +942,22 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+describe("Splide event-vector dependencies", () => {
+  it("retains provider contents and negative resolution probes on cold and warm collection", () => {
+    const providerPath = writeFixtureFile(
+      "event-list.ts",
+      'export const subscriptions = [["ready", "onReady"]];',
+    );
+    const appPath = writeFixtureFile(
+      "GalleryView.tsx",
+      'import { subscriptions } from "./event-list"; export const value = subscriptions;',
+    );
+    const cold = collectFor(appPath, ["class-component-missing-component-will-unmount-teardown"]);
+    const warm = collectFor(appPath, ["class-component-missing-component-will-unmount-teardown"]);
+    expect(cold?.contentPaths.has(providerPath)).toBe(true);
+    expect(warm?.contentPaths).toEqual(cold?.contentPaths);
+    expect(warm?.existencePaths).toEqual(cold?.existencePaths);
+    expect(cold?.existencePaths.size).toBeGreaterThan(0);
+  });
+});

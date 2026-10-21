@@ -1,3 +1,4 @@
+import { isImportedSupabaseServerClientFactory } from "./utils/is-imported-supabase-server-client-factory.js";
 import { isInheritedStringTokenReceiver } from "./utils/is-inherited-string-token-receiver.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
@@ -221,6 +222,7 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
+    isImportedSupabaseServerClientFactory(node, { filename: absoluteFilePath, scopes });
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);

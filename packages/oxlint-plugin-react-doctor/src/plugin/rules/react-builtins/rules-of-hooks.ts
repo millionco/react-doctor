@@ -17,6 +17,7 @@ import {
   getImportSourceForName,
 } from "../../utils/find-import-source-for-name.js";
 import { isImportedStaticDataGetter } from "../../utils/is-imported-static-data-getter.js";
+import { isImportedSupabaseServerClientFactory } from "../../utils/is-imported-supabase-server-client-factory.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
@@ -1055,6 +1056,7 @@ export const rulesOfHooks = defineRule({
         // the ordering rules apply to it.
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
         if (isImportedStaticDataGetter(node.callee, context)) return;
+        if (isImportedSupabaseServerClientFactory(node, context)) return;
 
         if (isProjectOwnedMdxComponentsGetter(node)) return;
 

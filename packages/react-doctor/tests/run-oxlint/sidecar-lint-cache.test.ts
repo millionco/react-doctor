@@ -1,10 +1,25 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { buildDiagnosticIdentity, runOxlint } from "@react-doctor/core";
 import { buildTestProject, setupReactProject, writeFile } from "../regressions/_helpers.js";
+
+import { createOxlintSpawnSlots } from "../../../core/src/utils/create-oxlint-spawn-slots.js";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    spawn: vi.fn((...argumentsList: Parameters<typeof actual.spawn>) => {
+      const child = actual.spawn(...argumentsList);
+      if (child.send) vi.spyOn(child, "send");
+      return child;
+    }),
+  };
+});
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-sidecar-cache-e2e-"));
 
@@ -461,6 +476,288 @@ describe("inherited string token sidecar dependencies", () => {
       expect(considered).toBeGreaterThan(0);
       expect(replayed).toBeGreaterThan(0);
       expect(replayed).toBeLessThan(considered);
+    },
+  );
+});
+
+interface SupabaseFactoryCacheCase {
+  name: string;
+  operation: "same-size" | "delete" | "shadow" | "alias" | "sdk-appear";
+  relativeWarnings: number;
+  aliasWarnings: number;
+}
+
+const SUPABASE_FACTORY_CACHE_CASES: SupabaseFactoryCacheCase[] = [
+  {
+    name: "equal-size factory to Hook and back",
+    operation: "same-size",
+    relativeWarnings: 1,
+    aliasWarnings: 1,
+  },
+  {
+    name: "provider deletion and reappearance",
+    operation: "delete",
+    relativeWarnings: 1,
+    aliasWarnings: 1,
+  },
+  {
+    name: "negative relative candidate appearance and removal",
+    operation: "shadow",
+    relativeWarnings: 1,
+    aliasWarnings: 0,
+  },
+  {
+    name: "extended alias retarget and reversal",
+    operation: "alias",
+    relativeWarnings: 0,
+    aliasWarnings: 1,
+  },
+  {
+    name: "negative SDK alias candidate appearance and removal",
+    operation: "sdk-appear",
+    relativeWarnings: 1,
+    aliasWarnings: 1,
+  },
+];
+
+const SUPABASE_FACTORY_PROVIDER = `import { createServerClient } from "@supabase/ssr";
+export default function useRequestClient(cookieStore) {
+  return createServerClient(process.env.PUBLIC_SERVICE_URL!, process.env.PUBLIC_SERVICE_KEY!, {
+    cookies: { get(name) { return cookieStore.get(name)?.value; } },
+  });
+}
+`;
+const SUPABASE_HOOK_PROVIDER = `import { useState } from "react";
+export default function useRequestClient(cookieStore) {
+  return useState(0);
+}
+`;
+const SUPABASE_PROVIDER_BYTE_LENGTH = Math.max(
+  Buffer.byteLength(SUPABASE_FACTORY_PROVIDER),
+  Buffer.byteLength(SUPABASE_HOOK_PROVIDER),
+);
+const SUPABASE_PADDED_FACTORY = SUPABASE_FACTORY_PROVIDER.padEnd(SUPABASE_PROVIDER_BYTE_LENGTH);
+const SUPABASE_PADDED_HOOK = SUPABASE_HOOK_PROVIDER.padEnd(SUPABASE_PROVIDER_BYTE_LENGTH);
+const SUPABASE_RELATIVE_CONSUMER = `import { cookies } from "next/headers";
+import useRequestClient from "./request-client";
+export const loadRequestData = async () => {
+  const cookieStore = cookies();
+  return useRequestClient(cookieStore);
+};
+`;
+const SUPABASE_ALIAS_CONSUMER = `import { cookies } from "next/headers";
+import useRequestClient from "@request/client";
+export const loadRequestData = async () => {
+  const cookieStore = cookies();
+  return useRequestClient(cookieStore);
+};
+`;
+const SUPABASE_RELATIVE_CONSUMER_PATH = "src/RelativeRequest.tsx";
+const SUPABASE_ALIAS_CONSUMER_PATH = "src/AliasRequest.tsx";
+const SUPABASE_PRESERVED_TIMESTAMP = new Date("2025-01-01T00:00:00.000Z");
+const SUPABASE_SCAN_CONCURRENCY = 1;
+
+const supabaseAliasConfig = (target: string): string =>
+  JSON.stringify({
+    compilerOptions: {
+      jsx: "preserve",
+      strict: false,
+      target: "es2022",
+      module: "esnext",
+      baseUrl: ".",
+      paths: {
+        "@request/client": [target],
+        "@supabase/ssr": ["src/local-sdk"],
+      },
+    },
+  });
+
+const scanSupabaseFactory = (
+  projectDir: string,
+  options: ScanOptions = {},
+): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({
+      rootDirectory: projectDir,
+      framework: "nextjs",
+      nextjsVersion: "14.2.35",
+      nextjsMajorVersion: 14,
+    }),
+    userConfig: { rules: { ...USER_CONFIG.rules, "react-doctor/rules-of-hooks": "warn" } },
+    nodeBinaryPath: process.execPath,
+    concurrency: SUPABASE_SCAN_CONCURRENCY,
+    spawnSlots: createOxlintSpawnSlots(SUPABASE_SCAN_CONCURRENCY),
+    adoptExistingLintConfig: false,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+
+describe("Supabase factory native worker cache dependencies", () => {
+  it.each(SUPABASE_FACTORY_CACHE_CASES)(
+    "$name keeps one real worker and complete cache parity",
+    async ({ operation, relativeWarnings, aliasWarnings }) => {
+      const projectDir = setupFixture(`supabase-factory-${operation}`);
+      const providerPath = path.join(projectDir, "src/request-client/index.ts");
+      const shadowPath = path.join(projectDir, "src/request-client.ts");
+      const localSdkPath = path.join(projectDir, "src/local-sdk.ts");
+      const configPath = path.join(projectDir, "tsconfig.request.json");
+      writeFile(
+        path.join(projectDir, "package.json"),
+        JSON.stringify({
+          name: `supabase-factory-${operation}`,
+          dependencies: {
+            react: "^19.0.0",
+            "react-dom": "^19.0.0",
+            next: "14.2.35",
+            "@supabase/ssr": "^0.0.10",
+          },
+        }),
+      );
+      writeFile(
+        path.join(projectDir, "tsconfig.json"),
+        JSON.stringify({
+          extends: "./tsconfig.request.json",
+          compilerOptions: { jsx: "preserve", strict: false, target: "es2022", module: "esnext" },
+        }),
+      );
+      writeFile(configPath, supabaseAliasConfig("src/request-client/index.ts"));
+      writeFile(providerPath, SUPABASE_PADDED_FACTORY);
+      writeFile(path.join(projectDir, "src/alternate-client.ts"), SUPABASE_PADDED_HOOK);
+      writeFile(path.join(projectDir, SUPABASE_RELATIVE_CONSUMER_PATH), SUPABASE_RELATIVE_CONSUMER);
+      writeFile(path.join(projectDir, SUPABASE_ALIAS_CONSUMER_PATH), SUPABASE_ALIAS_CONSUMER);
+      if (operation === "same-size") {
+        expect(Buffer.byteLength(SUPABASE_PADDED_FACTORY)).toBe(
+          Buffer.byteLength(SUPABASE_PADDED_HOOK),
+        );
+        fs.utimesSync(providerPath, SUPABASE_PRESERVED_TIMESTAMP, SUPABASE_PRESERVED_TIMESTAMP);
+      }
+      const nativeWorkers = () =>
+        vi.mocked(spawn).mock.results.flatMap((result) => {
+          if (
+            result.type !== "return" ||
+            !result.value.send ||
+            !vi.isMockFunction(result.value.send)
+          )
+            return [];
+          const sentToFixture = vi
+            .mocked(result.value.send)
+            .mock.calls.some(
+              ([message]) =>
+                typeof message === "object" &&
+                message !== null &&
+                "cwd" in message &&
+                message.cwd === projectDir &&
+                "type" in message &&
+                (message.type === "job" || message.type === "probes"),
+            );
+          return sentToFixture ? [result.value] : [];
+        });
+      const baselineFull = await scanSupabaseFactory(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      const before = await scanSupabaseFactory(projectDir);
+      expect(serialize(before)).toBe(serialize(baselineFull));
+      expect(ruleHitsOn(before, "rules-of-hooks", SUPABASE_RELATIVE_CONSUMER_PATH)).toHaveLength(0);
+      expect(ruleHitsOn(before, "rules-of-hooks", SUPABASE_ALIAS_CONSUMER_PATH)).toHaveLength(0);
+      expect(nativeWorkers()).toHaveLength(1);
+      const selectedWorker = nativeWorkers()[0];
+      expect(selectedWorker?.pid).toBeGreaterThan(0);
+      const workerPid = selectedWorker?.pid;
+      let warmReplayed = 0;
+      let warmConsidered = 0;
+      const warm = await scanSupabaseFactory(projectDir, {
+        onSidecarStats: (replayed, considered) => {
+          warmReplayed = replayed;
+          warmConsidered = considered;
+        },
+      });
+      expect(serialize(warm)).toBe(serialize(before));
+      expect(warmConsidered).toBeGreaterThan(0);
+      expect(warmReplayed).toBe(warmConsidered);
+      if (operation === "delete") fs.unlinkSync(providerPath);
+      else if (operation === "shadow") writeFile(shadowPath, SUPABASE_PADDED_HOOK);
+      else if (operation === "alias")
+        writeFile(configPath, supabaseAliasConfig("src/alternate-client.ts"));
+      else if (operation === "sdk-appear")
+        writeFile(localSdkPath, 'export { useState as createServerClient } from "react";\n');
+      else {
+        writeFile(providerPath, SUPABASE_PADDED_HOOK);
+        fs.utimesSync(providerPath, SUPABASE_PRESERVED_TIMESTAMP, SUPABASE_PRESERVED_TIMESTAMP);
+        expect(fs.statSync(providerPath).mtimeMs).toBe(SUPABASE_PRESERVED_TIMESTAMP.getTime());
+        expect(fs.statSync(providerPath).size).toBe(SUPABASE_PROVIDER_BYTE_LENGTH);
+      }
+      let replayed = 0;
+      let considered = 0;
+      const incremental = await scanSupabaseFactory(projectDir, {
+        onSidecarStats: (replayedFiles, consideredFiles) => {
+          replayed = replayedFiles;
+          considered = consideredFiles;
+        },
+      });
+      const full = await scanSupabaseFactory(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      expect(
+        ruleHitsOn(incremental, "rules-of-hooks", SUPABASE_RELATIVE_CONSUMER_PATH),
+      ).toHaveLength(relativeWarnings);
+      expect(ruleHitsOn(incremental, "rules-of-hooks", SUPABASE_ALIAS_CONSUMER_PATH)).toHaveLength(
+        aliasWarnings,
+      );
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(considered).toBeGreaterThan(0);
+      expect(replayed).toBeGreaterThan(0);
+      expect(replayed).toBeLessThan(considered);
+      const changedWarm = await scanSupabaseFactory(projectDir);
+      expect(serialize(changedWarm)).toBe(serialize(full));
+      if (operation === "shadow") fs.unlinkSync(shadowPath);
+      else if (operation === "sdk-appear") fs.unlinkSync(localSdkPath);
+      else if (operation === "alias")
+        writeFile(configPath, supabaseAliasConfig("src/request-client/index.ts"));
+      else {
+        writeFile(providerPath, SUPABASE_PADDED_FACTORY);
+        if (operation === "same-size")
+          fs.utimesSync(providerPath, SUPABASE_PRESERVED_TIMESTAMP, SUPABASE_PRESERVED_TIMESTAMP);
+      }
+      const reversed = await scanSupabaseFactory(projectDir);
+      const reversedFull = await scanSupabaseFactory(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      expect(ruleHitsOn(reversed, "rules-of-hooks", SUPABASE_RELATIVE_CONSUMER_PATH)).toHaveLength(
+        0,
+      );
+      expect(ruleHitsOn(reversed, "rules-of-hooks", SUPABASE_ALIAS_CONSUMER_PATH)).toHaveLength(0);
+      expect(serialize(reversed)).toBe(serialize(reversedFull));
+      expect(nativeWorkers()).toEqual([selectedWorker]);
+      expect(nativeWorkers()[0]?.pid).toBe(workerPid);
+      expect(selectedWorker?.connected).toBe(true);
+      expect(selectedWorker?.exitCode).toBeNull();
+      expect(selectedWorker?.signalCode).toBeNull();
+      const sentEpochs =
+        selectedWorker?.send &&
+        vi
+          .mocked(selectedWorker.send)
+          .mock.calls.flatMap(([message]) =>
+            typeof message === "object" &&
+            message !== null &&
+            "cwd" in message &&
+            message.cwd === projectDir &&
+            "filesystemCacheEpoch" in message &&
+            typeof message.filesystemCacheEpoch === "number"
+              ? [message.filesystemCacheEpoch]
+              : [],
+          );
+      expect(new Set(sentEpochs).size).toBeGreaterThan(1);
+      expect(fs.readFileSync(path.join(projectDir, SUPABASE_RELATIVE_CONSUMER_PATH), "utf8")).toBe(
+        SUPABASE_RELATIVE_CONSUMER,
+      );
+      expect(fs.readFileSync(path.join(projectDir, SUPABASE_ALIAS_CONSUMER_PATH), "utf8")).toBe(
+        SUPABASE_ALIAS_CONSUMER,
+      );
     },
   );
 });

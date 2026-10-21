@@ -1,8 +1,71 @@
 import { describe, expect, it } from "vite-plus/test";
+import { runOxlint } from "@react-doctor/core";
+import { buildTestProject } from "../_helpers.js";
 
 import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_helpers.js";
 
 const tempRoot = createScopedTempRoot("no-derived-state-effect");
+
+describe("editable native state with default derived-state sibling rules", () => {
+  it.each([
+    { name: "matched", inactiveAncestor: false, copyPlacement: "none", primary: 0, companion: 0 },
+    {
+      name: "unsupported renderer",
+      inactiveAncestor: true,
+      copyPlacement: "none",
+      primary: 1,
+      companion: 1,
+    },
+    {
+      name: "independent copy last",
+      inactiveAncestor: false,
+      copyPlacement: "last",
+      primary: 1,
+      companion: 1,
+    },
+    {
+      name: "independent copy first",
+      inactiveAncestor: false,
+      copyPlacement: "first",
+      primary: 1,
+      companion: 1,
+    },
+  ])("$name", async ({ name, inactiveAncestor, copyPlacement, primary, companion }) => {
+    const projectDir = setupReactProject(tempRoot, name.replaceAll(" ", "-"), {
+      files: {
+        "src/EditablePanel.tsx": `import { useEffect, useRef, useState } from "react";
+export const Panel = ({ seed, label }) => {
+  const [value, setValue] = useState(seed);
+  const [caption, setCaption] = useState(label);
+  const writeValue = (nextValue) => setValue(nextValue);
+  const latest = useRef({ writeValue });
+  latest.current = { writeValue };
+  const activate = (event) => { event.preventDefault(); writeValue(!value); };
+  useEffect(() => {
+    ${copyPlacement === "first" ? "setCaption(label);" : ""}
+    setValue(seed);
+    ${copyPlacement === "last" ? "setCaption(label);" : ""}
+  }, [seed${copyPlacement !== "none" ? ", label" : ""}]);
+  return ${inactiveAncestor ? "<noscript>" : "<section>"}<button onClick={activate}>{String(value)}{caption}</button>${inactiveAncestor ? "</noscript>" : "</section>"};
+};`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+    const primaryDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "no-derived-state",
+    );
+    expect(primaryDiagnostics).toHaveLength(primary);
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.rule === "no-derived-state-effect"),
+    ).toHaveLength(companion);
+    if (copyPlacement !== "none") {
+      expect(primaryDiagnostics[0]?.message).toContain('"caption"');
+    }
+  });
+});
 
 describe("no-derived-state-effect render-source contract", () => {
   it("stays silent for an opaque external derivation", async () => {

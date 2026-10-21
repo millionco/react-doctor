@@ -238,3 +238,22 @@ export const NON_INTERACTIVE_ELEMENTS: ReadonlySet<string> = new Set([
   "time",
   "ul",
 ]);
+
+export const VOID_DOM_ELEMENTS: ReadonlySet<string> = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "keygen",
+  "link",
+  "menuitem",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);

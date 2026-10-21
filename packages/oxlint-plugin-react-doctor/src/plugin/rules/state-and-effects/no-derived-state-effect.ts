@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
+import { hasUserInputSetterWriter } from "./utils/has-user-input-setter-writer.js";
 
 export const noDerivedStateEffect = defineRule({
   id: "no-derived-state-effect",
@@ -26,8 +27,11 @@ export const noDerivedStateEffect = defineRule({
         context.filename,
       ).find(
         (fact) =>
-          (fact.isRenderKnownCopy && !fact.resetsSourceState) ||
-          isRenderKnownSelectionRepair(analysis, node, fact),
+          ((fact.isRenderKnownCopy && !fact.resetsSourceState) ||
+            isRenderKnownSelectionRepair(analysis, node, fact)) &&
+          !hasUserInputSetterWriter(analysis, context, fact.setterReference, node, false, {
+            nativeEventWitnessOnly: true,
+          }),
       );
       if (!derivedWrite) return;
       context.report({

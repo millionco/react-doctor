@@ -1,3 +1,6 @@
+import { getFiniteStaticStringValues } from "../../utils/get-finite-static-string-values.js";
+import { hasRuntimeValueBinding } from "../../utils/has-runtime-value-binding.js";
+import { hasRawOwnSearchSlot } from "./utils/has-raw-own-search-slot.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
@@ -923,7 +926,17 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
       node: EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression">,
     ): void => {
       const regExpCallee = getRegExpCallee(node);
-      if (!regExpCallee || !context.scopes.isGlobalReference(regExpCallee)) return;
+      if (!regExpCallee) return;
+      const regExpBinding = context.scopes.symbolFor(regExpCallee);
+      if (
+        !context.scopes.isGlobalReference(regExpCallee) &&
+        !(
+          regExpBinding &&
+          (regExpBinding.kind === "ts-interface" || regExpBinding.kind === "ts-type-alias") &&
+          !hasRuntimeValueBinding(regExpBinding)
+        )
+      )
+        return;
       const firstArgument = node.arguments?.[0];
       if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return;
       if (isFullyLiteralPattern(firstArgument)) return;
@@ -947,7 +960,41 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
           !isShapeTestedByDominatingGuard(node, identifier, context.scopes) &&
           !isParameterFedOnlyMetacharacterFreeLiterals(identifier, context.scopes),
       );
-      if (!hasUnescapedDynamicLiteral) return;
+      const hasUnescapedOwnSearchSlot =
+        !hasUnescapedDynamicLiteral &&
+        hasRawOwnSearchSlot({
+          argument: firstArgument,
+          scopes: context.scopes,
+          getPossibleStrings: (node) => getFiniteStaticStringValues(node, context),
+          isSearchName: (name) =>
+            SEARCH_TERM_NAME_PATTERN.test(name) &&
+            !SANITIZED_NAME_PATTERN.test(name) &&
+            !SCREAMING_SNAKE_CONSTANT_PATTERN.test(name) &&
+            !REGEX_SOURCE_WORDS.some((word) => name.toLowerCase().includes(word)),
+          isLiteralReset: (value) => {
+            const literalValue = literalStringValue(value);
+            return literalValue !== null && !REGEXP_METACHARACTER_PATTERN.test(literalValue);
+          },
+          isRawArgument: (value) =>
+            !initializerLooksEscaped(
+              value,
+              INITIALIZER_RESOLUTION_HOPS,
+              context.scopes,
+              currentRegExpObjectIndex.regexpObjectSymbolIds,
+              currentRegExpObjectIndex.globalRegExpObjectNames,
+            ),
+          isRawParameter: (identifier, write) =>
+            !identifierResolvesToEscapedValue(
+              identifier,
+              INITIALIZER_RESOLUTION_HOPS,
+              context.scopes,
+              currentRegExpObjectIndex.regexpObjectSymbolIds,
+              currentRegExpObjectIndex.globalRegExpObjectNames,
+            ) &&
+            !isShapeTestedByDominatingGuard(write, identifier, context.scopes) &&
+            !isGuardedByTrustedRegexValidator(write, identifier, context.scopes),
+        });
+      if (!hasUnescapedDynamicLiteral && !hasUnescapedOwnSearchSlot) return;
       context.report({
         node,
         message:

@@ -5,7 +5,11 @@ import * as Redacted from "effect/Redacted";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import * as Context from "effect/Context";
 import * as Metric from "effect/Metric";
-import { AXIOM_DATASET_HEADER, AXIOM_METRICS_DATASET_HEADER } from "../src/constants.js";
+import {
+  AXIOM_DATASET_HEADER,
+  AXIOM_METRICS_DATASET_HEADER,
+  TELEMETRY_EXPORT_INTERVAL_MS,
+} from "../src/constants.js";
 import { layerAxiomMetrics, layerAxiomTraces } from "../src/observability.js";
 
 interface CapturedRequest {
@@ -162,5 +166,16 @@ describe("Axiom telemetry payloads", () => {
     await exportMetrics();
 
     expect(countPayloadsContaining("/v1/metrics", "double.count.probe")).toBe(2);
+  });
+
+  it("uses a reasonable export interval to prevent OOM at shutdown", () => {
+    // Regression test for #2169: TELEMETRY_EXPORT_INTERVAL_MS was set to 10
+    // minutes (600_000ms), which caused all telemetry to buffer in memory until
+    // shutdown. During scope close, Effect's protobuf serialization + HTTPS POST
+    // occasionally caused unbounded memory growth (4-7 GB spikes), OOM-killing
+    // the CLI and freezing user systems. Now set to 30s so longer scans export
+    // periodically instead of buffering everything until shutdown.
+    expect(TELEMETRY_EXPORT_INTERVAL_MS).toBeLessThan(60_000);
+    expect(TELEMETRY_EXPORT_INTERVAL_MS).toBeGreaterThan(10_000);
   });
 });

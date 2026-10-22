@@ -46,6 +46,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "effect-listener-cleanup-reference-mismatch",
   "anchor-target-exists",
   "exhaustive-deps",
+  "hook-use-state",
   "no-barrel-import",
   "nextjs-async-dynamic-api-not-awaited",
   "nextjs-missing-metadata",

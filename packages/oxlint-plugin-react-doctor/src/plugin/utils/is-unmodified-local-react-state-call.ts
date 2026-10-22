@@ -43,13 +43,26 @@ const PROVIDER_GLOBAL_NAMES = new Set([
 
 interface LocalReactStateCallOptions {
   readonly allowNumericDataAccess?: boolean;
+  readonly propTypesObjectValidator?: (node: EsTreeNode) => boolean;
+  readonly propTypesObjectValidatorGeneration?: number;
+}
+
+interface LocalReactStateProviderHazard {
+  readonly generation?: number;
+  readonly hasHazard: boolean;
 }
 
 interface LocalReactStateProgramFacts {
   providerCalls: Map<SymbolDescriptor, boolean>;
   hasProviderMutation: boolean | null;
   providerSymbolIds: Set<number> | null;
-  providerHazards: Map<EsTreeNode | null, Map<boolean, boolean>>;
+  providerHazards: Map<
+    EsTreeNode | null,
+    Map<
+      boolean,
+      Map<LocalReactStateCallOptions["propTypesObjectValidator"], LocalReactStateProviderHazard>
+    >
+  >;
 }
 
 const programFacts = new WeakMap<ScopeAnalysis, WeakMap<EsTreeNode, LocalReactStateProgramFacts>>();
@@ -160,8 +173,18 @@ export const isUnmodifiedLocalReactStateCall = (
     facts.providerHazards.set(allowedRequire, providerHazards);
   }
   const allowNumericDataAccess = Boolean(options.allowNumericDataAccess);
-  const cachedHazard = providerHazards.get(allowNumericDataAccess);
-  if (cachedHazard !== undefined) return !cachedHazard;
+  let hazardsByValidator = providerHazards.get(allowNumericDataAccess);
+  if (!hazardsByValidator) {
+    hazardsByValidator = new Map();
+    providerHazards.set(allowNumericDataAccess, hazardsByValidator);
+  }
+  const shouldCacheProviderHazard =
+    !options.propTypesObjectValidator || options.propTypesObjectValidatorGeneration !== undefined;
+  const cachedHazard = shouldCacheProviderHazard
+    ? hazardsByValidator.get(options.propTypesObjectValidator)
+    : undefined;
+  if (cachedHazard && cachedHazard.generation === options.propTypesObjectValidatorGeneration)
+    return !cachedHazard.hasHazard;
   const providerSymbolIds = new Set(facts.providerSymbolIds);
   if (allowedRequire) providerSymbolIds.add(symbol.id);
   let hasProviderHazard = false;
@@ -205,7 +228,8 @@ export const isUnmodifiedLocalReactStateCall = (
       isNodeOfType(child, "ImportExpression") ||
       isProvenGlobalNamespaceReference(child, "Function", scopes) ||
       isProvenGlobalNamespaceReference(child, "eval", scopes) ||
-      isProvenGlobalNamespaceReference(child, "Object", scopes) ||
+      (isProvenGlobalNamespaceReference(child, "Object", scopes) &&
+        !options.propTypesObjectValidator?.(child)) ||
       isProvenGlobalNamespaceReference(child, "Reflect", scopes)
     ) {
       hasProviderHazard = true;
@@ -300,6 +324,10 @@ export const isUnmodifiedLocalReactStateCall = (
       hasProviderHazard = true;
     }
   });
-  providerHazards.set(allowNumericDataAccess, hasProviderHazard);
+  if (shouldCacheProviderHazard)
+    hazardsByValidator.set(options.propTypesObjectValidator, {
+      generation: options.propTypesObjectValidatorGeneration,
+      hasHazard: hasProviderHazard,
+    });
   return !hasProviderHazard;
 };

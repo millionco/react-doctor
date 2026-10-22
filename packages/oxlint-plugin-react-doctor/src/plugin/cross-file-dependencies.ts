@@ -1,3 +1,5 @@
+import { analyzeControlFlow } from "./semantic/control-flow-graph.js";
+import { isPropTypesObjectValidatorReference } from "./utils/is-prop-types-object-validator-reference.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -384,6 +386,22 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   resolvePackageVersion(input.absoluteFilePath, "@xstate/react");
 };
 
+const collectPropTypesObjectValidatorDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+  getProgram,
+}) => {
+  if (!staticImports.some((entry) => entry.moduleRequest.value === "prop-types")) return;
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  const cfg = analyzeControlFlow(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "Identifier") || node.name !== "Object") return;
+    isPropTypesObjectValidatorReference(node, { scopes, cfg, filename: absoluteFilePath });
+  });
+};
+
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   sourceText,
@@ -585,6 +603,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["hook-use-state", collectPropTypesObjectValidatorDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],

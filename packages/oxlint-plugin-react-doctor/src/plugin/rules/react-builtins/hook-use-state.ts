@@ -1,3 +1,6 @@
+import { getManifestCacheGeneration } from "../../utils/read-nearest-package-manifest.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { isPropTypesObjectValidatorReference } from "../../utils/is-prop-types-object-validator-reference.js";
 import { hasRefNotificationReactCall } from "../state-and-effects/utils/has-ref-notification-react-call.js";
 import { VALUE_ONLY_STATE_TUPLE_LENGTH } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -77,11 +80,22 @@ export const hookUseState = defineRule({
   category: "Architecture",
   create: (context) => {
     const { allowDestructuredState } = resolveSettings(context.settings);
+    const hasPropTypesDefaultImport = context.scopes.rootScope.symbols.some((symbol) => {
+      if (!isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier")) return false;
+      const declaration = getImportDeclarationForSymbol(symbol);
+      return declaration?.source.value === "prop-types" && declaration.importKind !== "type";
+    });
+    const propTypesObjectValidator = hasPropTypesDefaultImport
+      ? (node: EsTreeNode): boolean => isPropTypesObjectValidatorReference(node, context)
+      : undefined;
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callExpressionNode: EsTreeNode = node;
         if (!isReactFunctionCall(callExpressionNode, "useState")) return;
+        const propTypesObjectValidatorGeneration = propTypesObjectValidator
+          ? getManifestCacheGeneration()
+          : undefined;
         const expressionRoot = findTransparentExpressionRoot(callExpressionNode);
         const expressionParent = expressionRoot.parent;
         if (isNodeOfType(expressionParent, "ReturnStatement")) return;
@@ -132,9 +146,13 @@ export const hookUseState = defineRule({
             (isUnmodifiedLocalReactStateCall(node, context.scopes) ||
               (hasRefNotificationReactCall(node, "useState", context, {
                 allowNativeWindowEventListeners: true,
+                propTypesObjectValidator,
+                propTypesObjectValidatorGeneration,
               }) &&
                 isUnmodifiedLocalReactStateCall(node, context.scopes, {
                   allowNumericDataAccess: true,
+                  propTypesObjectValidator,
+                  propTypesObjectValidatorGeneration,
                 })))
           )
             return;

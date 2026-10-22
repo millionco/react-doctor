@@ -404,11 +404,16 @@ export const hasPossibleStaticPropertyMutationOrEscape = (
   identifier: EsTreeNode,
   propertyName: string,
   scopes: ScopeAnalysis,
+  isAdditionalReadonlyReference?: (reference: EsTreeNode) => boolean,
 ): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
   if (hasPossibleStaticPropertyWrite(identifier, propertyName, scopes)) return true;
   return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
-    symbol.references.some((reference) => !isStableStaticPropertyReference(reference.identifier)),
+    symbol.references.some(
+      (reference) =>
+        !isStableStaticPropertyReference(reference.identifier) &&
+        !isAdditionalReadonlyReference?.(reference.identifier),
+    ),
   );
 };
 

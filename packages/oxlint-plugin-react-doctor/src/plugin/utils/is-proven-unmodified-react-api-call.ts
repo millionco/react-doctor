@@ -1,3 +1,4 @@
+import { isReadonlyReactNamespaceJsxReference } from "./is-readonly-react-namespace-jsx-reference.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
@@ -39,12 +40,15 @@ export const isProvenUnmodifiedReactApiCall = (
     const propertyName = getStaticPropertyName(callee);
     if (
       !propertyName ||
-      hasPossibleStaticPropertyMutationOrEscape(identifier, propertyName, scopes)
+      hasPossibleStaticPropertyMutationOrEscape(identifier, propertyName, scopes, (reference) =>
+        isReadonlyReactNamespaceJsxReference(reference, scopes),
+      )
     ) {
       return false;
     }
     return getEquivalentSymbols(identifier, scopes).every((namespaceSymbol) =>
       namespaceSymbol.references.every((reference) => {
+        if (isReadonlyReactNamespaceJsxReference(reference.identifier, scopes)) return true;
         const referenceRoot = findTransparentExpressionRoot(reference.identifier);
         const member = referenceRoot.parent;
         if (!isNodeOfType(member, "MemberExpression") || member.object !== referenceRoot) {

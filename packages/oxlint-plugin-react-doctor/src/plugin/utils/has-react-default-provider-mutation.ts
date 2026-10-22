@@ -1,3 +1,4 @@
+import { isReadonlyReactNamespaceJsxReference } from "./is-readonly-react-namespace-jsx-reference.js";
 import { REACT_PROVIDER_MUTATION_CAPABILITY_NAMES } from "../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
@@ -33,7 +34,14 @@ export const hasReactDefaultProviderMutation = (
     if (!isReactImport(symbol)) return false;
     const isNamespaceImport = isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier");
     if (!isDefaultImport(symbol) && !isNamespaceImport) return false;
-    if (hasPossibleStaticPropertyMutationOrEscape(symbol.bindingIdentifier, propertyName, scopes)) {
+    if (
+      hasPossibleStaticPropertyMutationOrEscape(
+        symbol.bindingIdentifier,
+        propertyName,
+        scopes,
+        (reference) => isReadonlyReactNamespaceJsxReference(reference, scopes),
+      )
+    ) {
       return true;
     }
     return getEquivalentSymbols(symbol.bindingIdentifier, scopes).some((alias) =>
@@ -41,6 +49,7 @@ export const hasReactDefaultProviderMutation = (
         if (reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier)) {
           return true;
         }
+        if (isReadonlyReactNamespaceJsxReference(reference.identifier, scopes)) return false;
         const referenceRoot = findTransparentExpressionRoot(reference.identifier);
         const member = referenceRoot.parent;
         if (!isNodeOfType(member, "MemberExpression") || member.object !== referenceRoot) {

@@ -6,6 +6,7 @@ import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-
 import { getPromiseChainCallForCallback } from "../../utils/collect-effect-invoked-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { hasUnguardedOwnedAbortContinuation } from "./utils/has-unguarded-owned-abort-continuation.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -1342,6 +1343,17 @@ const hasUnsafePostAwaitSetter = (
     if (doesPostSuspensionWriteReference(snapshot.counterKey, postSuspensionWrites)) {
       sequenceSnapshots.delete(snapshotKey);
     }
+  }
+  if (
+    hasUnguardedOwnedAbortContinuation({
+      asyncFunction,
+      effectCallback,
+      cleanupFunctions,
+      context,
+      isStateDispatcherCall,
+    })
+  ) {
+    return true;
   }
   const body = asyncFunction.body;
   const statements = isNodeOfType(body, "BlockStatement")

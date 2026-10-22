@@ -333,6 +333,21 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useEffect as useOwnedAbortEffect, useState as useOwnedAbortState } from "react";
+const FuzzOwnedAbortContinuation = ({ load, resourceId }) => {
+  const [resource, setResource] = useOwnedAbortState(null);
+  useOwnedAbortEffect(() => {
+    const controller = new AbortController();
+    const run = async () => {
+      const result = await load(resourceId, { signal: controller.signal });
+      setResource(result);
+    };
+    void run();
+    return () => controller.abort();
+  }, [load, resourceId]);
+  return <output>{String(resource)}</output>;
+};
+const fuzzOwnedAbortContinuationNode = <FuzzOwnedAbortContinuation load={loadOwnedAbortResource} resourceId="entry" />;`,
   `import {useEffect as useAccountEffect,useState as useAccountState} from "react"; import {UserManager,WebStorageStateStore} from "oidc-client"; const accountSettings={userStore:new WebStorageStateStore({store:window.localStorage})}; const accountManager=new UserManager(accountSettings); export const FuzzAccountUser=()=>{const [user,setUser]=useAccountState(null);useAccountEffect(()=>{accountManager.getUser().then(setUser)},[]);return <output>{user?.name}</output>};`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,

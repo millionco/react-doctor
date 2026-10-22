@@ -332,3 +332,32 @@ export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
   "__proto__",
   "prototype",
 ]);
+
+export const CONSTRUCTOR_PROP_CALLBACK_ARGUMENT_COUNT = 1;
+export const CONSTRUCTOR_PROP_CALLBACK_PARAMETER_COUNT = 1;
+export const CONSTRUCTOR_PROP_CALLBACK_BINDING_COUNT = 1;
+export const CONSTRUCTOR_PROP_CALLBACK_CLASS_NAMES: ReadonlySet<string> = new Set([
+  "Component",
+  "PureComponent",
+]);
+export const CONSTRUCTOR_PROP_CALLBACK_UNSUPPORTED_NAMES: ReadonlySet<string> = new Set([
+  "eval",
+  "Function",
+  "require",
+  "module",
+  "process",
+  "Object",
+  "Reflect",
+  "globalThis",
+  "global",
+  "window",
+  "self",
+  "arguments",
+]);
+export const CONSTRUCTOR_PROP_CALLBACK_RUNTIME_TYPESCRIPT_TYPES: ReadonlySet<string> = new Set([
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);

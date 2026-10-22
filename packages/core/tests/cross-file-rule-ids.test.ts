@@ -189,6 +189,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
+      "no-prop-callback-in-render",
       "no-reset-all-state-on-prop-change",
       "no-side-effect-in-state-updater-function",
       "no-unguarded-browser-global-at-module-scope",

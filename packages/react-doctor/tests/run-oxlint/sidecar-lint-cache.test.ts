@@ -335,3 +335,46 @@ export const Panel = ({ children }) => <Text>{children}</Text>;
     ).toBe(false);
   });
 });
+
+describe("constructor React provider cache", () => {
+  it("invalidates an unchanged constructor when a React remap target appears and disappears", async () => {
+    const projectDir = setupReactProject(tempRoot, "constructor-react-remap", {
+      files: {
+        "src/Notice.tsx": `import React from "react";
+export class Notice extends React.Component {
+  constructor(props) { super(props); const {notifyReady} = props; if (true) notifyReady(); }
+  render() { return <output/>; }
+}`,
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { jsx: "react-jsx", baseUrl: ".", paths: { react: ["./replacement"] } },
+        }),
+      },
+    });
+    fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+    const replacementPath = path.join(projectDir, "replacement.ts");
+    const scanNotice = (cacheEnabled: boolean): Promise<Diagnostic[]> =>
+      runOxlint({
+        rootDirectory: projectDir,
+        project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+        userConfig: { rules: { "react-doctor/no-prop-callback-in-render": "error" } },
+        perFileLintCacheEnabled: cacheEnabled,
+        sidecarLintCacheEnabled: cacheEnabled,
+      });
+    for (const phase of [
+      { replacement: null, expected: 1 },
+      { replacement: "export default {Component: class {}};", expected: 0 },
+      { replacement: null, expected: 1 },
+    ]) {
+      if (phase.replacement === null) fs.rmSync(replacementPath, { force: true });
+      else writeFile(replacementPath, phase.replacement);
+      const incremental = await scanNotice(true);
+      const full = await scanNotice(false);
+      const warm = await scanNotice(true);
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(serialize(warm)).toBe(serialize(full));
+      expect(ruleHitsOn(full, "no-prop-callback-in-render", "src/Notice.tsx")).toHaveLength(
+        phase.expected,
+      );
+    }
+  });
+});

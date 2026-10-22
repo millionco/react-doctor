@@ -573,6 +573,14 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectConstructorPropCallbackDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  if (staticImports.some((entry) => entry.moduleRequest.value === "react"))
+    resolveModulePath(absoluteFilePath, "react");
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -603,6 +611,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["no-prop-callback-in-render", collectConstructorPropCallbackDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],

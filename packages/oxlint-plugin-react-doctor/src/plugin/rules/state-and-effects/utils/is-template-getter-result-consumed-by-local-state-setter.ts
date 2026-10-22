@@ -77,6 +77,9 @@ const isDataRead = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
 const isGetterCondition = (expression: EsTreeNode, proof: GetterProofContext): boolean => {
   const condition = stripParenExpression(expression);
   if (isDataRead(condition, proof.scopes)) return true;
+  if (isNodeOfType(condition, "LogicalExpression") && condition.operator === "&&") {
+    return isGetterCondition(condition.left, proof) && isGetterCondition(condition.right, proof);
+  }
   if (isNodeOfType(condition, "UnaryExpression")) {
     return (
       (condition.operator === "typeof" || condition.operator === "!") &&
@@ -224,7 +227,9 @@ export const isTemplateGetterResultConsumedByLocalStateSetter = (
     scopes.symbolFor(sink.callee)?.id !== pair.setterSymbol.id ||
     !isReadonlySymbol(pair.setterSymbol) ||
     !pair.declarator.init ||
-    !isUnmodifiedLocalReactStateCall(pair.declarator.init, scopes)
+    !isUnmodifiedLocalReactStateCall(pair.declarator.init, scopes, {
+      allowFiniteCharacterMapLookup: true,
+    })
   )
     return false;
   const stateInitializer = stripParenExpression(pair.declarator.init);

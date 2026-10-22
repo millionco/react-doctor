@@ -332,3 +332,36 @@ export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
   "__proto__",
   "prototype",
 ]);
+
+export const FINITE_CHARACTER_MAP_SINGLE_ARGUMENT_COUNT = 1;
+export const FINITE_CHARACTER_MAP_REPLACE_ARGUMENT_COUNT = 2;
+export const FINITE_CHARACTER_MAP_MINIMUM_PATTERN_LENGTH = 3;
+export const FINITE_CHARACTER_MAP_ASCII_CODE_UNIT_LIMIT = 128;
+export const FINITE_CHARACTER_MAP_UNSUPPORTED_CLASS_CHARACTERS = new Set([
+  "[",
+  "]",
+  "\\",
+  "-",
+  "^",
+  "\r",
+  "\n",
+  "\u2028",
+  "\u2029",
+]);
+export const FINITE_CHARACTER_MAP_CAPABILITY_PROPERTIES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+]);
+export const FINITE_CHARACTER_MAP_COERCION_PROPERTIES = new Set(["toString", "valueOf"]);
+export const FINITE_CHARACTER_MAP_GLOBAL_NAMES = new Set(["String", "RegExp", "Symbol"]);
+
+export const FINITE_CHARACTER_MAP_RUNTIME_TYPESCRIPT_NODES = new Set([
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);

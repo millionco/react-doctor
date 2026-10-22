@@ -1,3 +1,4 @@
+import { isFiniteCharacterMapLookup } from "./is-finite-character-map-lookup.js";
 import { CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT } from "../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -43,13 +44,14 @@ const PROVIDER_GLOBAL_NAMES = new Set([
 
 interface LocalReactStateCallOptions {
   readonly allowNumericDataAccess?: boolean;
+  readonly allowFiniteCharacterMapLookup?: boolean;
 }
 
 interface LocalReactStateProgramFacts {
   providerCalls: Map<SymbolDescriptor, boolean>;
   hasProviderMutation: boolean | null;
   providerSymbolIds: Set<number> | null;
-  providerHazards: Map<EsTreeNode | null, Map<boolean, boolean>>;
+  providerHazards: Map<EsTreeNode | null, Map<boolean, Map<boolean, boolean>>>;
 }
 
 const programFacts = new WeakMap<ScopeAnalysis, WeakMap<EsTreeNode, LocalReactStateProgramFacts>>();
@@ -160,7 +162,13 @@ export const isUnmodifiedLocalReactStateCall = (
     facts.providerHazards.set(allowedRequire, providerHazards);
   }
   const allowNumericDataAccess = Boolean(options.allowNumericDataAccess);
-  const cachedHazard = providerHazards.get(allowNumericDataAccess);
+  let finiteCharacterMapHazards = providerHazards.get(allowNumericDataAccess);
+  if (!finiteCharacterMapHazards) {
+    finiteCharacterMapHazards = new Map();
+    providerHazards.set(allowNumericDataAccess, finiteCharacterMapHazards);
+  }
+  const allowFiniteCharacterMapLookup = Boolean(options.allowFiniteCharacterMapLookup);
+  const cachedHazard = finiteCharacterMapHazards.get(allowFiniteCharacterMapLookup);
   if (cachedHazard !== undefined) return !cachedHazard;
   const providerSymbolIds = new Set(facts.providerSymbolIds);
   if (allowedRequire) providerSymbolIds.add(symbol.id);
@@ -238,7 +246,8 @@ export const isUnmodifiedLocalReactStateCall = (
         allowConstTemplateLiteral: true,
         stringifyNonStringLiterals: true,
       }) === null &&
-      !(options.allowNumericDataAccess && isNumericDataMemberAccess(child, scopes))
+      !(options.allowNumericDataAccess && isNumericDataMemberAccess(child, scopes)) &&
+      !(options.allowFiniteCharacterMapLookup && isFiniteCharacterMapLookup(child, scopes))
     ) {
       hasProviderHazard = true;
     }
@@ -300,6 +309,6 @@ export const isUnmodifiedLocalReactStateCall = (
       hasProviderHazard = true;
     }
   });
-  providerHazards.set(allowNumericDataAccess, hasProviderHazard);
+  finiteCharacterMapHazards.set(allowFiniteCharacterMapLookup, hasProviderHazard);
   return !hasProviderHazard;
 };

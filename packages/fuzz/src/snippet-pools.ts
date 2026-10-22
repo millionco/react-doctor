@@ -10,6 +10,14 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const FuzzFiniteCharacterMapStatusGetter = ({ getLabel }) => {
+ const translateStatus = value => String(value).replace(/[ab]/g, character => ({"a":"alpha","b":"beta"})[character]);
+ const [selection, setSelection] = useState("a");
+ const [status, setStatus] = useState("");
+ const readLabel = useCallback(option => option && typeof option === "object" && "label" in option ? getLabel(option) : option, [getLabel]);
+ useEffect(() => { setStatus(\`\${readLabel(selection)} selected\`); getLabel(selection); }, [getLabel,readLabel,selection]);
+ return <button title={translateStatus(status)} onClick={() => setSelection("b")}>{status}</button>;
+}; const fuzzFiniteCharacterMapStatusNode = <FuzzFiniteCharacterMapStatusGetter getLabel={handle} />;`,
   `const FuzzConsumedStatusGetter = ({ getLabel }) => { const [selection, setSelection] = useState("start"); const [status, setStatus] = useState(""); const readLabel = useCallback((option) => getLabel(option), [getLabel]); useEffect(() => { setStatus(\`\${readLabel(selection)} selected\`); getLabel(selection); }, [getLabel, readLabel, selection]); return <button onClick={() => setSelection("next")}>{status}</button>; }; const fuzzConsumedStatusGetterNode = <FuzzConsumedStatusGetter getLabel={handle} />;`,
   `const FuzzRefNotice = () => {
  interface useCallback {}

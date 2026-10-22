@@ -19,14 +19,13 @@ export const noDerivedStateEffect = defineRule({
       if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
-      const derivedWrite = collectEffectStateWriteFacts(
-        analysis,
-        context,
-        node,
-        context.filename,
-      ).find(
+      const derivedWrite = collectEffectStateWriteFacts(analysis, context, node, context.filename, {
+        includeConsumedStateAccumulator: true,
+      }).find(
         (fact) =>
-          (fact.isRenderKnownCopy && !fact.resetsSourceState) ||
+          (fact.isRenderKnownCopy &&
+            !fact.resetsSourceState &&
+            !fact.hasConsumedStateAccumulator) ||
           isRenderKnownSelectionRepair(analysis, node, fact),
       );
       if (!derivedWrite) return;

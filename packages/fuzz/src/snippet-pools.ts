@@ -10,6 +10,11 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const FuzzFrameZeroDivisorTransition = ({ amount }: { amount: number }) => { const [total, setTotal] = useState(0); const advance = (delta: number, divisor: number) => { const nextTotal = Math.ceil(total + delta / divisor); setTotal(nextTotal); }; useEffect(() => { advance(amount, 0); }); return <output>{total}</output>; }; const fuzzFrameZeroDivisorTransitionNode = <FuzzFrameZeroDivisorTransition amount={value} />;`,
+  `const FuzzZeroDivisorTransition = ({ amount }: { amount: number }) => { const [total, setTotal] = useState(0); const advance = (delta: number) => { const nextTotal = Math.ceil(total + delta / 0); setTotal(nextTotal); }; useEffect(() => { advance(amount); }); return <output>{total}</output>; }; const fuzzZeroDivisorTransitionNode = <FuzzZeroDivisorTransition amount={value} />;`,
+  `React.useEffect = () => undefined; const FuzzChangedEffectDriver = ({ amount }: { amount: number }) => { const [total, setTotal] = useState(0); const advance = (delta: number) => { const nextTotal = Math.ceil(total + delta); setTotal(nextTotal); }; useEffect(() => { advance(amount); }); return <output>{total}</output>; }; const fuzzChangedEffectDriverNode = <FuzzChangedEffectDriver amount={value} />;`,
+  `const fuzzMathNamespaceKey = "Math"; globalThis[fuzzMathNamespaceKey].ceil = () => 3; const FuzzResolvedScalarReplacement = ({ amount }: { amount: number }) => { const [total, setTotal] = useState(0); const advance = (delta: number) => { const nextTotal = Math.ceil(total + delta); setTotal(nextTotal); }; useEffect(() => { advance(amount); }); return <output>{total}</output>; }; const fuzzResolvedScalarReplacementNode = <FuzzResolvedScalarReplacement amount={value} />;`,
+  `const FuzzScalarTransition = ({ amount }: { amount: number }) => { const [total, setTotal] = useState(0); const advance = (delta: number) => { const nextTotal = Math.ceil(total + delta); setTotal(nextTotal); }; useEffect(() => { advance(amount); }); return <output>{total}</output>; }; const fuzzScalarTransitionNode = <FuzzScalarTransition amount={value} />;`,
   `const FuzzRefNotice = () => {
  interface useCallback {}
  const [phase,setPhase]=useState("idle");

@@ -1,6 +1,7 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
+import { isClosedNativeMediaRefSnapshot } from "./is-closed-native-media-ref-snapshot.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getEquivalentSymbols } from "../../../utils/get-equivalent-symbols.js";
@@ -282,6 +283,8 @@ export const createNativeMediaCapabilityPredicate = ({
   ): EsTreeNode | null => {
     const node = stripParenExpression(expression);
     if (isReceiver && isFreshMediaElement(node, context)) return node;
+    if (isReceiver && isClosedNativeMediaRefSnapshot({ expression: node, effectFunction, context }))
+      return node;
     if (!isReceiver && isOrdinaryMemberCall(node, "canPlayType")) {
       if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
         return null;
@@ -344,6 +347,40 @@ export const createNativeMediaCapabilityPredicate = ({
     }
     return Boolean(comparisonValue(node) || resolveValue(node, false));
   };
+  const matchesClosedRefConjunction = (expression: EsTreeNode): boolean => {
+    const node = stripParenExpression(expression);
+    const root = findTransparentExpressionRoot(expression);
+    const parent = root.parent;
+    if (
+      !isNodeOfType(parent, "IfStatement") ||
+      parent.test !== root ||
+      !isNodeOfType(node, "LogicalExpression") ||
+      node.operator !== "&&"
+    )
+      return false;
+    const guard = stripParenExpression(node.left);
+    if (!isNodeOfType(guard, "Identifier")) return false;
+    const guardSymbol = context.scopes.symbolFor(guard);
+    const capability = comparisonValue(node.right);
+    if (
+      !guardSymbol ||
+      !isReadonlyBinding(guardSymbol, context) ||
+      !isNodeOfType(capability, "CallExpression") ||
+      !isNodeOfType(capability.callee, "MemberExpression")
+    )
+      return false;
+    const argument = capability.arguments[FIRST_ARGUMENT_INDEX];
+    const value = argument ? stripParenExpression(argument) : null;
+    return (
+      isNodeOfType(value, "Identifier") &&
+      context.scopes.symbolFor(value) === guardSymbol &&
+      isClosedNativeMediaRefSnapshot({
+        expression: capability.callee.object,
+        effectFunction,
+        context,
+      })
+    );
+  };
   return (expression) => {
     const root = findTransparentExpressionRoot(expression);
     const parent = root.parent;
@@ -352,7 +389,8 @@ export const createNativeMediaCapabilityPredicate = ({
         isNodeOfType(parent, "LogicalExpression") &&
         parent.operator === "??" &&
         parent.left === root
-      ) && matchesPredicate(expression)
+      ) &&
+      (matchesPredicate(expression) || matchesClosedRefConjunction(expression))
     );
   };
 };

@@ -17,6 +17,34 @@ export const NATIVE_MEDIA_PROVIDER_NAMES: ReadonlySet<string> = new Set([
   "HTMLAudioElement",
 ]);
 
+export const NATIVE_MEDIA_REF_LISTENER_ARGUMENT_COUNT = 2;
+export const NATIVE_MEDIA_REF_EVENT_NAMES: ReadonlySet<string> = new Set(["loadeddata", "error"]);
+export const NATIVE_MEDIA_REF_REACT_APIS: ReadonlySet<string> = new Set([
+  "useRef",
+  "useEffect",
+  "useState",
+]);
+export const NATIVE_MEDIA_REF_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "document",
+  "event",
+  "eval",
+  "Function",
+  "Object",
+  "Reflect",
+  "require",
+  "module",
+  "process",
+  "window",
+  "self",
+  "global",
+  "globalThis",
+]);
+export const NATIVE_MEDIA_REF_PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+]);
+
 export const NATIVE_MEDIA_SMALL_COMPONENT_COUNT = 16;
 export const NATIVE_MEDIA_LARGE_COMPONENT_COUNT = 64;
 export const NATIVE_MEDIA_MAXIMUM_PROVIDER_LOOKUP_GROWTH_MULTIPLIER = 6;

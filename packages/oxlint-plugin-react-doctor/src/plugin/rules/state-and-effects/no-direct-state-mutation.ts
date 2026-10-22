@@ -11,6 +11,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNativeDomPointerEventsStateWrite } from "./utils/is-native-dom-pointer-events-state-write.js";
 
 // Global producers whose result is always plain React-owned data — never an
 // opaque third-party instance: `Array(5)`, `structuredClone(defaults)`.
@@ -266,6 +267,8 @@ export const noDirectStateMutation = defineRule({
             parent.left === expressionRoot &&
             isNodeOfType(expressionRoot, "MemberExpression")
           ) {
+            if (isNativeDomPointerEventsStateWrite({ assignment: parent, binding, context }))
+              continue;
             context.report({
               node: parent,
               message: `React can't tell you changed "${binding.valueName}" in place, so this update can be skipped or lost.`,

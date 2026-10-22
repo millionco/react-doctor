@@ -170,6 +170,7 @@ export const EFFECT_SNIPPET_POOL = [
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `const FuzzNativeDomHandle = () => { const [fuzzHost, setFuzzHost] = useState(null); useEffect(() => { const fuzzLookup = document.getElementById("fuzz-host"); if (fuzzLookup) setFuzzHost(fuzzLookup); }, []); useEffect(() => { if (fuzzHost) fuzzHost.style.pointerEvents = "none"; }, [fuzzHost]); return null; };`,
   `{ const [fuzzRetainedMarker] = useState(value); const [fuzzRetainedReader] = useState(() => () => fuzzRetainedMarker); const fuzzRetainedReaderResult = fuzzRetainedReader(); }`,
   `const fuzzValtioState = fuzzValtioProxy({ count: 0 }); const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const handleFuzzValtioRead = () => console.log(fuzzValtioSnapshot.count); const fuzzValtioButton = <button onClick={handleFuzzValtioRead}>Read</button>;`,
   `const FuzzArrayConsumer = memo(() => null); const FuzzArrayHost = () => <FuzzArrayConsumer payload={[value]} />;`,

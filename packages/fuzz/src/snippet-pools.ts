@@ -170,6 +170,9 @@ export const EFFECT_SNIPPET_POOL = [
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `const FuzzCancelledMemoReturn = () => { const [fuzzMounted, setFuzzMounted] = useState(false); useEffect(() => { setFuzzMounted(true); }, []); return useMemo(() => { if (!fuzzMounted) { do { try { return null; } finally { break; } } while (false); } return document.title; }, [fuzzMounted]); }; const fuzzCancelledMemoReturnNode = <FuzzCancelledMemoReturn />;`,
+  `const FuzzMountGatedMemoTitle = () => { const [fuzzMounted, setFuzzMounted] = useState(false); useEffect(() => { setFuzzMounted(true); }, []); const fuzzTitle = useMemo(() => { if (!fuzzMounted) return null; return document.title; }, [fuzzMounted]); return <output>{fuzzTitle}</output>; }; const fuzzMountGatedMemoTitleNode = <FuzzMountGatedMemoTitle />;`,
+  `const FuzzInitiallyClientMemoTitle = () => { const [fuzzMounted, setFuzzMounted] = useState(true); useEffect(() => { setFuzzMounted(true); }, []); const fuzzTitle = useMemo(() => { if (!fuzzMounted) return null; return document.title; }, [fuzzMounted]); return <output>{fuzzTitle}</output>; }; const fuzzInitiallyClientMemoTitleNode = <FuzzInitiallyClientMemoTitle />;`,
   `{ const [fuzzRetainedMarker] = useState(value); const [fuzzRetainedReader] = useState(() => () => fuzzRetainedMarker); const fuzzRetainedReaderResult = fuzzRetainedReader(); }`,
   `const fuzzValtioState = fuzzValtioProxy({ count: 0 }); const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const handleFuzzValtioRead = () => console.log(fuzzValtioSnapshot.count); const fuzzValtioButton = <button onClick={handleFuzzValtioRead}>Read</button>;`,
   `const FuzzArrayConsumer = memo(() => null); const FuzzArrayHost = () => <FuzzArrayConsumer payload={[value]} />;`,

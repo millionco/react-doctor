@@ -10,6 +10,7 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const FuzzNativeMediaCapability = ({ selectedKey }) => { const [acceptedKey, setAcceptedKey] = useState(null); const [ready, setReady] = useState(false); useEffect(() => { const probe = document.createElement("video"); const support = probe.canPlayType("video/example"); if (support === "maybe" || support === "probably") { setAcceptedKey(selectedKey); setReady(true); } }, [selectedKey]); return <output>{ready ? acceptedKey : null}</output>; }; const FuzzPureMediaMirror = ({ selectedKey, enabled }) => { const [acceptedKey, setAcceptedKey] = useState(null); const [ready, setReady] = useState(false); useEffect(() => { if (enabled) { setAcceptedKey(selectedKey); setReady(true); } }, [selectedKey, enabled]); return <output>{ready ? acceptedKey : null}</output>; }; const fuzzNativeMediaCapabilityNode = <FuzzNativeMediaCapability selectedKey={String(value)} />; const fuzzPureMediaMirrorNode = <FuzzPureMediaMirror selectedKey={String(value)} enabled={condition} />;`,
   `const FuzzRefNotice = () => {
  interface useCallback {}
  const [phase,setPhase]=useState("idle");

@@ -34,6 +34,7 @@ import {
 import { hasReturnedStateSetter } from "./has-returned-state-setter.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
+import { createNativeMediaCapabilityPredicate } from "./create-native-media-capability-predicate.js";
 
 export interface EffectExecutionFrame {
   functionNode: EsTreeNode;
@@ -2019,12 +2020,10 @@ const functionalUpdaterReadsCurrentState = (
   return readsCurrentState;
 };
 
-const isNodeControlledByStateInFrame = (
-  analysis: ProgramAnalysis,
-  context: RuleContext,
+const isNodeControlledByPredicateInFrame = (
   frame: EffectExecutionFrame,
   executionNode: EsTreeNode,
-  stateDeclarator: EsTreeNode,
+  matchesPredicate: (expression: EsTreeNode) => boolean,
 ): boolean => {
   let child: EsTreeNode = executionNode;
   let cursor = child.parent;
@@ -2033,13 +2032,7 @@ const isNodeControlledByStateInFrame = (
       isNodeOfType(cursor, "IfStatement") &&
       (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
         Boolean(cursor.alternate && isAstDescendant(child, cursor.alternate as EsTreeNode))) &&
-      expressionReadsStateDeclarator(
-        analysis,
-        context,
-        frame,
-        cursor.test as EsTreeNode,
-        stateDeclarator,
-      )
+      matchesPredicate(cursor.test as EsTreeNode)
     ) {
       return true;
     }
@@ -2047,26 +2040,14 @@ const isNodeControlledByStateInFrame = (
       isNodeOfType(cursor, "ConditionalExpression") &&
       (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
         isAstDescendant(child, cursor.alternate as EsTreeNode)) &&
-      expressionReadsStateDeclarator(
-        analysis,
-        context,
-        frame,
-        cursor.test as EsTreeNode,
-        stateDeclarator,
-      )
+      matchesPredicate(cursor.test as EsTreeNode)
     ) {
       return true;
     }
     if (
       isNodeOfType(cursor, "LogicalExpression") &&
       isAstDescendant(child, cursor.right as EsTreeNode) &&
-      expressionReadsStateDeclarator(
-        analysis,
-        context,
-        frame,
-        cursor.left as EsTreeNode,
-        stateDeclarator,
-      )
+      matchesPredicate(cursor.left as EsTreeNode)
     ) {
       return true;
     }
@@ -2083,13 +2064,7 @@ const isNodeControlledByStateInFrame = (
           precedingStatement &&
           isNodeOfType(precedingStatement, "IfStatement") &&
           isEarlyExitIfStatement(precedingStatement) &&
-          expressionReadsStateDeclarator(
-            analysis,
-            context,
-            frame,
-            precedingStatement.test as EsTreeNode,
-            stateDeclarator,
-          )
+          matchesPredicate(precedingStatement.test as EsTreeNode)
         ) {
           return true;
         }
@@ -2100,6 +2075,17 @@ const isNodeControlledByStateInFrame = (
   }
   return false;
 };
+
+const isNodeControlledByStateInFrame = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  frame: EffectExecutionFrame,
+  executionNode: EsTreeNode,
+  stateDeclarator: EsTreeNode,
+): boolean =>
+  isNodeControlledByPredicateInFrame(frame, executionNode, (expression) =>
+    expressionReadsStateDeclarator(analysis, context, frame, expression, stateDeclarator),
+  );
 
 const isWriteControlledByState = (
   analysis: ProgramAnalysis,
@@ -2222,6 +2208,21 @@ export const collectEffectStateWriteFacts = (
           remainingValueCallFrames,
         );
       }
+      let readsExternalControl = false;
+      if (frame === frames[0] && !callExpression.optional && !isFunctionLike(writtenValue)) {
+        const mediaPredicate = createNativeMediaCapabilityPredicate({
+          context,
+          effectNode,
+          effectFunction: frame.functionNode,
+          stateDeclarator,
+        });
+        if (
+          mediaPredicate &&
+          isNodeControlledByPredicateInFrame(frame, callExpression, mediaPredicate)
+        ) {
+          readsExternalControl = true;
+        }
+      }
       const sourceReferences = [...valueEvidence.sourceReferences].filter(
         (sourceReference) => getUseStateDecl(analysis, sourceReference) !== stateDeclarator,
       );
@@ -2248,6 +2249,7 @@ export const collectEffectStateWriteFacts = (
         !valueEvidence.hasUnknownSource &&
         !valueEvidence.hasDeferredIntroducedValue &&
         !valueEvidence.readsExternalValue &&
+        !readsExternalControl &&
         !hasIndependentWriter;
       facts.push({
         callExpression,
@@ -2262,7 +2264,8 @@ export const collectEffectStateWriteFacts = (
           !frame.isDeferred &&
           !valueEvidence.hasUnknownSource &&
           !valueEvidence.hasDeferredIntroducedValue &&
-          !valueEvidence.readsExternalValue,
+          !valueEvidence.readsExternalValue &&
+          !readsExternalControl,
         matchesStateInitializer: doesMatchStateInitializer,
         readsWrittenState: isWriteControlledByState(
           analysis,

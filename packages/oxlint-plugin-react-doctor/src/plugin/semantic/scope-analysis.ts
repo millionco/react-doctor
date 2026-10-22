@@ -4,6 +4,7 @@ import { getValuePositionChildKeys } from "../utils/get-value-position-child-key
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
+import { isErasedTypeScriptBinding } from "../utils/is-erased-typescript-binding.js";
 
 // Scope analyzer — per-file walker building a scope tree, symbol
 // table, and identifier reference resolution. Mirrors the subset of
@@ -856,23 +857,34 @@ const walkValuePositionChildren = (node: EsTreeNode, state: BuilderState): void 
   }
 };
 
-// Resolution pass: for each scope's references, walk up the scope
-// chain to find the first scope that binds the same name. Set
-// `resolvedSymbol` and append to the symbol's `references` list.
+// Resolve runtime values first, retaining the nearest erased binding
+// when the scope chain contains no runtime value with that name.
 const resolveReferences = (rootScope: ScopeDescriptor): void => {
+  const runtimeSymbolsByScope = new Map<ScopeDescriptor, Map<string, SymbolDescriptor>>();
   const visitScope = (scope: ScopeDescriptor): void => {
+    const runtimeSymbols = new Map<string, SymbolDescriptor>();
+    for (const symbol of scope.symbols) {
+      if (!isErasedTypeScriptBinding(symbol)) runtimeSymbols.set(symbol.name, symbol);
+    }
+    runtimeSymbolsByScope.set(scope, runtimeSymbols);
     for (const reference of scope.references) {
       const name = (reference.identifier as { name?: string }).name;
       if (typeof name !== "string") continue;
       let lookup: ScopeDescriptor | null = scope;
+      let nearestErasedSymbol: SymbolDescriptor | null = null;
       while (lookup) {
-        const found = lookup.symbolsByName.get(name);
+        const found = runtimeSymbolsByScope.get(lookup)?.get(name);
         if (found) {
           reference.resolvedSymbol = found;
           found.references.push(reference);
           break;
         }
+        nearestErasedSymbol ??= lookup.symbolsByName.get(name) ?? null;
         lookup = lookup.parent;
+      }
+      if (!reference.resolvedSymbol && nearestErasedSymbol) {
+        reference.resolvedSymbol = nearestErasedSymbol;
+        nearestErasedSymbol.references.push(reference);
       }
     }
     for (const child of scope.children) visitScope(child);

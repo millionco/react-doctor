@@ -1,4 +1,4 @@
-import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import type { UseStateBinding } from "./collect-use-state-bindings.js";
@@ -10,6 +10,8 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { isBindingAssignmentTarget } from "../../../utils/is-binding-assignment-target.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
+import { hasRuntimeValueBinding } from "../../../utils/has-runtime-value-binding.js";
+import { isTypeScriptTypePosition } from "../../../utils/is-typescript-type-position.js";
 import { isReactApiCall } from "../../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
@@ -87,6 +89,68 @@ const ARRAY_PROTOCOL_PROPERTY_NAMES = new Set([
   "with",
 ]);
 
+const ABSENT_KEY_REFLECTION_METHOD_NAMES = new Set([
+  "defineProperty",
+  "defineProperties",
+  "getPrototypeOf",
+  "setPrototypeOf",
+  "getOwnPropertyDescriptor",
+  "getOwnPropertyDescriptors",
+  "create",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+const ABSENT_KEY_PATTERN_PROPERTY_NAMES = new Set([
+  ...INTRINSIC_GLOBAL_NAMES,
+  ...INTRINSIC_PROPERTY_NAMES,
+  ...ABSENT_KEY_REFLECTION_METHOD_NAMES,
+  "require",
+]);
+const ABSENT_KEY_FORBIDDEN_PROPERTY_NAMES = new Set([
+  ...INTRINSIC_PROPERTY_NAMES,
+  ...ARRAY_PROTOCOL_PROPERTY_NAMES,
+  ...ABSENT_KEY_REFLECTION_METHOD_NAMES,
+  "isPrototypeOf",
+  "hasOwnProperty",
+  "propertyIsEnumerable",
+  "then",
+  "toJSON",
+]);
+const absentKeyProviderAccessCache = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasVisibleAbsentKeyProviderAccess = (context: RuleContext): boolean => {
+  const cached = absentKeyProviderAccessCache.get(context.scopes);
+  if (cached !== undefined) return cached;
+  let hasAccess = false;
+  walkAst(context.scopes.rootScope.node, (node) => {
+    if (
+      hasAccess ||
+      isNodeOfType(node, "TSInterfaceDeclaration") ||
+      isNodeOfType(node, "TSTypeAliasDeclaration")
+    )
+      return false;
+    if (isTypeScriptTypePosition(node)) return;
+    if (isNodeOfType(node, "TSParameterProperty")) {
+      hasAccess = true;
+    } else if (isNodeOfType(node, "ObjectPattern")) {
+      hasAccess = node.properties.some((property) => {
+        if (!isNodeOfType(property, "Property") || property.computed) return true;
+        const propertyName = getStaticPropertyKeyName(property);
+        return propertyName === null || ABSENT_KEY_PATTERN_PROPERTY_NAMES.has(propertyName);
+      });
+    } else if (
+      isNodeOfType(node, "MemberExpression") &&
+      ABSENT_KEY_REFLECTION_METHOD_NAMES.has(getStaticPropertyName(node) ?? "")
+    ) {
+      hasAccess = true;
+    }
+  });
+  absentKeyProviderAccessCache.set(context.scopes, hasAccess);
+  return hasAccess;
+};
+
 const isNumericLoopIndex = (node: EsTreeNode, context: RuleContext): boolean => {
   const symbol = context.scopes.symbolFor(node);
   if (
@@ -113,10 +177,18 @@ const hasVisibleIntrinsicAccess = (proof: ClosedRecordArray, context: RuleContex
     if (hasAccess) return false;
     if (
       isNodeOfType(node, "Identifier") &&
-      INTRINSIC_GLOBAL_NAMES.has(node.name) &&
-      context.scopes.isGlobalReference(node)
-    )
-      hasAccess = true;
+      !isTypeScriptTypePosition(node) &&
+      INTRINSIC_GLOBAL_NAMES.has(node.name)
+    ) {
+      const symbol = context.scopes.symbolFor(node);
+      if (
+        context.scopes.isGlobalReference(node) ||
+        (symbol &&
+          (symbol.kind === "ts-interface" || symbol.kind === "ts-type-alias") &&
+          !hasRuntimeValueBinding(symbol))
+      )
+        hasAccess = true;
+    }
     if (
       isNodeOfType(node, "MemberExpression") &&
       (INTRINSIC_PROPERTY_NAMES.has(getStaticPropertyName(node) ?? "") ||
@@ -454,7 +526,7 @@ const isMapIndex = (
   const call = callback.parent;
   if (!isNodeOfType(call, "CallExpression") || !isNodeOfType(call.callee, "MemberExpression"))
     return false;
-  const receiver = call.callee.object;
+  const receiver = stripParenExpression(call.callee.object);
   return (
     isNodeOfType(receiver, "Identifier") &&
     context.scopes.symbolFor(receiver) === proof.state &&
@@ -513,9 +585,11 @@ export const collectShallowCopyStateRecordWrites = (
     return [];
   const recordKeys = proof.records.map(recordDataKeys);
   const commonKeys = new Set(recordKeys[0]);
+  const allRecordKeys = new Set(commonKeys);
   for (const keys of recordKeys) {
     if (!keys) return [];
     for (const key of commonKeys) if (!keys.has(key)) commonKeys.delete(key);
+    for (const key of keys) allRecordKeys.add(key);
   }
   const writes: EsTreeNode[] = [];
   for (const [container, kind] of proof.containers) {
@@ -531,10 +605,14 @@ export const collectShallowCopyStateRecordWrites = (
       )
         continue;
       const field = element.parent;
+      if (!isNodeOfType(field, "MemberExpression") || field.object !== element) continue;
+      const fieldName = getStaticPropertyName(field);
       if (
-        !isNodeOfType(field, "MemberExpression") ||
-        field.object !== element ||
-        !commonKeys.has(getStaticPropertyName(field) ?? "")
+        fieldName === null ||
+        (!commonKeys.has(fieldName) &&
+          (ABSENT_KEY_FORBIDDEN_PROPERTY_NAMES.has(fieldName) ||
+            allRecordKeys.has(fieldName) ||
+            hasVisibleAbsentKeyProviderAccess(context)))
       )
         continue;
       const assignment = field.parent;

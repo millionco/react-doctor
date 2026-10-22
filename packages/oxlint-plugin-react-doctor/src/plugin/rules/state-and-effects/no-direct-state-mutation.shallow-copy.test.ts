@@ -34,8 +34,14 @@ const diagnosticsFor = (source: string) => {
 };
 
 describe("no-direct-state-mutation shallow copies", () => {
-  it("reports the retained own records but leaves a new field unsupported", () => {
-    expect(diagnosticsFor(CLOSED_RECORD_ARRAY)).toHaveLength(2);
+  it("reports retained record writes including new fields", () => {
+    expect(diagnosticsFor(CLOSED_RECORD_ARRAY)).toHaveLength(3);
+  });
+
+  it("reports additions when all producers omit the assigned keys", () => {
+    expect(
+      diagnosticsFor(CLOSED_RECORD_ARRAY.replace("checked: false", "other: false")),
+    ).toHaveLength(3);
   });
 
   it("accepts literal record seeds and inline map indices", () => {
@@ -63,7 +69,7 @@ describe("no-direct-state-mutation shallow copies", () => {
           "const change = function Change(position)",
         ),
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
   it.each([
@@ -162,7 +168,6 @@ describe("no-direct-state-mutation shallow copies", () => {
     ["builder record duplicate key", "checked: false", "checked: false, checked: true"],
     ["builder record computed key", "checked: false", "[key]: false"],
     ["builder record prototype", "checked: false", "checked: false, __proto__: prototype"],
-    ["missing own data key", "checked: false", "other: false"],
     ["nested record method", "{entry.label}", "{entry.label.getOwner()}"],
     ["record returned by method", "{entry.label}", "{expose(entry.label())}"],
     [

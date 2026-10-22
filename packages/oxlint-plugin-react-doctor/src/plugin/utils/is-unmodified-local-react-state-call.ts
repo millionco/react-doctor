@@ -15,6 +15,7 @@ import { getRootIdentifier } from "./get-root-identifier.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasReactDefaultProviderMutation } from "./has-react-default-provider-mutation.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "./has-static-property-write-before.js";
+import { isClosedLiteralObjectFreezeReference } from "./is-closed-literal-object-freeze-reference.js";
 import { isBindingAssignmentTarget } from "./is-binding-assignment-target.js";
 import { hasRuntimeValueBinding } from "./has-runtime-value-binding.js";
 import { isErasedTypeScriptBinding } from "./is-erased-typescript-binding.js";
@@ -205,7 +206,8 @@ export const isUnmodifiedLocalReactStateCall = (
       isNodeOfType(child, "ImportExpression") ||
       isProvenGlobalNamespaceReference(child, "Function", scopes) ||
       isProvenGlobalNamespaceReference(child, "eval", scopes) ||
-      isProvenGlobalNamespaceReference(child, "Object", scopes) ||
+      (isProvenGlobalNamespaceReference(child, "Object", scopes) &&
+        !isClosedLiteralObjectFreezeReference(child, scopes)) ||
       isProvenGlobalNamespaceReference(child, "Reflect", scopes)
     ) {
       hasProviderHazard = true;

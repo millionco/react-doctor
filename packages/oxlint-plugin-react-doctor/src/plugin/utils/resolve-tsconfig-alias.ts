@@ -376,7 +376,12 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
   return null;
 };
 
+let tsconfigAliasCacheGeneration = 0;
+
+export const getTsconfigAliasCacheGeneration = (): number => tsconfigAliasCacheGeneration;
+
 export const resetTsconfigAliasCaches = (): void => {
+  tsconfigAliasCacheGeneration++;
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();
 };

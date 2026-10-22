@@ -1,3 +1,4 @@
+import { createImportedNativeMediaGuardPredicate } from "./create-imported-native-media-guard-predicate.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
@@ -39,6 +40,7 @@ interface NativeMediaCapabilityPredicateInput {
   effectNode: EsTreeNode;
   effectFunction: EsTreeNode;
   stateDeclarator: EsTreeNode;
+  executionNode?: EsTreeNode;
 }
 
 interface NativeMediaCapabilityFacts {
@@ -243,10 +245,14 @@ export const createNativeMediaCapabilityPredicate = ({
   effectNode,
   effectFunction,
   stateDeclarator,
+  executionNode,
 }: NativeMediaCapabilityPredicateInput): ((expression: EsTreeNode) => boolean) | null => {
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator") || !isFunctionLike(effectFunction))
     return null;
-  if (!hasNativeMediaCall(effectFunction, context)) return null;
+  const importedPredicate = executionNode
+    ? createImportedNativeMediaGuardPredicate({ context, effectFunction, executionNode })
+    : null;
+  if (!hasNativeMediaCall(effectFunction, context) && !importedPredicate) return null;
   const stateCall = stateDeclarator.init ? stripParenExpression(stateDeclarator.init) : null;
   const effectArgument = isNodeOfType(effectNode, "CallExpression")
     ? effectNode.arguments[FIRST_ARGUMENT_INDEX]
@@ -352,7 +358,8 @@ export const createNativeMediaCapabilityPredicate = ({
         isNodeOfType(parent, "LogicalExpression") &&
         parent.operator === "??" &&
         parent.left === root
-      ) && matchesPredicate(expression)
+      ) &&
+      (matchesPredicate(expression) || Boolean(importedPredicate?.(expression)))
     );
   };
 };

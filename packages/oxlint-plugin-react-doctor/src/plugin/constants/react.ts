@@ -332,3 +332,4 @@ export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
   "__proto__",
   "prototype",
 ]);
+export const REACT_CALLBACK_FORWARDER_ARGUMENT_COUNT = 1;

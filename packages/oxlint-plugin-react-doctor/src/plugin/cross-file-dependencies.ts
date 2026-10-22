@@ -1,3 +1,5 @@
+import { isTypedReduxStoreFactoryInitialization } from "./rules/state-and-effects/utils/is-typed-redux-store-factory-initialization.js";
+import { resolveReactRefSymbol } from "./utils/react-ref-origin.js";
 import { isRejectableOidcUserManagerCall } from "./utils/is-rejectable-oidc-user-manager-call.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
@@ -588,6 +590,27 @@ const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
   });
 };
 
+const collectTypedReduxStoreInitializationDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  sourceText,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "AssignmentExpression")) return;
+    const refSymbol = resolveReactRefSymbol(node.left, scopes);
+    if (refSymbol) {
+      isTypedReduxStoreFactoryInitialization(node.right, refSymbol, {
+        filename: absoluteFilePath,
+        scopes,
+        sourceCode: { getText: () => sourceText },
+      });
+    }
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -600,6 +623,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["no-ref-current-in-render", collectTypedReduxStoreInitializationDependencies],
     ["no-promise-then-side-effect-in-effect-without-catch", collectOidcUserManagerDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],

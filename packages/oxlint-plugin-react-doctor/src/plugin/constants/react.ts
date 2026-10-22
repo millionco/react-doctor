@@ -380,3 +380,10 @@ export const OIDC_UNSUPPORTED_RUNTIME_TYPES = new Set([
   "TSImportEqualsDeclaration",
   "TSExportAssignment",
 ]);
+
+export const STANDARD_REACT_JSX_MODES: ReadonlySet<string> = new Set([
+  "react",
+  "react-jsx",
+  "react-jsxdev",
+  "preserve",
+]);

@@ -190,6 +190,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
       "no-promise-then-side-effect-in-effect-without-catch",
+      "no-ref-current-in-render",
       "no-reset-all-state-on-prop-change",
       "no-side-effect-in-state-updater-function",
       "no-unguarded-browser-global-at-module-scope",

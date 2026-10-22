@@ -1,3 +1,5 @@
+import { isTypedReduxStoreFactoryInitialization } from "./utils/is-typed-redux-store-factory-initialization.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -516,15 +518,17 @@ const isPredictableGuardedInitialization = (
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
+  context: RuleContext,
 ): boolean =>
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
-  isPredictableInitializationValue(
+  (isPredictableInitializationValue(
     assignmentExpression.right,
     refSymbol,
     renderOwner,
     scopes,
     requiresClosedTruthyDomain,
-  ) &&
+  ) ||
+    isTypedReduxStoreFactoryInitialization(assignmentExpression.right, refSymbol, context)) &&
   !hasRepeatedExecutionAncestor(assignmentExpression, guardedBranch) &&
   (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
   hasNoPriorCoExecutableWrite(assignmentExpression, renderOwner, refSymbol, scopes) &&
@@ -534,8 +538,9 @@ const isPredictableGuardedInitialization = (
 const isDocumentedLazyInitialization = (
   assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,
   refSymbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
+  const scopes = context.scopes;
   const renderOwner = findRenderPhaseComponentOrHook(assignmentExpression, scopes);
   if (!renderOwner) return false;
   if (assignmentExpression.operator === "??=" || assignmentExpression.operator === "||=") {
@@ -546,6 +551,7 @@ const isDocumentedLazyInitialization = (
       refSymbol,
       scopes,
       assignmentExpression.operator === "||=",
+      context,
     );
   }
   if (assignmentExpression.operator !== "=") return false;
@@ -567,6 +573,7 @@ const isDocumentedLazyInitialization = (
         refSymbol,
         scopes,
         true,
+        context,
       )
     ) {
       return true;
@@ -593,6 +600,7 @@ const isDocumentedLazyInitialization = (
           refSymbol,
           scopes,
           false,
+          context,
         )
       )
         return true;
@@ -624,7 +632,7 @@ export const noRefCurrentInRender = defineRule({
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         const refSymbol = resolveReactRefSymbol(node.left, context.scopes);
         if (!refSymbol) return;
-        if (isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
+        if (isDocumentedLazyInitialization(node, refSymbol, context)) return;
         report(node.left);
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {

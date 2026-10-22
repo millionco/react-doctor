@@ -41,7 +41,7 @@ const certificates = new WeakMap<ScopeAnalysis, RefNotificationReactCertificate>
 export const hasRefNotificationReactCall = (
   call: EsTreeNode,
   apiName: string,
-  context: RuleContext,
+  context: Pick<RuleContext, "filename" | "scopes" | "sourceCode">,
   options: RefNotificationReactCallOptions = {},
 ): boolean => {
   if (!isNodeOfType(call, "CallExpression") || call.optional) return false;

@@ -4,7 +4,14 @@ import {
   CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS,
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
-import { recordContentProbe } from "./cross-file-probe-recorder.js";
+import {
+  captureCrossFileProbes,
+  recordContentProbe,
+  recordExistenceProbe,
+  replayCrossFileProbes,
+} from "./cross-file-probe-recorder.js";
+import type { CapturedCrossFileProbes } from "./cross-file-probe-recorder.js";
+import { STANDARD_REACT_JSX_MODES } from "../constants/react.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
@@ -23,7 +30,7 @@ const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
 // Strips `//` line + `/* */` block comments and trailing commas from a
 // JSONC document (tsconfig.json is JSONC), while preserving comment-like
 // sequences that appear inside string literals.
-const stripJsonComments = (text: string): string => {
+const stripJsonComments = (text: string, strictJsonc = false): string => {
   let output = "";
   let inString = false;
   let inLineComment = false;
@@ -46,6 +53,13 @@ const stripJsonComments = (text: string): string => {
       continue;
     }
     if (inString) {
+      if (strictJsonc && character === ",") {
+        let followingIndex = index + 1;
+        while (followingIndex < text.length && text.charAt(followingIndex).trim() === "")
+          followingIndex++;
+        const followingCharacter = text.charAt(followingIndex);
+        if (followingCharacter === "}" || followingCharacter === "]") return "";
+      }
       output += character;
       if (character === "\\") {
         output += nextCharacter ?? "";
@@ -72,12 +86,14 @@ const stripJsonComments = (text: string): string => {
     }
     output += character;
   }
+  if (strictJsonc && (inString || inBlockComment)) return "";
   return output.replace(/,(\s*[}\]])/g, "$1");
 };
 
 const parseTsconfigFile = (
   configFilePath: string,
   probedPaths: string[],
+  strictJsonc = false,
 ): Record<string, unknown> | null => {
   recordContentProbe(configFilePath);
   probedPaths.push(configFilePath);
@@ -88,7 +104,7 @@ const parseTsconfigFile = (
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(stripJsonComments(sourceText));
+    const parsed: unknown = JSON.parse(stripJsonComments(sourceText, strictJsonc));
     return isObjectRecord(parsed) ? parsed : null;
   } catch {
     return null;
@@ -376,7 +392,85 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
   return null;
 };
 
+const standardReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
+
+const hasStandardReactJsxConfigChain = (
+  configFilePath: string,
+  extendsDepth: number,
+  visited: Set<string>,
+): boolean => {
+  if (extendsDepth > TSCONFIG_EXTENDS_MAX_DEPTH || visited.has(configFilePath)) return false;
+  visited.add(configFilePath);
+  recordExistenceProbe(configFilePath);
+  const parsed = parseTsconfigFile(configFilePath, [], true);
+  if (!parsed || Array.isArray(parsed)) return false;
+  if (
+    Object.hasOwn(parsed, "compilerOptions") &&
+    (!isObjectRecord(parsed.compilerOptions) || Array.isArray(parsed.compilerOptions))
+  )
+    return false;
+  const options = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
+  if (Object.hasOwn(options, "jsxFactory") || Object.hasOwn(options, "jsxFragmentFactory"))
+    return false;
+  if (Object.hasOwn(options, "jsxImportSource") && options.jsxImportSource !== "react")
+    return false;
+  if (
+    Object.hasOwn(options, "jsx") &&
+    (typeof options.jsx !== "string" || !STANDARD_REACT_JSX_MODES.has(options.jsx))
+  )
+    return false;
+  if (!Object.hasOwn(parsed, "extends")) return true;
+  if (
+    typeof parsed.extends !== "string" ||
+    parsed.extends.length === 0 ||
+    path.isAbsolute(parsed.extends) ||
+    path.win32.isAbsolute(parsed.extends)
+  )
+    return false;
+  const parentPath = resolveExtendsPath(parsed.extends, path.dirname(configFilePath));
+  return Boolean(
+    parentPath && hasStandardReactJsxConfigChain(parentPath, extendsDepth + 1, visited),
+  );
+};
+
+const findStandardReactJsxConfiguration = (fromDirectory: string): boolean => {
+  let currentDirectory = fromDirectory;
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    for (const fileName of TSCONFIG_FILE_NAMES) {
+      const configPath = path.join(currentDirectory, fileName);
+      recordExistenceProbe(configPath);
+      recordContentProbe(configPath);
+      let fileStat: fs.Stats | undefined;
+      try {
+        fileStat = fs.lstatSync(configPath, { throwIfNoEntry: false });
+      } catch {
+        return false;
+      }
+      if (fileStat === undefined) continue;
+      if (!fileStat.isFile() && !fileStat.isSymbolicLink()) return false;
+      return hasStandardReactJsxConfigChain(configPath, 0, new Set());
+    }
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) return true;
+    currentDirectory = parentDirectory;
+  }
+  return false;
+};
+
+export const hasStandardReactJsxConfiguration = (fromFilename: string): boolean => {
+  const directory = path.dirname(path.resolve(fromFilename));
+  const cached = standardReactJsxByDirectory.get(directory);
+  if (cached) {
+    replayCrossFileProbes(cached.trace);
+    return cached.value;
+  }
+  const captured = captureCrossFileProbes(() => findStandardReactJsxConfiguration(directory));
+  standardReactJsxByDirectory.set(directory, captured);
+  return captured.value;
+};
+
 export const resetTsconfigAliasCaches = (): void => {
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();
+  standardReactJsxByDirectory.clear();
 };

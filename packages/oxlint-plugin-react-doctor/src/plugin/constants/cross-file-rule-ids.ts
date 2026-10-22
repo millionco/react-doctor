@@ -60,6 +60,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-locale-format-in-render",
   "no-match-media-in-state-initializer",
   "no-create-ref-in-function-component",
+  "no-ref-current-in-render",
   "no-reset-all-state-on-prop-change",
   "no-side-effect-in-state-updater-function",
   "no-adjust-state-on-prop-change",

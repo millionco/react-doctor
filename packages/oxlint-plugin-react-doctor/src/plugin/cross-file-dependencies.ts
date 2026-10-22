@@ -1,3 +1,4 @@
+import { hasNativeIframeReadinessConsumption } from "./rules/state-and-effects/utils/has-native-iframe-readiness-consumption.js";
 import { isImportedSupabaseServerClientFactory } from "./utils/is-imported-supabase-server-client-factory.js";
 import { isInheritedStringTokenReceiver } from "./utils/is-inherited-string-token-receiver.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
@@ -210,6 +211,21 @@ const collectInheritedStringTokenDependencies: CrossFileDependencyCollector = ({
   walkAst(program, (node) => {
     if (isNodeOfType(node, "CallExpression"))
       isInheritedStringTokenReceiver(node, absoluteFilePath, scopes);
+  });
+};
+
+const collectNativeIframeReadinessDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression"))
+      hasNativeIframeReadinessConsumption(node, {
+        filename: input.absoluteFilePath,
+        scopes,
+        sourceText: input.sourceText,
+      });
   });
 };
 
@@ -618,7 +634,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
-    ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-reset-all-state-on-prop-change", collectNativeIframeReadinessDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],

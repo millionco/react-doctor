@@ -1,3 +1,4 @@
+import readinessFixture from "../../../oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/native-iframe-readiness.fixtures.json";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
@@ -757,6 +758,198 @@ describe("Supabase factory native worker cache dependencies", () => {
       );
       expect(fs.readFileSync(path.join(projectDir, SUPABASE_ALIAS_CONSUMER_PATH), "utf8")).toBe(
         SUPABASE_ALIAS_CONSUMER,
+      );
+    },
+  );
+});
+
+interface ReadinessCacheCase {
+  readonly name: string;
+  readonly operation:
+    | "hook-content"
+    | "frame-content"
+    | "delete-hook"
+    | "shadow-hook"
+    | "sdk-appear";
+}
+
+const READINESS_CACHE_CASES: readonly ReadinessCacheCase[] = [
+  { name: "same-size hook guard change", operation: "hook-content" },
+  { name: "same-size native ref change", operation: "frame-content" },
+  { name: "hook deletion and restoration", operation: "delete-hook" },
+  { name: "immediate module shadow appearance", operation: "shadow-hook" },
+  { name: "negative local SDK remap becomes present", operation: "sdk-appear" },
+];
+const READINESS_SCAN_CONCURRENCY = 1;
+const READINESS_PRESERVED_TIMESTAMP = new Date("2025-01-01T00:00:00.000Z");
+const READINESS_CONSUMER_PATH = "src/Panel.tsx";
+const READINESS_RULE = "no-reset-all-state-on-prop-change";
+
+const scanNativeReadiness = (
+  projectDir: string,
+  options: ScanOptions = {},
+): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+    userConfig: { rules: { ...USER_CONFIG.rules, [`react-doctor/${READINESS_RULE}`]: "warn" } },
+    nodeBinaryPath: process.execPath,
+    concurrency: READINESS_SCAN_CONCURRENCY,
+    spawnSlots: createOxlintSpawnSlots(READINESS_SCAN_CONCURRENCY),
+    adoptExistingLintConfig: false,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+
+describe("native readiness module dependencies in one pooled worker", () => {
+  it.each(READINESS_CACHE_CASES)(
+    "$name preserves complete incremental diagnostics",
+    async ({ operation }) => {
+      const projectDir = setupFixture(`native-readiness-${operation}`);
+      for (const [relativePath, contents] of Object.entries(readinessFixture.files)) {
+        writeFile(
+          path.join(
+            projectDir,
+            relativePath === "package.json" ? relativePath : `src/${relativePath}`,
+          ),
+          contents,
+        );
+      }
+      const hookPath = path.join(projectDir, "src/channel/index.ts");
+      const framePath = path.join(projectDir, "src/Frame.tsx");
+      const shadowPath = path.join(projectDir, "src/channel.ts");
+      const localSdkPath = path.join(projectDir, "src/local-ui.ts");
+      writeFile(
+        path.join(projectDir, "tsconfig.json"),
+        JSON.stringify({
+          compilerOptions: {
+            jsx: "preserve",
+            target: "es2022",
+            module: "esnext",
+            baseUrl: ".",
+            paths: { "@sanity/ui": ["src/local-ui"] },
+          },
+        }),
+      );
+      const originalHook = fs.readFileSync(hookPath, "utf8");
+      const originalFrame = fs.readFileSync(framePath, "utf8");
+      const changedPath = operation === "frame-content" ? framePath : hookPath;
+      if (operation === "hook-content" || operation === "frame-content") {
+        fs.utimesSync(changedPath, READINESS_PRESERVED_TIMESTAMP, READINESS_PRESERVED_TIMESTAMP);
+      }
+      const nativeWorkers = () =>
+        vi.mocked(spawn).mock.results.flatMap((result) => {
+          if (
+            result.type !== "return" ||
+            !result.value.send ||
+            !vi.isMockFunction(result.value.send)
+          )
+            return [];
+          const belongsToFixture = vi
+            .mocked(result.value.send)
+            .mock.calls.some(
+              ([message]) =>
+                typeof message === "object" &&
+                message !== null &&
+                "cwd" in message &&
+                message.cwd === projectDir &&
+                "type" in message &&
+                (message.type === "job" || message.type === "probes"),
+            );
+          return belongsToFixture ? [result.value] : [];
+        });
+      const beforeFull = await scanNativeReadiness(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      const before = await scanNativeReadiness(projectDir);
+      expect(serialize(before)).toBe(serialize(beforeFull));
+      expect(ruleHitsOn(before, READINESS_RULE, READINESS_CONSUMER_PATH)).toHaveLength(0);
+      expect(nativeWorkers()).toHaveLength(1);
+      const selectedWorker = nativeWorkers()[0];
+      expect(selectedWorker?.pid).toBeGreaterThan(0);
+      let warmReplayed = 0;
+      let warmConsidered = 0;
+      const warm = await scanNativeReadiness(projectDir, {
+        onSidecarStats: (replayed, considered) => {
+          warmReplayed = replayed;
+          warmConsidered = considered;
+        },
+      });
+      expect(serialize(warm)).toBe(serialize(before));
+      expect(warmConsidered).toBeGreaterThan(0);
+      expect(warmReplayed).toBe(warmConsidered);
+      if (operation === "hook-content" || operation === "frame-content") {
+        const original = operation === "hook-content" ? originalHook : originalFrame;
+        const changed =
+          operation === "hook-content"
+            ? original.replace(
+                "event.source!==frame?.contentWindow",
+                "event.source===frame?.contentWindow",
+              )
+            : original.replace("ref={forwarded}", "ref={discarded}");
+        expect(changed).not.toBe(original);
+        expect(Buffer.byteLength(changed)).toBe(Buffer.byteLength(original));
+        writeFile(changedPath, changed);
+        fs.utimesSync(changedPath, READINESS_PRESERVED_TIMESTAMP, READINESS_PRESERVED_TIMESTAMP);
+        expect(fs.statSync(changedPath).mtimeMs).toBe(READINESS_PRESERVED_TIMESTAMP.getTime());
+      } else if (operation === "delete-hook") fs.unlinkSync(hookPath);
+      else if (operation === "shadow-hook")
+        writeFile(shadowPath, "export {useChannel} from './channel/index';");
+      else writeFile(localSdkPath, "export const Card=customContainer;");
+      let replayed = 0;
+      let considered = 0;
+      const incremental = await scanNativeReadiness(projectDir, {
+        onSidecarStats: (replayedFiles, consideredFiles) => {
+          replayed = replayedFiles;
+          considered = consideredFiles;
+        },
+      });
+      const full = await scanNativeReadiness(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      expect(ruleHitsOn(incremental, READINESS_RULE, READINESS_CONSUMER_PATH)).toHaveLength(1);
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(considered).toBeGreaterThan(0);
+      expect(replayed).toBeGreaterThan(0);
+      expect(replayed).toBeLessThan(considered);
+      expect(serialize(await scanNativeReadiness(projectDir))).toBe(serialize(full));
+      if (operation === "shadow-hook") fs.unlinkSync(shadowPath);
+      else if (operation === "sdk-appear") fs.unlinkSync(localSdkPath);
+      else if (operation === "frame-content") writeFile(framePath, originalFrame);
+      else writeFile(hookPath, originalHook);
+      if (operation === "hook-content" || operation === "frame-content")
+        fs.utimesSync(changedPath, READINESS_PRESERVED_TIMESTAMP, READINESS_PRESERVED_TIMESTAMP);
+      const reversed = await scanNativeReadiness(projectDir);
+      const reversedFull = await scanNativeReadiness(projectDir, {
+        perFileLintCacheEnabled: false,
+        sidecarLintCacheEnabled: false,
+      });
+      expect(ruleHitsOn(reversed, READINESS_RULE, READINESS_CONSUMER_PATH)).toHaveLength(0);
+      expect(serialize(reversed)).toBe(serialize(reversedFull));
+      expect(nativeWorkers()).toEqual([selectedWorker]);
+      expect(selectedWorker?.connected).toBe(true);
+      expect(selectedWorker?.exitCode).toBeNull();
+      expect(selectedWorker?.signalCode).toBeNull();
+      const epochs =
+        selectedWorker?.send &&
+        vi
+          .mocked(selectedWorker.send)
+          .mock.calls.flatMap(([message]) =>
+            typeof message === "object" &&
+            message !== null &&
+            "cwd" in message &&
+            message.cwd === projectDir &&
+            "filesystemCacheEpoch" in message &&
+            typeof message.filesystemCacheEpoch === "number"
+              ? [message.filesystemCacheEpoch]
+              : [],
+          );
+      expect(new Set(epochs).size).toBeGreaterThan(1);
+      expect(fs.readFileSync(path.join(projectDir, READINESS_CONSUMER_PATH), "utf8")).toBe(
+        readinessFixture.files["Panel.tsx"],
       );
     },
   );

@@ -1,3 +1,4 @@
+import { hasNativeIframeReadinessConsumption } from "./utils/has-native-iframe-readiness-consumption.js";
 import type { Reference } from "eslint-scope";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -1340,6 +1341,7 @@ export const noResetAllStateOnPropChange = defineRule({
         effectFn,
       );
       if (!propUsedToReset) return;
+      if (hasNativeIframeReadinessConsumption(node, context)) return;
       context.report({
         node,
         message: `Your users briefly see stale state when a prop changes because this useEffect clears all state.`,

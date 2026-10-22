@@ -332,3 +332,51 @@ export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
   "__proto__",
   "prototype",
 ]);
+
+export const OIDC_CLIENT_MODULE_SOURCE = "oidc-client";
+export const OIDC_GET_USER_ARGUMENT_COUNT = 0;
+export const OIDC_CONSTRUCTOR_ARGUMENT_COUNT = 1;
+export const OIDC_WINDOW_DECODER_ARGUMENT_COUNT = 1;
+export const OIDC_CONSTRUCTOR_ARGUMENT_INDEX = 0;
+export const OIDC_STORE_OPTION_PROPERTY_COUNT = 1;
+export const OIDC_INSTANCE_METHOD_NAMES = new Set(["getUser", "signinRedirect", "signoutRedirect"]);
+export const OIDC_UNSUPPORTED_CAPABILITY_NAMES = new Set([
+  "eval",
+  "Function",
+  "require",
+  "module",
+  "exports",
+  "globalThis",
+  "global",
+  "self",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "document",
+  "parent",
+  "top",
+  "frames",
+  "localStorage",
+  "sessionStorage",
+]);
+export const OIDC_UNSUPPORTED_MEMBER_NAMES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "defineProperty",
+  "defineProperties",
+  "setPrototypeOf",
+]);
+export const OIDC_UNSUPPORTED_RUNTIME_TYPES = new Set([
+  "WithStatement",
+  "ImportExpression",
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);

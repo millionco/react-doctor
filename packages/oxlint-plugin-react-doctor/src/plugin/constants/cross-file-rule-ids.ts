@@ -84,6 +84,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "remotion-no-next-image",
   "rerender-memo-with-default-value",
   "rules-of-hooks",
+  "no-promise-then-side-effect-in-effect-without-catch",
   "server-sequential-independent-await",
   "rn-no-deprecated-modules",
   "rn-no-legacy-shadow-styles",

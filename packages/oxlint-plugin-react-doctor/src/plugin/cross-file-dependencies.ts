@@ -1,3 +1,4 @@
+import { isRejectableOidcUserManagerCall } from "./utils/is-rejectable-oidc-user-manager-call.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -573,6 +574,20 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression")) {
+      isRejectableOidcUserManagerCall(node, { filename: absoluteFilePath, scopes });
+    }
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -585,6 +600,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["no-promise-then-side-effect-in-effect-without-catch", collectOidcUserManagerDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],

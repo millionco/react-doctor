@@ -87,8 +87,8 @@ export const parseSourceText = ({
 };
 
 // Module-level cache of parsed Programs keyed by absolute file path.
-// Each entry stores the file's mtime + byte size at parse time so a
-// changed file invalidates the cache automatically. Storing `null`
+// Hosts clear entries at filesystem-cache epoch boundaries. Within one
+// frozen epoch, mtime + byte size select an existing parse. Storing `null`
 // for known-broken files prevents re-parsing the same .d.ts /
 // generated / unparseable file on every rule invocation.
 //
@@ -114,9 +114,8 @@ const rememberParsedFile = (absoluteFilePath: string, entry: CacheEntry): void =
 // / too large / .d.ts-only / fails to parse.
 //
 // Cached by (absolute path, mtime, size). Re-parsing only happens
-// when one of those changes. Cache lives for the lifetime of the
-// Node process, which matches the way oxlint runs a single batch
-// of files per process.
+// when one of those changes. Hosts also reset entries before a different
+// filesystem epoch; jobs within one epoch share a frozen filesystem.
 export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => {
   // Declaration files are constant-null regardless of the filesystem (absent,
   // present, any size — every branch below lands on `null`), so they are not
@@ -187,8 +186,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   return parsedProgram;
 };
 
-// Exposed for tests. Production callers don't need to clear the
-// cache — the mtime/size key handles invalidation.
-export const __clearParseSourceFileCacheForTests = (): void => {
+export const resetParseSourceFileCache = (): void => {
   parseCache.clear();
 };
+
+export { resetParseSourceFileCache as __clearParseSourceFileCacheForTests };

@@ -323,6 +323,9 @@ export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>
 export const VALUE_ONLY_STATE_TUPLE_LENGTH = 1;
 export const CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT = 1;
 
+export const GETTER_RESULT_ARGUMENT_COUNT = 1;
+export const GETTER_RESULT_ARGUMENT_INDEX = 0;
+
 export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
   "__defineGetter__",
   "__defineSetter__",

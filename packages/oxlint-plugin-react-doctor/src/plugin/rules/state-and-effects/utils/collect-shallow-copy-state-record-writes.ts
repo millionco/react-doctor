@@ -1,7 +1,9 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import type { UseStateBinding } from "./collect-use-state-bindings.js";
+import { collectUseStateBindings } from "./collect-use-state-bindings.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getFunctionBindingSymbols } from "../../../utils/get-function-binding-symbols.js";
@@ -21,6 +23,10 @@ interface ClosedRecordArray {
   readonly setter: SymbolDescriptor;
   readonly containers: Map<SymbolDescriptor, "builder" | "copy">;
   readonly records: ReadonlyArray<EsTreeNode>;
+}
+
+interface ClosedNumericIndexList {
+  readonly state: SymbolDescriptor;
 }
 
 const INTRINSIC_GLOBAL_NAMES = new Set([
@@ -212,10 +218,17 @@ const hasVisibleIntrinsicAccess = (proof: ClosedRecordArray, context: RuleContex
   return hasAccess;
 };
 
-const symbolIsReadonly = (symbol: SymbolDescriptor): boolean =>
-  symbol.references.every(
+const readonlySymbols = new WeakMap<SymbolDescriptor, boolean>();
+
+const symbolIsReadonly = (symbol: SymbolDescriptor): boolean => {
+  const cached = readonlySymbols.get(symbol);
+  if (cached !== undefined) return cached;
+  const readonly = symbol.references.every(
     (reference) => reference.flag === "read" && !isBindingAssignmentTarget(reference.identifier),
   );
+  readonlySymbols.set(symbol, readonly);
+  return readonly;
+};
 
 const getConstSymbol = (node: EsTreeNode, context: RuleContext): SymbolDescriptor | null => {
   if (!isNodeOfType(node, "Identifier")) return null;
@@ -575,6 +588,312 @@ const isCanonicalIndex = (
   });
 };
 
+const numericIndexListsByScopes = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, ReadonlyMap<SymbolDescriptor, ClosedNumericIndexList>>
+>();
+
+const getNumericListCallback = (
+  member: EsTreeNode,
+  list: ClosedNumericIndexList,
+  methodName: "map" | "filter",
+  context: RuleContext,
+): EsTreeNodeOfType<"ArrowFunctionExpression"> | null => {
+  if (
+    !isNodeOfType(member, "MemberExpression") ||
+    member.optional ||
+    getStaticPropertyName(member) !== methodName
+  )
+    return null;
+  const receiver = stripParenExpression(member.object);
+  const call = member.parent;
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    context.scopes.symbolFor(receiver) !== list.state ||
+    !isNodeOfType(call, "CallExpression") ||
+    call.callee !== member ||
+    call.optional ||
+    call.arguments.length !== 1
+  )
+    return null;
+  const callback = stripParenExpression(call.arguments[0]);
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length < 1 ||
+    callback.params.length > 2 ||
+    callback.params.some((parameter) => {
+      if (!isNodeOfType(parameter, "Identifier")) return true;
+      const symbol = context.scopes.symbolFor(parameter);
+      return !symbol || !symbolIsReadonly(symbol);
+    })
+  )
+    return null;
+  return callback;
+};
+
+const isNumericListMapValue = (
+  node: EsTreeNode,
+  list: ClosedNumericIndexList,
+  context: RuleContext,
+): boolean => {
+  const value = stripParenExpression(node);
+  if (!isNodeOfType(value, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(value);
+  if (!symbol || symbol.kind !== "parameter" || !symbolIsReadonly(symbol)) return false;
+  const callback = findEnclosingFunction(symbol.bindingIdentifier);
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.params[0] !== symbol.bindingIdentifier
+  )
+    return false;
+  const call = findTransparentExpressionRoot(callback).parent;
+  return (
+    isNodeOfType(call, "CallExpression") &&
+    getNumericListCallback(call.callee, list, "map", context) === callback
+  );
+};
+
+const isTransportedNumericListValue = (
+  node: EsTreeNode,
+  list: ClosedNumericIndexList,
+  context: RuleContext,
+): boolean => {
+  if (isNumericListMapValue(node, list, context)) return true;
+  const value = stripParenExpression(node);
+  if (!isNodeOfType(value, "Identifier")) return false;
+  const parameter = context.scopes.symbolFor(value);
+  if (!parameter || parameter.kind !== "parameter" || !symbolIsReadonly(parameter)) return false;
+  const handler = findEnclosingFunction(parameter.bindingIdentifier);
+  if (
+    !isNodeOfType(handler, "ArrowFunctionExpression") ||
+    handler.async ||
+    handler.params.length !== 1 ||
+    handler.params[0] !== parameter.bindingIdentifier
+  )
+    return false;
+  const [binding] = getFunctionBindingSymbols(handler, context.scopes);
+  if (
+    !binding ||
+    binding.kind !== "const" ||
+    !symbolIsReadonly(binding) ||
+    binding.references.length === 0
+  )
+    return false;
+  return binding.references.every((reference) => {
+    const root = findTransparentExpressionRoot(reference.identifier);
+    const call = root.parent;
+    return (
+      isNodeOfType(call, "CallExpression") &&
+      call.callee === root &&
+      !call.optional &&
+      call.arguments.length === 1 &&
+      isNumericListMapValue(call.arguments[0], list, context)
+    );
+  });
+};
+
+const isNumericListFilter = (
+  expression: EsTreeNode,
+  list: ClosedNumericIndexList,
+  proof: ClosedRecordArray,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const callback = getNumericListCallback(expression.callee, list, "filter", context);
+  if (!callback || callback.params.length !== 1) return false;
+  const predicate = stripParenExpression(callback.body);
+  if (!isNodeOfType(predicate, "BinaryExpression") || predicate.operator !== "!==") return false;
+  const parameter = context.scopes.symbolFor(callback.params[0]);
+  const left = stripParenExpression(predicate.left);
+  const right = stripParenExpression(predicate.right);
+  const valueIsLeft =
+    isNodeOfType(left, "Identifier") && context.scopes.symbolFor(left) === parameter;
+  const valueIsRight =
+    isNodeOfType(right, "Identifier") && context.scopes.symbolFor(right) === parameter;
+  if (valueIsLeft === valueIsRight) return false;
+  const comparedValue = valueIsLeft ? right : left;
+  return (
+    isCanonicalIndex(comparedValue, proof, context) ||
+    isTransportedNumericListValue(comparedValue, list, context)
+  );
+};
+
+const numericListReferencesAreClosed = (
+  list: ClosedNumericIndexList,
+  proof: ClosedRecordArray,
+  feeds: ReadonlySet<EsTreeNode>,
+  context: RuleContext,
+): boolean =>
+  list.state.references.every((reference) => {
+    const root = findTransparentExpressionRoot(reference.identifier);
+    const member = root.parent;
+    if (
+      isNodeOfType(member, "SpreadElement") &&
+      isNodeOfType(member.parent, "ArrayExpression") &&
+      feeds.has(member.parent) &&
+      member.parent.elements[0] === member
+    )
+      return true;
+    if (!isNodeOfType(member, "MemberExpression") || member.object !== root || member.optional)
+      return false;
+    const methodName = getStaticPropertyName(member);
+    if (methodName === "length") {
+      const parent = findTransparentExpressionRoot(member).parent;
+      return (
+        !isNodeOfType(parent, "AssignmentExpression") &&
+        !isNodeOfType(parent, "UpdateExpression") &&
+        !(isNodeOfType(parent, "UnaryExpression") && parent.operator === "delete")
+      );
+    }
+    if (getNumericListCallback(member, list, "map", context)) return true;
+    const call = member.parent;
+    if (!isNodeOfType(call, "CallExpression") || call.callee !== member || call.optional)
+      return false;
+    if (methodName === "filter")
+      return feeds.has(call) && isNumericListFilter(call, list, proof, context);
+    return (
+      methodName === "indexOf" &&
+      call.arguments.length === 1 &&
+      (isCanonicalIndex(call.arguments[0], proof, context) ||
+        isTransportedNumericListValue(call.arguments[0], list, context))
+    );
+  });
+
+const collectClosedNumericIndexLists = (
+  binding: UseStateBinding,
+  proof: ClosedRecordArray,
+  context: RuleContext,
+): ReadonlyMap<SymbolDescriptor, ClosedNumericIndexList> => {
+  let listsByBinding = numericIndexListsByScopes.get(context.scopes);
+  if (!listsByBinding) {
+    listsByBinding = new WeakMap();
+    numericIndexListsByScopes.set(context.scopes, listsByBinding);
+  }
+  const cached = listsByBinding.get(binding.declarator);
+  if (cached) return cached;
+  const lists = new Map<SymbolDescriptor, ClosedNumericIndexList>();
+  listsByBinding.set(binding.declarator, lists);
+  const componentBody = binding.declarator.parent?.parent;
+  const recordHook = binding.declarator.init;
+  if (
+    !isNodeOfType(componentBody, "BlockStatement") ||
+    !isNodeOfType(recordHook, "CallExpression") ||
+    !isNodeOfType(recordHook.callee, "Identifier")
+  )
+    return lists;
+  const hook = context.scopes.symbolFor(recordHook.callee);
+  for (const candidate of collectUseStateBindings(componentBody, context.scopes)) {
+    const declarator = candidate.declarator;
+    if (
+      candidate.declarator === binding.declarator ||
+      !isNodeOfType(declarator.id, "ArrayPattern") ||
+      declarator.id.elements.length !== 2 ||
+      !isNodeOfType(declarator.init, "CallExpression") ||
+      !isNodeOfType(declarator.init.callee, "Identifier") ||
+      context.scopes.symbolFor(declarator.init.callee) !== hook ||
+      declarator.init.arguments.length !== 1
+    )
+      continue;
+    const initializer = stripParenExpression(declarator.init.arguments[0]);
+    if (!isNodeOfType(initializer, "ArrayExpression") || initializer.elements.length !== 0)
+      continue;
+    const [stateIdentifier, setterIdentifier] = declarator.id.elements;
+    if (!stateIdentifier || !setterIdentifier) continue;
+    const state = getConstSymbol(stateIdentifier, context);
+    const setter = getConstSymbol(setterIdentifier, context);
+    if (!state || !setter) continue;
+    const list = { state };
+    const feeds = new Set<EsTreeNode>();
+    let hasAppend = false;
+    const closedFeeds = setter.references.every((reference) => {
+      const root = findTransparentExpressionRoot(reference.identifier);
+      const call = root.parent;
+      if (
+        !isNodeOfType(call, "CallExpression") ||
+        call.callee !== root ||
+        call.optional ||
+        call.arguments.length !== 1
+      )
+        return false;
+      const expression = stripParenExpression(call.arguments[0]);
+      feeds.add(expression);
+      if (isNumericListFilter(expression, list, proof, context)) return true;
+      if (!isNodeOfType(expression, "ArrayExpression") || expression.elements.length !== 2)
+        return false;
+      const [spread, value] = expression.elements;
+      if (!isNodeOfType(spread, "SpreadElement") || !value) return false;
+      const receiver = stripParenExpression(spread.argument);
+      if (
+        !isNodeOfType(receiver, "Identifier") ||
+        context.scopes.symbolFor(receiver) !== state ||
+        !isCanonicalIndex(value, proof, context)
+      )
+        return false;
+      hasAppend = true;
+      return true;
+    });
+    if (closedFeeds && hasAppend && numericListReferencesAreClosed(list, proof, feeds, context))
+      lists.set(state, list);
+  }
+  return lists;
+};
+
+const getNumericListSourceState = (
+  node: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  const expression = stripParenExpression(node);
+  if (!isNodeOfType(expression, "Identifier")) return null;
+  const parameter = context.scopes.symbolFor(expression);
+  if (!parameter || parameter.kind !== "parameter") return null;
+  const callback = findEnclosingFunction(parameter.bindingIdentifier);
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.params[0] !== parameter.bindingIdentifier
+  )
+    return null;
+  const call = findTransparentExpressionRoot(callback).parent;
+  if (!isNodeOfType(call, "CallExpression") || !isNodeOfType(call.callee, "MemberExpression"))
+    return null;
+  const receiver = stripParenExpression(call.callee.object);
+  return isNodeOfType(receiver, "Identifier") ? context.scopes.symbolFor(receiver) : null;
+};
+
+const isClosedNumericListIndex = (
+  node: EsTreeNode,
+  binding: UseStateBinding,
+  proof: ClosedRecordArray,
+  context: RuleContext,
+): boolean => {
+  if (hasVisibleAbsentKeyProviderAccess(context)) return false;
+  const lists = collectClosedNumericIndexLists(binding, proof, context);
+  if (lists.size === 0) return false;
+  let state = getNumericListSourceState(node, context);
+  if (!state) {
+    const expression = stripParenExpression(node);
+    if (!isNodeOfType(expression, "Identifier")) return false;
+    const parameter = context.scopes.symbolFor(expression);
+    if (!parameter) return false;
+    const handler = findEnclosingFunction(parameter.bindingIdentifier);
+    if (!handler) return false;
+    const [handlerBinding] = getFunctionBindingSymbols(handler, context.scopes);
+    const reference = handlerBinding?.references[0];
+    if (!reference) return false;
+    const root = findTransparentExpressionRoot(reference.identifier);
+    const call = root.parent;
+    if (
+      !isNodeOfType(call, "CallExpression") ||
+      call.callee !== root ||
+      call.arguments.length !== 1
+    )
+      return false;
+    state = getNumericListSourceState(call.arguments[0], context);
+  }
+  const list = state ? lists.get(state) : null;
+  return Boolean(list && isTransportedNumericListValue(node, list, context));
+};
+
 export const collectShallowCopyStateRecordWrites = (
   binding: UseStateBinding,
   context: RuleContext,
@@ -601,7 +920,8 @@ export const collectShallowCopyStateRecordWrites = (
         !isNodeOfType(element, "MemberExpression") ||
         element.object !== root ||
         !element.computed ||
-        !isCanonicalIndex(element.property, proof, context)
+        (!isCanonicalIndex(element.property, proof, context) &&
+          !isClosedNumericListIndex(element.property, binding, proof, context))
       )
         continue;
       const field = element.parent;

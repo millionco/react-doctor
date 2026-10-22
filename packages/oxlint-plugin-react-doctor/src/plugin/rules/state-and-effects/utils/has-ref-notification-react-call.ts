@@ -7,9 +7,12 @@ import { findTransparentExpressionRoot } from "../../../utils/find-transparent-e
 import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { getResolvedStaticPropertyName } from "../../../utils/get-resolved-static-property-name.js";
+import { hasCompleteSymbolReferences } from "../../../utils/has-complete-symbol-references.js";
 import { hasJsxRuntimePragma } from "../../../utils/has-jsx-runtime-pragma.js";
 import { hasOnlyErasedTypeNameBindings } from "../../../utils/has-only-erased-type-name-bindings.js";
 import { hasVisibleAmbientFunctionDeclaration } from "../../../utils/has-visible-ambient-function-declaration.js";
+import { isProvenGlobalObjectReference } from "../../../utils/is-proven-global-namespace-reference.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNonReferenceIdentifier } from "../../../utils/is-non-reference-identifier.js";
 import { isTypeScriptTypePosition } from "../../../utils/is-typescript-type-position.js";
@@ -23,7 +26,12 @@ import {
   REF_NOTIFICATION_PASSIVE_OBJECT_METHODS,
 } from "./constants.js";
 
+interface RefNotificationReactCallOptions {
+  readonly allowNativeWindowEventListeners?: boolean;
+}
+
 interface RefNotificationReactCertificate {
+  readonly allowNativeWindowEventListeners: boolean;
   readonly sourceText: string;
   readonly filename: string;
   readonly accepted: ReadonlySet<SymbolDescriptor>;
@@ -34,6 +42,7 @@ export const hasRefNotificationReactCall = (
   call: EsTreeNode,
   apiName: string,
   context: RuleContext,
+  options: RefNotificationReactCallOptions = {},
 ): boolean => {
   if (!isNodeOfType(call, "CallExpression") || call.optional) return false;
   const callee = stripParenExpression(call.callee);
@@ -55,8 +64,13 @@ export const hasRefNotificationReactCall = (
   const filename = context.filename ?? "/synthetic/ref-notification.tsx";
   const program = findProgramRoot(call);
   if (sourceText === undefined || !program) return false;
+  const allowNativeWindowEventListeners = options.allowNativeWindowEventListeners === true;
   const cached = certificates.get(scopes);
-  if (cached?.sourceText === sourceText && cached.filename === filename)
+  if (
+    cached?.sourceText === sourceText &&
+    cached.filename === filename &&
+    cached.allowNativeWindowEventListeners === allowNativeWindowEventListeners
+  )
     return cached.accepted.has(symbol);
   const imports = new Map<SymbolDescriptor, boolean>();
   const namespaceImports = new Set<SymbolDescriptor>();
@@ -98,7 +112,9 @@ export const hasRefNotificationReactCall = (
     if (
       isNodeOfType(node, "MemberExpression") &&
       ["constructor", "__proto__", "prototype", "__defineGetter__", "__defineSetter__"].includes(
-        getStaticPropertyName(node) ?? "",
+        (allowNativeWindowEventListeners
+          ? getResolvedStaticPropertyName(node, scopes)
+          : getStaticPropertyName(node)) ?? "",
       )
     ) {
       unsupported = true;
@@ -109,7 +125,10 @@ export const hasRefNotificationReactCall = (
       isNonReferenceIdentifier(node)
     )
       return;
-    if (REF_NOTIFICATION_RUNTIME_CAPABILITIES.has(node.name)) {
+    if (
+      REF_NOTIFICATION_RUNTIME_CAPABILITIES.has(node.name) ||
+      (allowNativeWindowEventListeners && isProvenGlobalObjectReference(node, scopes))
+    ) {
       const capabilitySymbol = scopes.symbolFor(node);
       const member = node.parent;
       const root = member && findTransparentExpressionRoot(member);
@@ -127,7 +146,41 @@ export const hasRefNotificationReactCall = (
         isNodeOfType(invocation, "CallExpression") &&
         invocation.callee === root &&
         !invocation.optional;
-      if (!passiveObjectCall) {
+      const [eventName, listener, capture, ...extraArguments] = isNodeOfType(
+        invocation,
+        "CallExpression",
+      )
+        ? invocation.arguments
+        : [];
+      const listenerSymbol = isNodeOfType(listener, "Identifier")
+        ? resolveRuntimeValueBinding(scopes.scopeFor(listener), listener.name)
+        : null;
+      const nativeWindowEventCall =
+        allowNativeWindowEventListeners &&
+        node.name === "window" &&
+        scopes.isGlobalReference(node) &&
+        !hasVisibleAmbientFunctionDeclaration(scopes.scopeFor(node), node.name) &&
+        isNodeOfType(member, "MemberExpression") &&
+        member.object === node &&
+        !member.computed &&
+        !member.optional &&
+        (getStaticPropertyName(member) === "addEventListener" ||
+          getStaticPropertyName(member) === "removeEventListener") &&
+        isNodeOfType(invocation, "CallExpression") &&
+        invocation.callee === root &&
+        !invocation.optional &&
+        isNodeOfType(eventName, "Literal") &&
+        typeof eventName.value === "string" &&
+        listenerSymbol?.kind === "const" &&
+        hasCompleteSymbolReferences(listenerSymbol, program, scopes) &&
+        listenerSymbol.references.every(
+          (reference) =>
+            reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+        ) &&
+        (capture === undefined ||
+          (isNodeOfType(capture, "Literal") && typeof capture.value === "boolean")) &&
+        extraArguments.length === 0;
+      if (!passiveObjectCall && !nativeWindowEventCall) {
         unsupported = true;
         return false;
       }
@@ -153,6 +206,6 @@ export const hasRefNotificationReactCall = (
   });
   const accepted = new Set<SymbolDescriptor>();
   if (!unsupported) for (const [imported, valid] of imports) if (valid) accepted.add(imported);
-  certificates.set(scopes, { sourceText, filename, accepted });
+  certificates.set(scopes, { sourceText, filename, accepted, allowNativeWindowEventListeners });
   return accepted.has(symbol);
 };

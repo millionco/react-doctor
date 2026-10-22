@@ -1,11 +1,24 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
 const SMALL_HANDLER_COUNT = 500;
 const LARGE_HANDLER_COUNT = 2500;
-const MEASUREMENT_SAMPLE_COUNT = 7;
 const MAXIMUM_SCALING_MULTIPLIER = 15;
+
+const traversalCounter = vi.hoisted(() => vi.fn());
+
+vi.mock("../../utils/walk-ast.js", async (importOriginal) => {
+  const originalModule = await importOriginal<typeof import("../../utils/walk-ast.js")>();
+  return {
+    ...originalModule,
+    walkAst: ((node, visitor) =>
+      originalModule.walkAst(node, (candidate) => {
+        traversalCounter();
+        return visitor(candidate);
+      })) satisfies typeof originalModule.walkAst,
+  };
+});
 
 const buildRetainedHandlersSource = (
   handlerCount: number,
@@ -23,20 +36,16 @@ const buildRetainedHandlersSource = (
   return `const Component = () => {\n${handlers}\nreturn <>${buttons}</>;\n};`;
 };
 
-const measureDuration = (
+const measureTraversalWork = (
   handlerCount: number,
   buildRegistration: (handlerIndex: number) => string,
 ): number => {
   const source = buildRetainedHandlersSource(handlerCount, buildRegistration);
-  const sampleDurations = Array.from({ length: MEASUREMENT_SAMPLE_COUNT }, () => {
-    const startedAt = process.hrtime.bigint();
-    const result = runRule(effectNeedsCleanup, source);
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(handlerCount);
-    return Number(process.hrtime.bigint() - startedAt);
-  });
-  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
-  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
+  traversalCounter.mockClear();
+  const result = runRule(effectNeedsCleanup, source);
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(handlerCount);
+  return traversalCounter.mock.calls.length;
 };
 
 describe("effect-needs-cleanup performance", () => {
@@ -52,11 +61,17 @@ describe("effect-needs-cleanup performance", () => {
     },
   ]) {
     it(`scales near-linearly across retained ${performanceCase.name}`, () => {
-      measureDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
-      measureDuration(LARGE_HANDLER_COUNT, performanceCase.buildRegistration);
-      const smallDuration = measureDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
-      const largeDuration = measureDuration(LARGE_HANDLER_COUNT, performanceCase.buildRegistration);
-      expect(largeDuration).toBeLessThan(smallDuration * MAXIMUM_SCALING_MULTIPLIER);
+      const smallTraversalCount = measureTraversalWork(
+        SMALL_HANDLER_COUNT,
+        performanceCase.buildRegistration,
+      );
+      const largeTraversalCount = measureTraversalWork(
+        LARGE_HANDLER_COUNT,
+        performanceCase.buildRegistration,
+      );
+      expect(smallTraversalCount).toBeGreaterThan(SMALL_HANDLER_COUNT);
+      expect(largeTraversalCount).toBeGreaterThan(smallTraversalCount);
+      expect(largeTraversalCount).toBeLessThan(smallTraversalCount * MAXIMUM_SCALING_MULTIPLIER);
     });
   }
 });

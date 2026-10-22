@@ -319,3 +319,13 @@ export const NAVIGATION_RECEIVER_NAMES = new Set([
 export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["react_ujs", new Set(["useContext", "useContexts"])],
 ]);
+
+export const VALUE_ONLY_STATE_TUPLE_LENGTH = 1;
+export const CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT = 1;
+
+export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
+  "__defineGetter__",
+  "__defineSetter__",
+  "__proto__",
+  "prototype",
+]);

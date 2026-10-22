@@ -1,9 +1,14 @@
+import { hasRefNotificationReactCall } from "../state-and-effects/utils/has-ref-notification-react-call.js";
+import { VALUE_ONLY_STATE_TUPLE_LENGTH } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
+import { isUnmodifiedLocalReactStateCall } from "../../utils/is-unmodified-local-react-state-call.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const REQUIRE_DESTRUCTURE_MESSAGE =
   "`useState` should be destructured as `[value, setValue]` so readers can see the state value and setter together.";
@@ -66,11 +71,6 @@ export const hookUseState = defineRule({
   id: "hook-use-state",
   title: "useState not destructured",
   severity: "warn",
-  // Stylistic naming rule — flags `const [count, _setCount]` (the
-  // unused-marker underscore convention) and `const [instance] =
-  // useState(() => new Foo())` (the create-once initializer pattern
-  // where the setter is intentionally never used). Both are
-  // idiomatic. Default off.
   defaultEnabled: false,
   recommendation:
     "Destructure `useState` as `const [thing, setThing] = useState(…)` so state reads and writes stay visible together.",
@@ -101,6 +101,43 @@ export const hookUseState = defineRule({
         if (!isNodeOfType(idPattern, "ArrayPattern")) {
           context.report({ node: parent, message: REQUIRE_DESTRUCTURE_MESSAGE });
           return;
+        }
+        if (idPattern.elements.length === VALUE_ONLY_STATE_TUPLE_LENGTH) {
+          const valueElement = idPattern.elements[0];
+          const hasAllowedValue = Boolean(
+            valueElement &&
+            ((isNodeOfType(valueElement, "Identifier") &&
+              splitLeadingLowercase(valueElement.name)) ||
+              (allowDestructuredState && isDestructurePattern(valueElement))),
+          );
+          let hasBindingWrite = false;
+          walkAst(idPattern, (child) => {
+            if (!isNodeOfType(child, "Identifier")) return;
+            const symbol = context.scopes.symbolFor(child);
+            if (symbol?.bindingIdentifier !== child || symbol.declarationNode !== parent) return;
+            if (
+              symbol.references.some(
+                (reference) =>
+                  reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+              )
+            ) {
+              hasBindingWrite = true;
+            }
+          });
+          if (
+            hasAllowedValue &&
+            !hasBindingWrite &&
+            isNodeOfType(parent.parent, "VariableDeclaration") &&
+            parent.parent.kind === "const" &&
+            (isUnmodifiedLocalReactStateCall(node, context.scopes) ||
+              (hasRefNotificationReactCall(node, "useState", context, {
+                allowNativeWindowEventListeners: true,
+              }) &&
+                isUnmodifiedLocalReactStateCall(node, context.scopes, {
+                  allowNumericDataAccess: true,
+                })))
+          )
+            return;
         }
         if (idPattern.elements.length !== 2) {
           context.report({ node: idPattern, message: REQUIRE_DESTRUCTURE_MESSAGE });

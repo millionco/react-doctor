@@ -323,6 +323,28 @@ export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>
 export const VALUE_ONLY_STATE_TUPLE_LENGTH = 1;
 export const CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT = 1;
 
+export const MEMO_TUPLE_ARGUMENT_COUNT = 2;
+export const MEMO_TUPLE_GLOBAL_CAPABILITY_NAMES: ReadonlySet<string> = new Set([
+  "Array",
+  "Symbol",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "Function",
+  "eval",
+  "require",
+  "module",
+  "process",
+]);
+export const MEMO_TUPLE_LOADER_SOURCES: ReadonlySet<string> = new Set([
+  "module",
+  "node:module",
+  "vm",
+  "node:vm",
+  "process",
+  "node:process",
+]);
+
 export const GETTER_RESULT_ARGUMENT_COUNT = 1;
 export const GETTER_RESULT_ARGUMENT_INDEX = 0;
 

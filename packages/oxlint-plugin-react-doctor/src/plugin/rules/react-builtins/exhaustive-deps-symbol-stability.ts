@@ -9,6 +9,7 @@ import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isStableMemoizedTupleBinding } from "../../utils/is-stable-memoized-tuple-binding.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import {
@@ -170,12 +171,16 @@ const symbolHasStableMemoizedOrigin = (
     declarator = declarator.parent ?? null;
   }
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
-  if (declarator.id !== symbol.bindingIdentifier) return false;
   if (!declarator.init) return false;
   const initializer = unwrapExpression(declarator.init);
   if (!isNodeOfType(initializer, "CallExpression")) return false;
   const initializerHookName = getHookName(initializer.callee, scopes);
   if (!initializerHookName || !MEMOIZING_HOOK_NAMES.has(initializerHookName)) return false;
+  if (
+    declarator.id !== symbol.bindingIdentifier &&
+    !isStableMemoizedTupleBinding({ symbol, declarator, call: initializer, scopes })
+  )
+    return false;
   const depsArgument = initializer.arguments[1];
   if (!depsArgument || !isAstNode(depsArgument)) return false;
   const strippedDepsArgument = unwrapExpression(depsArgument);

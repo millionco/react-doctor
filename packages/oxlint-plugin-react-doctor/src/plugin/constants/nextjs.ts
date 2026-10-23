@@ -151,11 +151,7 @@ export const NEXT_QUERY_OBJECT_METHODS: ReadonlySet<string> = new Set([
   "is",
   "hasOwn",
 ]);
-export const NEXT_QUERY_REACT_PROVIDER_SOURCES: ReadonlySet<string> = new Set([
-  "react",
-  "react/jsx-runtime",
-  "react/jsx-dev-runtime",
-]);
+export { REACT_JSX_PROVIDER_MODULE_SOURCES as NEXT_QUERY_REACT_PROVIDER_SOURCES } from "./react.js";
 export const NEXT_QUERY_UNSUPPORTED_MODULE_SOURCES: ReadonlySet<string> = new Set([
   "module",
   "node:module",

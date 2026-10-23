@@ -493,3 +493,9 @@ export const NODE_PORT_PROCESS_CONSUMER_GLOBAL_NAMES: ReadonlySet<string> = new 
   "NaN",
   "Infinity",
 ]);
+
+export const REACT_JSX_PROVIDER_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+]);

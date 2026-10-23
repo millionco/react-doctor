@@ -16,6 +16,7 @@ import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-pat
 
 export interface StandardReactJsxConfigurationOptions {
   readonly requireUnaliasedReact?: boolean;
+  readonly allowIdentityPathMapping?: boolean;
 }
 
 interface ResolvedTsconfig {
@@ -398,6 +399,7 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 
 const standardReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
 const unaliasedReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
+const identityMappedReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
 
 const hasStandardReactJsxConfigChain = (
   configFilePath: string,
@@ -416,11 +418,22 @@ const hasStandardReactJsxConfigChain = (
   )
     return false;
   const options = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
-  if (
-    configurationOptions.requireUnaliasedReact === true &&
-    (Object.hasOwn(options, "paths") || Object.hasOwn(options, "baseUrl"))
-  )
-    return false;
+  if (configurationOptions.requireUnaliasedReact === true) {
+    if (Object.hasOwn(options, "baseUrl")) return false;
+    if (Object.hasOwn(options, "paths")) {
+      if (
+        configurationOptions.allowIdentityPathMapping !== true ||
+        !isObjectRecord(options.paths) ||
+        Array.isArray(options.paths) ||
+        Object.keys(options.paths).length !== 1 ||
+        !Object.hasOwn(options.paths, "*") ||
+        !Array.isArray(options.paths["*"]) ||
+        options.paths["*"].length !== 1 ||
+        options.paths["*"][0] !== "./*"
+      )
+        return false;
+    }
+  }
   if (Object.hasOwn(options, "jsxFactory") || Object.hasOwn(options, "jsxFragmentFactory"))
     return false;
   if (Object.hasOwn(options, "jsxImportSource") && options.jsxImportSource !== "react")
@@ -479,7 +492,9 @@ export const hasStandardReactJsxConfiguration = (
   const directory = path.dirname(path.resolve(fromFilename));
   const cacheByDirectory =
     options.requireUnaliasedReact === true
-      ? unaliasedReactJsxByDirectory
+      ? options.allowIdentityPathMapping === true
+        ? identityMappedReactJsxByDirectory
+        : unaliasedReactJsxByDirectory
       : standardReactJsxByDirectory;
   const cached = cacheByDirectory.get(directory);
   if (cached) {
@@ -498,4 +513,5 @@ export const resetTsconfigAliasCaches = (): void => {
   nearestTsconfigByDirectory.clear();
   standardReactJsxByDirectory.clear();
   unaliasedReactJsxByDirectory.clear();
+  identityMappedReactJsxByDirectory.clear();
 };

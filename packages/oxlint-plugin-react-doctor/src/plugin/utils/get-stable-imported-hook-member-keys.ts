@@ -1,6 +1,6 @@
 import { hasStandardReactJsxConfiguration } from "./resolve-tsconfig-alias.js";
 import { resolveWebpackAliasPath } from "./resolve-webpack-alias-path.js";
-import { HOOK_NAME_PATTERN } from "../constants/react.js";
+import { HOOK_NAME_PATTERN, REACT_JSX_PROVIDER_MODULE_SOURCES } from "../constants/react.js";
 import { closureCaptures } from "../semantic/closure-captures.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
@@ -9,6 +9,9 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
 import { isProvenGlobalNamespaceReference } from "./is-proven-global-namespace-reference.js";
+import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
+import { getRuntimeStaticDependencySource } from "./get-runtime-static-dependency-source.js";
+import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { getFunctionBindingName } from "./get-function-binding-name.js";
 import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
@@ -34,10 +37,22 @@ export interface ImportedHookMemberOptions {
 
 const scopesByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
 
-const hasUnaliasedReactStateProviderConfiguration = (filename: string): boolean =>
-  hasStandardReactJsxConfiguration(filename, { requireUnaliasedReact: true }) &&
-  !resolveWebpackAliasPath(filename, "react")?.declared &&
-  !resolveModulePath(filename, "react");
+const hasUnaliasedReactStateProviderConfiguration = (
+  filename: string,
+  allowIdentityPaths = false,
+): boolean =>
+  hasStandardReactJsxConfiguration(filename, {
+    requireUnaliasedReact: true,
+    allowIdentityPathMapping: allowIdentityPaths,
+  }) &&
+  (allowIdentityPaths
+    ? [...REACT_JSX_PROVIDER_MODULE_SOURCES].every(
+        (source) =>
+          !resolveWebpackAliasPath(filename, source)?.declared &&
+          !resolveModulePath(filename, source),
+      )
+    : !resolveWebpackAliasPath(filename, "react")?.declared &&
+      !resolveModulePath(filename, "react"));
 
 const isReadonlyBinding = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean =>
   !hasSymbolBindingWrites(symbol) &&
@@ -102,6 +117,7 @@ const capturesOnlyOwnedStateSetters = (
   arrow: EsTreeNode,
   hookBody: EsTreeNode,
   scopes: ScopeAnalysis,
+  hookName: "useState" | "useReducer" = "useState",
 ): boolean => {
   const captures = closureCaptures(arrow, scopes);
   if (captures.length === 0) return false;
@@ -130,7 +146,7 @@ const capturesOnlyOwnedStateSetters = (
       isNodeOfType(invocation, "CallExpression") &&
       invocation.callee === reference.identifier &&
       !invocation.optional &&
-      isUnmodifiedLocalReactStateCall(declaration.init, scopes)
+      isUnmodifiedLocalReactStateCall(declaration.init, scopes, { hookName })
     );
   });
 };
@@ -141,6 +157,37 @@ export const getStableImportedHookMemberKeys = ({
   filename,
 }: ImportedHookMemberOptions): ReadonlySet<string> | null => {
   const declaration = symbol.declarationNode;
+  const isDestructuredCallback =
+    isNodeOfType(declaration, "VariableDeclarator") &&
+    isNodeOfType(declaration.id, "ObjectPattern");
+  let selectedPropertyName: string | null = null;
+  let selectedBindingKey: EsTreeNode | null = null;
+  const projectedKeys = new Set<string>();
+  if (
+    isDestructuredCallback &&
+    isNodeOfType(declaration, "VariableDeclarator") &&
+    isNodeOfType(declaration.id, "ObjectPattern")
+  ) {
+    for (const property of declaration.id.properties) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        property.kind !== "init" ||
+        property.method ||
+        property.computed ||
+        !isNodeOfType(property.value, "Identifier")
+      )
+        return null;
+      const name = getStaticPropertyKeyName(property);
+      if (!name || name === "__proto__" || projectedKeys.has(name)) return null;
+      projectedKeys.add(name);
+      if (property.value === symbol.bindingIdentifier) {
+        selectedPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
+        selectedBindingKey = property.key;
+      }
+    }
+    if (!selectedPropertyName) return null;
+  }
+  const hookName = isDestructuredCallback ? "useReducer" : "useState";
   const statement = declaration.parent;
   const consumerBody = statement?.parent;
   const consumerFunction = consumerBody?.parent;
@@ -150,7 +197,7 @@ export const getStableImportedHookMemberKeys = ({
     symbol.kind !== "const" ||
     !isReadonlyBinding(symbol, scopes) ||
     !isNodeOfType(declaration, "VariableDeclarator") ||
-    declaration.id !== symbol.bindingIdentifier ||
+    (!isDestructuredCallback && declaration.id !== symbol.bindingIdentifier) ||
     !isNodeOfType(statement, "VariableDeclaration") ||
     statement.kind !== "const" ||
     !isNodeOfType(consumerBody, "BlockStatement") ||
@@ -192,24 +239,50 @@ export const getStableImportedHookMemberKeys = ({
     })
   )
     return null;
-  if (hasReactDefaultProviderMutation("useState", scopes)) return null;
-  let hasCommonJsLoader = false;
-  walkAst(scopes.rootScope.node, (node) => {
-    if (hasCommonJsLoader) return false;
-    if (isProvenGlobalNamespaceReference(node, "require", scopes)) {
-      hasCommonJsLoader = true;
-      return false;
-    }
-  });
-  if (hasCommonJsLoader) return null;
+  const hasProviderHazardIn = (providerScopes: ScopeAnalysis): boolean => {
+    if (hasReactDefaultProviderMutation(hookName, providerScopes)) return true;
+    let hasProviderHazard = false;
+    walkAst(providerScopes.rootScope.node, (node) => {
+      if (hasProviderHazard) return false;
+      if (isProvenGlobalNamespaceReference(node, "require", providerScopes)) {
+        hasProviderHazard = true;
+        return false;
+      }
+      if (!isDestructuredCallback) return;
+      const dependency = getRuntimeStaticDependencySource(node);
+      if (
+        dependency === "module" ||
+        dependency === "node:module" ||
+        dependency === "vm" ||
+        dependency === "node:vm" ||
+        isNodeOfType(node, "WithStatement") ||
+        isNodeOfType(node, "ImportExpression") ||
+        isProvenGlobalNamespaceReference(node, "module", providerScopes) ||
+        isProvenGlobalNamespaceReference(node, "Function", providerScopes) ||
+        isProvenGlobalNamespaceReference(node, "eval", providerScopes) ||
+        isProvenGlobalNamespaceReference(node, "Object", providerScopes) ||
+        isProvenGlobalNamespaceReference(node, "Reflect", providerScopes) ||
+        (isNodeOfType(node, "MemberExpression") &&
+          isMemberMutationTarget(node) &&
+          getResolvedStaticPropertyName(node, providerScopes) === hookName)
+      ) {
+        hasProviderHazard = true;
+        return false;
+      }
+    });
+    return hasProviderHazard;
+  };
+  if (hasProviderHazardIn(scopes)) return null;
   const resolved = resolveCrossFileFunctionExportWithFilePath(
     filename,
     imported.source.value,
     specifier.imported.name,
+    isDestructuredCallback ? { requireCompleteReexports: true } : {},
   );
   if (
     !resolved ||
-    resolved.filePath !== resolveModulePath(filename, imported.source.value) ||
+    (!isDestructuredCallback &&
+      resolved.filePath !== resolveModulePath(filename, imported.source.value)) ||
     (!isNodeOfType(resolved.functionNode, "ArrowFunctionExpression") &&
       !isNodeOfType(resolved.functionNode, "FunctionDeclaration")) ||
     resolved.functionNode.async ||
@@ -218,6 +291,49 @@ export const getStableImportedHookMemberKeys = ({
     !isNodeOfType(resolved.functionNode.body, "BlockStatement")
   )
     return null;
+  if (isDestructuredCallback) {
+    if (!resolved.contexts || resolved.contexts.length === 0) return null;
+    const tracedFiles = new Set(resolved.contexts.map((context) => context.filePath));
+    for (const context of resolved.contexts) {
+      if (
+        !isNodeOfType(context.programNode, "Program") ||
+        !hasUnaliasedReactStateProviderConfiguration(context.filePath, true)
+      )
+        return null;
+      if (
+        context.role === "forwarder" &&
+        !context.programNode.body.every(
+          (statement) =>
+            (isNodeOfType(statement, "ExportAllDeclaration") &&
+              typeof statement.source.value === "string") ||
+            (isNodeOfType(statement, "ExportNamedDeclaration") &&
+              (statement.exportKind === "type" ||
+                (statement.source &&
+                  !statement.declaration &&
+                  typeof statement.source.value === "string"))),
+        )
+      )
+        return null;
+      for (const statement of context.programNode.body) {
+        if (
+          (isNodeOfType(statement, "ExportAllDeclaration") ||
+            isNodeOfType(statement, "ExportNamedDeclaration")) &&
+          statement.exportKind !== "type" &&
+          statement.source &&
+          typeof statement.source.value === "string"
+        ) {
+          const target = resolveModulePath(context.filePath, statement.source.value);
+          if (!target || !tracedFiles.has(target)) return null;
+        }
+      }
+      let contextScopes = scopesByProgram.get(context.programNode);
+      if (!contextScopes) {
+        contextScopes = analyzeScopes(context.programNode);
+        scopesByProgram.set(context.programNode, contextScopes);
+      }
+      if (hasProviderHazardIn(contextScopes)) return null;
+    }
+  }
   let producerScopes = scopesByProgram.get(resolved.programNode);
   if (!producerScopes) {
     producerScopes = analyzeScopes(resolved.programNode);
@@ -242,8 +358,8 @@ export const getStableImportedHookMemberKeys = ({
     (isNodeOfType(producerDeclaration, "VariableDeclarator") &&
       (!isNodeOfType(producerDeclaration.parent, "VariableDeclaration") ||
         producerDeclaration.parent.kind !== "const")) ||
-    !hasUnaliasedReactStateProviderConfiguration(filename) ||
-    !hasUnaliasedReactStateProviderConfiguration(resolved.filePath)
+    !hasUnaliasedReactStateProviderConfiguration(filename, isDestructuredCallback) ||
+    !hasUnaliasedReactStateProviderConfiguration(resolved.filePath, isDestructuredCallback)
   )
     return null;
   const body = resolved.functionNode.body;
@@ -256,6 +372,7 @@ export const getStableImportedHookMemberKeys = ({
   )
     return null;
   const methods = new Map<string, EsTreeNodeOfType<"ArrowFunctionExpression">>();
+  const returnedKeys = new Set<string>();
   for (const property of returned.argument.properties) {
     if (
       !isNodeOfType(property, "Property") ||
@@ -265,9 +382,31 @@ export const getStableImportedHookMemberKeys = ({
     )
       return null;
     const name = getStaticPropertyKeyName(property);
+    if (!name || name === "__proto__" || returnedKeys.has(name)) return null;
+    returnedKeys.add(name);
+    if (isDestructuredCallback && name !== selectedPropertyName) continue;
     const arrow = getReturnedArrow(property.value, body, producerScopes);
-    if (!name || name === "__proto__" || methods.has(name) || !arrow) return null;
+    if (!arrow) return null;
     methods.set(name, arrow);
+  }
+  if (isDestructuredCallback) {
+    if ([...projectedKeys].some((key) => !returnedKeys.has(key))) return null;
+    if (
+      !symbol.references.every((reference) => {
+        if (reference.identifier === selectedBindingKey) return true;
+        const invocation = reference.identifier.parent;
+        return (
+          isNodeOfType(invocation, "CallExpression") &&
+          invocation.callee === reference.identifier &&
+          !invocation.optional
+        );
+      })
+    )
+      return null;
+    const arrow = selectedPropertyName ? methods.get(selectedPropertyName) : null;
+    return arrow && capturesOnlyOwnedStateSetters(arrow, body, producerScopes, hookName)
+      ? new Set([symbol.name])
+      : null;
   }
   if (
     !symbol.references.every((reference) => {

@@ -440,12 +440,33 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   const program = input.getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
+  let hasDestructuredHookCandidate = false;
   walkAst(program, (node) => {
-    if (!isNodeOfType(node, "VariableDeclarator") || !isNodeOfType(node.id, "Identifier")) return;
-    const symbol = scopes.symbolFor(node.id);
-    if (symbol)
-      getStableImportedHookMemberKeys({ symbol, scopes, filename: input.absoluteFilePath });
+    if (!isNodeOfType(node, "VariableDeclarator")) return;
+    if (
+      isNodeOfType(node.id, "ObjectPattern") &&
+      isNodeOfType(node.init, "CallExpression") &&
+      isNodeOfType(node.init.callee, "Identifier") &&
+      HOOK_NAME_PATTERN.test(node.init.callee.name)
+    )
+      hasDestructuredHookCandidate = true;
+
+    const bindings = isNodeOfType(node.id, "Identifier")
+      ? [node.id]
+      : isNodeOfType(node.id, "ObjectPattern")
+        ? node.id.properties.flatMap((property) =>
+            isNodeOfType(property, "Property") && isNodeOfType(property.value, "Identifier")
+              ? [property.value]
+              : [],
+          )
+        : [];
+    for (const binding of bindings) {
+      const symbol = scopes.symbolFor(binding);
+      if (symbol)
+        getStableImportedHookMemberKeys({ symbol, scopes, filename: input.absoluteFilePath });
+    }
   });
+  if (hasDestructuredHookCandidate) return false;
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({

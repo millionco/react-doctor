@@ -44,6 +44,7 @@ const PROVIDER_GLOBAL_NAMES = new Set([
 ]);
 
 interface LocalReactStateCallOptions {
+  readonly hookName?: "useState" | "useReducer";
   readonly allowNumericDataAccess?: boolean;
   readonly allowedComputedDataMember?: EsTreeNode;
 }
@@ -53,6 +54,7 @@ export const isUnmodifiedLocalReactStateCall = (
   scopes: ScopeAnalysis,
   options: LocalReactStateCallOptions = {},
 ): boolean => {
+  const hookName = options.hookName ?? "useState";
   if (!isNodeOfType(call, "CallExpression")) return false;
   const callee = stripParenExpression(call.callee);
   const receiver = getRootIdentifier(callee);
@@ -65,7 +67,7 @@ export const isUnmodifiedLocalReactStateCall = (
       importDeclaration.importKind === "type" ||
       (isNodeOfType(symbol.declarationNode, "ImportSpecifier") &&
         symbol.declarationNode.importKind === "type") ||
-      !isProvenUnmodifiedReactApiCall(call, "useState", scopes)
+      !isProvenUnmodifiedReactApiCall(call, hookName, scopes)
     ) {
       return false;
     }
@@ -75,7 +77,7 @@ export const isUnmodifiedLocalReactStateCall = (
     if (
       !isNodeOfType(callee, "MemberExpression") ||
       stripParenExpression(callee.object) !== receiver ||
-      getStaticPropertyName(callee) !== "useState" ||
+      getStaticPropertyName(callee) !== hookName ||
       symbol.kind !== "const" ||
       !isNodeOfType(declaration, "VariableDeclarator") ||
       declaration.id !== symbol.bindingIdentifier ||
@@ -98,16 +100,16 @@ export const isUnmodifiedLocalReactStateCall = (
           propertyName === null ||
           REACT_PROVIDER_MUTATION_CAPABILITY_NAMES.has(propertyName) ||
           propertyName === "default" ||
-          (propertyName === "useState" && !isNonEscapingReactApiReference(member))
+          (propertyName === hookName && !isNonEscapingReactApiReference(member))
         );
       }) ||
-      hasPossibleStaticPropertyMutationOrEscape(receiver, "useState", scopes)
+      hasPossibleStaticPropertyMutationOrEscape(receiver, hookName, scopes)
     ) {
       return false;
     }
     allowedRequire = initializer;
   }
-  if (hasReactDefaultProviderMutation("useState", scopes)) return false;
+  if (hasReactDefaultProviderMutation(hookName, scopes)) return false;
   const providerSymbolIds = new Set<number>();
   for (const provider of scopes.rootScope.symbols) {
     const declaration = getImportDeclarationForSymbol(provider);
@@ -249,7 +251,7 @@ export const isUnmodifiedLocalReactStateCall = (
     if (
       provider &&
       providerSymbolIds.has(provider.id) &&
-      (propertyName === null || propertyName === "useState")
+      (propertyName === null || propertyName === hookName)
     ) {
       hasProviderHazard = true;
     }

@@ -13,6 +13,7 @@ import { getDestructuredBindingPropertyName } from "./get-destructured-binding-p
 import { getRuntimeStaticDependencySource } from "./get-runtime-static-dependency-source.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { getFunctionBindingName } from "./get-function-binding-name.js";
+import { getGlobalRequireModuleSource } from "./get-global-require-module-source.js";
 import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
@@ -239,22 +240,35 @@ export const getStableImportedHookMemberKeys = ({
     })
   )
     return null;
-  const hasProviderHazardIn = (providerScopes: ScopeAnalysis): boolean => {
+  const hasProviderHazardIn = (
+    providerScopes: ScopeAnalysis,
+    rejectGlobalRequire = true,
+  ): boolean => {
     if (hasReactDefaultProviderMutation(hookName, providerScopes)) return true;
     let hasProviderHazard = false;
     walkAst(providerScopes.rootScope.node, (node) => {
       if (hasProviderHazard) return false;
-      if (isProvenGlobalNamespaceReference(node, "require", providerScopes)) {
+      if (
+        rejectGlobalRequire &&
+        isProvenGlobalNamespaceReference(node, "require", providerScopes)
+      ) {
         hasProviderHazard = true;
         return false;
       }
-      if (!isDestructuredCallback) return;
-      const dependency = getRuntimeStaticDependencySource(node);
+      const dependency =
+        getRuntimeStaticDependencySource(node) ??
+        getGlobalRequireModuleSource(node, providerScopes);
       if (
         dependency === "module" ||
         dependency === "node:module" ||
         dependency === "vm" ||
-        dependency === "node:vm" ||
+        dependency === "node:vm"
+      ) {
+        hasProviderHazard = true;
+        return false;
+      }
+      if (!isDestructuredCallback) return;
+      if (
         isNodeOfType(node, "WithStatement") ||
         isNodeOfType(node, "ImportExpression") ||
         isProvenGlobalNamespaceReference(node, "module", providerScopes) ||
@@ -339,6 +353,7 @@ export const getStableImportedHookMemberKeys = ({
     producerScopes = analyzeScopes(resolved.programNode);
     scopesByProgram.set(resolved.programNode, producerScopes);
   }
+  if (!isDestructuredCallback && hasProviderHazardIn(producerScopes, false)) return null;
   const [producerSymbol, ...otherBindings] = getFunctionBindingSymbols(
     resolved.functionNode,
     producerScopes,

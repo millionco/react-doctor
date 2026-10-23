@@ -1,0 +1,13 @@
+// rule: no-derived-state
+// verdict: fail
+// weakness: library-idiom
+// source: synthetic
+// file-path: corpus/regressions/no-derived-state--bare-pending-copy.tsx
+import { useEffect, useState } from "react";
+export const CopiedChoices = ({ values }) => {
+  const [draft, setDraft] = useState(values);
+  useEffect(() => {
+    setDraft(values);
+  }, [values]);
+  return <output>{draft.length}</output>;
+};

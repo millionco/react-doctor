@@ -193,6 +193,7 @@ const hasReachableJsxEventCallPath = (
   componentFunction: EsTreeNode,
   functionVariable: Variable,
   visitedVariables: ReadonlySet<Variable>,
+  isAdditionalEventCall?: (call: EsTreeNode) => boolean,
 ): boolean => {
   if (visitedVariables.has(functionVariable)) return false;
   const nextVisitedVariables = new Set(visitedVariables).add(functionVariable);
@@ -222,6 +223,10 @@ const hasReachableJsxEventCallPath = (
       }
       continue;
     }
+    if (isAdditionalEventCall?.(callExpression)) {
+      hasDirectJsxEventReference = true;
+      continue;
+    }
     callExpressions.push(callExpression);
   }
   if (hasDirectJsxEventReference) return true;
@@ -242,6 +247,7 @@ const hasReachableJsxEventCallPath = (
         componentFunction,
         callerVariable,
         nextVisitedVariables,
+        isAdditionalEventCall,
       )
     ) {
       return true;
@@ -262,6 +268,7 @@ export const hasUserInputSetterWriter = (
   setterRef: Reference,
   effectNode: EsTreeNode,
   includeDeferredWriters = false,
+  isAdditionalEventCall?: (call: EsTreeNode) => boolean,
 ): boolean => {
   if (!setterRef.resolved) return false;
   const componentFunction = findEnclosingFunction(effectNode);
@@ -283,7 +290,14 @@ export const hasUserInputSetterWriter = (
     );
     if (
       writerVariable &&
-      hasReachableJsxEventCallPath(analysis, context, componentFunction, writerVariable, new Set())
+      hasReachableJsxEventCallPath(
+        analysis,
+        context,
+        componentFunction,
+        writerVariable,
+        new Set(),
+        isAdditionalEventCall,
+      )
     ) {
       return true;
     }

@@ -1,3 +1,4 @@
+import { hasSupportedRadixPendingDraft } from "./utils/has-supported-radix-pending-draft.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -86,6 +87,7 @@ export const noDerivedState = defineRule({
           ) {
             continue;
           }
+          if (hasSupportedRadixPendingDraft(analysis, context, node, fact)) continue;
           reportStateWrite(fact.callExpression, fact.stateDeclarator);
         }
       },

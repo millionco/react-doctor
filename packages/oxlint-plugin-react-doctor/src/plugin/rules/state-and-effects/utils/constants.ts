@@ -117,3 +117,89 @@ export const OWNED_ABORT_UNSUPPORTED_CONTINUATION_TYPES: ReadonlySet<string> = n
   "ContinueStatement",
   "YieldExpression",
 ]);
+
+export const RADIX_DRAFT_MODULE_SOURCE = "@radix-ui/react-dropdown-menu";
+export const RADIX_DRAFT_MAX_BRIDGE_COUNT = 4;
+export const RADIX_DRAFT_EMPTY_COUNT = 0;
+export const RADIX_DRAFT_SINGLE_COUNT = 1;
+export const RADIX_DRAFT_PAIR_COUNT = 2;
+export const RADIX_DRAFT_THREE_STATEMENTS_COUNT = 3;
+export const RADIX_DRAFT_FIRST_INDEX = 0;
+export const RADIX_DRAFT_SECOND_INDEX = 1;
+export const RADIX_DRAFT_LAST_INDEX = -1;
+export const RADIX_DRAFT_FORBIDDEN_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "disabled",
+  "hidden",
+  "inert",
+  "asChild",
+  "contentEditable",
+  "dangerouslySetInnerHTML",
+  "onSelect",
+  "onClick",
+  "onPointerDown",
+  "onMouseDown",
+  "onKeyDown",
+  "children",
+  "ref",
+  "is",
+]);
+export const RADIX_DRAFT_FORBIDDEN_CAPABILITIES: ReadonlySet<string> = new Set([
+  "eval",
+  "Function",
+  "Reflect",
+  "Proxy",
+  "globalThis",
+  "window",
+  "self",
+  "global",
+  "process",
+  "require",
+  "module",
+  "exports",
+  "React",
+  "arguments",
+]);
+export const RADIX_DRAFT_FORBIDDEN_MEMBERS: ReadonlySet<string> = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+  "__defineGetter__",
+  "__defineSetter__",
+  "defaultProps",
+  "innerHTML",
+  "outerHTML",
+  "textContent",
+  "setAttribute",
+  "removeChild",
+  "appendChild",
+  "replaceChild",
+  "insertAdjacentHTML",
+  "remove",
+  "replaceChildren",
+  "replaceWith",
+  "createElement",
+  "cloneElement",
+]);
+export const RADIX_DRAFT_RUNTIME_TYPESCRIPT: ReadonlySet<string> = new Set([
+  "TSEnumDeclaration",
+  "TSEnumMember",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);
+
+export const RADIX_DRAFT_INHERITED_OBJECT_KEYS: ReadonlySet<string> = new Set([
+  "constructor",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+]);

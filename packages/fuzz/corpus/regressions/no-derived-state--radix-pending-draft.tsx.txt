@@ -1,0 +1,40 @@
+// rule: no-derived-state
+// verdict: pass
+// weakness: library-idiom
+// source: synthetic
+// file-path: corpus/regressions/no-derived-state--radix-pending-draft.tsx
+import { useEffect, useState } from "react";
+import * as Menu from "@radix-ui/react-dropdown-menu";
+export const DraftChoices = ({ values, options }) => {
+  const [draft, setDraft] = useState(values);
+  useEffect(() => {
+    setDraft(values);
+  }, [values]);
+  const toggleChoice = (event, selectedValue) => {
+    event.preventDefault();
+    if (selectedValue === undefined) return;
+    if (draft.includes(selectedValue)) {
+      const next = draft.filter((entry) => entry !== selectedValue);
+      setDraft(next);
+    } else {
+      const next = [...draft, selectedValue];
+      setDraft(next);
+    }
+  };
+  const renderChoice = (option) => {
+    const { value: choiceValue, ...optionRest } = option;
+    const choiceProps = {
+      value: choiceValue,
+      onSelect: (event) => toggleChoice(event, choiceValue),
+      children: draft.includes(choiceValue) ? "Selected" : "Unselected",
+      ...optionRest,
+    };
+    return <Menu.Item {...choiceProps} />;
+  };
+  return (
+    <Menu.Root>
+      <Menu.Trigger>Choose</Menu.Trigger>
+      <Menu.Content>{options.map(renderChoice)}</Menu.Content>
+    </Menu.Root>
+  );
+};

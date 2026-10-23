@@ -1,3 +1,5 @@
+import { hasSupportedRadixDraftEventCall } from "./rules/state-and-effects/utils/has-supported-radix-draft-event-call.js";
+import { findEnclosingFunction } from "./utils/find-enclosing-function.js";
 import { hasCurrentContextRecordEnvironment } from "./rules/state-and-effects/utils/has-current-context-record-environment.js";
 import { isImportedNodePortProcessUtility } from "./utils/is-imported-node-port-process-utility.js";
 import { isTypedReduxStoreFactoryInitialization } from "./rules/state-and-effects/utils/is-typed-redux-store-factory-initialization.js";
@@ -201,6 +203,25 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectRadixPendingDraftDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "CallExpression")) return;
+    let component = findEnclosingFunction(node);
+    while (component) {
+      hasSupportedRadixDraftEventCall(node, component, {
+        filename: input.absoluteFilePath,
+        scopes,
+        sourceCode: { getText: () => input.sourceText },
+      });
+      component = findEnclosingFunction(component);
+    }
+  });
 };
 
 const collectCurrentContextRecordDependencies: CrossFileDependencyCollector = (input) => {
@@ -645,7 +666,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectCurrentContextRecordDependencies],
-    ["no-derived-state", collectEffectValueHelperDependencies],
+    ["no-derived-state", collectRadixPendingDraftDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],

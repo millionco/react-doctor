@@ -333,6 +333,8 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  'import * as Menu from "@radix-ui/react-dropdown-menu";\nexport const FuzzDraftChoices = ({ values, options }) => {\n  const [draft, setDraft] = useState(values);\n  useEffect(() => { setDraft(values); }, [values]);\n  const toggleChoice = (event, selectedValue) => {\n    event.preventDefault();\n    if (selectedValue === undefined) return;\n    if (draft.includes(selectedValue)) {\n      const next = draft.filter((entry) => entry !== selectedValue);\n      setDraft(next);\n    } else {\n      const next = [...draft, selectedValue];\n      setDraft(next);\n    }\n  };\n  const renderChoice = (option) => {\n    const { value: choiceValue, ...optionRest } = option;\n    const choiceProps = { value: choiceValue, onSelect: (event) => toggleChoice(event, choiceValue), children: draft.includes(choiceValue) ? "Selected" : "Unselected", ...optionRest };\n    return <Menu.Item {...choiceProps} />;\n  };\n  return <Menu.Root><Menu.Trigger>Choose</Menu.Trigger><Menu.Content>{options.map(renderChoice)}</Menu.Content></Menu.Root>;\n};\n',
+  "export const FuzzCopiedChoices = ({ values }) => {\n  const [draft, setDraft] = useState(values);\n  useEffect(() => { setDraft(values); }, [values]);\n  return <output>{draft.length}</output>;\n};\n",
   `import { useEffect as useTokenRetirementEffect, useState as useTokenRetirementState } from "react";
 export const FuzzTokenRetirementNotice = ({ activeToken }) => {
   const currentToken = activeToken;

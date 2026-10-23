@@ -8,11 +8,13 @@ import { collectFunctionReturnStatements } from "./collect-function-return-state
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
+import { isProvenGlobalNamespaceReference } from "./is-proven-global-namespace-reference.js";
 import { getFunctionBindingName } from "./get-function-binding-name.js";
 import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
+import { hasReactDefaultProviderMutation } from "./has-react-default-provider-mutation.js";
 import { hasSymbolBindingWrites } from "./has-symbol-binding-writes.js";
 import { isMemberMutationTarget } from "./is-member-mutation-target.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -190,6 +192,16 @@ export const getStableImportedHookMemberKeys = ({
     })
   )
     return null;
+  if (hasReactDefaultProviderMutation("useState", scopes)) return null;
+  let hasCommonJsLoader = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasCommonJsLoader) return false;
+    if (isProvenGlobalNamespaceReference(node, "require", scopes)) {
+      hasCommonJsLoader = true;
+      return false;
+    }
+  });
+  if (hasCommonJsLoader) return null;
   const resolved = resolveCrossFileFunctionExportWithFilePath(
     filename,
     imported.source.value,

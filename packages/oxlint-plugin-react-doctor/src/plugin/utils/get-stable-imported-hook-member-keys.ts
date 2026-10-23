@@ -249,8 +249,9 @@ export const getStableImportedHookMemberKeys = ({
     walkAst(providerScopes.rootScope.node, (node) => {
       if (hasProviderHazard) return false;
       if (
-        rejectGlobalRequire &&
-        isProvenGlobalNamespaceReference(node, "require", providerScopes)
+        (rejectGlobalRequire &&
+          isProvenGlobalNamespaceReference(node, "require", providerScopes)) ||
+        isProvenGlobalNamespaceReference(node, "eval", providerScopes)
       ) {
         hasProviderHazard = true;
         return false;
@@ -273,7 +274,6 @@ export const getStableImportedHookMemberKeys = ({
         isNodeOfType(node, "ImportExpression") ||
         isProvenGlobalNamespaceReference(node, "module", providerScopes) ||
         isProvenGlobalNamespaceReference(node, "Function", providerScopes) ||
-        isProvenGlobalNamespaceReference(node, "eval", providerScopes) ||
         isProvenGlobalNamespaceReference(node, "Object", providerScopes) ||
         isProvenGlobalNamespaceReference(node, "Reflect", providerScopes) ||
         (isNodeOfType(node, "MemberExpression") &&

@@ -22,10 +22,14 @@ const runCaller = (
   const filename = path.join(directory, "panel.tsx");
   const consumer = `${reactImport}
     import { useCounterActions } from "./use-counter-actions.js";
-    export const Panel = ({ value, replaceProvider }) => {
+    export const Panel = ({ value, replaceProvider, consume }) => {
       ${providerUse}
       const actions = useCounterActions();
-      useEffect(() => { actions.increment(1); }, []);
+      useEffect(() => {
+        const handleTick = () => actions.increment(1);
+        window.addEventListener("tick", handleTick);
+        return () => window.removeEventListener("tick", handleTick);
+      }, []);
       return React.createElement("output", null);
     };`;
   try {
@@ -50,6 +54,11 @@ describe("exhaustive-deps imported callback caller providers", () => {
     ["unrelated provider metadata", "const label = React.version;"],
     ["ordinary object data", "const labels = Object.keys({ value });"],
     ["ordinary reflective data", 'const label = Reflect.get({ value }, "value");'],
+    ["an ordinary eval method", 'const parser = { eval: (code) => code }; parser.eval("data");'],
+    [
+      "a shadowed global eval object",
+      'const globalThis = { eval: (code) => code }; globalThis.eval("data");',
+    ],
     [
       "a shadowed local require",
       'const require = () => ({ version: "local" }); const metadata = require("react");',
@@ -218,5 +227,21 @@ describe("exhaustive-deps imported callback caller providers", () => {
         `const require = () => ({ version: "local" }); const vm = require("vm");\n${producer}`,
       ),
     ).toEqual({ diagnostics: [], parseErrors: [] });
+  });
+
+  it.each([
+    ["direct lexical eval", 'eval("React.useState = () => [0, () => consume(value)]");'],
+    ["parenthesized direct eval", '(eval)("React.useState = () => [0, () => consume(value)]");'],
+    ["an eval alias", 'const evaluate = eval; evaluate("data");'],
+    ["a global-object eval", 'globalThis.eval("data");'],
+    ["a computed global eval", 'globalThis["eval"]("data");'],
+    ["a global-object alias", 'const runtime = globalThis; runtime.eval("data");'],
+    ["a destructured global eval", 'const { eval: evaluate } = globalThis; evaluate("data");'],
+    ["an unsupported readonly eval capability", "const evaluate = eval;"],
+  ])("declines the selected callback proof with %s", (_description, providerUse) => {
+    const result = runCaller(providerUse);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("actions.increment");
   });
 });

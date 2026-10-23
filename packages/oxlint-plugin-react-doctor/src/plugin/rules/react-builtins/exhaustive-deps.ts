@@ -5,6 +5,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveLocalObjectSpreadDependencyKeys } from "../../utils/resolve-local-object-spread-dependency-keys.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import type {
   ReferenceDescriptor,
@@ -440,6 +441,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  dependencyArray?: EsTreeNode,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -498,6 +500,15 @@ const collectCaptureDepKeys = (
     if (depKey === symbol.name) {
       if (declaredExactBindingKeys?.has(depKey)) {
         keys.add(depKey);
+        continue;
+      }
+      const spreadDependencyKeys = resolveLocalObjectSpreadDependencyKeys({
+        reference,
+        scopes,
+        dependencyArray,
+      });
+      if (spreadDependencyKeys) {
+        for (const spreadDependencyKey of spreadDependencyKeys) keys.add(spreadDependencyKey);
         continue;
       }
       const identitySourceKeys =
@@ -2439,6 +2450,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          depsArgument,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

@@ -23,7 +23,7 @@ import { hasSymbolBindingWrites } from "./has-symbol-binding-writes.js";
 import { isMemberMutationTarget } from "./is-member-mutation-target.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
-import { isNonReferenceIdentifier } from "./is-non-reference-identifier.js";
+import { hasLexicalReceiverReference } from "./has-lexical-receiver-reference.js";
 import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 import { isUnmodifiedLocalReactStateCall } from "./is-unmodified-local-react-state-call.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "./resolve-cross-file-function-export.js";
@@ -58,29 +58,6 @@ const hasUnaliasedReactStateProviderConfiguration = (
 const isReadonlyBinding = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean =>
   !hasSymbolBindingWrites(symbol) &&
   hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes);
-
-const hasLexicalReceiverReference = (arrow: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  let hasReceiver = false;
-  walkAst(arrow, (node) => {
-    if (hasReceiver) return false;
-    if (node !== arrow && isFunctionLike(node) && !isNodeOfType(node, "ArrowFunctionExpression"))
-      return false;
-    if (
-      isNodeOfType(node, "ThisExpression") ||
-      isNodeOfType(node, "Super") ||
-      isNodeOfType(node, "MetaProperty") ||
-      (isNodeOfType(node, "Identifier") &&
-        node.name === "arguments" &&
-        !isNonReferenceIdentifier(node) &&
-        Boolean(scopes.referenceFor(node)) &&
-        scopes.isGlobalReference(node))
-    ) {
-      hasReceiver = true;
-      return false;
-    }
-  });
-  return hasReceiver;
-};
 
 const getReturnedArrow = (
   value: EsTreeNode,

@@ -4,7 +4,13 @@ import { getStableImportedHookMemberKeys } from "../../utils/get-stable-imported
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { getEquivalentSymbols } from "../../utils/get-equivalent-symbols.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { hasDynamicScopeAccess } from "../../utils/has-dynamic-scope-access.js";
+import { hasLexicalReceiverReference } from "../../utils/has-lexical-receiver-reference.js";
+import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveLocalObjectSpreadDependencyKeys } from "../../utils/resolve-local-object-spread-dependency-keys.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import type {
@@ -393,9 +399,22 @@ const resolveCalledArgumentPropertyKeys = (
 ): Set<string> | null => {
   const argument = findTransparentExpressionRoot(reference.identifier);
   const call = argument.parent;
-  if (!isNodeOfType(call, "CallExpression") || call.callee === argument) return null;
+  const program = scopes.rootScope.node;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.callee === argument ||
+    !isNodeOfType(program, "Program") ||
+    program.sourceType !== "module"
+  )
+    return null;
+  const callee = unwrapExpression(call.callee);
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const helperSymbol = resolveConstIdentifierAlias(callee, scopes);
+  if (!helperSymbol || (helperSymbol.kind !== "const" && helperSymbol.kind !== "function"))
+    return null;
+  const helper = getFunctionValueNode(helperSymbol);
   const position = call.arguments.findIndex((candidate) => candidate === argument);
-  const helper = resolveExactLocalFunction(call.callee, scopes);
   if (
     position < 0 ||
     call.arguments
@@ -404,13 +423,42 @@ const resolveCalledArgumentPropertyKeys = (
     !helper ||
     !isFunctionLike(helper) ||
     helper.async ||
-    helper.generator
+    helper.generator ||
+    helper.params.some(
+      (parameter) => !isNodeOfType(parameter, "Identifier") || parameter.name === "this",
+    ) ||
+    hasLexicalReceiverReference(helper, scopes) ||
+    hasDynamicScopeAccess(scopes)
+  )
+    return null;
+  const binding =
+    isNodeOfType(helper, "FunctionDeclaration") || isNodeOfType(helper, "FunctionExpression")
+      ? helper.id
+      : null;
+  const bindings = new Set([
+    ...getEquivalentSymbols(callee, scopes),
+    ...getFunctionBindingSymbols(helper, scopes),
+    ...(scopes
+      .ownScopeFor(helper)
+      ?.symbols.filter((symbol) => symbol.bindingIdentifier === binding) ?? []),
+  ]);
+  if (
+    !bindings.has(helperSymbol) ||
+    [...bindings].some(
+      (symbol) =>
+        hasSymbolBindingWrites(symbol) || !hasCompleteSymbolReferences(symbol, program, scopes),
+    )
   )
     return null;
   const parameter = helper.params[position];
   if (!isNodeOfType(parameter, "Identifier")) return null;
   const symbol = scopes.symbolFor(parameter);
-  if (!symbol || symbol.references.length === 0) return null;
+  if (
+    !symbol ||
+    symbol.references.length === 0 ||
+    !hasCompleteSymbolReferences(symbol, program, scopes)
+  )
+    return null;
   const keys = new Set<string>();
   for (const usage of symbol.references) {
     const member = usage.identifier.parent;

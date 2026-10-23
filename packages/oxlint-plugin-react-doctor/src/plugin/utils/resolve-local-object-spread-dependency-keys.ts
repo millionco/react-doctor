@@ -3,16 +3,13 @@ import { collectFunctionReturnStatements } from "./collect-function-return-state
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
+import { hasDynamicScopeAccess } from "./has-dynamic-scope-access.js";
 import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
-import { hasRuntimeValueBinding } from "./has-runtime-value-binding.js";
 import { hasSymbolBindingWrites } from "./has-symbol-binding-writes.js";
-import { isErasedTypeScriptBinding } from "./is-erased-typescript-binding.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isProvenGlobalNamespaceReference } from "./is-proven-global-namespace-reference.js";
 import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
-import { walkAst } from "./walk-ast.js";
 
 interface LocalObjectSpreadDependencyOptions {
   readonly reference: ReferenceDescriptor;
@@ -127,21 +124,7 @@ export const resolveLocalObjectSpreadDependencyKeys = ({
     })
   )
     return null;
-  let hasDynamicScope = false;
-  walkAst(program, (node) => {
-    if (hasDynamicScope) return false;
-    if (
-      isNodeOfType(node, "WithStatement") ||
-      isProvenGlobalNamespaceReference(node, "eval", scopes)
-    )
-      hasDynamicScope = true;
-    if (isNodeOfType(node, "Identifier") && node.name === "eval" && scopes.referenceFor(node)) {
-      const binding = scopes.symbolFor(node);
-      if (binding && isErasedTypeScriptBinding(binding) && !hasRuntimeValueBinding(binding))
-        hasDynamicScope = true;
-    }
-  });
-  return hasDynamicScope
+  return hasDynamicScopeAccess(scopes)
     ? null
     : new Set([...propertyNames].map((propertyName) => `${symbol.name}.${propertyName}`));
 };

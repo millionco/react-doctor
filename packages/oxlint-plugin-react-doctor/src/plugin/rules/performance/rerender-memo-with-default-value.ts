@@ -8,6 +8,8 @@ import {
   buildSameFileMemoComparatorRegistry,
   type MemoComparatorDescriptor,
 } from "../../utils/build-same-file-memo-comparator-registry.js";
+import { createImportedPlainClassPropAnalyzer } from "../../utils/create-imported-plain-class-prop-analyzer.js";
+import type { ImportedPlainClassPropAnalyzer } from "../../utils/create-imported-plain-class-prop-analyzer.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { comparatorProvesEmptyPropDoesNotBreakMemo } from "../../utils/comparator-proves-empty-prop-equality.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -153,6 +155,7 @@ const collectIdentitySensitiveUses = (
   memoComparatorRegistry: ReadonlyMap<string, MemoComparatorDescriptor>,
   defaultedBindings: ReadonlyMap<string, DefaultedEmptyBinding>,
   context: RuleContext,
+  importedClassPropIsMemberOnly: ImportedPlainClassPropAnalyzer,
   into: Map<string, IdentitySensitiveUse>,
 ): void => {
   let innerShadowedNames = shadowedNames;
@@ -224,6 +227,14 @@ const collectIdentitySensitiveUses = (
             continue;
           }
         }
+        if (
+          isNodeOfType(attribute.name, "JSXIdentifier") &&
+          isNodeOfType(strippedAttributeExpression, "Identifier") &&
+          !innerShadowedNames.has(strippedAttributeExpression.name) &&
+          defaultedBindings.get(strippedAttributeExpression.name)?.literalKind === "object" &&
+          importedClassPropIsMemberOnly(openingName, attribute.name.name)
+        )
+          continue;
         markCandidateIdentifier(
           attributeExpression,
           candidateNames,
@@ -250,6 +261,7 @@ const collectIdentitySensitiveUses = (
             memoComparatorRegistry,
             defaultedBindings,
             context,
+            importedClassPropIsMemberOnly,
             into,
           );
         }
@@ -263,6 +275,7 @@ const collectIdentitySensitiveUses = (
         memoComparatorRegistry,
         defaultedBindings,
         context,
+        importedClassPropIsMemberOnly,
         into,
       );
     }
@@ -294,6 +307,7 @@ export const rerenderMemoWithDefaultValue = defineRule({
   recommendation:
     "Move it to the top of the file: `const EMPTY_ITEMS: Item[] = []`, then use that as the default value",
   create: (context: RuleContext) => {
+    const importedClassPropIsMemberOnly = createImportedPlainClassPropAnalyzer(context);
     let memoRegistry: Map<string, MemoStatus> = new Map();
     let memoComparatorRegistry: Map<string, MemoComparatorDescriptor> = new Map();
 
@@ -317,6 +331,7 @@ export const rerenderMemoWithDefaultValue = defineRule({
         memoComparatorRegistry,
         defaultedBindings,
         context,
+        importedClassPropIsMemberOnly,
         identitySensitiveUses,
       );
 

@@ -521,3 +521,50 @@ export const REACT_JSX_PROVIDER_MODULE_SOURCES: ReadonlySet<string> = new Set([
   "react/jsx-runtime",
   "react/jsx-dev-runtime",
 ]);
+
+export const IMPORTED_CLASS_PASSIVE_VALIDATOR_NAMES: ReadonlySet<string> = new Set([
+  "any",
+  "array",
+  "func",
+  "object",
+]);
+
+export const IMPORTED_CLASS_REFUSED_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  ...REACT_PROVIDER_MUTATION_CAPABILITY_NAMES,
+  "constructor",
+  "defineProperty",
+  "defineProperties",
+  "setPrototypeOf",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+
+export const IMPORTED_CLASS_REFUSED_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "module",
+  "node:module",
+  "vm",
+  "node:vm",
+]);
+
+export const IMPORTED_CLASS_REFUSED_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "React",
+  "eval",
+  "Function",
+  "Reflect",
+]);
+
+export const IMPORTED_CLASS_CANONICAL_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  ...REACT_JSX_PROVIDER_MODULE_SOURCES,
+  "prop-types",
+]);
+
+export const IMPORTED_CLASS_PASSIVE_OBJECT_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "keys",
+  "entries",
+]);
+
+export const IMPORTED_CLASS_INSTANCE_MUTATION_NAMES: ReadonlySet<string> = new Set([
+  "render",
+  "shouldComponentUpdate",
+  "isRequired",
+]);

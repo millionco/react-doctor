@@ -469,6 +469,26 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   if (hasDestructuredHookCandidate) return false;
 };
 
+const collectMemoDefaultDependencies: CrossFileDependencyCollector = (input) => {
+  if (collectForwardedHookDependencies(input) === false) return false;
+  if (
+    !flattenImportEntries(input.staticImports).some(
+      (entry) => entry.source.startsWith(".") && entry.exportedName === "default",
+    )
+  )
+    return;
+  let hasEmptyObjectDefault = false;
+  walkAst(input.getProgram(), (node) => {
+    if (
+      isNodeOfType(node, "AssignmentPattern") &&
+      isNodeOfType(node.right, "ObjectExpression") &&
+      node.right.properties.length === 0
+    )
+      hasEmptyObjectDefault = true;
+  });
+  if (hasEmptyObjectDefault) return false;
+};
+
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   sourceText,
@@ -732,7 +752,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
     ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
-    ["rerender-memo-with-default-value", collectForwardedHookDependencies],
+    ["rerender-memo-with-default-value", collectMemoDefaultDependencies],
     ["server-sequential-independent-await", collectSequentialAwaitDependencies],
     ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],

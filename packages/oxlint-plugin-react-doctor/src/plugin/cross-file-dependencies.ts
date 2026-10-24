@@ -741,6 +741,20 @@ const collectNativeButtonLabelDependencies: CrossFileDependencyCollector = ({ ge
   if (hasNativeLabelCandidate) return false;
 };
 
+const collectObjectUrlPreviewDependencies: CrossFileDependencyCollector = ({ getProgram }) => {
+  let hasObjectUrlCandidate = false;
+  walkAst(getProgram(), (node) => {
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      getStaticPropertyName(callee) === "createObjectURL"
+    )
+      hasObjectUrlCandidate = true;
+  });
+  if (hasObjectUrlCandidate) return false;
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -753,6 +767,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["shadcn-icon-button-requires-label", collectNativeButtonLabelDependencies],
+    ["no-create-object-url-without-revoke", collectObjectUrlPreviewDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["hook-use-state", collectNextQueryStateDependencies],
     ["no-ref-current-in-render", collectTypedReduxStoreInitializationDependencies],

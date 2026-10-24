@@ -1,3 +1,7 @@
+import {
+  OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
+  REFLECT_PROPERTY_MUTATION_METHOD_NAMES,
+} from "./mutation-methods.js";
 import { FETCH_CALLEE_NAMES } from "./library.js";
 import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "./dom.js";
 
@@ -585,3 +589,64 @@ export const IMPORTED_CLASS_INSTANCE_MUTATION_NAMES: ReadonlySet<string> = new S
   "shouldComponentUpdate",
   "isRequired",
 ]);
+
+export const JSX_TYPESCRIPT_CONFIG_FILE_NAMES = ["tsconfig.json", "jsconfig.json"];
+
+export const JSX_BABEL_CONFIG_FILE_NAMES = [
+  ".babelrc",
+  ".babelrc.json",
+  ".babelrc.js",
+  ".babelrc.cjs",
+  "babel.config.js",
+  "babel.config.cjs",
+  "babel.config.mjs",
+  "babel.config.ts",
+];
+
+export const IMPORTED_NATIVE_PREVIEW_DEFINITION_COUNT = 1;
+export const IMPORTED_NATIVE_PREVIEW_HOST_NAMES: ReadonlySet<string> = new Set(["img", "video"]);
+export const IMPORTED_NATIVE_PREVIEW_REFUSED_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "ref",
+  "is",
+  "dangerouslySetInnerHTML",
+]);
+export const IMPORTED_NATIVE_PREVIEW_EVENT_ATTRIBUTE_PATTERN = /^on/i;
+
+export const IMPORTED_NATIVE_PREVIEW_ALLOWED_DIRECTIVES: ReadonlySet<string> = new Set([
+  "use strict",
+  "use client",
+]);
+
+export const IMPORTED_NATIVE_PREVIEW_ARRAY_REFUSED_METHOD_NAMES: ReadonlySet<string> = new Set([
+  ...OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
+  ...REFLECT_PROPERTY_MUTATION_METHOD_NAMES,
+  "deleteProperty",
+  "getOwnPropertyDescriptor",
+  "getOwnPropertyDescriptors",
+  "getPrototypeOf",
+  "setPrototypeOf",
+]);
+
+export const IMPORTED_NATIVE_PREVIEW_ARRAY_REFUSED_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  ...REACT_PROVIDER_MUTATION_CAPABILITY_NAMES,
+  "constructor",
+]);
+
+export const IMPORTED_NATIVE_PREVIEW_SAFE_NAMESPACE_METHODS: ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> = new Map([
+  ["Object", new Set(["keys", "values", "entries"])],
+  ["Reflect", new Set<string>()],
+  ["Array", new Set(["from", "of", "isArray"])],
+]);
+
+export const JSX_ADDITIONAL_BABEL_CONFIG_FILE_NAMES = [
+  "babel.config.json",
+  "babel.config.cts",
+  "babel.config.mts",
+  ".babelrc.mjs",
+  ".babelrc.cts",
+  ".babelrc.ts",
+  ".babelrc.mts",
+];

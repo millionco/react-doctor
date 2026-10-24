@@ -177,6 +177,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "nextjs-no-use-search-params-without-suspense",
       "no-adjust-state-on-prop-change",
       "no-barrel-import",
+      "no-create-object-url-without-revoke",
       "no-create-ref-in-function-component",
       "no-derived-state",
       "no-derived-state-effect",

@@ -1,0 +1,8 @@
+{
+  "name": "private-imported-native-preview-fixture",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "19.2.0"
+  }
+}

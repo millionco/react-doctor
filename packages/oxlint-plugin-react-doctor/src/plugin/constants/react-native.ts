@@ -216,7 +216,6 @@ export const NATIVE_LABEL_RESOLVER_NAMES: ReadonlySet<string> = new Set([
 export const NATIVE_LABEL_CONFIG_FILE_PATTERN =
   /(?:^|\/)(?:metro|babel|vite|webpack)\.config\.[cm]?[jt]s$/;
 export const NATIVE_LABEL_EXPO_TSCONFIG_SOURCE = "expo/tsconfig.base";
-export const NATIVE_LABEL_TSCONFIG_FILE_NAMES = ["tsconfig.json", "jsconfig.json"];
 export { MEMO_TUPLE_LOADER_SOURCES as NATIVE_LABEL_REFUSED_MODULE_SOURCES } from "./react.js";
 
 export const NATIVE_LABEL_SINGLE_VALUE_COUNT = 1;
@@ -236,16 +235,6 @@ export const NATIVE_LABEL_RUNTIME_CAPABILITY_NAMES: ReadonlySet<string> = new Se
   "process",
 ]);
 
-export const NATIVE_LABEL_BABEL_CONFIG_NAMES = [
-  ".babelrc",
-  ".babelrc.json",
-  ".babelrc.js",
-  ".babelrc.cjs",
-  "babel.config.js",
-  "babel.config.cjs",
-  "babel.config.mjs",
-  "babel.config.ts",
-];
 export const NATIVE_LABEL_METRO_CONFIG_PATTERN = /(?:^|\/)metro\.config\.[cm]?[jt]s$/;
 export const NATIVE_LABEL_METRO_MODULE_SOURCES: ReadonlySet<string> = new Set([
   "path",

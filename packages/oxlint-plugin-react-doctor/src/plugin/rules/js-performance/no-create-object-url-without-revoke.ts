@@ -1,3 +1,4 @@
+import { isImportedNativePreviewCall } from "../../utils/is-imported-native-preview-call.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -2199,6 +2200,7 @@ const escapeIsLeaky = (callNode: EsTreeNode, context: RuleContext): boolean => {
   // Passed directly to a state setter (`setImageUrl(URL.createObjectURL(...))`)
   // or set as an element URL attribute (`a.setAttribute('href', ...)`).
   if (isNodeOfType(parent, "CallExpression")) {
+    if (isImportedNativePreviewCall(parent, callNode, context)) return true;
     if (isStateSetterCallee(parent.callee, context.scopes)) return true;
     if (isUrlSetAttributeCall(parent, topNode, context.scopes)) return true;
     if (isCacheStoreOfExpression(parent, topNode, context.scopes)) return true;

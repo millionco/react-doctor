@@ -1,12 +1,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TSCONFIG_EXTENDS_MAX_DEPTH } from "../constants/thresholds.js";
-import { STANDARD_REACT_JSX_MODES } from "../constants/react.js";
+import {
+  STANDARD_REACT_JSX_MODES,
+  JSX_BABEL_CONFIG_FILE_NAMES,
+  JSX_TYPESCRIPT_CONFIG_FILE_NAMES,
+} from "../constants/react.js";
 import {
   NATIVE_LABEL_CANONICAL_MODULE_SOURCES,
-  NATIVE_LABEL_BABEL_CONFIG_NAMES,
   NATIVE_LABEL_EXPO_TSCONFIG_SOURCE,
-  NATIVE_LABEL_TSCONFIG_FILE_NAMES,
 } from "../constants/react-native.js";
 import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import { normalizeFilename } from "./normalize-filename.js";
@@ -108,14 +110,14 @@ export const hasNativeLabelJsxConfiguration = (
   let selectedConfig: string | null = null;
   while (directory === rootDirectory || directory.startsWith(`${rootDirectory}/`)) {
     if (
-      NATIVE_LABEL_BABEL_CONFIG_NAMES.some((basename) => {
+      JSX_BABEL_CONFIG_FILE_NAMES.some((basename) => {
         const configPath = path.join(directory, basename);
         recordExistenceProbe(configPath);
         return fs.existsSync(configPath);
       })
     )
       return false;
-    for (const basename of NATIVE_LABEL_TSCONFIG_FILE_NAMES) {
+    for (const basename of JSX_TYPESCRIPT_CONFIG_FILE_NAMES) {
       const configPath = path.join(directory, basename);
       recordExistenceProbe(configPath);
       if (selectedConfig === null && fs.existsSync(configPath))

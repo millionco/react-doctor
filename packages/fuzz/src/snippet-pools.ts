@@ -333,6 +333,8 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  "import {useRef as useFuzzDeferredIframeRef} from 'react';\nexport const FuzzDeferredIframePreview=()=>{const frame=useFuzzDeferredIframeRef(null);const open=()=>{const container=document.querySelector('#preview');container.querySelector('.carrier > iframe').setAttribute('src','https://media.example/video');};return <div id=\"preview\"><div className=\"carrier\"><iframe ref={frame}/></div><button onClick={open}>Open</button></div>;};\n",
+  "import {useRef as useFuzzBlockedDeferredIframeRef} from 'react';\nexport const FuzzBlockedDeferredIframePreview=()=>{const frame=useFuzzBlockedDeferredIframeRef(null);const open=()=>{const container=document.querySelector('#preview');container.querySelector('.carrier > iframe').setAttribute('src','https://media.example/video');};return <div id=\"preview\" onClickCapture={event=>event.stopPropagation()}><div className=\"carrier\"><iframe ref={frame}/></div><button onClick={open}>Open</button></div>;};\n",
   `import { useEffect as useTokenRetirementEffect, useState as useTokenRetirementState } from "react";
 export const FuzzTokenRetirementNotice = ({ activeToken }) => {
   const currentToken = activeToken;

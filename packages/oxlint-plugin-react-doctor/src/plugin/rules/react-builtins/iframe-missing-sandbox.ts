@@ -1,3 +1,4 @@
+import { createDeferredIframeSourceChecker } from "./utils/create-deferred-iframe-source-checker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -86,91 +87,91 @@ export const iframeMissingSandbox = defineRule({
     'Add `sandbox=""` or a curated value so embedded pages cannot get full access to your site by default.',
   category: "Security",
   matchByOccurrence: true,
-  create: skipNonProductionFiles((context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (resolveJsxElementType(node) !== "iframe") return;
-      const sandboxAttr = hasJsxPropIgnoreCase(node.attributes, "sandbox");
-      if (!sandboxAttr) {
-        // A fully-opaque spread (`<iframe {...props} />`) can forward
-        // `sandbox` at runtime, so its absence here isn't proof of a missing
-        // attribute — but an explicit `src` marks this element as the real
-        // embed site, where a missing `sandbox` is the author's omission.
-        const hasExplicitSrc = Boolean(hasJsxPropIgnoreCase(node.attributes, "src"));
-        if (!hasExplicitSrc && hasJsxSpreadAttribute(node.attributes)) return;
-        // A `ref`-driven frame with no `src`/`srcDoc` starts as `about:blank`
-        // and is scripted by the parent itself — there is no embedded page to
-        // sandbox, and any effective sandbox would break the parent's
-        // `contentWindow` access.
-        const hasSrcDoc = Boolean(hasJsxPropIgnoreCase(node.attributes, "srcDoc"));
+  create: skipNonProductionFiles((context) => {
+    const hasDeferredExternalSource = createDeferredIframeSourceChecker(context);
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (resolveJsxElementType(node) !== "iframe") return;
+        const sandboxAttr = hasJsxPropIgnoreCase(node.attributes, "sandbox");
+        if (!sandboxAttr) {
+          // A fully-opaque spread (`<iframe {...props} />`) can forward
+          // `sandbox` at runtime, so its absence here isn't proof of a missing
+          // attribute — but an explicit `src` marks this element as the real
+          // embed site, where a missing `sandbox` is the author's omission.
+          const hasExplicitSrc = Boolean(hasJsxPropIgnoreCase(node.attributes, "src"));
+          if (!hasExplicitSrc && hasJsxSpreadAttribute(node.attributes)) return;
+          const hasSrcDoc = Boolean(hasJsxPropIgnoreCase(node.attributes, "srcDoc"));
+          if (
+            !hasExplicitSrc &&
+            !hasSrcDoc &&
+            Boolean(hasJsxPropIgnoreCase(node.attributes, "ref")) &&
+            !hasDeferredExternalSource(node)
+          ) {
+            return;
+          }
+          const allowAttr = hasJsxPropIgnoreCase(node.attributes, "allow");
+          if (allowAttr) {
+            const allowValue = getJsxPropStringValue(allowAttr);
+            if (allowValue !== null && MEDIA_EMBED_ALLOW_PATTERN.test(allowValue)) return;
+          }
+          context.report({ node: node.name, message: MISSING_MESSAGE });
+          return;
+        }
+        const stringValue = getJsxPropStringValue(sandboxAttr);
+        if (stringValue === null) return;
+        validateSandboxValue(context, stringValue, sandboxAttr);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isCreateElementCall(node)) return;
+        const firstArgument = node.arguments[0];
+        if (!firstArgument) return;
+        if (!isNodeOfType(firstArgument, "Literal") || firstArgument.value !== "iframe") return;
+        const propsArgument = node.arguments[1];
+        // No props or explicitly nullish props (`null`/`undefined`/`void 0`)
+        // carry no `sandbox` → missing.
+        if (!propsArgument || isNullishExpression(propsArgument)) {
+          context.report({ node, message: MISSING_MESSAGE });
+          return;
+        }
+        // An opaque props bag (`createElement("iframe", props)`) may forward
+        // `sandbox` at runtime — mirror the JSX spread bailout above.
+        if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
+        let sandboxValueNode: EsTreeNode | null = null;
+        let hasSpread = false;
+        let hasExplicitSrcProperty = false;
+        for (const property of propsArgument.properties) {
+          if (isNodeOfType(property, "SpreadElement")) {
+            hasSpread = true;
+            continue;
+          }
+          if (!isNodeOfType(property, "Property")) continue;
+          const propertyKey = property.key;
+          const keyName = isNodeOfType(propertyKey, "Identifier")
+            ? propertyKey.name
+            : isNodeOfType(propertyKey, "Literal")
+              ? propertyKey.value
+              : null;
+          if (keyName === "src") hasExplicitSrcProperty = true;
+          if (keyName === "sandbox") {
+            sandboxValueNode = property.value;
+            break;
+          }
+        }
+        if (!sandboxValueNode) {
+          // `{ ...props }` may supply `sandbox` at runtime, like a JSX spread —
+          // unless an explicit `src` marks this call as the real embed site.
+          if (hasSpread && !hasExplicitSrcProperty) return;
+          context.report({ node: propsArgument, message: MISSING_MESSAGE });
+          return;
+        }
         if (
-          !hasExplicitSrc &&
-          !hasSrcDoc &&
-          Boolean(hasJsxPropIgnoreCase(node.attributes, "ref"))
+          !isNodeOfType(sandboxValueNode, "Literal") ||
+          typeof sandboxValueNode.value !== "string"
         ) {
           return;
         }
-        const allowAttr = hasJsxPropIgnoreCase(node.attributes, "allow");
-        if (allowAttr) {
-          const allowValue = getJsxPropStringValue(allowAttr);
-          if (allowValue !== null && MEDIA_EMBED_ALLOW_PATTERN.test(allowValue)) return;
-        }
-        context.report({ node: node.name, message: MISSING_MESSAGE });
-        return;
-      }
-      const stringValue = getJsxPropStringValue(sandboxAttr);
-      if (stringValue === null) return;
-      validateSandboxValue(context, stringValue, sandboxAttr);
-    },
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isCreateElementCall(node)) return;
-      const firstArgument = node.arguments[0];
-      if (!firstArgument) return;
-      if (!isNodeOfType(firstArgument, "Literal") || firstArgument.value !== "iframe") return;
-      const propsArgument = node.arguments[1];
-      // No props or explicitly nullish props (`null`/`undefined`/`void 0`)
-      // carry no `sandbox` → missing.
-      if (!propsArgument || isNullishExpression(propsArgument)) {
-        context.report({ node, message: MISSING_MESSAGE });
-        return;
-      }
-      // An opaque props bag (`createElement("iframe", props)`) may forward
-      // `sandbox` at runtime — mirror the JSX spread bailout above.
-      if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
-      let sandboxValueNode: EsTreeNode | null = null;
-      let hasSpread = false;
-      let hasExplicitSrcProperty = false;
-      for (const property of propsArgument.properties) {
-        if (isNodeOfType(property, "SpreadElement")) {
-          hasSpread = true;
-          continue;
-        }
-        if (!isNodeOfType(property, "Property")) continue;
-        const propertyKey = property.key;
-        const keyName = isNodeOfType(propertyKey, "Identifier")
-          ? propertyKey.name
-          : isNodeOfType(propertyKey, "Literal")
-            ? propertyKey.value
-            : null;
-        if (keyName === "src") hasExplicitSrcProperty = true;
-        if (keyName === "sandbox") {
-          sandboxValueNode = property.value;
-          break;
-        }
-      }
-      if (!sandboxValueNode) {
-        // `{ ...props }` may supply `sandbox` at runtime, like a JSX spread —
-        // unless an explicit `src` marks this call as the real embed site.
-        if (hasSpread && !hasExplicitSrcProperty) return;
-        context.report({ node: propsArgument, message: MISSING_MESSAGE });
-        return;
-      }
-      if (
-        !isNodeOfType(sandboxValueNode, "Literal") ||
-        typeof sandboxValueNode.value !== "string"
-      ) {
-        return;
-      }
-      validateSandboxValue(context, sandboxValueNode.value, sandboxValueNode);
-    },
-  })),
+        validateSandboxValue(context, sandboxValueNode.value, sandboxValueNode);
+      },
+    };
+  }),
 });

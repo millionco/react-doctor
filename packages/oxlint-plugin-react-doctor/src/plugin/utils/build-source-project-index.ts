@@ -6,6 +6,7 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isEverySpecifierInlineType, isTypeOnlyImport } from "./is-type-only-import.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { listProductionSourceFiles } from "./list-production-source-files.js";
+import type { ProductionSourceFileLimits } from "./list-production-source-files.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { resolveModulePath } from "./resolve-module-path.js";
@@ -33,6 +34,7 @@ export interface SourceProjectIndexInput {
   readonly currentScopes?: ScopeAnalysis;
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
+  readonly sourceFileLimits?: ProductionSourceFileLimits;
 }
 
 const sourceProjectScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
@@ -131,6 +133,7 @@ export const buildSourceProjectIndex = ({
   currentScopes,
   requiredModuleSources = [],
   knownModuleSources,
+  sourceFileLimits,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
   if (
     requiredModuleSources.length > 0 &&
@@ -139,7 +142,7 @@ export const buildSourceProjectIndex = ({
   ) {
     return null;
   }
-  const productionSourceFiles = listProductionSourceFiles(rootDirectory);
+  const productionSourceFiles = listProductionSourceFiles(rootDirectory, sourceFileLimits);
   if (!productionSourceFiles) return null;
   if (
     requiredModuleSources.length > 0 &&

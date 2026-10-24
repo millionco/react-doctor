@@ -493,8 +493,26 @@ const createClosedNodeProviderValidator = (
   };
   return {
     inspect: (node) => {
-      if (inspectTimer(node) === false) return false;
-      return inspectProvider(node);
+      if (!valid) return false;
+      switch (node.type) {
+        case "Identifier":
+          if (inspectTimer(node) === false) return false;
+          return inspectProvider(node);
+        case "ThisExpression":
+        case "Property":
+        case "ClassDeclaration":
+        case "ClassExpression":
+        case "ImportExpression":
+        case "WithStatement":
+        case "TaggedTemplateExpression":
+        case "MemberExpression":
+        case "ImportDeclaration":
+          return inspectProvider(node);
+        default:
+          if (node.type.startsWith("TS") || node.type.startsWith("JSX")) {
+            return inspectProvider(node);
+          }
+      }
     },
     isClosed: () =>
       valid &&
@@ -937,51 +955,59 @@ const hasPortProcessBody = (environment: NodePortProcessEnvironment): boolean =>
       valid = false;
       break;
     }
-    if (
-      isNodeOfType(node, "MemberExpression") &&
-      errorParameter &&
-      member(node, "code") &&
-      sameBinding(node.object, errorParameter, environment.scopes)
-    )
-      allowedMembers.add(node);
-    if (
-      isNodeOfType(node, "AssignmentExpression") &&
-      node.operator === "=" &&
-      sameBinding(node.left, commandSymbol, environment.scopes)
-    ) {
-      const filtered = directCall(node.right);
-      if (filtered && allowedCalls.has(filtered) && member(filtered.callee, "filter"))
-        allowedAssignments.add(node);
-    }
-    if (
-      (isFunctionLike(node) && !allowedFunctions.has(node)) ||
-      (isNodeOfType(node, "CallExpression") && !allowedCalls.has(node)) ||
-      (isNodeOfType(node, "MemberExpression") && !allowedMembers.has(node)) ||
-      (isNodeOfType(node, "AssignmentExpression") && !allowedAssignments.has(node)) ||
-      (isNodeOfType(node, "NewExpression") && node !== returned.argument) ||
-      (isNodeOfType(node, "AwaitExpression") && !allowedAwaits.has(node)) ||
-      isNodeOfType(node, "UpdateExpression") ||
-      isNodeOfType(node, "YieldExpression")
-    )
-      valid = false;
-    if (
-      isNodeOfType(node, "Identifier") &&
-      !isNonReferenceIdentifier(node) &&
-      environment.scopes.isGlobalReference(node) &&
-      !NODE_PORT_PROCESS_GLOBAL_NAMES.has(node.name)
-    )
-      valid = false;
-    if (isNodeOfType(node, "Identifier") && !isNonReferenceIdentifier(node)) {
-      const symbol = environment.scopes.symbolFor(node);
-      if (symbol && !hasCompleteSymbolReferences(symbol, environment.program, environment.scopes))
+    switch (node.type) {
+      case "MemberExpression":
+        if (
+          errorParameter &&
+          member(node, "code") &&
+          sameBinding(node.object, errorParameter, environment.scopes)
+        )
+          allowedMembers.add(node);
+        if (!allowedMembers.has(node)) valid = false;
+        break;
+      case "AssignmentExpression": {
+        if (node.operator === "=" && sameBinding(node.left, commandSymbol, environment.scopes)) {
+          const filtered = directCall(node.right);
+          if (filtered && allowedCalls.has(filtered) && member(filtered.callee, "filter"))
+            allowedAssignments.add(node);
+        }
+        if (!allowedAssignments.has(node)) valid = false;
+        break;
+      }
+      case "ArrowFunctionExpression":
+      case "FunctionExpression":
+      case "FunctionDeclaration":
+        if (!allowedFunctions.has(node)) valid = false;
+        break;
+      case "CallExpression":
+        if (!allowedCalls.has(node)) valid = false;
+        break;
+      case "NewExpression":
+        if (node !== returned.argument) valid = false;
+        break;
+      case "AwaitExpression":
+        if (!allowedAwaits.has(node)) valid = false;
+        break;
+      case "UpdateExpression":
+      case "YieldExpression":
         valid = false;
-      if (
-        symbol &&
-        symbol !== commandSymbol &&
-        environment.scopes.referenceFor(node)?.flag !== undefined &&
-        environment.scopes.referenceFor(node)?.flag !== "read"
-      )
-        valid = false;
+        break;
+      case "Identifier": {
+        if (isNonReferenceIdentifier(node)) break;
+        if (
+          environment.scopes.isGlobalReference(node) &&
+          !NODE_PORT_PROCESS_GLOBAL_NAMES.has(node.name)
+        )
+          valid = false;
+        const symbol = environment.scopes.symbolFor(node);
+        if (symbol && !hasCompleteSymbolReferences(symbol, environment.program, environment.scopes))
+          valid = false;
+        if (symbol && symbol !== commandSymbol) {
+          const referenceFlag = environment.scopes.referenceFor(node)?.flag;
+          if (referenceFlag !== undefined && referenceFlag !== "read") valid = false;
+        }
+        break;
+      }
     }
   }
   return (

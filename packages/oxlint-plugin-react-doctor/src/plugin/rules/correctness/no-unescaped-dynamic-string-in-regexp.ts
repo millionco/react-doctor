@@ -1,3 +1,4 @@
+import { createQuotedProjectNameRegexpOriginChecker } from "./utils/create-quoted-project-name-regexp-origin-checker.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
@@ -919,6 +920,7 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     if (TEST_CONTEXT_FILE_PATTERN.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
     let regexpObjectIndex: RegExpObjectIndex | null = null;
+    const hasQuotedProjectNameOrigin = createQuotedProjectNameRegexpOriginChecker(context);
     const reportUnescapedConstruction = (
       node: EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression">,
     ): void => {
@@ -935,6 +937,13 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
       }
       const currentRegExpObjectIndex = regexpObjectIndex;
       const rawDynamicLiteralIdentifiers = collectRawDynamicLiteralIdentifiers(firstArgument);
+      if (
+        isNodeOfType(firstArgument, "Identifier") &&
+        !rawDynamicLiteralIdentifiers.includes(firstArgument) &&
+        hasQuotedProjectNameOrigin(node, firstArgument)
+      ) {
+        rawDynamicLiteralIdentifiers.push(firstArgument);
+      }
       const hasUnescapedDynamicLiteral = rawDynamicLiteralIdentifiers.some(
         (identifier) =>
           !identifierResolvesToEscapedValue(

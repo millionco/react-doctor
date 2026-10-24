@@ -28,7 +28,7 @@
 // synchronous sections, so a module-level slot is safe. Nested captures
 // merge their traces into the outer file-level trace.
 // When no recorder is active (every production lint path inside oxlint),
-// both record functions are a single null check.
+// both record functions only check inactive slots.
 
 export interface CrossFileProbeTrace {
   /** Paths whose existence classification (file / dir / none) was consulted. */
@@ -42,13 +42,20 @@ export interface CapturedCrossFileProbes<Value> {
   readonly trace: CrossFileProbeTrace;
 }
 
+export interface CrossFileProbeObserver {
+  readonly beforeProbe: (absolutePath: string, kind: "content" | "existence") => void;
+}
+
+let activeProbeObserver: CrossFileProbeObserver | undefined;
 let activeProbeTrace: CrossFileProbeTrace | null = null;
 
 export const recordExistenceProbe = (absolutePath: string): void => {
+  activeProbeObserver?.beforeProbe(absolutePath, "existence");
   activeProbeTrace?.existencePaths.add(absolutePath);
 };
 
 export const recordContentProbe = (absolutePath: string): void => {
+  activeProbeObserver?.beforeProbe(absolutePath, "content");
   activeProbeTrace?.contentPaths.add(absolutePath);
 };
 
@@ -58,8 +65,18 @@ export const isProbeRecorderActive = (): boolean => activeProbeTrace !== null;
 // trace. Memoized multi-file helpers store this trace and replay it on hits.
 export const captureCrossFileProbes = <Value>(
   collect: () => Value,
+  observer?: CrossFileProbeObserver,
 ): CapturedCrossFileProbes<Value> => {
   const previousTrace = activeProbeTrace;
+  const previousObserver = activeProbeObserver;
+  if (observer) {
+    activeProbeObserver = {
+      beforeProbe: (absolutePath, kind) => {
+        previousObserver?.beforeProbe(absolutePath, kind);
+        observer.beforeProbe(absolutePath, kind);
+      },
+    };
+  }
   const trace: CrossFileProbeTrace = {
     existencePaths: new Set<string>(),
     contentPaths: new Set<string>(),
@@ -69,6 +86,7 @@ export const captureCrossFileProbes = <Value>(
     return { value: collect(), trace };
   } finally {
     activeProbeTrace = previousTrace;
+    activeProbeObserver = previousObserver;
     if (previousTrace !== null) {
       for (const existencePath of trace.existencePaths) {
         previousTrace.existencePaths.add(existencePath);
@@ -85,10 +103,10 @@ export const captureCrossFileProbes = <Value>(
 export const replayCrossFileProbes = (trace: CrossFileProbeTrace): void => {
   if (activeProbeTrace === null) return;
   for (const existencePath of trace.existencePaths) {
-    activeProbeTrace.existencePaths.add(existencePath);
+    recordExistenceProbe(existencePath);
   }
   for (const contentPath of trace.contentPaths) {
-    activeProbeTrace.contentPaths.add(contentPath);
+    recordContentProbe(contentPath);
   }
 };
 

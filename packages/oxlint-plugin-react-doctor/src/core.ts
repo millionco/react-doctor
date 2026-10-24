@@ -55,3 +55,5 @@ export type { EsTreeNode } from "./plugin/utils/es-tree-node.js";
 export type { FileScan, ScanFinding, ScannedFile } from "./plugin/utils/file-scan.js";
 export type { Rule, RuleExecution, RuleFramework, RuleSeverity } from "./plugin/utils/rule.js";
 export type { OxlintRuleSeverity } from "./types.js";
+
+export { computeSourceProjectFingerprint } from "./plugin/utils/compute-source-project-fingerprint.js";

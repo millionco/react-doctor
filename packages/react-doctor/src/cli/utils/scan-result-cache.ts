@@ -1,3 +1,4 @@
+import { computeSourceProjectFingerprint } from "oxlint-plugin-react-doctor/core";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -35,9 +36,15 @@ interface PersistedScanResultCacheEntry {
   readonly payload: CachedScanPayload;
 }
 
+interface PersistedSourceProjectFingerprint {
+  readonly toolchainFingerprint: string;
+  readonly snapshot: string;
+}
+
 interface PersistedScanResultCache {
   readonly version: number;
   readonly entries: ReadonlyArray<PersistedScanResultCacheEntry>;
+  readonly sourceProjectFingerprint?: PersistedSourceProjectFingerprint;
 }
 
 interface ScanResultCache {
@@ -78,14 +85,17 @@ const TOOLCHAIN_PACKAGE_SPECIFIERS = [
   "eslint-plugin-react-hooks/package.json",
 ] as const;
 const bundledRequire = createRequire(import.meta.url);
-const RULE_PLUGIN_CONTENT_FINGERPRINT = (() => {
+const RULE_PLUGIN_CONTENT_FINGERPRINTS = [
+  "oxlint-plugin-react-doctor",
+  "oxlint-plugin-react-doctor/core",
+].map((specifier) => {
   try {
-    const pluginEntryPath = bundledRequire.resolve("oxlint-plugin-react-doctor");
-    return `oxlint-plugin-react-doctor#fingerprint=${hashFileContents(pluginEntryPath) ?? "unreadable"}`;
+    const pluginEntryPath = bundledRequire.resolve(specifier);
+    return `${specifier}#fingerprint=${hashFileContents(pluginEntryPath) ?? "unreadable"}`;
   } catch {
-    return "oxlint-plugin-react-doctor#fingerprint=unresolved";
+    return `${specifier}#fingerprint=unresolved`;
   }
-})();
+});
 
 interface PackageVersionView {
   readonly version?: unknown;
@@ -373,7 +383,21 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
       if (payload === null) continue;
       entries.push({ key: entry.key, createdAtMs: entry.createdAtMs, payload });
     }
-    return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries };
+    const sourceProjectFingerprint = parsed.sourceProjectFingerprint;
+    return {
+      version: SCAN_RESULT_CACHE_SCHEMA_VERSION,
+      entries,
+      ...(isRecord(sourceProjectFingerprint) &&
+      typeof sourceProjectFingerprint.toolchainFingerprint === "string" &&
+      typeof sourceProjectFingerprint.snapshot === "string"
+        ? {
+            sourceProjectFingerprint: {
+              toolchainFingerprint: sourceProjectFingerprint.toolchainFingerprint,
+              snapshot: sourceProjectFingerprint.snapshot,
+            },
+          }
+        : {}),
+    };
   } catch {
     return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries: [] };
   }
@@ -429,7 +453,7 @@ export const resolveScanResultToolchainFingerprint = (
       fingerprints.push(`${specifier}=missing`);
     }
   }
-  fingerprints.push(RULE_PLUGIN_CONTENT_FINGERPRINT);
+  fingerprints.push(...RULE_PLUGIN_CONTENT_FINGERPRINTS);
   return fingerprints;
 };
 
@@ -450,7 +474,36 @@ export const buildScanResultCacheKey = async (
   if (!isTrustworthy || repositoryIdentity === null) return null;
   const userConfigJson = stringifyStableJson(input.userConfig);
   if (userConfigJson === null) return null;
+  const toolchainFingerprint = resolveScanResultToolchainFingerprint(input.nodeBinaryPath);
+  const toolchainFingerprintJson = JSON.stringify(toolchainFingerprint);
+  const cacheFilePath = resolveCacheFilePath(input.projectDirectory);
+  const previousFingerprint = readPersistedCache(cacheFilePath).sourceProjectFingerprint;
+  const fingerprintCache = {
+    snapshot:
+      previousFingerprint?.toolchainFingerprint === toolchainFingerprintJson
+        ? previousFingerprint.snapshot
+        : undefined,
+  };
+  const sourceProjectFingerprint = input.options.lint
+    ? computeSourceProjectFingerprint(input.projectDirectory, fingerprintCache)
+    : undefined;
+  if (input.options.lint && sourceProjectFingerprint === null) return null;
+  if (
+    input.options.lint &&
+    fingerprintCache.snapshot !== undefined &&
+    (fingerprintCache.snapshot !== previousFingerprint?.snapshot ||
+      previousFingerprint?.toolchainFingerprint !== toolchainFingerprintJson)
+  ) {
+    atomicWriteJson(cacheFilePath, {
+      ...readPersistedCache(cacheFilePath),
+      sourceProjectFingerprint: {
+        toolchainFingerprint: toolchainFingerprintJson,
+        snapshot: fingerprintCache.snapshot,
+      },
+    });
+  }
   const cacheKeyJson = stringifyStableJson({
+    sourceProjectFingerprint,
     schemaVersion: SCAN_RESULT_CACHE_SCHEMA_VERSION,
     projectIdentity: resolveProjectIdentity(input.projectDirectory),
     headSha: repositoryIdentity.headSha,
@@ -458,7 +511,7 @@ export const buildScanResultCacheKey = async (
     dotenvFingerprint: resolveDotenvFingerprint(input.projectDirectory),
     reactDoctorVersion: input.version,
     nodeVersion: process.version,
-    toolchainFingerprint: resolveScanResultToolchainFingerprint(input.nodeBinaryPath),
+    toolchainFingerprint,
     configFingerprint: computeConfigFingerprint(input.projectDirectory, input.version),
     hasConfigOverride: input.hasConfigOverride,
     configSourceDirectory: input.configSourceDirectory,
@@ -518,7 +571,8 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
 
   const persist = (): void => {
     const mergedEntries = new Map<string, PersistedScanResultCacheEntry>();
-    for (const entry of readPersistedCache(cacheFilePath).entries) {
+    const currentCache = readPersistedCache(cacheFilePath);
+    for (const entry of currentCache.entries) {
       mergedEntries.set(entry.key, entry);
     }
     for (const entry of entries.values()) mergedEntries.set(entry.key, entry);
@@ -526,6 +580,7 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
       .sort((firstEntry, secondEntry) => secondEntry.createdAtMs - firstEntry.createdAtMs)
       .slice(0, SCAN_RESULT_CACHE_MAX_ENTRY_COUNT);
     atomicWriteJson(cacheFilePath, {
+      ...currentCache,
       version: SCAN_RESULT_CACHE_SCHEMA_VERSION,
       entries: prunedEntries,
     });

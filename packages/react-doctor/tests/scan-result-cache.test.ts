@@ -5,6 +5,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { clearConfigCache, resolveReactDoctorCacheDir, type Diagnostic } from "@react-doctor/core";
 import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
+import { createScanResultCacheLifecycle } from "../src/cli/utils/scan-result-cache-lifecycle.js";
+import * as scanRenderer from "../src/cli/utils/render-and-record-scan.js";
 import {
   buildScanResultCacheKey,
   createScanResultCacheInvocationState,
@@ -177,6 +179,60 @@ describe("scan result cache", () => {
     );
 
     expect(fingerprint).toMatch(/^oxlint-plugin-react-doctor#fingerprint=[0-9a-f]+$/);
+    expect(
+      resolveScanResultToolchainFingerprint(null).find((entry) =>
+        entry.startsWith("oxlint-plugin-react-doctor/core#fingerprint="),
+      ),
+    ).toMatch(/^oxlint-plugin-react-doctor\/core#fingerprint=[0-9a-f]+$/);
+  });
+
+  it("preserves the validated source proof across payload stores and repeated lookups", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "retained-source-proof", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const key = await cacheKey(projectDirectory, options);
+    if (key === null) throw new Error("Expected a complete source fingerprint");
+    const cacheFile = path.join(
+      resolveReactDoctorCacheDir(projectDirectory),
+      SCAN_RESULT_CACHE_FILENAME,
+    );
+    const initial = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    expect(typeof initial.sourceProjectFingerprint.snapshot).toBe("string");
+    createScanResultCache(projectDirectory).store(key, basePayload(projectDirectory));
+    const stored = fs.readFileSync(cacheFile, "utf8");
+    expect(JSON.parse(stored).sourceProjectFingerprint).toEqual(initial.sourceProjectFingerprint);
+    expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(fs.readFileSync(cacheFile, "utf8")).toBe(stored);
+    expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+  });
+
+  it("recaptures a source proof whose toolchain identity does not match", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "stale-source-proof", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const key = await cacheKey(projectDirectory, options);
+    expect(key).not.toBeNull();
+    const cacheFile = path.join(
+      resolveReactDoctorCacheDir(projectDirectory),
+      SCAN_RESULT_CACHE_FILENAME,
+    );
+    const initial = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    const changed = {
+      ...initial,
+      sourceProjectFingerprint: {
+        toolchainFingerprint: "different-toolchain",
+        snapshot: "invalid",
+      },
+    };
+    fs.writeFileSync(cacheFile, JSON.stringify(changed));
+    expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(JSON.parse(fs.readFileSync(cacheFile, "utf8")).sourceProjectFingerprint).toEqual(
+      initial.sourceProjectFingerprint,
+    );
   });
 
   it("reuses one repository identity across workspace projects", async () => {
@@ -721,5 +777,104 @@ describe("scan result cache", () => {
     });
 
     expect(verboseResult.diagnostics).toEqual([diagnostic(projectDirectory)]);
+  });
+});
+
+describe("scan result cache production source dependencies", () => {
+  it("invalidates ignored caller membership and restored-mtime content for lint-enabled keys", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "production-key", {
+      files: { "src/entry.js": "export const value = 1;", ".gitignore": "private/\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const initial = await cacheKey(projectDirectory, options);
+    expect(initial).not.toBeNull();
+    const caller = path.join(projectDirectory, "private/caller.js");
+    fs.mkdirSync(path.dirname(caller));
+    fs.writeFileSync(caller, "export const value = 1;");
+    const present = await cacheKey(projectDirectory, options);
+    expect(present).not.toBeNull();
+    expect(present).not.toBe(initial);
+    expect(runGit(projectDirectory, ["status", "--porcelain=v1"])).toBe("");
+    const previousStat = fs.statSync(caller);
+    fs.writeFileSync(caller, "export const value = 2;");
+    fs.utimesSync(caller, previousStat.atime, previousStat.mtime);
+    const changed = await cacheKey(projectDirectory, options);
+    expect(changed).not.toBeNull();
+    expect(changed).not.toBe(present);
+    fs.unlinkSync(caller);
+    expect(await cacheKey(projectDirectory, options)).toBe(initial);
+  });
+
+  it("skips production AST census when lint is disabled", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "no-lint-key", {
+      files: { "src/broken.js": "export const = ;" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    expect(await cacheKey(projectDirectory, baseOptions())).not.toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).toBeNull();
+  });
+});
+
+describe("scan result cache store snapshot", () => {
+  it("stores an unchanged complete scan and refuses an ignored source change during another scan", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "store-snapshot", {
+      files: { "src/entry.js": "export const value = 1;", ".gitignore": "private/\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const payload = basePayload(projectDirectory);
+    vi.spyOn(scanRenderer, "renderAndRecordScan").mockResolvedValue({
+      diagnostics: [],
+      score: null,
+      project: payload.project,
+      skippedChecks: [],
+      elapsedMilliseconds: 1,
+      scanElapsedMilliseconds: 1,
+      scannedFileCount: 1,
+      analyzedFiles: ["src/entry.js"],
+    });
+    const createLifecycle = () =>
+      createScanResultCacheLifecycle({
+        directory: projectDirectory,
+        options,
+        userConfig: null,
+        hasConfigOverride: false,
+        configSourceDirectory: null,
+        resolvedNodeBinaryPath: null,
+        invocationState: createScanResultCacheInvocationState(),
+        startTime: 0,
+        rootSpan: undefined,
+      });
+    const initialKey = await cacheKey(projectDirectory, options);
+    expect(initialKey).not.toBeNull();
+    if (initialKey === null) throw new Error("Expected an eligible source snapshot");
+    const changingLifecycle = await createLifecycle();
+    expect(changingLifecycle.replay()).toBeNull();
+    const caller = path.join(projectDirectory, "private/caller.js");
+    fs.mkdirSync(path.dirname(caller));
+    fs.writeFileSync(caller, "export const changed = 1;");
+    expect(runGit(projectDirectory, ["status", "--porcelain=v1"])).toBe("");
+    await changingLifecycle.complete({
+      payload,
+      scanMode: "full",
+      baselineDegraded: false,
+      cacheStats: {},
+    });
+    expect(createScanResultCache(projectDirectory).lookup(initialKey)).toBeNull();
+    const stableKey = await cacheKey(projectDirectory, options);
+    expect(stableKey).not.toBeNull();
+    expect(stableKey).not.toBe(initialKey);
+    if (stableKey === null) throw new Error("Expected an eligible changed source snapshot");
+    const stableLifecycle = await createLifecycle();
+    expect(stableLifecycle.replay()).toBeNull();
+    await stableLifecycle.complete({
+      payload,
+      scanMode: "full",
+      baselineDegraded: false,
+      cacheStats: {},
+    });
+    expect(createScanResultCache(projectDirectory).lookup(stableKey)).not.toBeNull();
+    expect(scanRenderer.renderAndRecordScan).toHaveBeenCalledTimes(2);
   });
 });

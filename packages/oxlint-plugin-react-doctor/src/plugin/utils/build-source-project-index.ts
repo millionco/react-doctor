@@ -1,12 +1,11 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isEverySpecifierInlineType, isTypeOnlyImport } from "./is-type-only-import.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isTestlikeFilename } from "./is-testlike-filename.js";
+import { listProductionSourceFiles } from "./list-production-source-files.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { resolveModulePath } from "./resolve-module-path.js";
@@ -31,36 +30,11 @@ export interface SourceProjectIndexInput {
   readonly rootDirectory: string;
   readonly currentFilePath: string;
   readonly currentProgramNode: EsTreeNodeOfType<"Program">;
-  readonly currentScopes: ScopeAnalysis;
+  readonly currentScopes?: ScopeAnalysis;
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
 }
 
-const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
-const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
-const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
-const SOURCE_PROJECT_HTML_FILE_PATTERN = /\.html?$/i;
-const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
-  ".angular",
-  ".astro",
-  ".cache",
-  ".contentlayer",
-  ".docusaurus",
-  ".expo",
-  ".git",
-  ".next",
-  ".nuxt",
-  ".output",
-  ".svelte-kit",
-  ".turbo",
-  ".vercel",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "out",
-  "storybook-static",
-]);
 const sourceProjectScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
 
 const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">): ScopeAnalysis => {
@@ -69,57 +43,6 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
   const scopes = analyzeScopes(programNode);
   sourceProjectScopeCache.set(programNode, scopes);
   return scopes;
-};
-
-const listProductionSourceFiles = (
-  rootDirectory: string,
-): {
-  sourceFilePaths: ReadonlyArray<string>;
-  htmlFilePaths: ReadonlyArray<string>;
-  hasOpaqueMdxConsumerSurface: boolean;
-} | null => {
-  const sourceFilePaths: string[] = [];
-  const htmlFilePaths: string[] = [];
-  const pendingDirectories = [rootDirectory];
-  let hasOpaqueMdxConsumerSurface = false;
-
-  while (pendingDirectories.length > 0) {
-    const currentDirectory = pendingDirectories.pop();
-    if (!currentDirectory) continue;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    for (const entry of entries) {
-      const absolutePath = path.join(currentDirectory, entry.name);
-      const isIgnoredDirectoryName =
-        SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
-        (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook");
-      if (entry.isSymbolicLink() && isIgnoredDirectoryName) continue;
-      if (entry.isSymbolicLink()) return null;
-      if (entry.isDirectory()) {
-        if (isIgnoredDirectoryName) continue;
-        pendingDirectories.push(absolutePath);
-        continue;
-      }
-      if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
-      if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
-        hasOpaqueMdxConsumerSurface = true;
-        continue;
-      }
-      if (SOURCE_PROJECT_HTML_FILE_PATTERN.test(entry.name)) {
-        htmlFilePaths.push(normalizeFilename(absolutePath));
-        continue;
-      }
-      if (!SOURCE_PROJECT_FILE_PATTERN.test(entry.name)) continue;
-      if (SOURCE_PROJECT_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
-      sourceFilePaths.push(normalizeFilename(absolutePath));
-    }
-  }
-
-  return { sourceFilePaths, htmlFilePaths, hasOpaqueMdxConsumerSurface };
 };
 
 const sourceFilesMayImportRequiredModule = (
@@ -234,7 +157,9 @@ export const buildSourceProjectIndex = ({
       modulesByFilePath.set(filePath, {
         filePath,
         programNode: currentProgramNode,
-        scopes: currentScopes,
+        get scopes() {
+          return currentScopes ?? getSourceProjectModuleScopes(currentProgramNode);
+        },
       });
       continue;
     }
@@ -243,7 +168,9 @@ export const buildSourceProjectIndex = ({
     modulesByFilePath.set(filePath, {
       filePath,
       programNode: parsedProgram,
-      scopes: getSourceProjectModuleScopes(parsedProgram),
+      get scopes() {
+        return getSourceProjectModuleScopes(parsedProgram);
+      },
     });
   }
 

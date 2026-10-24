@@ -7,6 +7,7 @@ import { renderAndRecordScan, type RenderAndRecordScanInput } from "./render-and
 import {
   buildScanResultCacheKey,
   createScanResultCache,
+  createScanResultCacheInvocationState,
   shouldStoreScanPayload,
   type ScanResultCacheInvocationState,
 } from "./scan-result-cache.js";
@@ -41,7 +42,7 @@ interface ScanResultCacheLifecycle {
 export const createScanResultCacheLifecycle = async (
   input: CreateScanResultCacheLifecycleInput,
 ): Promise<ScanResultCacheLifecycle> => {
-  const cacheKey = await buildScanResultCacheKey({
+  const cacheKeyInput = {
     projectDirectory: input.directory,
     version: VERSION,
     nodeBinaryPath: input.resolvedNodeBinaryPath,
@@ -50,7 +51,8 @@ export const createScanResultCacheLifecycle = async (
     hasConfigOverride: input.hasConfigOverride,
     configSourceDirectory: input.configSourceDirectory,
     invocationState: input.invocationState,
-  });
+  };
+  const cacheKey = await buildScanResultCacheKey(cacheKeyInput);
   const scanResultCache = cacheKey === null ? null : createScanResultCache(input.directory);
   const cachedPayload =
     cacheKey === null || scanResultCache === null ? null : scanResultCache.lookup(cacheKey);
@@ -78,12 +80,17 @@ export const createScanResultCacheLifecycle = async (
         wholeRepoCacheHit: true,
       });
     },
-    complete: (completion) => {
+    complete: async (completion) => {
       if (
         cacheKey !== null &&
         scanResultCache !== null &&
         shouldStoreScanPayload(completion.payload) &&
-        !completion.baselineDegraded
+        !completion.baselineDegraded &&
+        (!input.options.lint ||
+          (await buildScanResultCacheKey({
+            ...cacheKeyInput,
+            invocationState: createScanResultCacheInvocationState(),
+          })) === cacheKey)
       ) {
         scanResultCache.store(cacheKey, completion.payload);
       }

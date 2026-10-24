@@ -38,6 +38,10 @@ interface SpannedNode {
   readonly end: number;
 }
 
+interface FunctionBodyBlockSpan extends SpannedNode {
+  readonly noOpInsertionPosition: number;
+}
+
 interface CallReceiverSpan extends SpannedNode {
   readonly needsLeadingSemicolon: boolean;
 }
@@ -132,8 +136,8 @@ const skipWhitespaceForward = (code: string, position: number): number => {
   return cursor;
 };
 
-const collectFunctionBodyBlockSpans = (program: EsTreeNode): SpannedNode[] => {
-  const spans: SpannedNode[] = [];
+const collectFunctionBodyBlockSpans = (program: EsTreeNode): FunctionBodyBlockSpan[] => {
+  const spans: FunctionBodyBlockSpan[] = [];
   walkAst(program, (node: EsTreeNode) => {
     if (spans.length >= MAX_VERDICT_VARIANT_ANCHORS) return false;
     if (
@@ -145,7 +149,17 @@ const collectFunctionBodyBlockSpans = (program: EsTreeNode): SpannedNode[] => {
     }
     const body = node.body;
     if (!isNodeOfType(body, "BlockStatement") || !hasSpan(body)) return;
-    spans.push({ start: body.start, end: body.end });
+    let noOpInsertionPosition = body.start + 1;
+    for (const statement of body.body) {
+      if (
+        !isNodeOfType(statement, "ExpressionStatement") ||
+        typeof statement.directive !== "string"
+      )
+        break;
+      if (!hasSpan(statement)) return;
+      noOpInsertionPosition = statement.end;
+    }
+    spans.push({ start: body.start, end: body.end, noOpInsertionPosition });
   });
   return spans;
 };
@@ -258,9 +272,8 @@ export const buildVerdictPreservingVariants = (
   const bodyBlockSpans = collectFunctionBodyBlockSpans(program);
   if (bodyBlockSpans.length > 0) {
     const edits: SpanEdit[] = bodyBlockSpans.map((span) => ({
-      // Right after the block's `{`.
-      position: span.start + 1,
-      insertText: " void 0;",
+      position: span.noOpInsertionPosition,
+      insertText: span.noOpInsertionPosition === span.start + 1 ? " void 0;" : "; void 0;",
     }));
     variants.push({
       label: "no-op prologue statement in every function body",

@@ -333,6 +333,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `export const fuzzDrainQueue = () => { "use strict"; function DrainRows(rows) { rows.splice(0, 1); } DrainRows(["first", "second"]); };`,
   `import { useEffect as useOwnedAbortEffect, useState as useOwnedAbortState } from "react";
 const FuzzOwnedAbortContinuation = ({ load, resourceId }) => {
   const [resource, setResource] = useOwnedAbortState(null);

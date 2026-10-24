@@ -1,3 +1,4 @@
+import { getOwnDataObjectProperties } from "./get-own-data-object-properties.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isBuiltin } from "node:module";
@@ -78,24 +79,6 @@ const memberName = (node: EsTreeNode | null | undefined): string | null =>
 
 const isGlobal = (node: EsTreeNode, name: string, module: WebpackConfigModule): boolean =>
   isNodeOfType(node, "Identifier") && node.name === name && module.scopes.isGlobalReference(node);
-
-const ownProperties = (node: EsTreeNode): Map<string, EsTreeNode> | null => {
-  if (!isNodeOfType(node, "ObjectExpression")) return null;
-  const properties = new Map<string, EsTreeNode>();
-  for (const property of node.properties) {
-    if (
-      !isNodeOfType(property, "Property") ||
-      property.computed ||
-      property.method ||
-      property.kind !== "init"
-    )
-      return null;
-    const name = getStaticPropertyKeyName(property);
-    if (!name || name === "__proto__" || properties.has(name)) return null;
-    properties.set(name, property.value);
-  }
-  return properties;
-};
 
 const readonlyConst = (node: EsTreeNode, module: WebpackConfigModule): SymbolDescriptor | null => {
   if (!isNodeOfType(node, "Identifier")) return null;
@@ -283,11 +266,11 @@ const objectProfile = (
   node: EsTreeNode,
   module: WebpackConfigModule,
 ): WebpackAliasProfile | null => {
-  const properties = ownProperties(node);
+  const properties = getOwnDataObjectProperties(node);
   if (!properties || properties.has("default") || properties.has("then")) return null;
   const resolve = properties.get("resolve");
   if (!resolve) return { aliases: new Map(), extensions: null };
-  const resolution = ownProperties(resolve);
+  const resolution = getOwnDataObjectProperties(resolve);
   if (
     !resolution ||
     [...resolution.keys()].some((name) => name !== "alias" && name !== "extensions")
@@ -296,7 +279,7 @@ const objectProfile = (
   const aliases = new Map<string, string>();
   const aliasNode = resolution.get("alias");
   if (aliasNode) {
-    const entries = ownProperties(aliasNode);
+    const entries = getOwnDataObjectProperties(aliasNode);
     if (!entries) return null;
     for (const [name, targetNode] of entries) {
       if (

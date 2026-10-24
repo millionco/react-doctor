@@ -1,3 +1,4 @@
+import { createProjectContextSetterAnalyzer } from "../../utils/create-project-context-setter-analyzer.js";
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import {
@@ -2245,6 +2246,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
   recommendation:
     "React may replay a state updater, so callbacks, analytics, and persistence inside it can run more than once. Compute state purely, then perform the side effect outside the setter.",
   create: (context: RuleContext) => {
+    const isProjectContextSetterCall = createProjectContextSetterAnalyzer(context);
     const reachableBlockIdsByCfg = new WeakMap<FunctionCfg, ReadonlySet<number>>();
     const reportedSideEffectNodes = new WeakSet<EsTreeNode>();
     return {
@@ -2281,7 +2283,10 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
               return;
             }
             if (!isNodeOfType(child, "CallExpression")) return;
-            if (child !== node && isReactStateSetterCall(child, context)) {
+            if (
+              child !== node &&
+              (isReactStateSetterCall(child, context) || isProjectContextSetterCall(child))
+            ) {
               if (!reportedSideEffectNodes.has(child)) {
                 reportedSideEffectNodes.add(child);
                 context.report({ node: child, message: MESSAGE });

@@ -17,6 +17,8 @@ import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-pat
 export interface StandardReactJsxConfigurationOptions {
   readonly requireUnaliasedReact?: boolean;
   readonly allowIdentityPathMapping?: boolean;
+  readonly allowSourceDirectoryAlias?: boolean;
+  readonly sourceDirectoryAliasRoot?: string;
 }
 
 interface ResolvedTsconfig {
@@ -400,6 +402,7 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 const standardReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
 const unaliasedReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
 const identityMappedReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
+const sourceMappedReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
 
 const hasStandardReactJsxConfigChain = (
   configFilePath: string,
@@ -419,10 +422,24 @@ const hasStandardReactJsxConfigChain = (
     return false;
   const options = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
   if (configurationOptions.requireUnaliasedReact === true) {
-    if (Object.hasOwn(options, "baseUrl")) return false;
-    if (Object.hasOwn(options, "paths")) {
+    const hasSourceMapping =
+      configurationOptions.allowSourceDirectoryAlias === true &&
+      typeof configurationOptions.sourceDirectoryAliasRoot === "string" &&
+      path.dirname(path.resolve(configFilePath)) ===
+        path.resolve(configurationOptions.sourceDirectoryAliasRoot) &&
+      options.baseUrl === "." &&
+      isObjectRecord(options.paths) &&
+      !Array.isArray(options.paths) &&
+      Object.keys(options.paths).length === 1 &&
+      Object.hasOwn(options.paths, "@/*") &&
+      Array.isArray(options.paths["@/*"]) &&
+      options.paths["@/*"].length === 1 &&
+      options.paths["@/*"][0] === "./src/*";
+    if (Object.hasOwn(options, "baseUrl") && !hasSourceMapping) return false;
+    if (Object.hasOwn(options, "paths") && !hasSourceMapping) {
       if (
         configurationOptions.allowIdentityPathMapping !== true ||
+        configurationOptions.allowSourceDirectoryAlias === true ||
         !isObjectRecord(options.paths) ||
         Array.isArray(options.paths) ||
         Object.keys(options.paths).length !== 1 ||
@@ -492,11 +509,17 @@ export const hasStandardReactJsxConfiguration = (
   const directory = path.dirname(path.resolve(fromFilename));
   const cacheByDirectory =
     options.requireUnaliasedReact === true
-      ? options.allowIdentityPathMapping === true
-        ? identityMappedReactJsxByDirectory
-        : unaliasedReactJsxByDirectory
+      ? options.allowSourceDirectoryAlias === true
+        ? sourceMappedReactJsxByDirectory
+        : options.allowIdentityPathMapping === true
+          ? identityMappedReactJsxByDirectory
+          : unaliasedReactJsxByDirectory
       : standardReactJsxByDirectory;
-  const cached = cacheByDirectory.get(directory);
+  const cacheKey =
+    options.requireUnaliasedReact === true && options.allowSourceDirectoryAlias === true
+      ? `${directory}\0${options.sourceDirectoryAliasRoot ?? ""}`
+      : directory;
+  const cached = cacheByDirectory.get(cacheKey);
   if (cached) {
     replayCrossFileProbes(cached.trace);
     return cached.value;
@@ -504,7 +527,7 @@ export const hasStandardReactJsxConfiguration = (
   const captured = captureCrossFileProbes(() =>
     findStandardReactJsxConfiguration(directory, options),
   );
-  cacheByDirectory.set(directory, captured);
+  cacheByDirectory.set(cacheKey, captured);
   return captured.value;
 };
 
@@ -514,4 +537,5 @@ export const resetTsconfigAliasCaches = (): void => {
   standardReactJsxByDirectory.clear();
   unaliasedReactJsxByDirectory.clear();
   identityMappedReactJsxByDirectory.clear();
+  sourceMappedReactJsxByDirectory.clear();
 };

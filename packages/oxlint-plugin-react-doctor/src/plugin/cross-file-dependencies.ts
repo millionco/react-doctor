@@ -1,3 +1,4 @@
+import { mayUseProjectContextSetter } from "./utils/create-project-context-setter-analyzer.js";
 import { findNativeQueryStateRead } from "./utils/find-native-query-state-read.js";
 import { getStableImportedHookMemberKeys } from "./utils/get-stable-imported-hook-member-keys.js";
 import { HOOK_NAME_PATTERN } from "./constants/react.js";
@@ -308,8 +309,9 @@ const collectRuntimeStaticDependencyGraph = (
 // The Day.js mutability proof can follow a full factory-wrapper chain, then a
 // fresh full configuration chain from every wrapper it reaches.
 const collectStateUpdaterDependencies: CrossFileDependencyCollector = (input) => {
-  collectImportedValueDependencies(input);
   const program = input.getProgram();
+  if (mayUseProjectContextSetter(program)) return false;
+  collectImportedValueDependencies(input);
   let mayUseDayjsImmutableMethod = false;
   walkAst(program, (node) => {
     if (mayUseDayjsImmutableMethod) return false;

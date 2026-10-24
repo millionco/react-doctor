@@ -45,6 +45,7 @@ import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-exp
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isClosedNativeClassStateSetterCall } from "../../utils/is-closed-native-class-state-setter-call.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { parseSourceFile } from "../../utils/parse-source-file.js";
@@ -2251,7 +2252,11 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
     const reportedSideEffectNodes = new WeakSet<EsTreeNode>();
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isReactStateSetterCall(node, context)) return;
+        if (
+          !isReactStateSetterCall(node, context) &&
+          !isClosedNativeClassStateSetterCall(node, context)
+        )
+          return;
         const updaterArgument = node.arguments[0];
         if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
         const updaterFunction = resolveLocalFunction(updaterArgument, context);

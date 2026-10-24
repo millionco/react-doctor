@@ -311,6 +311,18 @@ const collectRuntimeStaticDependencyGraph = (
 const collectStateUpdaterDependencies: CrossFileDependencyCollector = (input) => {
   const program = input.getProgram();
   if (mayUseProjectContextSetter(program)) return false;
+  let mayUseClassStateSetter = false;
+  walkAst(program, (node) => {
+    if (mayUseClassStateSetter) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    mayUseClassStateSetter = Boolean(
+      isNodeOfType(callee, "MemberExpression") &&
+      getStaticPropertyName(callee) === "setState" &&
+      isNodeOfType(stripParenExpression(callee.object), "ThisExpression"),
+    );
+  });
+  if (mayUseClassStateSetter) return false;
   collectImportedValueDependencies(input);
   let mayUseDayjsImmutableMethod = false;
   walkAst(program, (node) => {

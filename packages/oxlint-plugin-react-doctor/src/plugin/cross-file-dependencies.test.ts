@@ -58,6 +58,25 @@ const collectFor = (absoluteFilePath: string, ruleIds: ReadonlyArray<string>) =>
 const fixturePath = (relativePath: string): string => path.join(temporaryDirectory, relativePath);
 
 describe("collectCrossFileDependencyProbes — driver", () => {
+  it("relints class setter candidates when native React configuration can change", () => {
+    const filePath = writeFixtureFile(
+      "class-updater.tsx",
+      `
+      import React from "react"; import ReactDOM from "react-dom";
+      class Panel extends React.Component { retry = () => this.setState(() => { console.log("retry"); return {}; }); }
+      ReactDOM.render(<Panel />, document.body);
+    `,
+    );
+    const ruleIds = ["no-side-effect-in-state-updater-function"];
+    expect(collectFor(filePath, ruleIds)).toBeNull();
+    writeFixtureFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { paths: { react: ["./fake-react"] } } }),
+    );
+    expect(collectFor(filePath, ruleIds)).toBeNull();
+    fs.unlinkSync(fixturePath("tsconfig.json"));
+    expect(collectFor(filePath, ruleIds)).toBeNull();
+  });
   it("returns null for a rule without a collector (must degrade to unbounded)", () => {
     const appPath = writeFixtureFile("App.tsx", "export const App = () => null;\n");
     expect(collectFor(appPath, ["some-future-cross-file-rule"])).toBeNull();

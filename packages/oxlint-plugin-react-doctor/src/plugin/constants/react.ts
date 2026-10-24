@@ -55,6 +55,8 @@ export const STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK = 0;
 export const STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK = 1;
 export const STATE_UPDATER_CALL_PROPERTY_WRITE_RANK = 2;
 
+export const CLASS_UPDATER_RENDER_ARGUMENT_COUNT = 2;
+
 export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "Boolean",
   "String",
@@ -109,6 +111,19 @@ export const BUILTIN_HOOK_NAMES: ReadonlySet<string> = new Set([
   "useTransition",
   "useId",
   "useDebugValue",
+]);
+
+export const CLASS_UPDATER_REACT_CALL_NAMES: ReadonlySet<string> = new Set([
+  ...BUILTIN_HOOK_NAMES,
+  "createElement",
+  "cloneElement",
+  "isValidElement",
+  "memo",
+  "forwardRef",
+  "lazy",
+  "createContext",
+  "createRef",
+  "startTransition",
 ]);
 
 // React's two component-wrapping HOCs that the rule visitor needs to

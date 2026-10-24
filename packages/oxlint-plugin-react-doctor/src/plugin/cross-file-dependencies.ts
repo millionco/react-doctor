@@ -1,3 +1,4 @@
+import { findNativeQueryStateRead } from "./utils/find-native-query-state-read.js";
 import { hasSupportedRadixDraftEventCall } from "./rules/state-and-effects/utils/has-supported-radix-draft-event-call.js";
 import { findEnclosingFunction } from "./utils/find-enclosing-function.js";
 import { hasCurrentContextRecordEnvironment } from "./rules/state-and-effects/utils/has-current-context-record-environment.js";
@@ -24,7 +25,7 @@ import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
+import { captureCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
@@ -101,7 +102,9 @@ interface CrossFileDependencyCollectorInput {
   readonly getProgram: () => EsTreeNode;
 }
 
-type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void;
+interface CrossFileDependencyCollector {
+  (input: CrossFileDependencyCollectorInput): void | false;
+}
 
 interface ImportEntryName {
   readonly source: string;
@@ -193,6 +196,18 @@ const collectNextjsSearchParamsDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectNextQueryStateDependencies: CrossFileDependencyCollector = ({ getProgram }) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  let hasCandidate = false;
+  walkAst(program, (node) => {
+    if (hasCandidate) return false;
+    if (findNativeQueryStateRead(node, scopes)) hasCandidate = true;
+  });
+  if (hasCandidate) return false;
 };
 
 const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
@@ -652,6 +667,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["hook-use-state", collectNextQueryStateDependencies],
     ["no-ref-current-in-render", collectTypedReduxStoreInitializationDependencies],
     ["no-promise-then-side-effect-in-effect-without-catch", collectOidcUserManagerDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
@@ -722,7 +738,7 @@ export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
  *
  * Returns `null` (caller must treat the file as unfingerprintable and always
  * re-lint it) when the file has a fatal parse error — an execution the
- * collectors cannot mirror — or when a requested rule has no collector.
+ * collectors cannot mirror — when a collector refuses fingerprinting, or when a requested rule has no collector.
  */
 export const collectCrossFileDependencyProbes = (input: {
   absoluteFilePath: string;
@@ -758,7 +774,11 @@ export const collectCrossFileDependencyProbes = (input: {
     staticImports,
     getProgram,
   };
-  return collectCrossFileProbes(() => {
-    for (const collector of collectors) collector(collectorInput);
+  const captured = captureCrossFileProbes(() => {
+    for (const collector of collectors) {
+      if (collector(collectorInput) === false) return false;
+    }
+    return true;
   });
+  return captured.value ? captured.trace : null;
 };

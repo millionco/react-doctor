@@ -42,6 +42,7 @@ const PROVIDER_GLOBAL_NAMES = new Set([
 
 interface LocalReactStateCallOptions {
   readonly allowNumericDataAccess?: boolean;
+  readonly allowedComputedDataMember?: EsTreeNode;
 }
 
 export const isUnmodifiedLocalReactStateCall = (
@@ -186,7 +187,8 @@ export const isUnmodifiedLocalReactStateCall = (
         allowConstTemplateLiteral: true,
         stringifyNonStringLiterals: true,
       }) === null &&
-      !(options.allowNumericDataAccess && isNumericDataMemberAccess(child, scopes))
+      !(options.allowNumericDataAccess && isNumericDataMemberAccess(child, scopes)) &&
+      child !== options.allowedComputedDataMember
     ) {
       hasProviderHazard = true;
     }

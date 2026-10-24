@@ -1,3 +1,4 @@
+import { isNextQueryStateCall } from "../../utils/is-next-query-state-call.js";
 import { hasRefNotificationReactCall } from "../state-and-effects/utils/has-ref-notification-react-call.js";
 import { VALUE_ONLY_STATE_TUPLE_LENGTH } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -135,7 +136,8 @@ export const hookUseState = defineRule({
               }) &&
                 isUnmodifiedLocalReactStateCall(node, context.scopes, {
                   allowNumericDataAccess: true,
-                })))
+                })) ||
+              isNextQueryStateCall(node, context))
           )
             return;
         }

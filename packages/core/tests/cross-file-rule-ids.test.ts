@@ -147,6 +147,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "effect-listener-cleanup-reference-mismatch",
       "effect-needs-cleanup",
       "exhaustive-deps",
+      "hook-use-state",
       "iframe-missing-sandbox",
       "ink-ctrl-c-handler-requires-exit-option",
       "ink-newline-inside-text",

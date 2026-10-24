@@ -90,3 +90,98 @@ export const GOOGLE_ANALYTICS_SCRIPT_PATTERN = /google-analytics\.com|googletagm
 export const OG_IMAGE_FILE_PATTERN = new RegExp(
   `/(opengraph-image|twitter-image)\\d*\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
 );
+
+export const NEXT_QUERY_SUPPORTED_MAJOR_VERSION = 16;
+export const NEXT_QUERY_SINGLE_VALUE_COUNT = 1;
+export const NEXT_QUERY_SET_ARGUMENT_COUNT = 2;
+export const NEXT_QUERY_CONFIG_FILE_NAMES = [
+  "next.config.ts",
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.mts",
+];
+export const NEXT_QUERY_PROVIDER_MEMBERS: ReadonlySet<string> = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "URLSearchParams",
+  "Array",
+  "Function",
+  "eval",
+  "require",
+  "module",
+  "defaultView",
+  "contentWindow",
+  "ownerDocument",
+  "view",
+  "valueOf",
+]);
+export const NEXT_QUERY_OUTSIDE_REFUSED_MEMBERS: ReadonlySet<string> = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "getPrototypeOf",
+  "setPrototypeOf",
+  "getOwnPropertyDescriptor",
+  "getOwnPropertyDescriptors",
+  "defineProperty",
+  "defineProperties",
+  "URLSearchParams",
+  "Array",
+  "Object",
+  "Reflect",
+  "Function",
+  "eval",
+  "require",
+  "module",
+]);
+export const NEXT_QUERY_ARRAY_METHODS: ReadonlySet<string> = new Set(["from", "isArray", "of"]);
+export const NEXT_QUERY_OBJECT_METHODS: ReadonlySet<string> = new Set([
+  "keys",
+  "values",
+  "entries",
+  "is",
+  "hasOwn",
+]);
+export const NEXT_QUERY_REACT_PROVIDER_SOURCES: ReadonlySet<string> = new Set([
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+]);
+export const NEXT_QUERY_UNSUPPORTED_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "module",
+  "node:module",
+  "vm",
+  "node:vm",
+  "next/script",
+]);
+export const NEXT_QUERY_ACTIVE_HTML_ELEMENTS: ReadonlySet<string> = new Set([
+  "script",
+  "iframe",
+  "embed",
+  "object",
+]);
+export const NEXT_QUERY_ACTIVE_HTML_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "srcDoc",
+  "dangerouslySetInnerHTML",
+]);
+export const NEXT_QUERY_WINDOW_CARRIER_MEMBERS: ReadonlySet<string> = new Set([
+  "defaultView",
+  "contentWindow",
+  "view",
+  "window",
+  "self",
+  "top",
+  "parent",
+  "frames",
+  "opener",
+]);
+export const NEXT_QUERY_MAX_WINDOW_ALIAS_COUNT = 32;

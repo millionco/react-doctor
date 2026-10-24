@@ -33,13 +33,28 @@ interface CrossFileParseOptions extends ParserOptions {
 export { resolveLang };
 
 const buildCrossFileParseOptions = (
-  filename: string,
+  language: ReturnType<typeof resolveLang>,
   useRawTransfer: boolean,
 ): CrossFileParseOptions => ({
   astType: "ts",
-  lang: resolveLang(filename),
+  lang: language,
   experimentalRawTransfer: useRawTransfer,
 });
+
+const parseCrossFileSourceWithLanguage = (
+  filename: string,
+  sourceText: string,
+  language: ReturnType<typeof resolveLang>,
+): ReturnType<typeof parseSync> => {
+  if (shouldUseRawTransfer) {
+    try {
+      return parseSync(filename, sourceText, buildCrossFileParseOptions(language, true));
+    } catch {
+      shouldUseRawTransfer = false;
+    }
+  }
+  return parseSync(filename, sourceText, buildCrossFileParseOptions(language, false));
+};
 
 // One parse path for every cross-file parse — the rules' own lookups and the
 // dependency collectors — so both see byte-identical trees.
@@ -47,14 +62,15 @@ export const parseCrossFileSource = (
   filename: string,
   sourceText: string,
 ): ReturnType<typeof parseSync> => {
-  if (shouldUseRawTransfer) {
-    try {
-      return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, true));
-    } catch {
-      shouldUseRawTransfer = false;
-    }
+  const language = resolveLang(filename);
+  const result = parseCrossFileSourceWithLanguage(filename, sourceText, language);
+  if (language !== "js" || result.errors.length === 0) return result;
+  try {
+    const jsxResult = parseCrossFileSourceWithLanguage(filename, sourceText, "jsx");
+    return jsxResult.errors.length === 0 ? jsxResult : result;
+  } catch {
+    return result;
   }
-  return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, false));
 };
 
 interface CacheEntry {

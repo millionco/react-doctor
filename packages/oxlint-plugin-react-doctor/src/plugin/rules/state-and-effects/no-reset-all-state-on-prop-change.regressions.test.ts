@@ -3,6 +3,41 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noResetAllStateOnPropChange } from "./no-reset-all-state-on-prop-change.js";
 
 describe("no-reset-all-state-on-prop-change — regressions", () => {
+  it.each([
+    {
+      name: "a guarded same-value reset",
+      code: `import { useEffect, useState } from "react";
+        export const Indicator = ({ itemId }) => {
+          const [active, setActive] = useState(false);
+          useEffect(() => {
+            if (!active) setActive(false);
+          }, [itemId, active]);
+          return <span>{String(active)}</span>;
+        };`,
+    },
+    {
+      name: "an editable draft reset",
+      code: `import { useEffect, useState } from "react";
+        export const Editor = ({ itemId }) => {
+          const [draft, setDraft] = useState("");
+          useEffect(() => {
+            setDraft("");
+          }, [itemId]);
+          return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+        };`,
+    },
+  ])("qualifies the stale-state risk for $name", ({ code }) => {
+    const result = runRule(noResetAllStateOnPropChange, code, { forceJsx: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      {
+        nodeType: "CallExpression",
+        message:
+          "Resetting all state in an effect after a prop changes can trigger another render and show stale values.",
+      },
+    ]);
+  });
+
   it("stays silent when the only state is a media failure latch reset for a new resource", () => {
     const result = runRule(
       noResetAllStateOnPropChange,
@@ -277,7 +312,7 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("clears all state");
+    expect(result.diagnostics[0]?.message).toContain("Resetting all state");
   });
 
   describe("Boolean render gating", () => {

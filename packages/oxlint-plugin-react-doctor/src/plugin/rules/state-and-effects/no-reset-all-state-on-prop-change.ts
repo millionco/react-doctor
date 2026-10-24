@@ -1342,7 +1342,7 @@ export const noResetAllStateOnPropChange = defineRule({
       if (!propUsedToReset) return;
       context.report({
         node,
-        message: `Your users briefly see stale state when a prop changes because this useEffect clears all state.`,
+        message: `Resetting all state in an effect after a prop changes can trigger another render and show stale values.`,
       });
     },
   }),

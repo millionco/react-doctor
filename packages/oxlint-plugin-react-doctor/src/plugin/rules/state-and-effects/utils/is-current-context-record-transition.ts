@@ -1,3 +1,5 @@
+import { isUndefined } from "./is-undefined.js";
+import { hasOnlyEventHandlerInvocations } from "./has-only-event-handler-invocations.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
@@ -6,13 +8,11 @@ import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js
 import { findProgramRoot } from "../../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getEquivalentSymbols } from "../../../utils/get-equivalent-symbols.js";
-import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getSingleReturnExpression } from "../../../utils/get-single-return-expression.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { hasCompleteSymbolReferences } from "../../../utils/has-complete-symbol-references.js";
 import { isErasedTypeScriptBinding } from "../../../utils/is-erased-typescript-binding.js";
-import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNonReferenceIdentifier } from "../../../utils/is-non-reference-identifier.js";
 import { isUnmodifiedLocalReactStateCall } from "../../../utils/is-unmodified-local-react-state-call.js";
@@ -70,19 +70,6 @@ const hasClosedReadonlyBinding = (
 const isNull = (node: EsTreeNode): boolean => {
   const value = stripParenExpression(node);
   return isNodeOfType(value, "Literal") && value.value === null;
-};
-
-const isUndefined = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const value = stripParenExpression(node);
-  return (
-    (isNodeOfType(value, "Identifier") &&
-      value.name === "undefined" &&
-      scopes.isGlobalReference(value)) ||
-    (isNodeOfType(value, "UnaryExpression") &&
-      value.operator === "void" &&
-      isNodeOfType(value.argument, "Literal") &&
-      value.argument.value === 0)
-  );
 };
 
 const getDataRead = (
@@ -165,97 +152,11 @@ const returnsClosedRecord = (
 const hasOnlyEventInvocations = (
   functionNode: EsTreeNode | null,
   proof: ContextRecordTransitionProof,
-  visited: ReadonlySet<EsTreeNode> = new Set(),
-  proven: Set<EsTreeNode> = new Set(),
-): boolean => {
-  if (
-    !isNodeOfType(functionNode, "ArrowFunctionExpression") ||
-    functionNode === proof.component ||
-    visited.has(functionNode)
-  )
-    return false;
-  if (proven.has(functionNode)) return true;
-  const identifier = getFunctionBindingIdentifier(functionNode);
-  const symbol = identifier && proof.scopes.symbolFor(identifier);
-  const declaration = symbol?.declarationNode;
-  if (
-    symbol?.kind !== "const" ||
-    !isNodeOfType(declaration, "VariableDeclarator") ||
-    !declaration.init ||
-    !hasClosedReadonlyBinding(symbol, proof.program, proof.scopes)
-  )
-    return false;
-  const initializer = stripParenExpression(declaration.init);
-  if (initializer !== functionNode) {
-    const [callback] = isNodeOfType(initializer, "CallExpression") ? initializer.arguments : [];
-    if (
-      !isNodeOfType(initializer, "CallExpression") ||
-      callback !== functionNode ||
-      !hasRefNotificationReactCall(initializer, "useCallback", proof.context)
-    )
-      return false;
-  }
-  const nextVisited = new Set([...visited, functionNode]);
-  let uses = 0;
-  for (const reference of symbol.references) {
-    if (isNonReferenceIdentifier(reference.identifier)) continue;
-    uses += 1;
-    let root = findTransparentExpressionRoot(reference.identifier);
-    const call = root.parent;
-    const dependencyCall = isNodeOfType(call, "ArrayExpression") ? call.parent : null;
-    const [, dependencies] = isNodeOfType(dependencyCall, "CallExpression")
-      ? dependencyCall.arguments
-      : [];
-    if (
-      isNodeOfType(call, "ArrayExpression") &&
-      isNodeOfType(dependencyCall, "CallExpression") &&
-      dependencies === call &&
-      ["useCallback", "useEffect", "useMemo"].some((apiName) =>
-        hasRefNotificationReactCall(dependencyCall, apiName, proof.context),
-      )
-    )
-      continue;
-    if (isNodeOfType(call, "CallExpression") && call.callee === root) {
-      if (
-        call.optional ||
-        !hasOnlyEventInvocations(findEnclosingFunction(call), proof, nextVisited, proven)
-      )
-        return false;
-      continue;
-    }
-    while (root.parent) {
-      const parent = root.parent;
-      if (
-        isNodeOfType(parent, "ConditionalExpression") &&
-        (parent.consequent === root || parent.alternate === root) &&
-        isUndefined(parent.consequent === root ? parent.alternate : parent.consequent, proof.scopes)
-      ) {
-        root = findTransparentExpressionRoot(parent);
-        continue;
-      }
-      if (
-        isNodeOfType(parent, "LogicalExpression") &&
-        parent.operator === "&&" &&
-        parent.right === root
-      ) {
-        root = findTransparentExpressionRoot(parent);
-        continue;
-      }
-      break;
-    }
-    const container = root.parent;
-    if (
-      !isNodeOfType(container, "JSXExpressionContainer") ||
-      container.expression !== root ||
-      !isEventHandlerAttribute(container.parent) ||
-      findEnclosingFunction(reference.identifier) !== proof.component
-    )
-      return false;
-  }
-  if (uses === 0) return false;
-  proven.add(functionNode);
-  return true;
-};
+): boolean =>
+  hasOnlyEventHandlerInvocations(functionNode, {
+    ...proof,
+    isReadonlyBinding: (symbol) => hasClosedReadonlyBinding(symbol, proof.program, proof.scopes),
+  });
 
 const hasClosedWriter = (call: EsTreeNode, proof: ContextRecordTransitionProof): boolean => {
   if (!isNodeOfType(call, "CallExpression") || call.optional) return false;

@@ -303,6 +303,126 @@ describe("source project fingerprint", () => {
     expect(resolved).not.toBe(configured);
   });
 
+  it("captures JSX-only external extends despite explicit local paths for every source", () => {
+    writeProjectFile("nested/panel.tsx", "export const Panel = () => <span />;");
+    writeProjectFile(
+      "nested/tsconfig.json",
+      JSON.stringify({
+        extends: "../../shared.json",
+        compilerOptions: { paths: {}, jsx: "react-jsx" },
+      }),
+    );
+    const shared = path.join(temporaryDirectory, "shared.json");
+    const initialConfig = JSON.stringify({ compilerOptions: { jsxImportSource: "react" } });
+    const changedConfig = JSON.stringify({ compilerOptions: { jsxImportSource: "other" } });
+    expect(Buffer.byteLength(changedConfig)).toBe(Buffer.byteLength(initialConfig));
+    fs.writeFileSync(shared, initialConfig);
+    const initial = computeSourceProjectFingerprint(projectDirectory);
+    expect(initial).not.toBeNull();
+    expect(computeSourceProjectFingerprint(projectDirectory)).toBe(initial);
+    const previousStat = fs.statSync(shared);
+    fs.writeFileSync(shared, changedConfig);
+    fs.utimesSync(shared, previousStat.atime, previousStat.mtime);
+    expect(fs.statSync(shared).mtime.getTime()).toBe(previousStat.mtime.getTime());
+    const changed = computeSourceProjectFingerprint(projectDirectory);
+    expect(changed).not.toBeNull();
+    expect(changed).not.toBe(initial);
+    fs.writeFileSync(shared, initialConfig);
+    fs.utimesSync(shared, previousStat.atime, previousStat.mtime);
+    expect(computeSourceProjectFingerprint(projectDirectory)).toBe(initial);
+  });
+
+  it.each(["react/jsx-runtime", "react/jsx-dev-runtime"])(
+    "captures configured implicit %s target appearance and deletion outside the source census",
+    (runtimeSource) => {
+      writeProjectFile("entry.js", "export const source = 1;");
+      writeProjectFile(
+        "tsconfig.json",
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: ".",
+            jsx: "react-jsx",
+            paths: { [runtimeSource]: ["../external/runtime"] },
+          },
+        }),
+      );
+      const externalDirectory = path.join(temporaryDirectory, "external");
+      fs.mkdirSync(externalDirectory);
+      const runtimePath = path.join(externalDirectory, "runtime.ts");
+      const initial = computeSourceProjectFingerprint(projectDirectory);
+      expect(initial).not.toBeNull();
+      expect(computeSourceProjectFingerprint(projectDirectory)).toBe(initial);
+      fs.writeFileSync(runtimePath, "export const jsx = () => null;");
+      const appeared = computeSourceProjectFingerprint(projectDirectory);
+      expect(appeared).not.toBeNull();
+      expect(appeared).not.toBe(initial);
+      expect(computeSourceProjectFingerprint(projectDirectory)).toBe(appeared);
+      fs.unlinkSync(runtimePath);
+      expect(computeSourceProjectFingerprint(projectDirectory)).toBe(initial);
+    },
+  );
+
+  it("revalidates snapshot JSX-only external extends despite explicit local paths for every source", () => {
+    const cache = {};
+    writeProjectFile("nested/panel.tsx", "export const Panel = () => <span />;");
+    writeProjectFile(
+      "nested/tsconfig.json",
+      JSON.stringify({
+        extends: "../../shared.json",
+        compilerOptions: { paths: {}, jsx: "react-jsx" },
+      }),
+    );
+    const shared = path.join(temporaryDirectory, "shared.json");
+    const initialConfig = JSON.stringify({ compilerOptions: { jsxImportSource: "react" } });
+    const changedConfig = JSON.stringify({ compilerOptions: { jsxImportSource: "other" } });
+    expect(Buffer.byteLength(changedConfig)).toBe(Buffer.byteLength(initialConfig));
+    fs.writeFileSync(shared, initialConfig);
+    const initial = computeSourceProjectFingerprint(projectDirectory, cache);
+    expect(initial).not.toBeNull();
+    expect(computeSourceProjectFingerprint(projectDirectory, cache)).toBe(initial);
+    const previousStat = fs.statSync(shared);
+    fs.writeFileSync(shared, changedConfig);
+    fs.utimesSync(shared, previousStat.atime, previousStat.mtime);
+    expect(fs.statSync(shared).mtime.getTime()).toBe(previousStat.mtime.getTime());
+    const changed = computeSourceProjectFingerprint(projectDirectory, cache);
+    expect(changed).not.toBeNull();
+    expect(changed).not.toBe(initial);
+    fs.writeFileSync(shared, initialConfig);
+    fs.utimesSync(shared, previousStat.atime, previousStat.mtime);
+    expect(computeSourceProjectFingerprint(projectDirectory, cache)).toBe(initial);
+  });
+
+  it.each(["react/jsx-runtime", "react/jsx-dev-runtime"])(
+    "revalidates snapshot implicit %s target appearance and deletion outside the source census",
+    (runtimeSource) => {
+      const cache = {};
+      writeProjectFile("entry.js", "export const source = 1;");
+      writeProjectFile(
+        "tsconfig.json",
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: ".",
+            jsx: "react-jsx",
+            paths: { [runtimeSource]: ["../external/runtime"] },
+          },
+        }),
+      );
+      const externalDirectory = path.join(temporaryDirectory, "external");
+      fs.mkdirSync(externalDirectory);
+      const runtimePath = path.join(externalDirectory, "runtime.ts");
+      const initial = computeSourceProjectFingerprint(projectDirectory, cache);
+      expect(initial).not.toBeNull();
+      expect(computeSourceProjectFingerprint(projectDirectory, cache)).toBe(initial);
+      fs.writeFileSync(runtimePath, "export const jsx = () => null;");
+      const appeared = computeSourceProjectFingerprint(projectDirectory, cache);
+      expect(appeared).not.toBeNull();
+      expect(appeared).not.toBe(initial);
+      expect(computeSourceProjectFingerprint(projectDirectory, cache)).toBe(appeared);
+      fs.unlinkSync(runtimePath);
+      expect(computeSourceProjectFingerprint(projectDirectory, cache)).toBe(initial);
+    },
+  );
+
   it.skipIf(process.platform === "win32")("declines source links", () => {
     fs.symlinkSync(
       path.join(projectDirectory, "entry.js"),

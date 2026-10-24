@@ -1,3 +1,4 @@
+import { hasCurrentContextRecordEnvironment } from "./rules/state-and-effects/utils/has-current-context-record-environment.js";
 import { isImportedNodePortProcessUtility } from "./utils/is-imported-node-port-process-utility.js";
 import { isTypedReduxStoreFactoryInitialization } from "./rules/state-and-effects/utils/is-typed-redux-store-factory-initialization.js";
 import { resolveReactRefSymbol } from "./utils/react-ref-origin.js";
@@ -200,6 +201,11 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectCurrentContextRecordDependencies: CrossFileDependencyCollector = (input) => {
+  hasCurrentContextRecordEnvironment(input.absoluteFilePath);
+  collectEffectValueHelperDependencies(input);
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -638,7 +644,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
-    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-adjust-state-on-prop-change", collectCurrentContextRecordDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],

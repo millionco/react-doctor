@@ -9,6 +9,7 @@ import { CliInputError } from "../src/cli/utils/cli-input-error.js";
 import { cliLogger } from "../src/cli/utils/cli-logger.js";
 import { handleUserError } from "../src/cli/utils/handle-error.js";
 import { inspect } from "../src/inspect.js";
+import { TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES } from "./constants.js";
 
 const deadlineMockState = vi.hoisted(() => ({ shouldExpire: false }));
 
@@ -115,7 +116,11 @@ afterEach(() => {
   deadlineMockState.shouldExpire = false;
   process.exitCode = undefined;
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
-    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    fs.rmSync(temporaryDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES,
+    });
   }
 });
 

@@ -333,6 +333,17 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useEffect as useTokenRetirementEffect, useState as useTokenRetirementState } from "react";
+export const FuzzTokenRetirementNotice = ({ activeToken }) => {
+  const currentToken = activeToken;
+  const [notice, setNotice] = useTokenRetirementState(null);
+  useTokenRetirementEffect(() => {
+    setNotice(previous => previous && previous.token !== currentToken ? null : previous);
+  }, [currentToken]);
+  const matches = notice?.token === currentToken;
+  const message = matches ? notice?.message : undefined;
+  return <button onClick={() => setNotice({ token: currentToken, message: "retry" })}>{message}</button>;
+};`,
   `export const fuzzDrainQueue = () => { "use strict"; function DrainRows(rows) { rows.splice(0, 1); } DrainRows(["first", "second"]); };`,
   `import { useEffect as useOwnedAbortEffect, useState as useOwnedAbortState } from "react";
 const FuzzOwnedAbortContinuation = ({ load, resourceId }) => {

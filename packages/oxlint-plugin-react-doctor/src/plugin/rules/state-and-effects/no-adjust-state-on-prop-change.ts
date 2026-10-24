@@ -1,3 +1,4 @@
+import { isCurrentContextRecordRetirement } from "./utils/is-current-context-record-retirement.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
@@ -101,6 +102,7 @@ export const noAdjustStateOnPropChange = defineRule({
         if (
           fact.isDeferred ||
           isOwnedRequestMapReset(fact.callExpression, context) ||
+          isCurrentContextRecordRetirement(fact.callExpression, context) ||
           isPortalMountStateWrite(fact.callExpression, context) ||
           isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
           hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)

@@ -1,4 +1,5 @@
 export const MAX_RETURNED_SETTER_EXPRESSIONS = 64;
+export const MAX_CURRENT_CONTEXT_RECORD_UPDATER_EXCEPTIONS = 1;
 
 export const REF_NOTIFICATION_INACTIVE_ATTRIBUTES: ReadonlySet<string> = new Set([
   "disabled",

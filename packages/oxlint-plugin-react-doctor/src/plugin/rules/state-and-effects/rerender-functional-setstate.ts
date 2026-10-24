@@ -6,6 +6,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { canResumeAfterAwait } from "../../utils/can-resume-after-await.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
+import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
+import { isProvenUnmodifiedReactApiCall } from "../../utils/is-proven-unmodified-react-api-call.js";
 
 const STATE_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
 
@@ -171,21 +175,36 @@ export const rerenderFunctionalSetstate = defineRule({
       const argument = node.arguments[0];
       const expectedStateName = deriveStateVariableName(calleeName);
 
+      const isPostAwaitStateRead = (stateRead: EsTreeNode): boolean => {
+        const statePair = resolveReactUseStatePair(node.callee, context.scopes);
+        return Boolean(
+          statePair?.stateSymbol &&
+          context.scopes.symbolFor(stateRead) === statePair.stateSymbol &&
+          !hasSymbolBindingWrites(statePair.stateSymbol) &&
+          !hasSymbolBindingWrites(statePair.setterSymbol) &&
+          statePair.declarator.init &&
+          isProvenUnmodifiedReactApiCall(statePair.declarator.init, "useState", context.scopes) &&
+          context.cfg.enclosingFunction(statePair.declarator) !==
+            context.cfg.enclosingFunction(node) &&
+          canResumeAfterAwait(node, context),
+        );
+      };
+
       // The arithmetic / update shapes are hazardous when the closure runs
       // past later renders (deferred execution) or when one stale value can
       // feed two updates before a render (a second call to the same setter
       // in the same handler). A lone `setPage(page - 1)` in a plain sync
       // handler re-reads fresh state every discrete event and cannot lose
       // an update.
-      const canSyncArithmeticGoStale = (): boolean =>
+      const canArithmeticReadGoStale = (stateRead: EsTreeNode): boolean =>
         isInsideDeferredCallback(node) ||
-        hasMultipleSetterCallsInEnclosingFunction(node, calleeName);
+        hasMultipleSetterCallsInEnclosingFunction(node, calleeName) ||
+        isPostAwaitStateRead(stateRead);
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&
         STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
-        expectedStateName &&
-        canSyncArithmeticGoStale()
+        expectedStateName
       ) {
         const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
           isNodeOfType(operand, "Identifier") && operand.name === expectedStateName;
@@ -196,7 +215,10 @@ export const rerenderFunctionalSetstate = defineRule({
             ? argument.right
             : null;
 
-        if (isNodeOfType(stateIdentifier, "Identifier")) {
+        if (
+          isNodeOfType(stateIdentifier, "Identifier") &&
+          canArithmeticReadGoStale(stateIdentifier)
+        ) {
           context.report({
             node,
             message: `You can lose this update because ${calleeName}(${stateIdentifier.name} ${argument.operator} ...) reads a stale value.`,
@@ -210,7 +232,7 @@ export const rerenderFunctionalSetstate = defineRule({
         (argument.operator === "++" || argument.operator === "--") &&
         isNodeOfType(argument.argument, "Identifier") &&
         argument.argument.name === expectedStateName &&
-        canSyncArithmeticGoStale()
+        canArithmeticReadGoStale(argument.argument)
       ) {
         const display = argument.prefix
           ? `${argument.operator}${argument.argument.name}`
@@ -236,20 +258,21 @@ export const rerenderFunctionalSetstate = defineRule({
       //
       // GATE (spread shapes): a spread merge is flagged only when the
       // call site is inside a deferred-execution context (setTimeout,
-      // .then(), addEventListener, useEffect, debounce, …) where the
+      // .then(), addEventListener, useEffect, debounce, …) or follows a supported
+      // await continuation where the
       // closure survives past later renders and the captured state goes
       // stale. Synchronous render-path handlers (`onClick={() =>
       // setX({...x, …})}`) close over fresh state every render. The
       // arithmetic / update shapes above additionally fire in a sync
       // handler that calls the same setter twice — that's the batching
       // case where one stale read feeds two updates before a render.
-      if (!isInsideDeferredCallback(node)) return;
       if (expectedStateName && isNodeOfType(argument, "ArrayExpression")) {
         const spreadsState = (argument.elements ?? []).some(
           (element: EsTreeNode | null) =>
             isNodeOfType(element, "SpreadElement") &&
             isNodeOfType(element.argument, "Identifier") &&
-            element.argument.name === expectedStateName,
+            element.argument.name === expectedStateName &&
+            (isInsideDeferredCallback(node) || isPostAwaitStateRead(element.argument)),
         );
         if (spreadsState) {
           context.report({
@@ -265,7 +288,8 @@ export const rerenderFunctionalSetstate = defineRule({
           (property: EsTreeNode | null) =>
             isNodeOfType(property, "SpreadElement") &&
             isNodeOfType(property.argument, "Identifier") &&
-            property.argument.name === expectedStateName,
+            property.argument.name === expectedStateName &&
+            (isInsideDeferredCallback(node) || isPostAwaitStateRead(property.argument)),
         );
         if (spreadsState) {
           context.report({

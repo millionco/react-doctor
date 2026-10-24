@@ -1,3 +1,5 @@
+import { readStaticBoolean } from "../../utils/read-static-boolean.js";
+import { findFiniteCountdownLoop } from "./utils/find-finite-countdown-loop.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -1102,6 +1104,7 @@ const analyzeAsyncStatements = (
   abortProtectedControllers: ReadonlySet<string>,
   sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
 ): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
+  let activeCleanupWrites = cleanupWrites;
   let states = initialStates;
   for (const statement of statements) {
     if (states.length === 0) break;
@@ -1114,7 +1117,7 @@ const analyzeAsyncStatements = (
         statement.body as EsTreeNode[],
         states,
         context,
-        cleanupWrites,
+        activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
       );
@@ -1130,7 +1133,7 @@ const analyzeAsyncStatements = (
         const doesCleanupForceExit = doesCleanupForceGuardValue(
           statement.test,
           true,
-          cleanupWrites,
+          activeCleanupWrites,
           context,
         );
         const doesSequenceMismatchForceExit = doesSequenceMismatchForceGuardValue(
@@ -1152,7 +1155,7 @@ const analyzeAsyncStatements = (
       const doesCleanupPreventProceed = doesCleanupForceGuardValue(
         statement.test,
         false,
-        cleanupWrites,
+        activeCleanupWrites,
         context,
       );
       const doesSequenceMismatchPreventProceed = doesSequenceMismatchForceGuardValue(
@@ -1172,7 +1175,7 @@ const analyzeAsyncStatements = (
             (state.didSuspend && (doesCleanupPreventProceed || doesSequenceMismatchPreventProceed)),
         })),
         context,
-        cleanupWrites,
+        activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
       );
@@ -1184,7 +1187,7 @@ const analyzeAsyncStatements = (
               : [statement.alternate as EsTreeNode],
             states.map((state) => ({ ...state })),
             context,
-            cleanupWrites,
+            activeCleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
           )
@@ -1196,8 +1199,9 @@ const analyzeAsyncStatements = (
     }
     if (isNodeOfType(statement, "WhileStatement")) {
       let supportsStructuredFlow =
+        readStaticBoolean(statement.test) !== false &&
         sequenceSnapshots.size === 0 &&
-        [...cleanupWrites.keys()].every((targetKey) => !targetKey.includes("."));
+        [...activeCleanupWrites.keys()].every((targetKey) => !targetKey.includes("."));
       let ancestor = statement.parent;
       while (ancestor && !isFunctionLike(ancestor)) {
         if (isNodeOfType(ancestor, "TryStatement")) supportsStructuredFlow = false;
@@ -1223,13 +1227,13 @@ const analyzeAsyncStatements = (
             ? stripParenExpression(candidate.callee)
             : null;
           if (isNodeOfType(callee, "Identifier") && callee.name === "eval") {
-            for (const targetKey of cleanupWrites.keys()) invalidatedGuardKeys.add(targetKey);
+            for (const targetKey of activeCleanupWrites.keys()) invalidatedGuardKeys.add(targetKey);
           }
           if (!isNodeOfType(candidate, "Identifier")) return;
           const reference = context.scopes.referenceFor(candidate);
           if (!reference || reference.flag === "read") return;
           const targetKey = serializeReferenceKey({ node: candidate, scopes: context.scopes });
-          if (!targetKey || !cleanupWrites.has(targetKey)) return;
+          if (!targetKey || !activeCleanupWrites.has(targetKey)) return;
           const symbol = context.scopes.symbolFor(candidate);
           const declaration = symbol?.declarationNode;
           if (
@@ -1249,15 +1253,51 @@ const analyzeAsyncStatements = (
             assignment.operator === "=" &&
             assignment.left === candidate &&
             isNodeOfType(assignment.right, "Literal") &&
-            assignment.right.value === cleanupWrites.get(targetKey)
+            assignment.right.value === activeCleanupWrites.get(targetKey)
           ) {
             return;
           }
           invalidatedGuardKeys.add(targetKey);
         });
         const loopCleanupWrites = new Map(
-          [...cleanupWrites].filter(([targetKey]) => !invalidatedGuardKeys.has(targetKey)),
+          [...activeCleanupWrites].filter(([targetKey]) => !invalidatedGuardKeys.has(targetKey)),
         );
+        const countdown = findFiniteCountdownLoop({
+          whileStatement: statement,
+          cleanupWrites: activeCleanupWrites,
+          context,
+          isStateDispatcherCall,
+        });
+        if (countdown) {
+          let countedStates = states;
+          for (
+            let iterationIndex = 0;
+            iterationIndex < countdown.iterationCount;
+            iterationIndex += 1
+          ) {
+            const body = analyzeAsyncStatements(
+              isNodeOfType(statement.body, "BlockStatement")
+                ? statement.body.body
+                : [statement.body],
+              countedStates,
+              context,
+              loopCleanupWrites,
+              abortProtectedControllers,
+              sequenceSnapshots,
+            );
+            if (body.hasUnsafeSetter) return body;
+            countedStates = body.states.map((state) => ({ ...state, suspensionNode: null }));
+          }
+          states = dedupeAsyncPathStates(countedStates);
+          if (countdown.resetGuardKey) {
+            activeCleanupWrites = new Map(
+              [...activeCleanupWrites].filter(
+                ([targetKey]) => targetKey !== countdown.resetGuardKey,
+              ),
+            );
+          }
+          continue;
+        }
         let headerStates = dedupeAsyncPathStates(states);
         const exitStates: AsyncPathState[] = [];
         let hasFreshIterationTest = true;
@@ -1327,7 +1367,7 @@ const analyzeAsyncStatements = (
           collectSwitchPathStatements(statement.cases, caseIndex),
           discriminated.states.map((state) => ({ ...state })),
           context,
-          cleanupWrites,
+          activeCleanupWrites,
           abortProtectedControllers,
           sequenceSnapshots,
         );
@@ -1354,7 +1394,7 @@ const analyzeAsyncStatements = (
           : [statement.body as EsTreeNode],
         suspendedStates,
         context,
-        cleanupWrites,
+        activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
       );
@@ -1367,7 +1407,7 @@ const analyzeAsyncStatements = (
         statement.block.body as EsTreeNode[],
         states,
         context,
-        cleanupWrites,
+        activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
       );
@@ -1392,7 +1432,7 @@ const analyzeAsyncStatements = (
                 : { ...state },
             ),
             context,
-            cleanupWrites,
+            activeCleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
           )
@@ -1405,7 +1445,7 @@ const analyzeAsyncStatements = (
           statement.finalizer.body as EsTreeNode[],
           states,
           context,
-          cleanupWrites,
+          activeCleanupWrites,
           abortProtectedControllers,
           sequenceSnapshots,
         );

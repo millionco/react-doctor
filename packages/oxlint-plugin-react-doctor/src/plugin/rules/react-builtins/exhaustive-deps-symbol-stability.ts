@@ -5,9 +5,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
-import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -65,7 +65,7 @@ export const symbolHasStableHookOrigin = (
   symbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
-  if (symbol.references.some((reference) => reference.flag !== "read")) return false;
+  if (hasSymbolBindingWrites(symbol, scopes)) return false;
   // We need the binding's parent context. The symbol's
   // declarationNode is the VariableDeclarator (when destructured) or
   // the binding identifier itself.
@@ -163,8 +163,8 @@ const symbolHasStableMemoizedOrigin = (
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
 ): boolean => {
+  if (hasSymbolBindingWrites(symbol, scopes)) return false;
   if (visitedSymbolIds.has(symbol.id)) return true;
-  if (symbol.references.some((reference) => reference.flag !== "read")) return false;
   let declarator: EsTreeNode | null | undefined = symbol.declarationNode;
   while (declarator && declarator.type !== "VariableDeclarator") {
     declarator = declarator.parent ?? null;

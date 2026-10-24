@@ -1,3 +1,5 @@
+import { LOCAL_UTILITY_ARGUMENT_CALL_DEPTH_LIMIT } from "./utils/constants.js";
+import { getClosedLocalUtilityCalls } from "../../utils/get-closed-local-utility-calls.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -6,7 +8,11 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getSymbolWriteReferences } from "../../utils/get-symbol-write-references.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
@@ -18,6 +24,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 interface AliasSource {
   rootIdentifier: EsTreeNodeOfType<"Identifier">;
   isMemberAccess: boolean;
+  memberPath: ReadonlyArray<string> | null;
 }
 
 // Only the in-place reorder/remove mutators this rule targets — a deliberate
@@ -591,8 +598,7 @@ const hasRebindBeforeCall = (
 ): boolean => {
   const symbol = context.scopes.symbolFor(binding.bindingIdentifier);
   if (!symbol || symbol.name !== identifierName) return false;
-  return symbol.references.some((reference) => {
-    if (reference.flag === "read") return false;
+  return getSymbolWriteReferences(symbol).some((reference) => {
     const assignment = reference.identifier.parent;
     return Boolean(
       assignment &&
@@ -633,25 +639,378 @@ const isProvableArrayContainerHookBinding = (binding: BindingInfo): boolean => {
 // its root identifier. Copies (`[...items]`, `items.slice()`) are call / array
 // expressions and produce no alias, and a `.current` chain stays exempt.
 const aliasSourceFor = (binding: BindingInfo): AliasSource | null => {
+  const declarator = nearestVariableDeclarator(binding.bindingIdentifier);
+  const bindingPath = declarator
+    ? bindingPatternPath(binding.bindingIdentifier, declarator.id)
+    : [];
   const aliasCandidates = [binding.initializer, declaratorInitFor(binding)];
   for (const aliasCandidate of aliasCandidates) {
     if (!aliasCandidate) continue;
     const strippedCandidate = stripParenExpression(aliasCandidate);
     if (isNodeOfType(strippedCandidate, "Identifier")) {
-      return { rootIdentifier: strippedCandidate, isMemberAccess: false };
+      return { rootIdentifier: strippedCandidate, isMemberAccess: false, memberPath: bindingPath };
     }
     if (
       isNodeOfType(strippedCandidate, "MemberExpression") &&
       !receiverReachesThroughRefCurrent(strippedCandidate)
     ) {
       const aliasRoot = rootIdentifierNode(strippedCandidate);
-      if (aliasRoot) return { rootIdentifier: aliasRoot, isMemberAccess: true };
+      const initializerPath = staticMemberPath(strippedCandidate);
+      if (aliasRoot)
+        return {
+          rootIdentifier: aliasRoot,
+          isMemberAccess: true,
+          memberPath: initializerPath && bindingPath ? [...initializerPath, ...bindingPath] : null,
+        };
     }
   }
   return null;
 };
 
-type SharedArraySource = "prop" | "hook-result";
+interface SharedArrayResolution {
+  readonly source: "prop" | "hook-result" | null;
+  readonly isExempt: boolean;
+}
+
+interface UtilityParameterFacts {
+  readonly scopes: RuleContext["scopes"];
+  readonly cfg: RuleContext["cfg"];
+  readonly resolutions: Map<string, SharedArrayResolution>;
+}
+
+const UNKNOWN_ARRAY_SOURCE: SharedArrayResolution = { source: null, isExempt: false };
+const EXEMPT_ARRAY_SOURCE: SharedArrayResolution = { source: null, isExempt: true };
+const PROP_ARRAY_SOURCE: SharedArrayResolution = { source: "prop", isExempt: false };
+const HOOK_ARRAY_SOURCE: SharedArrayResolution = { source: "hook-result", isExempt: false };
+const utilityParameterFacts = new WeakMap<EsTreeNode, UtilityParameterFacts>();
+const utilityCallDepths = new WeakMap<RuleContext, number>();
+
+const staticMemberPath = (expression: EsTreeNode): ReadonlyArray<string> | null => {
+  const stripped = stripParenExpression(expression);
+  if (isNodeOfType(stripped, "Identifier")) return [];
+  if (!isNodeOfType(stripped, "MemberExpression")) return null;
+  const path = staticMemberPath(stripped.object);
+  const name =
+    getStaticPropertyName(stripped) ??
+    (stripped.computed &&
+    isNodeOfType(stripped.property, "Literal") &&
+    typeof stripped.property.value === "number"
+      ? String(stripped.property.value)
+      : null);
+  return path && name !== null ? [...path, name] : null;
+};
+
+const bindingPatternPath = (
+  identifier: EsTreeNode,
+  pattern: EsTreeNode,
+): ReadonlyArray<string> | null => {
+  const path: string[] = [];
+  let cursor = identifier;
+  while (cursor !== pattern) {
+    const parent = cursor.parent;
+    if (isNodeOfType(parent, "AssignmentPattern") && parent.left === cursor) {
+      cursor = parent;
+    } else if (
+      isNodeOfType(parent, "Property") &&
+      parent.value === cursor &&
+      isNodeOfType(parent.parent, "ObjectPattern")
+    ) {
+      const name = getStaticPropertyKeyName(parent, { allowComputedString: true });
+      if (name === null) return null;
+      path.unshift(name);
+      cursor = parent.parent;
+    } else if (isNodeOfType(parent, "ArrayPattern")) {
+      const index = parent.elements.findIndex((element) => element === cursor);
+      if (
+        index < 0 ||
+        parent.elements.slice(0, index).some((element) => isNodeOfType(element, "RestElement"))
+      )
+        return null;
+      path.unshift(String(index));
+      cursor = parent;
+    } else return null;
+  }
+  return path;
+};
+
+interface ArrayProjectionUsage {
+  readonly transports: ReadonlySet<EsTreeNode> | null;
+  readonly allowedArguments: WeakMap<ReadonlyArray<EsTreeNode>, boolean>;
+}
+
+interface ArrayProjectionFacts {
+  readonly scopes: RuleContext["scopes"];
+  readonly cfg: RuleContext["cfg"];
+  readonly paths: Map<string, ArrayProjectionUsage>;
+}
+
+const arrayProjectionFacts = new WeakMap<EsTreeNode, ArrayProjectionFacts>();
+
+const hasStableArrayProjection = (
+  binding: BindingInfo,
+  path: ReadonlyArray<string>,
+  context: RuleContext,
+  allowedArguments?: ReadonlyArray<EsTreeNode>,
+): boolean => {
+  const symbol = context.scopes.symbolFor(binding.bindingIdentifier);
+  if (!symbol || getSymbolWriteReferences(symbol).length > 0) return false;
+  if (path.length === 0) return true;
+  let facts = arrayProjectionFacts.get(binding.bindingIdentifier);
+  if (!facts || facts.scopes !== context.scopes || facts.cfg !== context.cfg) {
+    facts = { scopes: context.scopes, cfg: context.cfg, paths: new Map() };
+    arrayProjectionFacts.set(binding.bindingIdentifier, facts);
+  }
+  const key = JSON.stringify(path);
+  let usage = facts.paths.get(key);
+  if (!usage) {
+    const transports = new Set<EsTreeNode>();
+    let stable = true;
+    for (const reference of symbol.references) {
+      if (isWithinAssignmentTarget(reference.identifier)) {
+        stable = false;
+        break;
+      }
+      let receiver: EsTreeNode = reference.identifier;
+      while (
+        isNodeOfType(receiver.parent, "MemberExpression") &&
+        receiver.parent.object === receiver
+      )
+        receiver = receiver.parent;
+      const selectedPath = staticMemberPath(receiver);
+      if (selectedPath && path.every((name, index) => selectedPath[index] === name)) continue;
+      const parent = receiver.parent;
+      if (!parent) {
+        stable = false;
+        break;
+      }
+      if (
+        isNodeOfType(parent, "VariableDeclarator") &&
+        (isNodeOfType(parent.id, "ArrayPattern") || isNodeOfType(parent.id, "ObjectPattern")) &&
+        selectedPath &&
+        selectedPath.every((name, index) => path[index] === name)
+      ) {
+        const remainingPath = path.slice(selectedPath.length);
+        let extractsAncestor = false;
+        walkAst(parent.id, (node) => {
+          if (
+            isNodeOfType(node, "RestElement") ||
+            (isNodeOfType(node, "Property") &&
+              getStaticPropertyKeyName(node, { allowComputedString: true }) === null)
+          )
+            extractsAncestor = true;
+          if (!isNodeOfType(node, "Identifier")) return;
+          const extractedPath = bindingPatternPath(node, parent.id);
+          if (
+            extractedPath &&
+            extractedPath.length < remainingPath.length &&
+            extractedPath.every((name, index) => remainingPath[index] === name)
+          )
+            extractsAncestor = true;
+        });
+        if (!extractsAncestor) continue;
+      }
+      if (
+        (isNodeOfType(parent, "IfStatement") ||
+          isNodeOfType(parent, "WhileStatement") ||
+          isNodeOfType(parent, "DoWhileStatement") ||
+          isNodeOfType(parent, "ConditionalExpression")) &&
+        parent.test === receiver
+      )
+        continue;
+      if (isNodeOfType(parent, "CallExpression") && parent.callee !== receiver)
+        transports.add(receiver);
+      else {
+        stable = false;
+        break;
+      }
+    }
+    usage = { transports: stable ? transports : null, allowedArguments: new WeakMap() };
+    facts.paths.set(key, usage);
+  }
+  if (!usage.transports) return false;
+  if (usage.transports.size === 0) return true;
+  if (!allowedArguments) return false;
+  const cached = usage.allowedArguments.get(allowedArguments);
+  if (cached !== undefined) return cached;
+  const allowed = new Set(allowedArguments);
+  const stable = [...usage.transports].every((transport) => allowed.has(transport));
+  usage.allowedArguments.set(allowedArguments, stable);
+  return stable;
+};
+
+const resolveUtilityArgumentSource = (
+  expression: EsTreeNode,
+  path: ReadonlyArray<string>,
+  caller: EsTreeNodeOfType<"CallExpression">,
+  method: string,
+  depth: number,
+  context: RuleContext,
+  allowedArguments: ReadonlyArray<EsTreeNode>,
+): SharedArrayResolution => {
+  if (depth > ALIAS_RESOLUTION_DEPTH_LIMIT) return UNKNOWN_ARRAY_SOURCE;
+  const stripped = stripParenExpression(expression);
+  if (isNodeOfType(stripped, "MemberExpression")) {
+    const memberPath = staticMemberPath(stripped);
+    const identifier = rootIdentifierNode(stripped);
+    return memberPath && identifier
+      ? resolveUtilityArgumentSource(
+          identifier,
+          [...memberPath, ...path],
+          caller,
+          method,
+          depth,
+          context,
+          allowedArguments,
+        )
+      : UNKNOWN_ARRAY_SOURCE;
+  }
+  if (isNodeOfType(stripped, "Identifier")) {
+    const resolution = resolveSharedArraySource(
+      stripped,
+      caller,
+      method,
+      path.length > 0,
+      0,
+      context,
+      path,
+    );
+    if (resolution.source) return resolution;
+    const binding = findVariableInitializer(stripped, stripped.name);
+    if (!binding) return UNKNOWN_ARRAY_SOURCE;
+    const callerSymbol = context.scopes.symbolFor(binding.bindingIdentifier);
+    const writtenReferences = callerSymbol ? getSymbolWriteReferences(callerSymbol) : undefined;
+    if (!writtenReferences || writtenReferences.length > 0) {
+      return writtenReferences?.length === 1 &&
+        path.length === 0 &&
+        hasRebindBeforeCall(binding, stripped.name, caller, context)
+        ? EXEMPT_ARRAY_SOURCE
+        : UNKNOWN_ARRAY_SOURCE;
+    }
+    if (!hasStableArrayProjection(binding, path, context, allowedArguments))
+      return UNKNOWN_ARRAY_SOURCE;
+    if (resolution.isExempt) return resolution;
+    if (!binding || isParameterBinding(binding)) return UNKNOWN_ARRAY_SOURCE;
+    const symbol = context.scopes.symbolFor(binding.bindingIdentifier);
+    const declarator = nearestVariableDeclarator(binding.bindingIdentifier);
+    if (!symbol || getSymbolWriteReferences(symbol).length > 0 || !declarator?.init)
+      return UNKNOWN_ARRAY_SOURCE;
+    const bindingPath = bindingPatternPath(binding.bindingIdentifier, declarator.id);
+    return bindingPath
+      ? resolveUtilityArgumentSource(
+          declarator.init,
+          [...bindingPath, ...path],
+          caller,
+          method,
+          depth + 1,
+          context,
+          allowedArguments,
+        )
+      : UNKNOWN_ARRAY_SOURCE;
+  }
+  if (path.length > 0) {
+    const [propertyName, ...remainingPath] = path;
+    if (isNodeOfType(stripped, "ObjectExpression")) {
+      const value = getStaticObjectPropertyValue(stripped, propertyName!);
+      return value
+        ? resolveUtilityArgumentSource(
+            value,
+            remainingPath,
+            caller,
+            method,
+            depth,
+            context,
+            allowedArguments,
+          )
+        : UNKNOWN_ARRAY_SOURCE;
+    }
+    if (isNodeOfType(stripped, "ArrayExpression")) {
+      const index = Number(propertyName);
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        String(index) !== propertyName ||
+        stripped.elements
+          .slice(0, index + 1)
+          .some((element) => isNodeOfType(element, "SpreadElement"))
+      )
+        return UNKNOWN_ARRAY_SOURCE;
+      const value = stripped.elements[index];
+      return value
+        ? resolveUtilityArgumentSource(
+            value,
+            remainingPath,
+            caller,
+            method,
+            depth,
+            context,
+            allowedArguments,
+          )
+        : UNKNOWN_ARRAY_SOURCE;
+    }
+    return UNKNOWN_ARRAY_SOURCE;
+  }
+  return isProvablyFreshOrAbsentValue(stripped) || isUseMemoReturningOnlyFreshArrays(stripped)
+    ? EXEMPT_ARRAY_SOURCE
+    : UNKNOWN_ARRAY_SOURCE;
+};
+
+const resolveUtilityParameterSource = (
+  binding: BindingInfo,
+  memberPath: ReadonlyArray<string> | null,
+  method: string,
+  context: RuleContext,
+): SharedArrayResolution => {
+  const calls = getClosedLocalUtilityCalls(binding.scopeOwner, context);
+  if (!calls || !isFunctionLike(binding.scopeOwner) || !memberPath) return PROP_ARRAY_SOURCE;
+  const parameters = binding.scopeOwner.params;
+  const parameterIndex = parameters.findIndex(
+    (parameter) => bindingPatternPath(binding.bindingIdentifier, parameter) !== null,
+  );
+  const parameter = parameters[parameterIndex];
+  if (!parameter) return PROP_ARRAY_SOURCE;
+  const parameterPath = bindingPatternPath(binding.bindingIdentifier, parameter);
+  if (!parameterPath) return PROP_ARRAY_SOURCE;
+  const path = [...parameterPath, ...memberPath];
+  const callDepth = utilityCallDepths.get(context) ?? 0;
+  if (callDepth >= LOCAL_UTILITY_ARGUMENT_CALL_DEPTH_LIMIT) return PROP_ARRAY_SOURCE;
+  const key = JSON.stringify([method, path, callDepth]);
+  let facts = utilityParameterFacts.get(binding.bindingIdentifier);
+  if (!facts || facts.scopes !== context.scopes || facts.cfg !== context.cfg) {
+    facts = { scopes: context.scopes, cfg: context.cfg, resolutions: new Map() };
+    utilityParameterFacts.set(binding.bindingIdentifier, facts);
+  }
+  const cached = facts.resolutions.get(key);
+  if (cached) return cached;
+  facts.resolutions.set(key, PROP_ARRAY_SOURCE);
+  if (!hasStableArrayProjection(binding, memberPath, context)) return PROP_ARRAY_SOURCE;
+  const allowedArguments = calls.map((caller) => caller.arguments[parameterIndex] ?? caller);
+  let result = EXEMPT_ARRAY_SOURCE;
+  utilityCallDepths.set(context, callDepth + 1);
+  try {
+    for (const caller of calls) {
+      if (
+        caller.arguments
+          .slice(0, parameterIndex + 1)
+          .some((argument) => isNodeOfType(argument, "SpreadElement"))
+      ) {
+        result = PROP_ARRAY_SOURCE;
+        break;
+      }
+      const argument = caller.arguments[parameterIndex];
+      const resolution = argument
+        ? resolveUtilityArgumentSource(argument, path, caller, method, 0, context, allowedArguments)
+        : UNKNOWN_ARRAY_SOURCE;
+      if (!resolution.isExempt) {
+        result = resolution.source ? resolution : PROP_ARRAY_SOURCE;
+        break;
+      }
+    }
+  } finally {
+    utilityCallDepths.set(context, callDepth);
+  }
+  facts.resolutions.set(key, result);
+  return result;
+};
 
 const resolveSharedArraySource = (
   rootIdentifier: EsTreeNodeOfType<"Identifier">,
@@ -660,21 +1019,23 @@ const resolveSharedArraySource = (
   reachesThroughMemberAccess: boolean,
   depth: number,
   context: RuleContext,
-): SharedArraySource | null => {
-  if (depth > ALIAS_RESOLUTION_DEPTH_LIMIT) return null;
-  if (hasMutationSafeWord(rootIdentifier.name)) return null;
+  memberPath: ReadonlyArray<string> | null,
+): SharedArrayResolution => {
+  if (depth > ALIAS_RESOLUTION_DEPTH_LIMIT) return UNKNOWN_ARRAY_SOURCE;
+  if (hasMutationSafeWord(rootIdentifier.name)) return EXEMPT_ARRAY_SOURCE;
   const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
-  if (!binding) return null;
-  if (bindingDeclaresNonArrayMethod(binding, mutatingMethodName)) return null;
-  if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode, context)) return null;
-  if (!reachesThroughMemberAccess && isBoundThroughRestElement(binding)) return null;
+  if (!binding) return UNKNOWN_ARRAY_SOURCE;
+  if (bindingDeclaresNonArrayMethod(binding, mutatingMethodName)) return EXEMPT_ARRAY_SOURCE;
+  if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode, context))
+    return EXEMPT_ARRAY_SOURCE;
+  if (!reachesThroughMemberAccess && isBoundThroughRestElement(binding)) return EXEMPT_ARRAY_SOURCE;
   if (isDerivedFromHookCall(binding)) {
-    if (!isProvableArrayContainerHookBinding(binding)) return null;
+    if (!isProvableArrayContainerHookBinding(binding)) return EXEMPT_ARRAY_SOURCE;
     if (
       isSetterlessUseStateBinding(binding) &&
       (reachesThroughMemberAccess || mutatingMethodName === "splice")
     ) {
-      return null;
+      return EXEMPT_ARRAY_SOURCE;
     }
     const initializerCall = binding.initializer ? stripParenExpression(binding.initializer) : null;
     const declaratorInit = declaratorInitFor(binding);
@@ -682,22 +1043,24 @@ const resolveSharedArraySource = (
       isMutableStoreHookCall(initializerCall) ||
       isMutableStoreHookCall(declaratorInit ? stripParenExpression(declaratorInit) : null)
     ) {
-      return null;
+      return EXEMPT_ARRAY_SOURCE;
     }
     if (!reachesThroughMemberAccess && isUseMemoReturningOnlyFreshArrays(initializerCall)) {
-      return null;
+      return EXEMPT_ARRAY_SOURCE;
     }
-    return "hook-result";
+    return HOOK_ARRAY_SOURCE;
   }
   // A parameter of a React component (or hook) is a prop — shared with
   // the parent across renders. Plain-function/utility params and the
   // draft/mutation params of `produce`/`useMutation` callbacks are not
   // components, so they never reach this branch.
   if (isParameterBinding(binding)) {
-    return componentOrHookDisplayNameForFunction(binding.scopeOwner) ? "prop" : null;
+    return componentOrHookDisplayNameForFunction(binding.scopeOwner)
+      ? resolveUtilityParameterSource(binding, memberPath, mutatingMethodName, context)
+      : UNKNOWN_ARRAY_SOURCE;
   }
   const aliasSource = aliasSourceFor(binding);
-  if (!aliasSource) return null;
+  if (!aliasSource) return UNKNOWN_ARRAY_SOURCE;
   return resolveSharedArraySource(
     aliasSource.rootIdentifier,
     callNode,
@@ -705,10 +1068,11 @@ const resolveSharedArraySource = (
     reachesThroughMemberAccess || aliasSource.isMemberAccess,
     depth + 1,
     context,
+    memberPath && aliasSource.memberPath ? [...aliasSource.memberPath, ...memberPath] : null,
   );
 };
 
-const messageFor = (source: SharedArraySource): string => {
+const messageFor = (source: "prop" | "hook-result"): string => {
   const origin =
     source === "prop"
       ? "a prop, so you mutate the parent's array"
@@ -749,9 +1113,10 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
         receiverIsMemberAccess,
         0,
         context,
+        staticMemberPath(receiver),
       );
-      if (!source) return;
-      context.report({ node, message: messageFor(source) });
+      if (!source.source) return;
+      context.report({ node, message: messageFor(source.source) });
     },
   }),
 });

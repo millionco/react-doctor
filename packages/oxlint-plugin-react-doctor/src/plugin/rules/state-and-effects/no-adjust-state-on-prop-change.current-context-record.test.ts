@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Rule } from "../../utils/rule.js";
 import { runRule } from "../../../test-utils/run-rule.js";
-import { isCurrentContextRecordRetirement } from "./utils/is-current-context-record-retirement.js";
+import { isCurrentContextRecordTransition } from "./utils/is-current-context-record-transition.js";
 import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 const certificateProbe: Rule = {
@@ -9,7 +9,7 @@ const certificateProbe: Rule = {
   severity: "warn",
   create: (context) => ({
     CallExpression: (node) => {
-      if (isCurrentContextRecordRetirement(node, context))
+      if (isCurrentContextRecordTransition(node, context))
         context.report({ node, message: "current-context record retirement" });
     },
   }),

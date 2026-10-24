@@ -189,20 +189,6 @@ export const RADIX_DRAFT_RUNTIME_TYPESCRIPT: ReadonlySet<string> = new Set([
   "TSExportAssignment",
 ]);
 
-export const RADIX_DRAFT_INHERITED_OBJECT_KEYS: ReadonlySet<string> = new Set([
-  "constructor",
-  "__proto__",
-  "__defineGetter__",
-  "__defineSetter__",
-  "__lookupGetter__",
-  "__lookupSetter__",
-  "hasOwnProperty",
-  "isPrototypeOf",
-  "propertyIsEnumerable",
-  "toLocaleString",
-  "toString",
-  "valueOf",
-]);
 export const ASYNC_WHILE_UNSUPPORTED_CONTROL_TYPES: ReadonlySet<string> = new Set([
   "BreakStatement",
   "ContinueStatement",
@@ -222,3 +208,4 @@ export const FINITE_COUNTDOWN_MINIMUM_REPEAT_COUNT = 2;
 export const FINITE_COUNTDOWN_MINIMUM_ITERATION_COUNT = 0;
 export const FINITE_COUNTDOWN_MAXIMUM_ITERATION_COUNT = 8;
 export const FINITE_COUNTDOWN_TERMINAL_COUNT = 0;
+export const CONTEXT_RECORD_EVENT_CALLER_STRESS_LAYER_COUNT = 24;

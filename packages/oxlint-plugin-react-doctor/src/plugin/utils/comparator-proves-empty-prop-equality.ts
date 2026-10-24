@@ -1,3 +1,4 @@
+import { OBJECT_PROTOTYPE_PROPERTY_NAMES } from "./constants.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { MAX_MEMO_COMPARATOR_SYMBOLIC_ATOM_COUNT } from "../constants/thresholds.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -54,20 +55,6 @@ const FALSE_VALUE: ComparatorAbstractValue = { kind: "boolean", value: false };
 const UNDEFINED_VALUE: ComparatorAbstractValue = { kind: "undefined" };
 const PREVIOUS_PROPS_VALUE: ComparatorAbstractValue = { kind: "previous-props" };
 const NEXT_PROPS_VALUE: ComparatorAbstractValue = { kind: "next-props" };
-const OBJECT_PROTOTYPE_PROPERTY_NAMES: ReadonlySet<string> = new Set([
-  "__defineGetter__",
-  "__defineSetter__",
-  "__lookupGetter__",
-  "__lookupSetter__",
-  "__proto__",
-  "constructor",
-  "hasOwnProperty",
-  "isPrototypeOf",
-  "propertyIsEnumerable",
-  "toLocaleString",
-  "toString",
-  "valueOf",
-]);
 const PROVABLY_CALLABLE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "Boolean",
   "Number",

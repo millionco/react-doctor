@@ -57,3 +57,18 @@ export const WEBPACK_ALIAS_ALLOWED_BUILTIN_SOURCES = new Set([
 export const WEBPACK_ALIAS_MIN_MERGE_ARGUMENT_COUNT = 2;
 
 export const WEBPACK_ALIAS_MAX_NAME_SEGMENT_COUNT = 16;
+
+export const OBJECT_PROTOTYPE_PROPERTY_NAMES: ReadonlySet<string> = new Set([
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "__proto__",
+  "constructor",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+]);

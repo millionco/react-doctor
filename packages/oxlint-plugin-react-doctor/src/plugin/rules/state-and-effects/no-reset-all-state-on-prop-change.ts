@@ -34,6 +34,7 @@ import {
 } from "./utils/effect/react.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
+import { isCurrentContextRecordTransition } from "./utils/is-current-context-record-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-reset-all-state-on-prop-change.js`.
@@ -1249,6 +1250,13 @@ const findPropUsedToResetAllState = (
     isSetStateToInitialValue(analysis, context, ref),
   );
   if (!allResetToInitial) return null;
+  if (
+    stateSetterRefs.every((reference) => {
+      const call = getCallExpr(reference);
+      return Boolean(call && isCurrentContextRecordTransition(call, context, "neutral-reset"));
+    })
+  )
+    return null;
   if (hasSynchronousResourceLifecycleTransition(effectFn, context.scopes)) return null;
   if (
     stateSetterRefs.every((setterReference) =>

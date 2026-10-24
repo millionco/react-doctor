@@ -1,5 +1,5 @@
+import { OBJECT_PROTOTYPE_PROPERTY_NAMES } from "../../../utils/constants.js";
 import {
-  RADIX_DRAFT_INHERITED_OBJECT_KEYS,
   RADIX_DRAFT_EMPTY_COUNT,
   RADIX_DRAFT_SINGLE_COUNT,
   RADIX_DRAFT_PAIR_COUNT,
@@ -87,7 +87,7 @@ export const isAbsentPropertyEmptyRecordGroup = (
   if (
     !absentProperty ||
     presentProperties.has(absentProperty) ||
-    RADIX_DRAFT_INHERITED_OBJECT_KEYS.has(absentProperty)
+    OBJECT_PROTOTYPE_PROPERTY_NAMES.has(absentProperty)
   )
     return false;
   if (

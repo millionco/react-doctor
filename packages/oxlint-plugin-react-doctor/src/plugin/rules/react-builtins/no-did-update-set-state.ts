@@ -7,11 +7,16 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticThisOrAliasFieldName } from "../../utils/get-static-this-or-alias-field-name.js";
 import { getPropertyKeyName } from "../../utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isLocalArrayDifferenceCall } from "../../utils/is-local-array-difference-call.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
 import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
@@ -215,10 +220,12 @@ const getStateSourcePath = (
   node: EsTreeNode,
   previousSourcePaths: ReadonlyMap<number, StateSourcePath>,
   scopes: ScopeAnalysis,
+  allowCurrentPropDestructure = false,
 ): StateSourcePath | null => {
   let currentNode = stripParenExpression(node);
   const members: string[] = [];
   while (isNodeOfType(currentNode, "MemberExpression")) {
+    if (allowCurrentPropDestructure && currentNode.optional) return null;
     const memberName = getStaticMemberName(currentNode);
     if (!memberName) return null;
     members.unshift(memberName);
@@ -230,8 +237,53 @@ const getStateSourcePath = (
     return { domain, members: pathMembers, source: "current" };
   }
   if (!isNodeOfType(currentNode, "Identifier")) return null;
-  const symbolId = scopes.symbolFor(currentNode)?.id;
+  const symbol = scopes.symbolFor(currentNode);
+  const symbolId = symbol?.id;
   const previousSourcePath = symbolId === undefined ? undefined : previousSourcePaths.get(symbolId);
+  if (previousSourcePath && allowCurrentPropDestructure) {
+    const lifecycle = findEnclosingLifecycleFunction(currentNode);
+    const program = findProgramRoot(currentNode);
+    if (
+      !symbol ||
+      !lifecycle ||
+      !isFunctionLike(lifecycle) ||
+      lifecycle.params[0] !== symbol.bindingIdentifier ||
+      !program ||
+      hasSymbolBindingWrites(symbol) ||
+      !hasCompleteSymbolReferences(symbol, program, scopes)
+    )
+      return null;
+  }
+  if (!previousSourcePath && allowCurrentPropDestructure && symbol?.kind === "const") {
+    const declaration = symbol.declarationNode;
+    const property = symbol.bindingIdentifier.parent;
+    const program = findProgramRoot(currentNode);
+    if (
+      isNodeOfType(declaration, "VariableDeclarator") &&
+      declaration.init &&
+      isNodeOfType(declaration.id, "ObjectPattern") &&
+      isNodeOfType(property, "Property") &&
+      property.parent === declaration.id &&
+      property.value === symbol.bindingIdentifier &&
+      !property.computed &&
+      isNodeOfType(property.key, "Identifier") &&
+      program &&
+      findEnclosingLifecycleFunction(declaration) === findEnclosingLifecycleFunction(currentNode) &&
+      !hasSymbolBindingWrites(symbol) &&
+      hasCompleteSymbolReferences(symbol, program, scopes)
+    ) {
+      const initializer = stripParenExpression(declaration.init);
+      if (
+        isNodeOfType(initializer, "MemberExpression") &&
+        !initializer.computed &&
+        !initializer.optional &&
+        isNodeOfType(initializer.object, "ThisExpression") &&
+        getStaticMemberName(initializer) === "props"
+      ) {
+        return { domain: "props", members: [property.key.name, ...members], source: "current" };
+      }
+    }
+  }
   return previousSourcePath
     ? {
         ...previousSourcePath,
@@ -367,22 +419,30 @@ const isPreviousCurrentComparatorGuard = (
   previousSourcePaths: ReadonlyMap<number, StateSourcePath>,
   scopes: ScopeAnalysis,
   isTruthfulBranch: boolean,
+  setStateCall: EsTreeNode,
 ): boolean => {
   let expression = stripParenExpression(test);
-  let expectsEqual = isTruthfulBranch;
+  let expectsTruthy = isTruthfulBranch;
   while (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
-    expectsEqual = !expectsEqual;
+    expectsTruthy = !expectsTruthy;
     expression = stripParenExpression(expression.argument as EsTreeNode);
   }
-  if (
-    expectsEqual ||
-    !isNodeOfType(expression, "CallExpression") ||
-    !EQUALITY_COMPARATOR_NAME_PATTERN.test(getCalleeName(expression) ?? "")
-  ) {
-    return false;
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const isArrayDifference = expectsTruthy && isLocalArrayDifferenceCall(expression, scopes);
+  if (isArrayDifference) {
+    let ancestor = setStateCall.parent;
+    while (ancestor && !isLifecycleMethodFunction(ancestor)) {
+      if (isFunctionLike(ancestor)) return false;
+      ancestor = ancestor.parent;
+    }
   }
+  if (
+    !isArrayDifference &&
+    (expectsTruthy || !EQUALITY_COMPARATOR_NAME_PATTERN.test(getCalleeName(expression) ?? ""))
+  )
+    return false;
   const paths = (expression.arguments ?? [])
-    .map((argument) => getStateSourcePath(argument, previousSourcePaths, scopes))
+    .map((argument) => getStateSourcePath(argument, previousSourcePaths, scopes, isArrayDifference))
     .filter((path): path is StateSourcePath => Boolean(path));
   return paths.some((path, index) =>
     paths
@@ -390,6 +450,7 @@ const isPreviousCurrentComparatorGuard = (
       .some(
         (candidate) =>
           path.domain === "props" &&
+          (!isArrayDifference || path.members.length > 0) &&
           path.source !== candidate.source &&
           haveMatchingStateSourcePaths(path, candidate),
       ),
@@ -1151,7 +1212,7 @@ const isTruthfulGuardTest = (
     (branch) =>
       branch.terms.some((term) => isDiffGuardTest(term, paramNames, derivedNames, true)) ||
       branch.terms.some((term) =>
-        isPreviousCurrentComparatorGuard(term, previousSourcePaths, scopes, true),
+        isPreviousCurrentComparatorGuard(term, previousSourcePaths, scopes, true, setStateCall),
       ) ||
       isHistoricalToCurrentTransitionGuard(branch.terms, previousSourcePaths, scopes) ||
       branch.terms.some((term) =>
@@ -1267,7 +1328,13 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
             callbackRefFieldNames,
           )
         : isDiffGuardTest(guardTest, paramNames, derivedNames, false) ||
-          isPreviousCurrentComparatorGuard(guardTest, previousSourcePaths, scopes, false) ||
+          isPreviousCurrentComparatorGuard(
+            guardTest,
+            previousSourcePaths,
+            scopes,
+            false,
+            setStateCall,
+          ) ||
           isConvergentExactGuard(
             guardTest,
             setStateCall,

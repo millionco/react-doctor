@@ -469,7 +469,12 @@ export const hasStandardReactJsxConfiguration = (fromFilename: string): boolean 
   return captured.value;
 };
 
+let tsconfigAliasCacheGeneration = 0;
+
+export const getTsconfigAliasCacheGeneration = (): number => tsconfigAliasCacheGeneration;
+
 export const resetTsconfigAliasCaches = (): void => {
+  tsconfigAliasCacheGeneration++;
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();
   standardReactJsxByDirectory.clear();

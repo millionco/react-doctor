@@ -387,3 +387,115 @@ export const STANDARD_REACT_JSX_MODES: ReadonlySet<string> = new Set([
   "react-jsxdev",
   "preserve",
 ]);
+
+export const NODE_PORT_PROCESS_ARGUMENT_COUNT = 3;
+export const NODE_PORT_PROCESS_MODULE_COUNT = 4;
+export const NODE_PORT_PROCESS_SINGLE_VALUE_COUNT = 1;
+export const NODE_PORT_PROCESS_CAPABILITY_NAMES: ReadonlySet<string> = new Set([
+  "arguments",
+  "eval",
+  "Function",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "globalThis",
+  "window",
+  "self",
+  "String",
+  "Array",
+  "RegExp",
+  "Symbol",
+]);
+export const NODE_PORT_PROCESS_CAPABILITY_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  "caller",
+  "callee",
+  "arguments",
+  "prototype",
+  "constructor",
+  "__proto__",
+  "defineProperty",
+  "setPrototypeOf",
+]);
+export const NODE_PORT_PROCESS_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "require",
+  "module",
+  "Promise",
+  "process",
+  "console",
+]);
+export const NODE_PORT_PROCESS_PROVIDER_METHODS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  [
+    ["fs", new Set(["existsSync", "writeFileSync"])],
+    ["node:fs", new Set(["existsSync", "writeFileSync"])],
+    ["chalk", new Set(["red", "yellow"])],
+    ["execa", new Set<string>()],
+    ["use-port", new Set<string>()],
+  ],
+);
+
+export const NODE_PORT_PROCESS_LOADER_SOURCES: ReadonlySet<string> = new Set([
+  "module",
+  "node:module",
+  "vm",
+  "node:vm",
+  "process",
+  "node:process",
+  "console",
+  "node:console",
+]);
+
+export const NODE_PORT_PROCESS_REQUIRED_SOURCES: ReadonlySet<string> = new Set([
+  "fs",
+  "chalk",
+  "execa",
+  "use-port",
+]);
+
+export const NODE_PORT_PROCESS_TIMER_ARGUMENT_COUNT = 2;
+export const NODE_PORT_PROCESS_TIMER_RESERVED_NAMES: ReadonlySet<string> = new Set([
+  "global",
+  "globalThis",
+  "self",
+  "window",
+  "Buffer",
+  "Intl",
+  "WebAssembly",
+  "AbortController",
+  "AbortSignal",
+  "URL",
+  "URLSearchParams",
+  "fetch",
+  "setInterval",
+  "clearInterval",
+  "setTimeout",
+  "clearTimeout",
+  "setImmediate",
+  "clearImmediate",
+  "queueMicrotask",
+  "structuredClone",
+  "performance",
+]);
+
+export const NODE_PORT_PROCESS_RANGE_PREFIX_PATTERN = /^[~^]/;
+export const NODE_PORT_PROCESS_CONSUMER_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "require",
+  "module",
+  "Promise",
+  "process",
+  "console",
+  "exports",
+  "__dirname",
+  "JSON",
+  "global",
+  "setInterval",
+  "clearInterval",
+  "undefined",
+  "NaN",
+  "Infinity",
+]);
+
+export const NODE_PORT_PROCESS_SMALL_CALL_COUNT = 16;
+export const NODE_PORT_PROCESS_LARGE_CALL_COUNT = 64;
+export const NODE_PORT_PROCESS_MAXIMUM_LOOKUP_GROWTH_MULTIPLIER = 6;
+
+export const NODE_PORT_PROCESS_MAXIMUM_PROVIDER_WALK_COUNT = 3;

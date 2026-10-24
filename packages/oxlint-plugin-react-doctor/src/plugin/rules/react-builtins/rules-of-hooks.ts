@@ -1,3 +1,4 @@
+import { isImportedNodePortProcessUtility } from "../../utils/is-imported-node-port-process-utility.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -1055,6 +1056,7 @@ export const rulesOfHooks = defineRule({
         // the ordering rules apply to it.
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
         if (isImportedStaticDataGetter(node.callee, context)) return;
+        if (isImportedNodePortProcessUtility(node, context)) return;
 
         if (isProjectOwnedMdxComponentsGetter(node)) return;
 

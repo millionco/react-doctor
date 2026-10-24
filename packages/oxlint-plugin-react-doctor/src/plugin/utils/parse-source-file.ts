@@ -99,6 +99,9 @@ export const parseSourceText = ({
 // re-inserts its entry at the end, and the oldest entry is evicted on
 // overflow.
 const parseCache = new Map<string, CacheEntry>();
+let parseSourceFileCacheGeneration = 0;
+
+export const getParseSourceFileCacheGeneration = (): number => parseSourceFileCacheGeneration;
 
 const rememberParsedFile = (absoluteFilePath: string, entry: CacheEntry): void => {
   parseCache.delete(absoluteFilePath);
@@ -187,6 +190,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
 };
 
 export const resetParseSourceFileCache = (): void => {
+  parseSourceFileCacheGeneration += 1;
   parseCache.clear();
 };
 

@@ -1,3 +1,4 @@
+import { isImportedNodePortProcessUtility } from "./utils/is-imported-node-port-process-utility.js";
 import { isTypedReduxStoreFactoryInitialization } from "./rules/state-and-effects/utils/is-typed-redux-store-factory-initialization.js";
 import { resolveReactRefSymbol } from "./utils/react-ref-origin.js";
 import { isRejectableOidcUserManagerCall } from "./utils/is-rejectable-oidc-user-manager-call.js";
@@ -210,6 +211,7 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
+    isImportedNodePortProcessUtility(node, { filename: absoluteFilePath, scopes });
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);

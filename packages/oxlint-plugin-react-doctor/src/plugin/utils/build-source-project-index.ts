@@ -35,6 +35,7 @@ export interface SourceProjectIndexInput {
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
   readonly sourceFileLimits?: ProductionSourceFileLimits;
+  readonly includeApplicationDirectories?: boolean;
 }
 
 const sourceProjectScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
@@ -134,6 +135,7 @@ export const buildSourceProjectIndex = ({
   requiredModuleSources = [],
   knownModuleSources,
   sourceFileLimits,
+  includeApplicationDirectories = false,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
   if (
     requiredModuleSources.length > 0 &&
@@ -142,7 +144,11 @@ export const buildSourceProjectIndex = ({
   ) {
     return null;
   }
-  const productionSourceFiles = listProductionSourceFiles(rootDirectory, sourceFileLimits);
+  const productionSourceFiles = listProductionSourceFiles(
+    rootDirectory,
+    sourceFileLimits,
+    includeApplicationDirectories,
+  );
   if (!productionSourceFiles) return null;
   if (
     requiredModuleSources.length > 0 &&

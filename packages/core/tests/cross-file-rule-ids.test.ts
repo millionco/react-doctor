@@ -255,6 +255,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "rn-style-prefer-boxshadow",
       "rules-of-hooks",
       "server-sequential-independent-await",
+      "shadcn-icon-button-requires-label",
       "window-open-without-noopener",
     ]);
   });

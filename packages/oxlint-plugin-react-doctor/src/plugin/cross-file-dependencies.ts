@@ -1,3 +1,4 @@
+import { NATIVE_LABEL_ATTRIBUTE_NAME } from "./constants/react-native.js";
 import { mayUseProjectContextSetter } from "./utils/create-project-context-setter-analyzer.js";
 import { findNativeQueryStateRead } from "./utils/find-native-query-state-read.js";
 import { getStableImportedHookMemberKeys } from "./utils/get-stable-imported-hook-member-keys.js";
@@ -727,6 +728,19 @@ const collectTypedReduxStoreInitializationDependencies: CrossFileDependencyColle
   });
 };
 
+const collectNativeButtonLabelDependencies: CrossFileDependencyCollector = ({ getProgram }) => {
+  let hasNativeLabelCandidate = false;
+  walkAst(getProgram(), (node) => {
+    if (
+      isNodeOfType(node, "JSXAttribute") &&
+      isNodeOfType(node.name, "JSXIdentifier") &&
+      node.name.name === NATIVE_LABEL_ATTRIBUTE_NAME
+    )
+      hasNativeLabelCandidate = true;
+  });
+  if (hasNativeLabelCandidate) return false;
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -738,6 +752,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
+    ["shadcn-icon-button-requires-label", collectNativeButtonLabelDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["hook-use-state", collectNextQueryStateDependencies],
     ["no-ref-current-in-render", collectTypedReduxStoreInitializationDependencies],

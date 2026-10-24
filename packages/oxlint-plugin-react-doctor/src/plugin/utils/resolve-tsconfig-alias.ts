@@ -539,3 +539,9 @@ export const resetTsconfigAliasCaches = (): void => {
   identityMappedReactJsxByDirectory.clear();
   sourceMappedReactJsxByDirectory.clear();
 };
+
+export {
+  parseTsconfigFile,
+  resolveExtendsPath as resolveTsconfigExtendsPath,
+  isObjectRecord as isTsconfigObjectRecord,
+};

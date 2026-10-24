@@ -827,6 +827,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import { Button as FuzzUnresolvedNativeButton } from "./button"; const FuzzNativeLabelProofRefusal = () => <FuzzUnresolvedNativeButton size="icon" accessibilityLabel="Expand panel"><FuzzGlyphIcon /></FuzzUnresolvedNativeButton>;`,
   `import { compile as compileFuzzMdx } from "@mdx-js/mdx"; const fuzzCompiledMdx = await compileFuzzMdx(tenantContent);`,
   `import { proxy as createFuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio"; const fuzzValtioState = createFuzzValtioProxy({ count: 0 });`,
   `import fetch from "node-fetch";`,

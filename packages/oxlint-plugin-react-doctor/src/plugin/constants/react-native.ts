@@ -184,3 +184,75 @@ export const REACT_NATIVE_MODULE_REMOVAL_MINOR: ReadonlyMap<string, number> = ne
 
 export const REACT_NATIVE_SINGLE_MINOR_RANGE_PATTERN =
   /^[~^=v]?\s*0\.\d+(?:\.(?:\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+export const NATIVE_LABEL_ATTRIBUTE_NAME = "accessibilityLabel";
+export const NATIVE_LABEL_CANONICAL_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+  "react-native",
+]);
+export const NATIVE_LABEL_CONTEXT_READ_APIS: ReadonlySet<string> = new Set(["use", "useContext"]);
+export const NATIVE_LABEL_FORBIDDEN_PROP_NAMES: ReadonlySet<string> = new Set([
+  NATIVE_LABEL_ATTRIBUTE_NAME,
+  "aria-label",
+  "aria-labelledby",
+  "__proto__",
+  "prototype",
+  "constructor",
+]);
+export const NATIVE_LABEL_REFUSED_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "React",
+  "ReactNative",
+  "Function",
+]);
+export const NATIVE_LABEL_RESOLVER_NAMES: ReadonlySet<string> = new Set([
+  "resolver",
+  "resolveRequest",
+  "extraNodeModules",
+  "nodeModulesPaths",
+  "alias",
+]);
+export const NATIVE_LABEL_CONFIG_FILE_PATTERN =
+  /(?:^|\/)(?:metro|babel|vite|webpack)\.config\.[cm]?[jt]s$/;
+export const NATIVE_LABEL_EXPO_TSCONFIG_SOURCE = "expo/tsconfig.base";
+export const NATIVE_LABEL_TSCONFIG_FILE_NAMES = ["tsconfig.json", "jsconfig.json"];
+export { MEMO_TUPLE_LOADER_SOURCES as NATIVE_LABEL_REFUSED_MODULE_SOURCES } from "./react.js";
+
+export const NATIVE_LABEL_SINGLE_VALUE_COUNT = 1;
+export const NATIVE_LABEL_CONTEXT_SHORTHAND_MINIMUM_MAJOR_VERSION = 19;
+
+export const NATIVE_LABEL_NODE_LOADER_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  "getBuiltinModule",
+  "mainModule",
+  "binding",
+  "_linkedBinding",
+  "dlopen",
+]);
+export const NATIVE_LABEL_RUNTIME_CAPABILITY_NAMES: ReadonlySet<string> = new Set([
+  ...NATIVE_LABEL_REFUSED_GLOBAL_NAMES,
+  "require",
+  "module",
+  "process",
+]);
+
+export const NATIVE_LABEL_BABEL_CONFIG_NAMES = [
+  ".babelrc",
+  ".babelrc.json",
+  ".babelrc.js",
+  ".babelrc.cjs",
+  "babel.config.js",
+  "babel.config.cjs",
+  "babel.config.mjs",
+  "babel.config.ts",
+];
+export const NATIVE_LABEL_METRO_CONFIG_PATTERN = /(?:^|\/)metro\.config\.[cm]?[jt]s$/;
+export const NATIVE_LABEL_METRO_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "path",
+  "node:path",
+  "expo/metro-config",
+  "uniwind/metro",
+  "@storybook/react-native/metro/withStorybook",
+]);
+
+export const NATIVE_LABEL_PLATFORM_SUFFIX_PATTERN = /^\.(?:native|ios|android|web)\.[cm]?[jt]sx?$/;

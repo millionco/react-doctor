@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isTestlikeFilename } from "./is-testlike-filename.js";
+import { isTestlikeFilename, isTestNoiseFilename } from "./is-testlike-filename.js";
 import { normalizeFilename } from "./normalize-filename.js";
 
 export interface ProductionSourceFileLimits {
@@ -16,7 +16,7 @@ export interface ProductionSourceFiles {
   readonly hasOpaqueMdxConsumerSurface: boolean;
 }
 
-const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
+export const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
 const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
 const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
 const SOURCE_PROJECT_HTML_FILE_PATTERN = /\.html?$/i;
@@ -44,6 +44,7 @@ const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
 export const listProductionSourceFiles = (
   rootDirectory: string,
   limits?: ProductionSourceFileLimits,
+  includeApplicationDirectories = false,
 ): ProductionSourceFiles | null => {
   const sourceFilePaths: string[] = [];
   const htmlFilePaths: string[] = [];
@@ -75,7 +76,13 @@ export const listProductionSourceFiles = (
         pendingDirectories.push(absolutePath);
         continue;
       }
-      if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
+      if (
+        !entry.isFile() ||
+        (includeApplicationDirectories
+          ? isTestNoiseFilename(absolutePath)
+          : isTestlikeFilename(absolutePath))
+      )
+        continue;
       if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
         hasOpaqueMdxConsumerSurface = true;
         continue;

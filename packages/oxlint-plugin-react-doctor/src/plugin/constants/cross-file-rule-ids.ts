@@ -90,6 +90,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "rules-of-hooks",
   "no-promise-then-side-effect-in-effect-without-catch",
   "server-sequential-independent-await",
+  "shadcn-icon-button-requires-label",
   "rn-no-deprecated-modules",
   "rn-no-legacy-shadow-styles",
   "rn-no-raw-text",

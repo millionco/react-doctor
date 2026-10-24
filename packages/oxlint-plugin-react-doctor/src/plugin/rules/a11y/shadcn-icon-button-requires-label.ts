@@ -1,3 +1,4 @@
+import { createNativeLabelForwardingChecker } from "../../utils/create-native-label-forwarding-checker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -125,62 +126,66 @@ export const shadcnIconButtonRequiresLabel = defineRule({
   requires: ["shadcn"],
   recommendation:
     "Give every icon-sized Button an aria-label or an sr-only text child so assistive technology announces what the button does.",
-  create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (resolveShadcnUiComponentName(node.name, BUTTON_MODULE_PATTERN, context) !== "Button") {
-        return;
-      }
-      // A spread can supply aria-label; asChild delegates semantics (and
-      // often the name) to the slotted child; a react-aria `slot` lets the
-      // surrounding component wire a default accessible name (the TagGroup
-      // remove slot announces "Remove").
-      if (hasJsxSpreadAttribute(node.attributes)) return;
-      const asChildAttribute = findJsxAttribute(node.attributes, "asChild");
-      if (asChildAttribute) {
-        if (!asChildAttribute.value) return;
-        if (!isNodeOfType(asChildAttribute.value, "JSXExpressionContainer")) return;
-        if (readStaticBoolean(asChildAttribute.value.expression) !== false) return;
-      }
-      const slotAttribute = findJsxAttribute(node.attributes, "slot");
-      if (slotAttribute) {
-        const slotValue = getJsxPropStringValue(slotAttribute);
-        if (slotValue === null || slotValue === "remove") return;
-      }
-      if (
-        NAME_PROVIDING_ATTRIBUTES.some((attribute) =>
-          jsxAttributeMayHaveNonEmptyValue(hasJsxPropIgnoreCase(node.attributes, attribute), {
-            scopes: context.scopes,
-          }),
-        )
-      ) {
-        return;
-      }
-      const sizeAttribute = findJsxAttribute(node.attributes, "size");
-      if (!sizeAttribute) return;
-      const sizeValues = getJsxPropStaticStringValues(sizeAttribute, context.scopes);
-      if (
-        !sizeValues ||
-        sizeValues.length === 0 ||
-        !sizeValues.every((sizeValue) => sizeValue.startsWith(ICON_SIZE_PREFIX))
-      ) {
-        return;
-      }
-      // A Button passed through an attribute (`render={<Button size="icon" />}`,
-      // Base UI / react-aria composition) receives its children — including
-      // any sr-only label — from the wrapping component, so its content is
-      // not statically knowable here.
-      if (isInsideJsxAttribute(node)) return;
-      const buttonElement = node.parent;
-      const scan =
-        buttonElement && isNodeOfType(buttonElement, "JSXElement")
-          ? scanButtonContent(buttonElement, context)
-          : { hasAccessibleText: false, hasUnprovableContent: false };
-      if (scan.hasAccessibleText || scan.hasUnprovableContent) return;
-      context.report({
-        node: node.name,
-        message:
-          'This icon-only Button has no accessible name, so screen readers announce an unnamed button. Add aria-label or an sr-only text child (e.g. <span className="sr-only">Delete</span>).',
-      });
-    },
-  }),
+  create: (context: RuleContext) => {
+    const hasForwardedNativeLabel = createNativeLabelForwardingChecker(context);
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (resolveShadcnUiComponentName(node.name, BUTTON_MODULE_PATTERN, context) !== "Button") {
+          return;
+        }
+        // A spread can supply aria-label; asChild delegates semantics (and
+        // often the name) to the slotted child; a react-aria `slot` lets the
+        // surrounding component wire a default accessible name (the TagGroup
+        // remove slot announces "Remove").
+        if (hasJsxSpreadAttribute(node.attributes)) return;
+        const asChildAttribute = findJsxAttribute(node.attributes, "asChild");
+        if (asChildAttribute) {
+          if (!asChildAttribute.value) return;
+          if (!isNodeOfType(asChildAttribute.value, "JSXExpressionContainer")) return;
+          if (readStaticBoolean(asChildAttribute.value.expression) !== false) return;
+        }
+        const slotAttribute = findJsxAttribute(node.attributes, "slot");
+        if (slotAttribute) {
+          const slotValue = getJsxPropStringValue(slotAttribute);
+          if (slotValue === null || slotValue === "remove") return;
+        }
+        if (
+          NAME_PROVIDING_ATTRIBUTES.some((attribute) =>
+            jsxAttributeMayHaveNonEmptyValue(hasJsxPropIgnoreCase(node.attributes, attribute), {
+              scopes: context.scopes,
+            }),
+          )
+        ) {
+          return;
+        }
+        const sizeAttribute = findJsxAttribute(node.attributes, "size");
+        if (!sizeAttribute) return;
+        const sizeValues = getJsxPropStaticStringValues(sizeAttribute, context.scopes);
+        if (
+          !sizeValues ||
+          sizeValues.length === 0 ||
+          !sizeValues.every((sizeValue) => sizeValue.startsWith(ICON_SIZE_PREFIX))
+        ) {
+          return;
+        }
+        if (hasForwardedNativeLabel(node)) return;
+        // A Button passed through an attribute (`render={<Button size="icon" />}`,
+        // Base UI / react-aria composition) receives its children — including
+        // any sr-only label — from the wrapping component, so its content is
+        // not statically knowable here.
+        if (isInsideJsxAttribute(node)) return;
+        const buttonElement = node.parent;
+        const scan =
+          buttonElement && isNodeOfType(buttonElement, "JSXElement")
+            ? scanButtonContent(buttonElement, context)
+            : { hasAccessibleText: false, hasUnprovableContent: false };
+        if (scan.hasAccessibleText || scan.hasUnprovableContent) return;
+        context.report({
+          node: node.name,
+          message:
+            'This icon-only Button has no accessible name, so screen readers announce an unnamed button. Add aria-label or an sr-only text child (e.g. <span className="sr-only">Delete</span>).',
+        });
+      },
+    };
+  },
 });

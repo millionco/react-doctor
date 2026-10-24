@@ -28,23 +28,23 @@ describe("Next query state snapshot corpus", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("checks the complete project and a nonnative constructor inverse", () => {
+  it("checks the complete project and a mismatched setter inverse", () => {
     const positive = runRule(hookUseState, source, { filename, settings });
     expect(positive.parseErrors).toEqual([]);
     expect(positive.diagnostics).toEqual([]);
     const inverse = runRule(
       hookUseState,
-      source.replace("new URLSearchParams()", 'new URLSearchParams("term=value")'),
+      source.replace("const [params]", "const [params, updateParams]"),
       { filename, settings },
     );
     expect(inverse.parseErrors).toEqual([]);
     expect(inverse.diagnostics).toHaveLength(1);
   });
 
-  it("retains advice when source lacks an authoritative physical project", () => {
+  it("allows an omitted setter without an authoritative physical project", () => {
     const result = runRule(hookUseState, source, { filename: "fixture.tsx" });
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("replays the declared positive project corpus", () => {

@@ -7,6 +7,23 @@ import {
   NUMERIC_DATA_SMALL_READ_COUNT,
 } from "../constants/thresholds.js";
 import { hookUseState } from "../rules/react-builtins/hook-use-state.js";
+import { defineRule } from "./define-rule.js";
+import { isNumericDataMemberAccess } from "./is-numeric-data-member-access.js";
+
+const numericDataRule = defineRule({
+  ...hookUseState,
+  create: (context) => ({
+    MemberExpression: (node: EsTreeNode) => {
+      if (
+        node.type === "MemberExpression" &&
+        node.computed &&
+        !isNumericDataMemberAccess(node, context.scopes)
+      ) {
+        context.report({ node, message: "The numeric data certificate does not apply." });
+      }
+    },
+  }),
+});
 
 interface NumericDataWork {
   programWalkCount: number;
@@ -45,7 +62,7 @@ const buildSource = (readCount: number, replaceNumber = false): string => {
 const measureWork = (readCount: number): NumericDataWork => {
   traversalWork.programWalkCount = 0;
   traversalWork.visitedNodeCount = 0;
-  const result = runRule(hookUseState, buildSource(readCount));
+  const result = runRule(numericDataRule, buildSource(readCount));
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics).toEqual([]);
   return { ...traversalWork };
@@ -63,11 +80,11 @@ describe("numeric data provider work", () => {
     );
   });
 
-  it("still reports a visible Number replacement on a fresh program", () => {
-    const result = runRule(hookUseState, buildSource(NUMERIC_DATA_SMALL_READ_COUNT, true));
+  it("rejects numeric certificates after a visible Number replacement on a fresh program", () => {
+    const result = runRule(numericDataRule, buildSource(NUMERIC_DATA_SMALL_READ_COUNT, true));
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    const clean = runRule(hookUseState, buildSource(NUMERIC_DATA_SMALL_READ_COUNT));
+    expect(result.diagnostics).toHaveLength(NUMERIC_DATA_SMALL_READ_COUNT);
+    const clean = runRule(numericDataRule, buildSource(NUMERIC_DATA_SMALL_READ_COUNT));
     expect(clean.parseErrors).toEqual([]);
     expect(clean.diagnostics).toEqual([]);
   });

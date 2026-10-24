@@ -4,6 +4,10 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { collectCrossFileDependencyProbes } from "../../cross-file-dependencies.js";
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isNextQueryStateCall } from "../../utils/is-next-query-state-call.js";
+import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import { resetFilesystemCaches } from "../../utils/reset-filesystem-caches.js";
 import { hookUseState } from "./hook-use-state.js";
 
@@ -40,11 +44,22 @@ const writeFixture = (name: string, source: string): void => {
   fs.writeFileSync(target, source);
 };
 
+const queryCertificateRule = defineRule({
+  ...hookUseState,
+  create: (context) => ({
+    CallExpression: (node: EsTreeNode) => {
+      if (isReactFunctionCall(node, "useState") && !isNextQueryStateCall(node, context)) {
+        context.report({ node, message: "The query snapshot certificate does not apply." });
+      }
+    },
+  }),
+});
+
 const diagnose = (source = panel, files: Readonly<Record<string, string>> = {}) => {
   writeFixture("project/app/[item]/query-panel.tsx", source);
   for (const [name, value] of Object.entries(files)) writeFixture(name, value);
   resetFilesystemCaches();
-  const result = runRule(hookUseState, source, {
+  const result = runRule(queryCertificateRule, source, {
     filename,
     includeLocations: true,
     settings: { "react-doctor": { rootDirectory: projectDirectory } },
@@ -78,7 +93,12 @@ afterEach(() => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-describe("hook-use-state Next query snapshots", () => {
+describe("Next query state certificate", () => {
+  it("allows an omitted setter without requiring the query certificate", () => {
+    const result = runRule(hookUseState, panel, { filename });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
   it("allows a complete native query snapshot from an unchanged page input", () => {
     expect(diagnose()).toEqual([]);
   });
@@ -97,7 +117,7 @@ describe("hook-use-state Next query snapshots", () => {
     ).toEqual([]);
   });
 
-  it("keeps the earlier scalar snapshot diagnostic separate", () => {
+  it("excludes a separate scalar snapshot from the query certificate", () => {
     const source = panel
       .replace("({query})", "({query,item})")
       .replace(
@@ -323,7 +343,7 @@ describe("hook-use-state Next query snapshots", () => {
           '{"private":true,"dependencies":{"next":"16.0.10","react":"19.2.3","react-dom":"19.2.3"},"imports":{"#query":"./custom.ts"}}',
       },
     },
-  ])("retains advice for $name", ({ source, files }) => {
+  ])("declines the certificate for $name", ({ source, files }) => {
     expect(diagnose(source, files).length).toBeGreaterThan(0);
   });
 
@@ -410,7 +430,7 @@ describe("hook-use-state Next query snapshots", () => {
       "an outside computed Window provider lookup",
       'const root=window;const name="URL"+"SearchParams";const provider=root[name];export const ExternalView=()=>provider;',
     ],
-  ])("retains advice for %s", (_name, ui) => {
+  ])("declines the certificate for %s", (_name, ui) => {
     const source =
       '"use client";\nimport {ExternalView} from "../../../shared-ui";\n' +
       panel

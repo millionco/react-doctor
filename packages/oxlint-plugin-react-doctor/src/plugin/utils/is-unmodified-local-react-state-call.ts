@@ -21,12 +21,14 @@ import { hasPossibleStaticPropertyMutationOrEscape } from "./has-static-property
 import { isBindingAssignmentTarget } from "./is-binding-assignment-target.js";
 import { hasRuntimeValueBinding } from "./has-runtime-value-binding.js";
 import { isErasedTypeScriptBinding } from "./is-erased-typescript-binding.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNumericDataMemberAccess } from "./is-numeric-data-member-access.js";
 import { isMemberMutationTarget } from "./is-member-mutation-target.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isNonEscapingReactApiReference } from "./is-non-escaping-react-api-reference.js";
 import { isProvenUnmodifiedReactApiCall } from "./is-proven-unmodified-react-api-call.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { walkAst } from "./walk-ast.js";
 
 const PROVIDER_GLOBAL_NAMES = new Set([
@@ -46,6 +48,7 @@ const PROVIDER_GLOBAL_NAMES = new Set([
 interface LocalReactStateCallOptions {
   readonly hookName?: "useState" | "useReducer";
   readonly allowNumericDataAccess?: boolean;
+  readonly allowDataOperations?: boolean;
   readonly allowedComputedDataMember?: EsTreeNode;
 }
 
@@ -122,6 +125,55 @@ export const isUnmodifiedLocalReactStateCall = (
   let hasProviderHazard = false;
   walkAst(scopes.rootScope.node, (child) => {
     if (hasProviderHazard) return false;
+    const objectReference =
+      options.allowDataOperations && isNodeOfType(child, "Identifier") && child.name === "Object"
+        ? findTransparentExpressionRoot(child)
+        : null;
+    const member = objectReference?.parent;
+    const memberRoot = isNodeOfType(member, "MemberExpression")
+      ? findTransparentExpressionRoot(member)
+      : null;
+    const invocation = memberRoot?.parent;
+    const isObjectDataCall = Boolean(
+      options.allowDataOperations &&
+      isNodeOfType(child, "Identifier") &&
+      child.name === "Object" &&
+      isNodeOfType(member, "MemberExpression") &&
+      member.object === objectReference &&
+      !member.optional &&
+      (getStaticPropertyName(member) === "keys" ||
+        getStaticPropertyName(member) === "values" ||
+        getStaticPropertyName(member) === "entries") &&
+      isNodeOfType(invocation, "CallExpression") &&
+      invocation.callee === memberRoot &&
+      !invocation.optional,
+    );
+    const dataPattern =
+      isNodeOfType(child, "Property") && isNodeOfType(child.parent, "ObjectPattern")
+        ? child.parent
+        : null;
+    const dataDeclaration = dataPattern?.parent;
+    const dataSource =
+      isNodeOfType(child, "MemberExpression") && child.computed
+        ? child.object
+        : isNodeOfType(child, "Property") &&
+            child.computed &&
+            dataPattern &&
+            isNodeOfType(dataDeclaration, "VariableDeclarator") &&
+            dataDeclaration.id === dataPattern
+          ? dataDeclaration.init
+          : null;
+    const dataReceiver = options.allowDataOperations ? getRootIdentifier(dataSource) : null;
+    const dataBinding = dataReceiver
+      ? resolveConstIdentifierAlias(dataReceiver, scopes, true)
+      : null;
+    const isLocalDataAccess = Boolean(
+      dataBinding &&
+      !providerSymbolIds.has(dataBinding.id) &&
+      !isErasedTypeScriptBinding(dataBinding) &&
+      !isFunctionLike(dataBinding.declarationNode) &&
+      !(dataBinding.initializer && isFunctionLike(stripParenExpression(dataBinding.initializer))),
+    );
     if (isNodeOfType(child, "Identifier") && PROVIDER_GLOBAL_NAMES.has(child.name)) {
       const binding = scopes.symbolFor(child);
       if (
@@ -160,7 +212,7 @@ export const isUnmodifiedLocalReactStateCall = (
       isNodeOfType(child, "ImportExpression") ||
       isProvenGlobalNamespaceReference(child, "Function", scopes) ||
       isProvenGlobalNamespaceReference(child, "eval", scopes) ||
-      isProvenGlobalNamespaceReference(child, "Object", scopes) ||
+      (isProvenGlobalNamespaceReference(child, "Object", scopes) && !isObjectDataCall) ||
       isProvenGlobalNamespaceReference(child, "Reflect", scopes)
     ) {
       hasProviderHazard = true;
@@ -194,6 +246,7 @@ export const isUnmodifiedLocalReactStateCall = (
         stringifyNonStringLiterals: true,
       }) === null &&
       !(options.allowNumericDataAccess && isNumericDataMemberAccess(child, scopes)) &&
+      !isLocalDataAccess &&
       child !== options.allowedComputedDataMember
     ) {
       hasProviderHazard = true;

@@ -5,6 +5,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
+import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
 import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
@@ -112,6 +114,8 @@ export const hookUseState = defineRule({
               (allowDestructuredState && isDestructurePattern(valueElement))),
           );
           let hasBindingWrite = false;
+          const calleeIdentifier = getRootIdentifier(node.callee);
+          const calleeSymbol = calleeIdentifier ? context.scopes.symbolFor(calleeIdentifier) : null;
           walkAst(idPattern, (child) => {
             if (!isNodeOfType(child, "Identifier")) return;
             const symbol = context.scopes.symbolFor(child);
@@ -131,6 +135,11 @@ export const hookUseState = defineRule({
             isNodeOfType(parent.parent, "VariableDeclaration") &&
             parent.parent.kind === "const" &&
             (isUnmodifiedLocalReactStateCall(node, context.scopes) ||
+              (calleeSymbol &&
+                getValueImportSource(calleeSymbol) === "react" &&
+                isUnmodifiedLocalReactStateCall(node, context.scopes, {
+                  allowDataOperations: true,
+                })) ||
               (hasRefNotificationReactCall(node, "useState", context, {
                 allowNativeWindowEventListeners: true,
               }) &&

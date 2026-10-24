@@ -1,4 +1,7 @@
-import { CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT } from "../constants/react.js";
+import {
+  CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT,
+  REACT_PROVIDER_MUTATION_CAPABILITY_NAMES,
+} from "../constants/react.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
@@ -93,6 +96,7 @@ export const isUnmodifiedLocalReactStateCall = (
         const propertyName = getStaticPropertyName(member);
         return (
           propertyName === null ||
+          REACT_PROVIDER_MUTATION_CAPABILITY_NAMES.has(propertyName) ||
           propertyName === "default" ||
           (propertyName === "useState" && !isNonEscapingReactApiReference(member))
         );

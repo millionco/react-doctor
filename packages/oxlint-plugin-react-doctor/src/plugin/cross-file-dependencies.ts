@@ -1,4 +1,6 @@
 import { findNativeQueryStateRead } from "./utils/find-native-query-state-read.js";
+import { getStableImportedHookMemberKeys } from "./utils/get-stable-imported-hook-member-keys.js";
+import { HOOK_NAME_PATTERN } from "./constants/react.js";
 import { hasSupportedRadixDraftEventCall } from "./rules/state-and-effects/utils/has-supported-radix-draft-event-call.js";
 import { findEnclosingFunction } from "./utils/find-enclosing-function.js";
 import { hasCurrentContextRecordEnvironment } from "./rules/state-and-effects/utils/has-current-context-record-environment.js";
@@ -429,6 +431,21 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
   collectImportedValueDependencies(input);
   resolvePackageVersion(input.absoluteFilePath, "@xstate/react");
+  if (
+    !flattenImportEntries(input.staticImports).some(
+      (entry) => entry.source.startsWith(".") && HOOK_NAME_PATTERN.test(entry.exportedName),
+    )
+  )
+    return;
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "VariableDeclarator") || !isNodeOfType(node.id, "Identifier")) return;
+    const symbol = scopes.symbolFor(node.id);
+    if (symbol)
+      getStableImportedHookMemberKeys({ symbol, scopes, filename: input.absoluteFilePath });
+  });
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({

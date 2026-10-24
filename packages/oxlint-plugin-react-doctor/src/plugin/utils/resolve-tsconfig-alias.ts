@@ -14,6 +14,10 @@ import type { CapturedCrossFileProbes } from "./cross-file-probe-recorder.js";
 import { STANDARD_REACT_JSX_MODES } from "../constants/react.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
+export interface StandardReactJsxConfigurationOptions {
+  readonly requireUnaliasedReact?: boolean;
+}
+
 interface ResolvedTsconfig {
   // Directory that bare `baseUrl` imports and `paths` targets resolve
   // against (the configured `baseUrl`, else the tsconfig's own dir).
@@ -393,11 +397,13 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 };
 
 const standardReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
+const unaliasedReactJsxByDirectory = new Map<string, CapturedCrossFileProbes<boolean>>();
 
 const hasStandardReactJsxConfigChain = (
   configFilePath: string,
   extendsDepth: number,
   visited: Set<string>,
+  configurationOptions: StandardReactJsxConfigurationOptions,
 ): boolean => {
   if (extendsDepth > TSCONFIG_EXTENDS_MAX_DEPTH || visited.has(configFilePath)) return false;
   visited.add(configFilePath);
@@ -410,6 +416,11 @@ const hasStandardReactJsxConfigChain = (
   )
     return false;
   const options = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
+  if (
+    configurationOptions.requireUnaliasedReact === true &&
+    (Object.hasOwn(options, "paths") || Object.hasOwn(options, "baseUrl"))
+  )
+    return false;
   if (Object.hasOwn(options, "jsxFactory") || Object.hasOwn(options, "jsxFragmentFactory"))
     return false;
   if (Object.hasOwn(options, "jsxImportSource") && options.jsxImportSource !== "react")
@@ -429,11 +440,15 @@ const hasStandardReactJsxConfigChain = (
     return false;
   const parentPath = resolveExtendsPath(parsed.extends, path.dirname(configFilePath));
   return Boolean(
-    parentPath && hasStandardReactJsxConfigChain(parentPath, extendsDepth + 1, visited),
+    parentPath &&
+    hasStandardReactJsxConfigChain(parentPath, extendsDepth + 1, visited, configurationOptions),
   );
 };
 
-const findStandardReactJsxConfiguration = (fromDirectory: string): boolean => {
+const findStandardReactJsxConfiguration = (
+  fromDirectory: string,
+  options: StandardReactJsxConfigurationOptions,
+): boolean => {
   let currentDirectory = fromDirectory;
   for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
     for (const fileName of TSCONFIG_FILE_NAMES) {
@@ -448,7 +463,7 @@ const findStandardReactJsxConfiguration = (fromDirectory: string): boolean => {
       }
       if (fileStat === undefined) continue;
       if (!fileStat.isFile() && !fileStat.isSymbolicLink()) return false;
-      return hasStandardReactJsxConfigChain(configPath, 0, new Set());
+      return hasStandardReactJsxConfigChain(configPath, 0, new Set(), options);
     }
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) return true;
@@ -457,15 +472,24 @@ const findStandardReactJsxConfiguration = (fromDirectory: string): boolean => {
   return false;
 };
 
-export const hasStandardReactJsxConfiguration = (fromFilename: string): boolean => {
+export const hasStandardReactJsxConfiguration = (
+  fromFilename: string,
+  options: StandardReactJsxConfigurationOptions = {},
+): boolean => {
   const directory = path.dirname(path.resolve(fromFilename));
-  const cached = standardReactJsxByDirectory.get(directory);
+  const cacheByDirectory =
+    options.requireUnaliasedReact === true
+      ? unaliasedReactJsxByDirectory
+      : standardReactJsxByDirectory;
+  const cached = cacheByDirectory.get(directory);
   if (cached) {
     replayCrossFileProbes(cached.trace);
     return cached.value;
   }
-  const captured = captureCrossFileProbes(() => findStandardReactJsxConfiguration(directory));
-  standardReactJsxByDirectory.set(directory, captured);
+  const captured = captureCrossFileProbes(() =>
+    findStandardReactJsxConfiguration(directory, options),
+  );
+  cacheByDirectory.set(directory, captured);
   return captured.value;
 };
 
@@ -473,4 +497,5 @@ export const resetTsconfigAliasCaches = (): void => {
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();
   standardReactJsxByDirectory.clear();
+  unaliasedReactJsxByDirectory.clear();
 };

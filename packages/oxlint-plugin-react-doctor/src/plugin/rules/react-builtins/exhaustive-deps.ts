@@ -1,5 +1,6 @@
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
+import { getStableImportedHookMemberKeys } from "../../utils/get-stable-imported-hook-member-keys.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -479,6 +480,10 @@ const collectCaptureDepKeys = (
     }
     const depKey = computeDepKey(reference);
     if (!depKey) continue;
+    if (getStableImportedHookMemberKeys({ symbol, scopes, filename })?.has(depKey)) {
+      stableCapturedNames.add(depKey);
+      continue;
+    }
     if (
       depKey === symbol.name &&
       isBooleanGuardReference(reference.identifier) &&

@@ -7,6 +7,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -251,6 +252,7 @@ const symbolHasStableFunctionOrigin = (
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
 ): boolean => {
+  if (hasSymbolBindingWrites(symbol, scopes)) return false;
   if (visitedSymbolIds.has(symbol.id)) return true;
   const functionNode = getFunctionValueNode(symbol);
   if (!functionNode) return false;

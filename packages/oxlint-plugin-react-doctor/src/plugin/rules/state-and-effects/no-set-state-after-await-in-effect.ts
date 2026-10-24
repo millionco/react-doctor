@@ -7,6 +7,14 @@ import { getPromiseChainCallForCallback } from "../../utils/collect-effect-invok
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { hasUnguardedOwnedAbortContinuation } from "./utils/has-unguarded-owned-abort-continuation.js";
+import {
+  collectScalarCancellationWrites,
+  type ScalarCancellationWrites,
+} from "./utils/collect-scalar-cancellation-writes.js";
+import {
+  createAsyncWhileFlowChecker,
+  type AsyncWhileFlowChecker,
+} from "./utils/create-async-while-flow-checker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -1002,6 +1010,28 @@ interface AsyncPathState {
   suspensionNode: EsTreeNode | null;
 }
 
+interface AsyncStatementsResult {
+  readonly states: AsyncPathState[];
+  readonly hasUnsafeSetter: boolean;
+}
+
+interface AsyncStatementsCacheEntry {
+  readonly statements: EsTreeNode[];
+  readonly initialStates: AsyncPathState[];
+  readonly result: AsyncStatementsResult;
+}
+
+interface AsyncFlowCache {
+  readonly scopes: RuleContext["scopes"];
+  readonly program: EsTreeNode;
+  readonly supportsStructuredWhile: AsyncWhileFlowChecker;
+  readonly resultsByStatement: WeakMap<EsTreeNode, Map<string, AsyncStatementsCacheEntry>>;
+  hasSupportedWhile: boolean;
+  scalarWrites: ScalarCancellationWrites | null;
+}
+
+const asyncFlowCachesByContext = new WeakMap<RuleContext, AsyncFlowCache>();
+
 const dedupeAsyncPathStates = (states: AsyncPathState[]): AsyncPathState[] => {
   const dedupedStates = new Map<string, AsyncPathState>();
   for (const state of states) {
@@ -1093,7 +1123,7 @@ const analyzeAsyncEvents = (
   return { states, hasUnsafeSetter: false };
 };
 
-const analyzeAsyncStatements = (
+const analyzeAsyncStatementsUncached = (
   statements: EsTreeNode[],
   initialStates: AsyncPathState[],
   context: RuleContext,
@@ -1192,6 +1222,97 @@ const analyzeAsyncStatements = (
       states = [...consequent.states, ...alternate.states];
       states = dedupeAsyncPathStates(states);
       continue;
+    }
+    if (
+      isNodeOfType(statement, "WhileStatement") &&
+      sequenceSnapshots.size === 0 &&
+      [...cleanupWrites.keys()].every((targetKey) => !targetKey.includes("."))
+    ) {
+      const scopes = context.scopes;
+      let flowCache = asyncFlowCachesByContext.get(context);
+      if (
+        !flowCache ||
+        flowCache.scopes !== scopes ||
+        flowCache.program !== scopes.rootScope.node
+      ) {
+        flowCache = {
+          scopes,
+          program: scopes.rootScope.node,
+          supportsStructuredWhile: createAsyncWhileFlowChecker({
+            isStateSetterCall: (candidate) => isStateDispatcherCall(candidate, context),
+          }),
+          resultsByStatement: new WeakMap(),
+          hasSupportedWhile: false,
+          scalarWrites: null,
+        };
+        asyncFlowCachesByContext.set(context, flowCache);
+      }
+      if (flowCache.supportsStructuredWhile(statement)) {
+        flowCache.hasSupportedWhile = true;
+        flowCache.scalarWrites ??= collectScalarCancellationWrites(scopes);
+        const cancellationWrites = flowCache.scalarWrites;
+        const loopCleanupWrites = new Map(
+          [...cleanupWrites].filter(
+            ([targetKey, cleanupValue]) =>
+              !cancellationWrites.hasDirectEval &&
+              !cancellationWrites.unsupportedTargets.has(targetKey) &&
+              !cancellationWrites.assignedValues.get(targetKey)?.has(!cleanupValue),
+          ),
+        );
+        let headerStates = dedupeAsyncPathStates(states);
+        const exitStates: AsyncPathState[] = [];
+        let hasFreshIterationTest = true;
+        const pendingTests = [statement.test];
+        while (pendingTests.length > 0) {
+          const pendingTest = pendingTests.pop();
+          if (!pendingTest) break;
+          const test = stripParenExpression(pendingTest);
+          if (
+            isNodeOfType(test, "CallExpression") ||
+            (isNodeOfType(test, "Identifier") && getUninterruptedConstInitializer(test, context))
+          ) {
+            hasFreshIterationTest = false;
+          } else if (isNodeOfType(test, "UnaryExpression")) {
+            pendingTests.push(test.argument);
+          } else if (isNodeOfType(test, "LogicalExpression")) {
+            pendingTests.push(test.left, test.right);
+          }
+        }
+        const doesCleanupPreventIteration =
+          hasFreshIterationTest &&
+          doesCleanupForceGuardValue(statement.test, false, loopCleanupWrites, context);
+        while (true) {
+          const tested = analyzeAsyncEvents(
+            statement.test,
+            headerStates,
+            context,
+            abortProtectedControllers,
+          );
+          if (tested.hasUnsafeSetter) return tested;
+          exitStates.push(...tested.states);
+          const body = analyzeAsyncStatements(
+            isNodeOfType(statement.body, "BlockStatement") ? statement.body.body : [statement.body],
+            tested.states.map((state) => ({
+              ...state,
+              hasDominatingGuard:
+                state.hasDominatingGuard || (state.didSuspend && doesCleanupPreventIteration),
+            })),
+            context,
+            loopCleanupWrites,
+            abortProtectedControllers,
+            sequenceSnapshots,
+          );
+          if (body.hasUnsafeSetter) return body;
+          const nextHeaderStates = dedupeAsyncPathStates([
+            ...headerStates,
+            ...body.states.map((state) => ({ ...state, suspensionNode: null })),
+          ]);
+          if (nextHeaderStates.length === headerStates.length) break;
+          headerStates = nextHeaderStates;
+        }
+        states = dedupeAsyncPathStates(exitStates);
+        continue;
+      }
     }
     if (isNodeOfType(statement, "SwitchStatement")) {
       const discriminated = analyzeAsyncEvents(
@@ -1304,6 +1425,85 @@ const analyzeAsyncStatements = (
     states = analyzedEvents.states;
   }
   return { states, hasUnsafeSetter: false };
+};
+
+const analyzeAsyncStatements = (
+  statements: EsTreeNode[],
+  initialStates: AsyncPathState[],
+  context: RuleContext,
+  cleanupWrites: ReadonlyMap<string, boolean>,
+  abortProtectedControllers: ReadonlySet<string>,
+  sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
+): AsyncStatementsResult => {
+  const flowCache = asyncFlowCachesByContext.get(context);
+  if (
+    flowCache &&
+    (flowCache.scopes !== context.scopes || flowCache.program !== context.scopes.rootScope.node)
+  )
+    asyncFlowCachesByContext.delete(context);
+  const firstStatement = statements[0];
+  if (
+    !flowCache?.hasSupportedWhile ||
+    flowCache.scopes !== context.scopes ||
+    flowCache.program !== context.scopes.rootScope.node ||
+    !firstStatement
+  )
+    return analyzeAsyncStatementsUncached(
+      statements,
+      initialStates,
+      context,
+      cleanupWrites,
+      abortProtectedControllers,
+      sequenceSnapshots,
+    );
+  let resultsByInput = flowCache.resultsByStatement.get(firstStatement);
+  if (!resultsByInput) {
+    resultsByInput = new Map();
+    flowCache.resultsByStatement.set(firstStatement, resultsByInput);
+  }
+  const cacheKey = JSON.stringify([
+    statements.map((statement) => statement.range?.[0] ?? null),
+    initialStates.map((state) => [
+      state.didSuspend,
+      state.hasDominatingGuard,
+      state.isAbortProtected,
+      state.suspensionNode?.range?.[0] ?? null,
+    ]),
+    [...cleanupWrites],
+    [...abortProtectedControllers],
+    [...sequenceSnapshots],
+  ]);
+  const cachedResult = resultsByInput.get(cacheKey);
+  if (
+    cachedResult &&
+    cachedResult.statements.length === statements.length &&
+    cachedResult.statements.every((statement, index) => statement === statements[index]) &&
+    cachedResult.initialStates.length === initialStates.length &&
+    cachedResult.initialStates.every(
+      (state, index) => state.suspensionNode === initialStates[index]?.suspensionNode,
+    )
+  )
+    return {
+      states: cachedResult.result.states.map((state) => ({ ...state })),
+      hasUnsafeSetter: cachedResult.result.hasUnsafeSetter,
+    };
+  const result = analyzeAsyncStatementsUncached(
+    statements,
+    initialStates,
+    context,
+    cleanupWrites,
+    abortProtectedControllers,
+    sequenceSnapshots,
+  );
+  resultsByInput.set(cacheKey, {
+    statements: [...statements],
+    initialStates: initialStates.map((state) => ({ ...state })),
+    result: {
+      states: result.states.map((state) => ({ ...state })),
+      hasUnsafeSetter: result.hasUnsafeSetter,
+    },
+  });
+  return result;
 };
 
 const hasUnsafePostAwaitSetter = (

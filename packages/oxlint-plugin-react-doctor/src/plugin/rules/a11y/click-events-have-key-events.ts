@@ -1,3 +1,4 @@
+import { hasDelegatedNativeComboboxCommands } from "../../utils/has-delegated-native-combobox-commands.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -357,6 +358,7 @@ export const clickEventsHaveKeyEvents = defineRule({
             resolvedSpreadEventValues.has(handler.toLowerCase()),
         );
         if (hasKeyHandler) return;
+        if (hasDelegatedNativeComboboxCommands(node, context)) return;
 
         context.report({ node: node.name, message: MESSAGE });
       },

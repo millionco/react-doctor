@@ -246,3 +246,40 @@ export const NATIVE_WINDOW_SCROLL_PROVIDER_MEMBER_CAPABILITIES = new Set([
   "__lookupGetter__",
   "__lookupSetter__",
 ]);
+
+export const COMBOBOX_MIN_DISMISS_DELAY_MS = 0;
+export const COMBOBOX_OPEN_KEY_NAMES: ReadonlySet<string> = new Set([
+  "Enter",
+  " ",
+  "ArrowDown",
+  "ArrowUp",
+]);
+export const COMBOBOX_CSS_MODULE_SOURCE_PATTERN = /\.module\.(?:css|less|sass|scss)$/u;
+export const COMBOBOX_PROTECTED_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "hidden",
+  "inert",
+  "aria-hidden",
+  "is",
+  "dangerouslySetInnerHTML",
+  "onClickCapture",
+  "onKeyDownCapture",
+  "onKeyUpCapture",
+  "onKeyPressCapture",
+]);
+export const COMBOBOX_REFUSED_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  ...NATIVE_FETCH_IDENTITY_REFUSED_GLOBAL_NAMES,
+  "globalThis",
+  "global",
+  "self",
+  "Window",
+  "setTimeout",
+  "clearTimeout",
+  "addEventListener",
+  "removeEventListener",
+]);
+export const COMBOBOX_WINDOW_VALUE_NAMES: ReadonlySet<string> = new Set([
+  "setTimeout",
+  "clearTimeout",
+  "innerWidth",
+  "innerHeight",
+]);

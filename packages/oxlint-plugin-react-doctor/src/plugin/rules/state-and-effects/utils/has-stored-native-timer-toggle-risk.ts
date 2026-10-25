@@ -1,21 +1,13 @@
-import {
-  TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
-  TIMER_CLEANUP_CALLEE_NAMES,
-  TIMER_TOGGLE_GLOBAL_NAMESPACE_NAMES,
-  TIMER_TOGGLE_REFUSED_GLOBAL_NAMES,
-  TIMER_TOGGLE_REFUSED_MEMBER_NAMES,
-  TIMER_TOGGLE_REFUSED_MODULE_NAMES,
-} from "../../../constants/dom.js";
+import { hasOrdinaryNativeTimerProviders } from "../../../utils/has-ordinary-native-timer-providers.js";
+import { TIMER_TOGGLE_REFUSED_MEMBER_NAMES } from "../../../constants/dom.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
 import { getRootIdentifier } from "../../../utils/get-root-identifier.js";
-import { getResolvedStaticPropertyName } from "../../../utils/get-resolved-static-property-name.js";
 import { hasJsxSpreadAttribute } from "../../../utils/has-jsx-spread-attribute.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
-import { isErasedTypeScriptBinding } from "../../../utils/is-erased-typescript-binding.js";
 import { isJsxAttributePotentiallyTruthy } from "../../../utils/is-jsx-attribute-potentially-truthy.js";
 import { findProgramRoot } from "../../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
@@ -24,7 +16,6 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { getStaticObjectPropertyValue } from "../../../utils/get-static-object-property-value.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { getValueImportSource } from "../../../utils/get-value-import-declaration.js";
-import { getRuntimeStaticDependencySource } from "../../../utils/get-runtime-static-dependency-source.js";
 import { hasCompleteSymbolReferences } from "../../../utils/has-complete-symbol-references.js";
 import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
@@ -492,91 +483,6 @@ const readinessCanBeTruthy = (node: EsTreeNode, proof: TimerToggleProof): boolea
   );
 };
 
-const hasOrdinaryNativeProviders = (proof: TimerToggleProof): boolean => {
-  let supported = true;
-  walkAst(proof.program, (node) => {
-    if (!supported) return false;
-    if (
-      isNodeOfType(node, "ImportExpression") ||
-      isNodeOfType(node, "TSImportEqualsDeclaration") ||
-      isNodeOfType(node, "TSExportAssignment")
-    ) {
-      supported = false;
-      return false;
-    }
-    const dependency = getRuntimeStaticDependencySource(node);
-    if (dependency && TIMER_TOGGLE_REFUSED_MODULE_NAMES.has(dependency)) supported = false;
-    if (isNodeOfType(node, "MemberExpression")) {
-      const name = getResolvedStaticPropertyName(node, proof.scopes);
-      if (name !== null && TIMER_TOGGLE_REFUSED_MEMBER_NAMES.has(name)) supported = false;
-      if (
-        name !== null &&
-        (TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(name) || TIMER_CLEANUP_CALLEE_NAMES.has(name))
-      ) {
-        const root = findTransparentExpressionRoot(node);
-        const call = root.parent;
-        if (
-          !isNodeOfType(call, "CallExpression") ||
-          call.callee !== root ||
-          call.optional ||
-          !isGlobalBrowserFunctionCall(call, name, proof.scopes)
-        )
-          supported = false;
-      }
-    }
-    if (!isNodeOfType(node, "Identifier") || isNonReferenceIdentifier(node)) return;
-    const symbol = proof.scopes.symbolFor(node);
-    if (!proof.scopes.isGlobalReference(node) && !(symbol && isErasedTypeScriptBinding(symbol)))
-      return;
-    if (TIMER_TOGGLE_REFUSED_GLOBAL_NAMES.has(node.name)) {
-      supported = false;
-      return;
-    }
-    const root = findTransparentExpressionRoot(node);
-    const parent = root.parent;
-    if (
-      node.name === "setInterval" ||
-      node.name === "setTimeout" ||
-      node.name === "clearInterval" ||
-      node.name === "clearTimeout"
-    ) {
-      if (!isNodeOfType(parent, "CallExpression") || parent.callee !== root || parent.optional) {
-        supported = false;
-      }
-    } else if (TIMER_TOGGLE_GLOBAL_NAMESPACE_NAMES.has(node.name)) {
-      if (!isNodeOfType(parent, "MemberExpression") || parent.object !== root) {
-        supported = false;
-        return;
-      }
-      const name = getStaticPropertyName(parent);
-      if (
-        name === null ||
-        TIMER_TOGGLE_GLOBAL_NAMESPACE_NAMES.has(name) ||
-        TIMER_TOGGLE_REFUSED_GLOBAL_NAMES.has(name)
-      ) {
-        supported = false;
-        return;
-      }
-      if (
-        name === "setInterval" ||
-        name === "setTimeout" ||
-        name === "clearInterval" ||
-        name === "clearTimeout"
-      ) {
-        const member = findTransparentExpressionRoot(parent);
-        if (
-          !isNodeOfType(member.parent, "CallExpression") ||
-          member.parent.callee !== member ||
-          member.parent.optional ||
-          isMemberMutationTarget(parent)
-        )
-          supported = false;
-      }
-    }
-  });
-  return supported;
-};
-
 export const hasStoredNativeTimerToggleRisk = (
   clearCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -696,7 +602,7 @@ export const hasStoredNativeTimerToggleRisk = (
     !hasReadinessOwnerBranch(proof) &&
     hasRepeatedEventUse(handler, proof) &&
     hasClosedSelectedCell(proof) &&
-    hasOrdinaryNativeProviders(proof) &&
+    hasOrdinaryNativeTimerProviders(proof) &&
     (readiness === null || readinessCanBeTruthy(readiness, proof))
   );
 };

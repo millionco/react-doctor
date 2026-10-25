@@ -5,6 +5,7 @@ import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-
 import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasJsxSpreadThatMayProvideAttribute } from "../../utils/has-jsx-spread-that-may-provide-attribute.js";
+import { hasNonWhitespaceStringAffix } from "../../utils/has-non-whitespace-string-affix.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
@@ -270,7 +271,13 @@ export const noPlaceholderOnlyField = defineRule({
         );
         if (!placeholderAttribute) return;
         const placeholderValue = getStringLiteralAttributeValue(placeholderAttribute)?.trim();
-        if (!placeholderValue) return;
+        if (
+          !placeholderValue &&
+          (!isNodeOfType(placeholderAttribute.value, "JSXExpressionContainer") ||
+            !hasNonWhitespaceStringAffix(placeholderAttribute.value.expression))
+        ) {
+          return;
+        }
 
         const idAttribute = getAuthoritativeJsxAttribute(node.attributes, "id", false);
         if (!idAttribute && hasJsxSpreadThatMayProvideAttribute(node.attributes, "id")) return;

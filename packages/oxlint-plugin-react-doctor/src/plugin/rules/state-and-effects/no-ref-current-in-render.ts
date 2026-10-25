@@ -1,3 +1,4 @@
+import { hasLexicalReceiverReference } from "../../utils/has-lexical-receiver-reference.js";
 import { isTypedReduxStoreFactoryInitialization } from "./utils/is-typed-redux-store-factory-initialization.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
@@ -378,13 +379,18 @@ const isPredictableInitializationValue = (
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
 ): boolean => {
+  const initializationExpression = stripParenExpression(node);
   const value = resolveInitializationValue(node, scopes);
   return Boolean(
     value &&
     isInitializationInputIndependent(value, renderOwner, scopes) &&
     !containsNonDeterministicSource(value) &&
     ((isProvablyTruthyInitializationValue(value, scopes) &&
-      (!requiresClosedTruthyDomain || !refHasDeclaredType(refSymbol))) ||
+      (!requiresClosedTruthyDomain ||
+        !refHasDeclaredType(refSymbol) ||
+        (isNodeOfType(initializationExpression, "ArrowFunctionExpression") &&
+          !hasLexicalReceiverReference(initializationExpression, scopes)) ||
+        isNodeOfType(initializationExpression, "FunctionExpression"))) ||
       refHasClosedFalsySentinelDomain(refSymbol, value, scopes)),
   );
 };

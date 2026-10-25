@@ -1005,6 +1005,11 @@ interface AsyncPathState {
   suspensionNode: EsTreeNode | null;
 }
 
+interface AsyncPathCompletion {
+  readonly kind: "return" | "throw";
+  readonly state: AsyncPathState;
+}
+
 const dedupeAsyncPathStates = (states: AsyncPathState[]): AsyncPathState[] => {
   const dedupedStates = new Map<string, AsyncPathState>();
   for (const state of states) {
@@ -1103,12 +1108,23 @@ const analyzeAsyncStatements = (
   cleanupWrites: ReadonlyMap<string, boolean>,
   abortProtectedControllers: ReadonlySet<string>,
   sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
+  completions: AsyncPathCompletion[] = [],
 ): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
   let activeCleanupWrites = cleanupWrites;
   let states = initialStates;
   for (const statement of statements) {
     if (states.length === 0) break;
     if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+      const completed = statement.argument
+        ? analyzeAsyncEvents(statement.argument, states, context, abortProtectedControllers)
+        : { states, hasUnsafeSetter: false };
+      if (completed.hasUnsafeSetter) return completed;
+      for (const state of completed.states) {
+        completions.push({
+          kind: isNodeOfType(statement, "ReturnStatement") ? "return" : "throw",
+          state,
+        });
+      }
       states = [];
       continue;
     }
@@ -1120,6 +1136,7 @@ const analyzeAsyncStatements = (
         activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        completions,
       );
       if (nested.hasUnsafeSetter) return nested;
       states = nested.states;
@@ -1143,6 +1160,18 @@ const analyzeAsyncStatements = (
           context,
         );
         if (doesCleanupForceExit || doesSequenceMismatchForceExit) {
+          const exited = analyzeAsyncStatements(
+            isNodeOfType(statement.consequent, "BlockStatement")
+              ? statement.consequent.body
+              : [statement.consequent],
+            states,
+            context,
+            activeCleanupWrites,
+            abortProtectedControllers,
+            sequenceSnapshots,
+            completions,
+          );
+          if (exited.hasUnsafeSetter) return exited;
           states = states.map((state) => ({
             ...state,
             hasDominatingGuard:
@@ -1178,6 +1207,7 @@ const analyzeAsyncStatements = (
         activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        completions,
       );
       if (consequent.hasUnsafeSetter) return consequent;
       const alternate = statement.alternate
@@ -1190,6 +1220,7 @@ const analyzeAsyncStatements = (
             activeCleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
+            completions,
           )
         : { states: states.map((state) => ({ ...state })), hasUnsafeSetter: false };
       if (alternate.hasUnsafeSetter) return alternate;
@@ -1284,6 +1315,7 @@ const analyzeAsyncStatements = (
               loopCleanupWrites,
               abortProtectedControllers,
               sequenceSnapshots,
+              completions,
             );
             if (body.hasUnsafeSetter) return body;
             countedStates = body.states.map((state) => ({ ...state, suspensionNode: null }));
@@ -1340,6 +1372,7 @@ const analyzeAsyncStatements = (
             loopCleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
+            completions,
           );
           if (body.hasUnsafeSetter) return body;
           const nextHeaderStates = dedupeAsyncPathStates([
@@ -1370,6 +1403,7 @@ const analyzeAsyncStatements = (
           activeCleanupWrites,
           abortProtectedControllers,
           sequenceSnapshots,
+          completions,
         );
         if (switched.hasUnsafeSetter) return switched;
         switchStates.push(...switched.states);
@@ -1397,12 +1431,14 @@ const analyzeAsyncStatements = (
         activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        completions,
       );
       if (body.hasUnsafeSetter) return body;
       states = [...states, ...body.states];
       continue;
     }
     if (isNodeOfType(statement, "TryStatement")) {
+      const triedCompletions: AsyncPathCompletion[] = [];
       const tried = analyzeAsyncStatements(
         statement.block.body as EsTreeNode[],
         states,
@@ -1410,6 +1446,7 @@ const analyzeAsyncStatements = (
         activeCleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        triedCompletions,
       );
       if (tried.hasUnsafeSetter) return tried;
       const trySuspension = collectOrderedAsyncEvents(statement.block, context).find(
@@ -1417,40 +1454,105 @@ const analyzeAsyncStatements = (
           isNodeOfType(event, "AwaitExpression") ||
           (isNodeOfType(event, "ForOfStatement") && event.await === true),
       );
+      const caughtCompletions: AsyncPathCompletion[] = [];
       const caught = statement.handler
         ? analyzeAsyncStatements(
             statement.handler.body.body as EsTreeNode[],
-            states.map((state) =>
-              trySuspension
-                ? {
-                    ...state,
-                    didSuspend: true,
-                    hasDominatingGuard: false,
-                    isAbortProtected: false,
-                    suspensionNode: trySuspension,
-                  }
-                : { ...state },
-            ),
+            dedupeAsyncPathStates([
+              ...states.map((state) =>
+                trySuspension
+                  ? {
+                      ...state,
+                      didSuspend: true,
+                      hasDominatingGuard: false,
+                      isAbortProtected: false,
+                      suspensionNode: trySuspension,
+                    }
+                  : { ...state },
+              ),
+              ...triedCompletions
+                .filter((completion) => completion.kind === "throw")
+                .map((completion) => completion.state),
+            ]),
             context,
             activeCleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
+            caughtCompletions,
           )
         : { states: [], hasUnsafeSetter: false };
       if (caught.hasUnsafeSetter) return caught;
-      states = [...tried.states, ...caught.states];
-      states = dedupeAsyncPathStates(states);
+      const unmergedCompletions = [
+        ...triedCompletions.filter(
+          (completion) => completion.kind === "return" || !statement.handler,
+        ),
+        ...caughtCompletions,
+      ];
+      const pendingCompletions: AsyncPathCompletion[] = [
+        ...dedupeAsyncPathStates(
+          unmergedCompletions
+            .filter((completion) => completion.kind === "return")
+            .map((completion) => completion.state),
+        ).map<AsyncPathCompletion>((state) => ({ kind: "return", state })),
+        ...dedupeAsyncPathStates(
+          unmergedCompletions
+            .filter((completion) => completion.kind === "throw")
+            .map((completion) => completion.state),
+        ).map<AsyncPathCompletion>((state) => ({ kind: "throw", state })),
+      ];
+      states = dedupeAsyncPathStates([...tried.states, ...caught.states]);
       if (statement.finalizer) {
-        const finalized = analyzeAsyncStatements(
-          statement.finalizer.body as EsTreeNode[],
-          states,
-          context,
-          activeCleanupWrites,
-          abortProtectedControllers,
-          sequenceSnapshots,
-        );
-        if (finalized.hasUnsafeSetter) return finalized;
-        states = finalized.states;
+        const normalInputs = states;
+        states = [];
+        const finalizerInputs = dedupeAsyncPathStates([
+          ...normalInputs,
+          ...pendingCompletions.map((completion) => completion.state),
+        ]);
+        for (const inputState of finalizerInputs) {
+          const overridingCompletions: AsyncPathCompletion[] = [];
+          const finalized = analyzeAsyncStatements(
+            statement.finalizer.body as EsTreeNode[],
+            [inputState],
+            context,
+            activeCleanupWrites,
+            abortProtectedControllers,
+            sequenceSnapshots,
+            overridingCompletions,
+          );
+          if (finalized.hasUnsafeSetter) return finalized;
+          if (
+            normalInputs.some((state) => dedupeAsyncPathStates([state, inputState]).length === 1)
+          ) {
+            states.push(...finalized.states);
+          }
+          const restoredKinds = new Set<AsyncPathCompletion["kind"]>();
+          for (const completion of pendingCompletions) {
+            if (dedupeAsyncPathStates([completion.state, inputState]).length === 1) {
+              restoredKinds.add(completion.kind);
+            }
+          }
+          const outgoingCompletions = [
+            ...overridingCompletions,
+            ...[...restoredKinds].flatMap((kind) =>
+              finalized.states.map((state) => ({ kind, state })),
+            ),
+          ];
+          completions.push(
+            ...dedupeAsyncPathStates(
+              outgoingCompletions
+                .filter((completion) => completion.kind === "return")
+                .map((completion) => completion.state),
+            ).map<AsyncPathCompletion>((state) => ({ kind: "return", state })),
+            ...dedupeAsyncPathStates(
+              outgoingCompletions
+                .filter((completion) => completion.kind === "throw")
+                .map((completion) => completion.state),
+            ).map<AsyncPathCompletion>((state) => ({ kind: "throw", state })),
+          );
+        }
+        states = dedupeAsyncPathStates(states);
+      } else {
+        completions.push(...pendingCompletions);
       }
       continue;
     }

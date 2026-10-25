@@ -1,0 +1,1 @@
+{"private":true,"dependencies":{"react":"19.2.3"}}

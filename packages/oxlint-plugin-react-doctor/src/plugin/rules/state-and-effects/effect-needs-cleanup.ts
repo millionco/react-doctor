@@ -1,3 +1,4 @@
+import { findImportedConnectionMethodValueLeak } from "../../utils/find-imported-connection-method-value-leak.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -11168,15 +11169,20 @@ export const effectNeedsCleanup = defineRule({
           findSubscribeLikeUsages(callback, context),
           context,
         );
-        if (usages.length === 0) return;
-
-        const firstUsage = findFirstUsageWithoutCleanup(callback, usages, context);
-        if (!firstUsage) return;
-        const resourceNoun = RESOURCE_NOUN_BY_KIND[firstUsage.kind];
+        const firstUsage =
+          usages.length > 0 ? findFirstUsageWithoutCleanup(callback, usages, context) : null;
+        const importedConnection = firstUsage
+          ? null
+          : findImportedConnectionMethodValueLeak(node, callback, context);
+        if (!firstUsage && !importedConnection) return;
+        const resourceName = firstUsage?.resourceName ?? importedConnection;
+        const resourceNoun = firstUsage
+          ? RESOURCE_NOUN_BY_KIND[firstUsage.kind]
+          : RESOURCE_NOUN_BY_KIND.socket;
         const hookName = getCalleeName(node) ?? "effect";
         context.report({
           node,
-          message: `\`${firstUsage.resourceName}\` creates a ${resourceNoun} in ${hookName} without guaranteed cleanup. Return a cleanup function that owns every allocation so it does not leak after unmount.`,
+          message: `\`${resourceName}\` creates a ${resourceNoun} in ${hookName} without guaranteed cleanup. Return a cleanup function that owns every allocation so it does not leak after unmount.`,
         });
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {

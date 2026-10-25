@@ -144,3 +144,35 @@ export const NATIVE_FETCH_IDENTITY_PROVIDER_RESOLUTION_PATTERN =
   /(?:^|\/)(?:react|react-dom|react-scripts)(?:$|@|\/)/u;
 export const NATIVE_FETCH_IDENTITY_RESOLUTION_GLOB_PATTERN = /[?*{]|\[/u;
 export const NATIVE_FETCH_IDENTITY_CRA_MAJOR_VERSION = 5;
+
+export const IMPORTED_CONNECTION_SINGLE_COUNT = 1;
+export const IMPORTED_CONNECTION_METHOD_COUNT = 2;
+export const IMPORTED_CONNECTION_HELPER_MAX_DEPTH = 4;
+export const IMPORTED_CONNECTION_NATIVE_METHODS = new Set([
+  "addTransceiver",
+  "getTransceivers",
+  "createOffer",
+  "setLocalDescription",
+  "setRemoteDescription",
+]);
+export const IMPORTED_CONNECTION_NATIVE_FIELDS = new Set(["localDescription", "iceGatheringState"]);
+export const IMPORTED_CONNECTION_NATIVE_EVENTS = new Set(["ontrack", "onicegatheringstatechange"]);
+export const IMPORTED_CONNECTION_PASSIVE_OBJECT_METHODS = new Set(["keys", "values", "entries"]);
+export const IMPORTED_CONNECTION_NEXT_CONFIG_NAMES = [
+  "next.config.ts",
+  "next.config.js",
+  "next.config.mjs",
+];
+export const IMPORTED_CONNECTION_CONFIG_NAMES = [
+  "webpack.config.js",
+  "webpack.config.cjs",
+  "webpack.config.mjs",
+  "webpack.config.ts",
+  "vite.config.js",
+  "vite.config.ts",
+  ".swcrc",
+  "swc.config.js",
+];
+export const IMPORTED_CONNECTION_SCRIPT_NAME_PATTERN =
+  /^(?:pre|post)?(?:dev|build|preview|start)$/u;
+export const IMPORTED_CONNECTION_NEXT_COMMAND_PATTERN = /^next (?:dev|build|start)$/u;

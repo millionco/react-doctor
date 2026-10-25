@@ -1,0 +1,2 @@
+import {Channel} from "./channel"; import {useEffect,useRef} from "react";
+export const Panel=({endpoint})=>{const host=useRef(null);useEffect(()=>{const node=host.current;if(!node)return;const client=new Channel();const pending=(async()=>{await client.activate(endpoint);})();return()=>{void pending.catch(console.error).then(()=>client.finish).catch(console.error);};},[endpoint]);return <video ref={host}/>;};

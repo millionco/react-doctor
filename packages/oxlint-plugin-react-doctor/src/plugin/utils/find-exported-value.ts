@@ -46,7 +46,11 @@ export const findExportedValue = (
       recordVariableDeclaration(statement);
       continue;
     }
-    if (isNodeOfType(statement, "FunctionDeclaration") && statement.id) {
+    if (
+      (isNodeOfType(statement, "FunctionDeclaration") ||
+        isNodeOfType(statement, "ClassDeclaration")) &&
+      statement.id
+    ) {
       localBindings.set(statement.id.name, statement);
       continue;
     }
@@ -62,7 +66,8 @@ export const findExportedValue = (
         }
       } else if (
         declaration &&
-        isNodeOfType(declaration, "FunctionDeclaration") &&
+        (isNodeOfType(declaration, "FunctionDeclaration") ||
+          isNodeOfType(declaration, "ClassDeclaration")) &&
         declaration.id
       ) {
         localBindings.set(declaration.id.name, declaration);

@@ -1,0 +1,26 @@
+export class Channel {
+  private connection?: RTCPeerConnection;
+  private endpoint?: string;
+  public async activate(endpoint:string){
+    if(this.connection){await this.finish();}
+    const resource=new RTCPeerConnection({iceServers:[]});
+    this.connection=resource;
+    resource.addTransceiver("video",{direction:"recvonly"});
+    await observe(resource);
+    this.endpoint=endpoint;
+  }
+  public async finish(){
+    if(!this.connection){return;}
+    const resource=this.connection;
+    delete this.connection;
+    const endpoint=this.endpoint;
+    resource.close();
+    if(endpoint) await fetch(endpoint,{method:"DELETE"});
+  }
+}
+async function observe(handle:RTCPeerConnection){
+ return new Promise(resolve=>{
+   setTimeout(()=>resolve(handle.localDescription),10);
+   handle.onicegatheringstatechange=()=>{if(handle.iceGatheringState==="complete")resolve(handle.localDescription);};
+ });
+}

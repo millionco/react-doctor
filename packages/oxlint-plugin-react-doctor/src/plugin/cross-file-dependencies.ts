@@ -225,6 +225,21 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   }
 };
 
+const collectImportedConnectionCleanupDependencies: CrossFileDependencyCollector = (input) => {
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  let hasCandidate = false;
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "NewExpression")) return;
+    const constructor = stripParenExpression(node.callee);
+    if (isNodeOfType(constructor, "Identifier") && scopes.symbolFor(constructor)?.kind === "import")
+      hasCandidate = true;
+  });
+  if (hasCandidate) return false;
+  return collectEffectValueHelperDependencies(input);
+};
+
 const collectRadixPendingDraftDependencies: CrossFileDependencyCollector = (input) => {
   collectEffectValueHelperDependencies(input);
   const program = input.getProgram();
@@ -784,7 +799,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
-    ["effect-needs-cleanup", collectEffectValueHelperDependencies],
+    ["effect-needs-cleanup", collectImportedConnectionCleanupDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["shadcn-icon-button-requires-label", collectNativeButtonLabelDependencies],

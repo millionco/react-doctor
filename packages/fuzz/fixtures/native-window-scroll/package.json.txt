@@ -1,0 +1,1 @@
+{"private":true,"dependencies":{"react":"19.2.0","next":"16.0.0"},"scripts":{"dev":"next dev","build":"next build","start":"next start"}}

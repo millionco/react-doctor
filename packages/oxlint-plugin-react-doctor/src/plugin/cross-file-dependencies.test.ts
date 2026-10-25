@@ -961,3 +961,20 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+it("refuses smooth-window candidate fingerprints before mutable JSX config reads", () => {
+  const filename = writeFixtureFile(
+    "scroll.tsx",
+    'const Panel=()=> <button onClick={()=>window.scrollTo({behavior:"smooth"})}/>;',
+  );
+  const rules = ["no-smooth-scroll-without-reduced-motion"];
+  expect(collectFor(filename, rules)).toBeNull();
+  writeFixtureFile("jsconfig.json", '{"compilerOptions":{"jsxFactory":"custom"}}');
+  expect(collectFor(filename, rules)).toBeNull();
+  fs.unlinkSync(fixturePath("jsconfig.json"));
+  expect(collectFor(filename, rules)).toBeNull();
+  writeFixtureFile("scroll.tsx", "const Panel=()=> <button/>;");
+  const trace = collectFor(filename, rules);
+  expect(trace?.contentPaths.size).toBe(0);
+  expect(trace?.existencePaths.size).toBe(0);
+});

@@ -791,6 +791,20 @@ const collectObjectUrlPreviewDependencies: CrossFileDependencyCollector = ({ get
   if (hasObjectUrlCandidate) return false;
 };
 
+const collectNativeWindowScrollDependencies: CrossFileDependencyCollector = ({ getProgram }) => {
+  let hasPotentialScroll = false;
+  walkAst(getProgram(), (node) => {
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      (getStaticPropertyName(callee) === "scrollTo" || getStaticPropertyName(callee) === null)
+    )
+      hasPotentialScroll = true;
+  });
+  if (hasPotentialScroll) return false;
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -804,6 +818,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["shadcn-icon-button-requires-label", collectNativeButtonLabelDependencies],
     ["no-create-object-url-without-revoke", collectObjectUrlPreviewDependencies],
+    ["no-smooth-scroll-without-reduced-motion", collectNativeWindowScrollDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["hook-use-state", collectNextQueryStateDependencies],
     ["no-ref-current-in-render", collectTypedReduxStoreInitializationDependencies],

@@ -9,8 +9,8 @@ import {
 import {
   IMPORTED_CONNECTION_NEXT_CONFIG_NAMES,
   IMPORTED_CONNECTION_CONFIG_NAMES,
-  IMPORTED_CONNECTION_NEXT_COMMAND_PATTERN,
-  IMPORTED_CONNECTION_SCRIPT_NAME_PATTERN,
+  NEXT_APPLICATION_COMMAND_PATTERN,
+  NEXT_APPLICATION_SCRIPT_NAME_PATTERN,
   IMPORTED_CONNECTION_SINGLE_COUNT,
 } from "./constants.js";
 import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
@@ -155,10 +155,10 @@ export const hasImportedConnectionSourceEnvironment = (
     return false;
   for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
     if (
-      IMPORTED_CONNECTION_SCRIPT_NAME_PATTERN.test(name) &&
+      NEXT_APPLICATION_SCRIPT_NAME_PATTERN.test(name) &&
       (typeof dependencies.next !== "string" ||
         typeof command !== "string" ||
-        !IMPORTED_CONNECTION_NEXT_COMMAND_PATTERN.test(command))
+        !NEXT_APPLICATION_COMMAND_PATTERN.test(command))
     )
       return false;
   }

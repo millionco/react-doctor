@@ -1,3 +1,4 @@
+import { isUnconditionalNativeWindowScroll } from "../../utils/is-unconditional-native-window-scroll.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doesTailwindVariantScopeCover } from "../../utils/does-tailwind-variant-scope-cover.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -123,6 +124,14 @@ export const noSmoothScrollWithoutReducedMotion = defineRule({
   create: (context: RuleContext) => {
     const reportedElements = new Set<EsTreeNode>();
     return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isUnconditionalNativeWindowScroll(node, context)) return;
+        context.report({
+          node,
+          message:
+            "This button always requests smooth window scrolling. Respect reduced motion by choosing instant scrolling when that preference is enabled.",
+        });
+      },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         const expression = getInlineStyleExpression(node);
         if (!expression) return;

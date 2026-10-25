@@ -1,0 +1,6 @@
+export const ScrollPanel = () => {
+  const moveViewport = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  return <button onClick={moveViewport}>Back to start</button>;
+};

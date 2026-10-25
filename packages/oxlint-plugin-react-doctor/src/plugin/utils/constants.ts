@@ -173,6 +173,76 @@ export const IMPORTED_CONNECTION_CONFIG_NAMES = [
   ".swcrc",
   "swc.config.js",
 ];
-export const IMPORTED_CONNECTION_SCRIPT_NAME_PATTERN =
-  /^(?:pre|post)?(?:dev|build|preview|start)$/u;
-export const IMPORTED_CONNECTION_NEXT_COMMAND_PATTERN = /^next (?:dev|build|start)$/u;
+export const NEXT_APPLICATION_SCRIPT_NAME_PATTERN = /^(?:pre|post)?(?:dev|build|preview|start)$/u;
+export const NEXT_APPLICATION_COMMAND_PATTERN = /^next (?:dev|build|start)$/u;
+
+export const NATIVE_WINDOW_SCROLL_SINGLE_VALUE_COUNT = 1;
+export const NATIVE_WINDOW_SCROLL_REFUSED_ATTRIBUTES = new Set([
+  "ref",
+  "is",
+  "disabled",
+  "inert",
+  "hidden",
+  "aria-disabled",
+  "dangerouslySetInnerHTML",
+  "children",
+]);
+export const NATIVE_WINDOW_SCROLL_REFUSED_GLOBAL_NAMES = new Set([
+  "React",
+  "globalThis",
+  "global",
+  "self",
+  "Object",
+  "Reflect",
+  "Function",
+  "eval",
+  "require",
+  "Window",
+  "document",
+  "parent",
+  "top",
+  "frames",
+  "opener",
+]);
+export const NATIVE_WINDOW_SCROLL_NEXT_CONFIG_NAMES = [
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.cjs",
+  "next.config.ts",
+];
+export const NATIVE_WINDOW_SCROLL_REFUSED_CONFIG_NAMES = [
+  "vite.config.js",
+  "vite.config.ts",
+  "vite.config.mjs",
+  "vite.config.mts",
+  "webpack.config.js",
+  "webpack.config.cjs",
+  "webpack.config.mjs",
+  "rspack.config.js",
+  "rspack.config.ts",
+];
+
+export const NATIVE_WINDOW_SCROLL_REFUSED_MANIFEST_FIELDS = [
+  "babel",
+  "imports",
+  "overrides",
+  "resolutions",
+  "pnpm",
+  "browser",
+];
+
+export const NATIVE_WINDOW_SCROLL_ALLOWED_WINDOW_MEMBERS = new Set([
+  "scrollY",
+  "addEventListener",
+  "removeEventListener",
+  "scrollTo",
+]);
+export const NATIVE_WINDOW_SCROLL_PROVIDER_MEMBER_CAPABILITIES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);

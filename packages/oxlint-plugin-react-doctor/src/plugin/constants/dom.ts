@@ -91,3 +91,36 @@ export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
 ]);
 
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
+
+export const TIMER_TOGGLE_GLOBAL_NAMESPACE_NAMES: ReadonlySet<string> = new Set([
+  "window",
+  "globalThis",
+  "self",
+]);
+export const TIMER_TOGGLE_REFUSED_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "eval",
+  "Function",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "Window",
+  "React",
+  "top",
+  "parent",
+  "frames",
+  "require",
+  "module",
+]);
+export const TIMER_TOGGLE_REFUSED_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  "__proto__",
+  "prototype",
+  "constructor",
+  "__defineGetter__",
+  "__defineSetter__",
+]);
+export const TIMER_TOGGLE_REFUSED_MODULE_NAMES: ReadonlySet<string> = new Set([
+  "vm",
+  "node:vm",
+  "module",
+  "node:module",
+]);

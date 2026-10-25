@@ -3,6 +3,7 @@ import {
   TIMER_CLEANUP_CALLEE_NAMES,
 } from "../../constants/dom.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { hasStoredNativeTimerToggleRisk } from "./utils/has-stored-native-timer-toggle-risk.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -393,7 +394,11 @@ export const noStaleTimerRef = defineRule({
       if (!usageFacts.holdsScheduledTimerId || !usageFacts.hasPendingSignalRead) return;
 
       if (isInsideEffectCleanupReturn(node, refBinding.scopeOwner, context.scopes)) return;
-      if (hasRefCurrentReassignmentAfterClear(node, refName)) return;
+      if (
+        hasRefCurrentReassignmentAfterClear(node, refName) &&
+        !hasStoredNativeTimerToggleRisk(node, context)
+      )
+        return;
 
       context.report({
         node,

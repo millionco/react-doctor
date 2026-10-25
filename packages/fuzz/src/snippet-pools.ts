@@ -10,6 +10,7 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const SyntheticTimerToggle = ({ onTick }) => { const timer = useRef(null); const toggle = () => { if (timer.current) { clearInterval(timer.current); return; } timer.current = setInterval(() => onTick(), 25); }; return <button onClick={toggle}>Toggle</button>; }; const syntheticTimerToggle = <SyntheticTimerToggle onTick={() => {}} />;`,
   `const useFuzzStoredCallable = () => { type Action = () => number; const actionRef = useRef<Action>(); if (!actionRef.current) actionRef.current = () => 7; return actionRef.current; };`,
   `const useFuzzCapturedCallable = (currentValue: number) => { type Action = () => number; const actionRef = useRef<Action>(); if (!actionRef.current) actionRef.current = () => currentValue; return actionRef.current; };`,
   `const FuzzDisposablePreview = () => <figure>{condition ? <img src={URL.createObjectURL(new Blob([String(value)]))} alt="Preview" /> : null}</figure>; const fuzzDisposablePreviewNode = <FuzzDisposablePreview />;`,

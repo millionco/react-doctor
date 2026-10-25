@@ -1,3 +1,4 @@
+import { getSingleReturnExpression } from "./utils/get-single-return-expression.js";
 import { NATIVE_LABEL_ATTRIBUTE_NAME } from "./constants/react-native.js";
 import { mayUseProjectContextSetter } from "./utils/create-project-context-setter-analyzer.js";
 import { findNativeQueryStateRead } from "./utils/find-native-query-state-read.js";
@@ -698,6 +699,26 @@ const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
   getProgram,
 }) => {
   const program = getProgram();
+  let hasIdentityCatch = false;
+  walkAst(program, (node) => {
+    if (
+      !isNodeOfType(node, "CallExpression") ||
+      !isNodeOfType(node.callee, "MemberExpression") ||
+      getStaticPropertyName(node.callee) !== "catch"
+    )
+      return;
+    const handler = node.arguments[0] ? stripParenExpression(node.arguments[0]) : null;
+    if (!handler || !isFunctionLike(handler)) return;
+    const parameter = handler.params[0];
+    const returned = getSingleReturnExpression(handler);
+    if (
+      isNodeOfType(parameter, "Identifier") &&
+      returned &&
+      isNodeOfType(stripParenExpression(returned), "Identifier")
+    )
+      hasIdentityCatch = true;
+  });
+  if (hasIdentityCatch) return false;
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {

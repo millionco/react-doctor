@@ -1,3 +1,4 @@
+import { createNativeFetchJsonIdentityCatchChecker } from "../../utils/create-native-fetch-json-identity-catch-checker.js";
 import { isRejectableOidcUserManagerCall } from "../../utils/is-rejectable-oidc-user-manager-call.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
@@ -609,45 +610,49 @@ export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
   tags: ["test-noise"],
   recommendation:
     "An async init in an effect that sets state in `.then` but has no `.catch` leaves the component stuck and raises an unhandled rejection when it fails. Add a `.catch` on the chain (`.finally` does not handle the rejection).",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const isReactEffect = isReactApiCall(
-        node as EsTreeNode,
-        new Set(["useEffect", "useLayoutEffect"]),
-        context.scopes,
-        { allowGlobalReactNamespace: true, allowUnboundBareCalls: true },
-      );
-      const isImportedUseMount =
-        isNodeOfType(node.callee, "Identifier") &&
-        node.callee.name === "useMount" &&
-        getImportSourceForName(node.callee, node.callee.name) === "react-use";
-      if (!isReactEffect && !isImportedUseMount) return;
-      const callback = getEffectCallback(node as EsTreeNode);
-      if (!isFunctionLike(callback)) return;
+  create: (context: RuleContext) => {
+    const isNativeIdentityCatch = createNativeFetchJsonIdentityCatchChecker(context);
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const isReactEffect = isReactApiCall(
+          node as EsTreeNode,
+          new Set(["useEffect", "useLayoutEffect"]),
+          context.scopes,
+          { allowGlobalReactNamespace: true, allowUnboundBareCalls: true },
+        );
+        const isImportedUseMount =
+          isNodeOfType(node.callee, "Identifier") &&
+          node.callee.name === "useMount" &&
+          getImportSourceForName(node.callee, node.callee.name) === "react-use";
+        if (!isReactEffect && !isImportedUseMount) return;
+        const callback = getEffectCallback(node as EsTreeNode);
+        if (!isFunctionLike(callback)) return;
 
-      for (const chainExpression of collectFloatingChains(callback, context)) {
-        const chainWalk = walkPromiseChain(chainExpression, context);
-        if (!chainWalk.sawThen) continue;
-        if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) continue;
-        const hasUnguardedStateSideEffect =
-          chainWalk.hasDirectSetterThenCallback ||
-          chainWalk.thenCallbacks.some((thenCallback) => {
-            return collectStateSideEffectNodes(thenCallback, context).length > 0;
-          });
-        if (!hasUnguardedStateSideEffect) continue;
-        const resolved = resolveRootInitiator(chainWalk.root, context);
-        if (resolved.hasUpstreamRejectionHandling) continue;
-        if (
-          !isProvablyRejectableExpression(
-            resolved.initiator,
-            MAX_INITIATOR_RESOLUTION_DEPTH,
-            context,
-          )
-        ) {
-          continue;
+        for (const chainExpression of collectFloatingChains(callback, context)) {
+          if (isNativeIdentityCatch(chainExpression)) continue;
+          const chainWalk = walkPromiseChain(chainExpression, context);
+          if (!chainWalk.sawThen) continue;
+          if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) continue;
+          const hasUnguardedStateSideEffect =
+            chainWalk.hasDirectSetterThenCallback ||
+            chainWalk.thenCallbacks.some((thenCallback) => {
+              return collectStateSideEffectNodes(thenCallback, context).length > 0;
+            });
+          if (!hasUnguardedStateSideEffect) continue;
+          const resolved = resolveRootInitiator(chainWalk.root, context);
+          if (resolved.hasUpstreamRejectionHandling) continue;
+          if (
+            !isProvablyRejectableExpression(
+              resolved.initiator,
+              MAX_INITIATOR_RESOLUTION_DEPTH,
+              context,
+            )
+          ) {
+            continue;
+          }
+          context.report({ node: chainExpression, message: MESSAGE });
         }
-        context.report({ node: chainExpression, message: MESSAGE });
-      }
-    },
-  }),
+      },
+    };
+  },
 });

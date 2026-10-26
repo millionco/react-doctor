@@ -48,9 +48,13 @@ const isFullyStaticJsonArgument = (argumentText: string): boolean => {
 // its return value, or an escape/serializer helper wrapping the whole call.
 // Escaping the INPUT (a helper inside the stringify arguments) does not, so the
 // return-value check looks strictly after the call's matching `)`.
-const RETURN_ESCAPE_PATTERN = /^[\s)]*\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)/;
+const RETURN_REPLACE_ESCAPE_PATTERN =
+  /^[\s)]*\.replace\s*\(\s*\/<\/[a-z]*g[a-z]*\s*,\s*["'](?:\\\\u003[cC]|&lt;)["']\s*\)/;
 const RETURN_REPLACEALL_ESCAPE_PATTERN =
-  /^[\s)]*\.replaceAll\s*\(\s*["']<["']\s*,\s*["'](?:\\u003[cC]|&lt;)["']\s*\)/;
+  /^[\s)]*\.replaceAll\s*\(\s*["']<["']\s*,\s*["'](?:\\\\u003[cC]|&lt;)["']\s*\)/;
+const escapesJsonStringifyReturnValue = (afterReturn: string): boolean =>
+  RETURN_REPLACE_ESCAPE_PATTERN.test(afterReturn) ||
+  RETURN_REPLACEALL_ESCAPE_PATTERN.test(afterReturn);
 // HTML-escape helpers are trusted even as methods (`utils.escapeHtml(...)`),
 // but the generic serializer names must be bare calls — a `.serialize(...)`
 // method is unrelated to serialize-javascript and may not HTML-escape.
@@ -92,7 +96,7 @@ export const unsafeJsonInHtml = defineRule({
           }
         }
 
-        // A `.replace` or `.replaceAll` of `<` applied to the call's return value escapes it.
+        // A safe `<` replacement has to run on the stringify return value, not its input.
         const openParenIndex = match.index + match[0].length - 1;
         const closeParenIndex = findMatchingBracket(content, openParenIndex);
         if (closeParenIndex >= 0) {
@@ -100,8 +104,7 @@ export const unsafeJsonInHtml = defineRule({
             closeParenIndex + 1,
             closeParenIndex + 1 + RETURN_LOOKAHEAD_CHARS,
           );
-          if (RETURN_ESCAPE_PATTERN.test(afterReturn)) continue;
-          if (RETURN_REPLACEALL_ESCAPE_PATTERN.test(afterReturn)) continue;
+          if (escapesJsonStringifyReturnValue(afterReturn)) continue;
 
           if (isFullyStaticJsonArgument(content.slice(openParenIndex + 1, closeParenIndex))) {
             continue;

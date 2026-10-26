@@ -55,8 +55,8 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
   <script>window.__DATA__ = \${JSON.stringify(data)};</script>
 \`;
 `;
-    expect(scan(content)).toBeTruthy();
-    expect(scan(content).length).toBeGreaterThan(0);
+    const findings = scan(content);
+    expect(findings.length).toBeGreaterThan(0);
   });
 
   it("still flags stringified dynamic data joined by string concat", () => {
@@ -95,7 +95,7 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
   <script
     type="application/ld+json"
     dangerouslySetInnerHTML={{
-      __html: JSON.stringify(jsonLd).replaceAll("<", "\\u003c")
+      __html: JSON.stringify(jsonLd).replaceAll("<", "\\\\u003c")
     }}
   />
 );
@@ -108,7 +108,7 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
   <script
     type="application/ld+json"
     dangerouslySetInnerHTML={{
-      __html: JSON.stringify(jsonLd).replaceAll("<", "\\u003C")
+      __html: JSON.stringify(jsonLd).replaceAll("<", "\\\\u003C")
     }}
   />
 );
@@ -134,12 +134,64 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
   <script
     type="application/ld+json"
     dangerouslySetInnerHTML={{
-      __html: JSON.stringify(jsonLd).replaceAll(">", "\\u003c")
+      __html: JSON.stringify(jsonLd).replaceAll(">", "\\\\u003c")
     }}
   />
 );
 `;
     expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
+
+  it("still flags replaceAll with a runtime < replacement", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll("<", "\\u003c")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
+
+  it("still flags replace without a global < search", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replace("<", "\\\\u003c")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
+
+  it("still flags replace with a raw < replacement", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replace(/</g, "<")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when replace globally escapes < with \\u003c", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replace(/</g, "\\\\u003c")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx")).toHaveLength(0);
   });
 
   it("still flags replaceAll with non-escaping replacement", () => {

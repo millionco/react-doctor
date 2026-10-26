@@ -51,6 +51,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+import { getOwnedInputSelectionFocusResetStateIds } from "./utils/get-owned-input-selection-focus-reset-state-ids.js";
 
 const COMMITTED_DOM_MEMBER_METHOD_NAMES = new Set([
   ...EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
@@ -2440,6 +2441,7 @@ interface EffectInfo {
   analysisFunctions: ReadonlySet<EsTreeNode>;
   isExternalSync: boolean;
   externallySynchronizedStateNames: ReadonlySet<string>;
+  inputSelectionFocusResetStateIds: ReadonlySet<number>;
 }
 
 export const noEffectChain = defineRule({
@@ -2514,6 +2516,12 @@ export const noEffectChain = defineRule({
           ),
           stateWrites,
           analysisFunctions,
+          inputSelectionFocusResetStateIds: getOwnedInputSelectionFocusResetStateIds(
+            callback,
+            effectCall,
+            context,
+            useStateBindings,
+          ),
           isExternalSync:
             externalSyncAnchors.length > 0 ||
             doesCallStorageSetter ||
@@ -2546,7 +2554,8 @@ export const noEffectChain = defineRule({
             const writtenStateSymbolId = stateSymbolIds.get(writtenName);
             if (
               writtenStateSymbolId === undefined ||
-              !readerEffect.dependencyStateSymbolIds.has(writtenStateSymbolId)
+              !readerEffect.dependencyStateSymbolIds.has(writtenStateSymbolId) ||
+              readerEffect.inputSelectionFocusResetStateIds.has(writtenStateSymbolId)
             ) {
               continue;
             }

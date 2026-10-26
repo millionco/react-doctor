@@ -1,0 +1,33 @@
+// rule: no-effect-chain
+// weakness: framework-gating
+// source: synthetic owned native input selection and focus reset
+// verdict: pass
+import { useEffect, useRef, useState } from 'react';
+const EMPTY_POSITION = -3;
+function ChoiceField({ entries = [], onPick = () => {}, enabled = true }) {
+  const [chosen, setChosen] = useState('');
+  const [choices, setChoices] = useState(entries);
+  const [opened, setOpened] = useState(false);
+  const [position, setPosition] = useState(EMPTY_POSITION);
+  const [other, setOther] = useState(0);
+  const [total, setTotal] = useState(0);
+  const wrapper = useRef(null);
+  const field = useRef(null);
+  const finish = () => {
+    const target = field.current;
+    if (target) {
+      target.focus();
+      setPosition(EMPTY_POSITION);
+    }
+  };
+  useEffect(() => { setPosition(2); setOpened(true); }, [entries]);
+  useEffect(() => {
+    if (opened && position !== EMPTY_POSITION && enabled) {
+      setChosen(choices[position]);
+      onPick(choices[position]);
+      setOpened(false);
+      finish();
+    }
+  }, [position, other]);
+  return <div ref={wrapper}><label>Choice</label><input ref={field} value={chosen} onChange={event => setChosen(event.target.value)} /></div>;
+}

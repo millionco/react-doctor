@@ -8,7 +8,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 
 const collectFiniteStaticStringValues = (
   expression: EsTreeNode | null | undefined,
-  context: RuleContext,
+  context: Pick<RuleContext, "scopes">,
   values: Set<string>,
   visitedExpressions: Set<EsTreeNode>,
 ): void => {
@@ -88,7 +88,7 @@ const collectFiniteStaticStringValues = (
 
 export const getFiniteStaticStringValues = (
   expression: EsTreeNode | null | undefined,
-  context: RuleContext,
+  context: Pick<RuleContext, "scopes">,
 ): ReadonlySet<string> => {
   const values = new Set<string>();
   collectFiniteStaticStringValues(expression, context, values, new Set());

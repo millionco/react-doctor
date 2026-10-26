@@ -215,3 +215,450 @@ export const GENERATION_MASK_INCREMENT_VALUE = 1;
 export const GENERATION_MASK_INACTIVE_TAG_VALUE = -1;
 
 export const ASYNC_FINALLY_STRESS_LAYER_COUNT = 32;
+
+export const OWNED_INPUT_HOST_NAMES: ReadonlySet<string> = new Set([
+  "input",
+  "div",
+  "label",
+  "ul",
+  "button",
+]);
+export const OWNED_INPUT_RESERVED_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "as",
+  "$as",
+  "forwardedAs",
+  "asChild",
+  "is",
+  "ref",
+  "innerRef",
+  "children",
+  "dangerouslySetInnerHTML",
+]);
+export const OWNED_INPUT_PROVIDER_SOURCES = [
+  "react",
+  "react-dom",
+  "styled-components",
+  "@babel/preset-react",
+  "@babel/preset-env",
+  "babel-plugin-styled-components",
+];
+export const OWNED_INPUT_REFUSED_MANIFEST_FIELDS = [
+  "overrides",
+  "resolutions",
+  "pnpm",
+  "browser",
+  "imports",
+  "exports",
+  "alias",
+  "react-native",
+];
+export const OWNED_INPUT_REFUSED_GLOBALS: ReadonlySet<string> = new Set([
+  "eval",
+  "Function",
+  "Reflect",
+  "Proxy",
+  "globalThis",
+  "global",
+  "self",
+  "require",
+  "module",
+  "exports",
+  "HTMLElement",
+  "HTMLInputElement",
+  "Element",
+  "Node",
+  "Document",
+  "Window",
+]);
+export const OWNED_INPUT_RUNTIME_TYPES: ReadonlySet<string> = new Set([
+  "WithStatement",
+  "ImportExpression",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+  "TSEnumDeclaration",
+  "TSEnumMember",
+  "TSModuleDeclaration",
+  "ExportNamespaceSpecifier",
+]);
+export const OWNED_INPUT_PROTECTED_NATIVE_MEMBERS: ReadonlySet<string> = new Set([
+  "focus",
+  "contains",
+  "activeElement",
+  "createElement",
+]);
+export const OWNED_INPUT_METADATA_NAMES: ReadonlySet<string> = new Set([
+  "displayName",
+  "propTypes",
+]);
+export const OWNED_INPUT_EMPTY_COUNT = 0;
+export const OWNED_INPUT_SINGLE_COUNT = 1;
+export const OWNED_INPUT_FIRST_INDEX = 0;
+export const OWNED_INPUT_MAX_RESOLUTION_DEPTH = 24;
+export const OWNED_INPUT_DECLARED_REACT_PATTERN = /^[~^]?(?:16|17|18)(?:\.\d+){0,2}$/u;
+export const OWNED_INPUT_DECLARED_STYLED_PATTERN = /^[~^]?5\.\d+\.\d+$/u;
+
+export const OWNED_INPUT_PASSIVE_PROTOTYPE_NAMES: ReadonlySet<string> = new Set([
+  "toString",
+  "toLocaleString",
+  "valueOf",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+]);
+export const OWNED_INPUT_OBJECT_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "keys",
+  "values",
+  "entries",
+  "freeze",
+  "assign",
+  "defineProperty",
+]);
+export const OWNED_INPUT_WINDOW_READ_NAMES: ReadonlySet<string> = new Set([
+  "addEventListener",
+  "removeEventListener",
+  "matchMedia",
+]);
+export const OWNED_INPUT_DOCUMENT_READ_NAMES: ReadonlySet<string> = new Set([
+  "activeElement",
+  "body",
+  "createElement",
+  "querySelector",
+  "addEventListener",
+  "removeEventListener",
+]);
+
+export const OWNED_INPUT_BUILD_RECIPE_PATTERN =
+  /^(?:cross-env NODE_ENV=production )?babel \.?\/?[\w./-]+ --out-dir [\w./-]+ --copy-files$/u;
+export const OWNED_INPUT_CUSTOM_COMPILER_PATTERN =
+  /(?:--(?:plugins?|presets?|config(?:-file)?|loader|require)(?:[=\s]|$)|(?:^|[\s;&|])(?:webpack|rollup|vite|tsx|ts-node)(?:[\s;&|]|$)|(?:^|[\s;&|])node\s+(?:-e|--eval|-r|--require)(?:[=\s]|$))/u;
+
+export const OWNED_INPUT_REACT_API_NAMES: ReadonlySet<string> = new Set([
+  "createElement",
+  "useRef",
+  "useState",
+  "useEffect",
+  "useLayoutEffect",
+  "useInsertionEffect",
+]);
+
+export const OWNED_INPUT_PAIR_COUNT = 2;
+
+export const OWNED_INPUT_NATIVE_RESULT_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "querySelector",
+  "querySelectorAll",
+  "createElement",
+  "getElementById",
+  "getElementsByClassName",
+  "getElementsByTagName",
+]);
+
+export const OWNED_INPUT_NATIVE_CALL_NAMES: ReadonlySet<string> = new Set([
+  "querySelector",
+  "querySelectorAll",
+  "createElement",
+  "getElementById",
+  "getElementsByClassName",
+  "getElementsByTagName",
+  "focus",
+  "contains",
+  "appendChild",
+  "removeChild",
+  "addEventListener",
+  "removeEventListener",
+  "matchMedia",
+]);
+export const OWNED_INPUT_NATIVE_CONTAINER_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "contains",
+  "appendChild",
+  "removeChild",
+]);
+
+export const OWNED_INPUT_DATA_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "parseInt",
+  "undefined",
+  "NaN",
+  "Infinity",
+]);
+
+export const OWNED_INPUT_TIMER_NAMES: ReadonlySet<string> = new Set(["setTimeout", "setInterval"]);
+export const OWNED_INPUT_INPUT_SCALAR_NAMES: ReadonlySet<string> = new Set([
+  "value",
+  "checked",
+  "selectedIndex",
+  "selectionStart",
+  "selectionEnd",
+  "disabled",
+  "id",
+  "className",
+  "type",
+  "tagName",
+  "nodeName",
+  "nodeType",
+]);
+export const OWNED_INPUT_EVENT_SCALAR_NAMES: ReadonlySet<string> = new Set([
+  "key",
+  "code",
+  "type",
+  "keyCode",
+  "which",
+  "charCode",
+  "altKey",
+  "ctrlKey",
+  "metaKey",
+  "shiftKey",
+  "defaultPrevented",
+  "bubbles",
+  "cancelable",
+  "timeStamp",
+  "isTrusted",
+  "button",
+  "buttons",
+  "clientX",
+  "clientY",
+]);
+
+export const OWNED_INPUT_EVENT_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "preventDefault",
+  "stopPropagation",
+  "persist",
+  "isDefaultPrevented",
+  "isPropagationStopped",
+]);
+
+export const OWNED_INPUT_ADD_LISTENER_NAMES: ReadonlySet<string> = new Set(["addEventListener"]);
+export const OWNED_INPUT_LISTENER_NAMES: ReadonlySet<string> = new Set([
+  "addEventListener",
+  "removeEventListener",
+]);
+export const OWNED_INPUT_NATIVE_EVENT_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "preventDefault",
+  "stopPropagation",
+]);
+export const OWNED_INPUT_CALLABLE_TRANSPORT_NAMES: ReadonlySet<string> = new Set([
+  "call",
+  "apply",
+  "bind",
+  "constructor",
+  "prototype",
+]);
+export const OWNED_INPUT_CALLABLE_ARGUMENT_NAMES: ReadonlySet<string> = new Set([
+  "then",
+  "catch",
+  "finally",
+  "map",
+  "flatMap",
+  "forEach",
+  "filter",
+  "find",
+  "findIndex",
+  "some",
+  "every",
+  "reduce",
+  "reduceRight",
+  "sort",
+  "addEventListener",
+  "removeEventListener",
+]);
+
+export const OWNED_INPUT_NATIVE_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "at",
+  "concat",
+  "copyWithin",
+  "entries",
+  "every",
+  "fill",
+  "filter",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "flat",
+  "flatMap",
+  "forEach",
+  "includes",
+  "indexOf",
+  "join",
+  "keys",
+  "lastIndexOf",
+  "map",
+  "pop",
+  "push",
+  "reduce",
+  "reduceRight",
+  "reverse",
+  "shift",
+  "slice",
+  "some",
+  "sort",
+  "splice",
+  "toLocaleString",
+  "toReversed",
+  "toSorted",
+  "toSpliced",
+  "toString",
+  "unshift",
+  "values",
+  "with",
+]);
+export const OWNED_INPUT_NATIVE_STRING_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "at",
+  "charAt",
+  "charCodeAt",
+  "codePointAt",
+  "concat",
+  "endsWith",
+  "includes",
+  "indexOf",
+  "lastIndexOf",
+  "localeCompare",
+  "match",
+  "matchAll",
+  "normalize",
+  "padEnd",
+  "padStart",
+  "repeat",
+  "replace",
+  "replaceAll",
+  "search",
+  "slice",
+  "split",
+  "startsWith",
+  "substring",
+  "toLocaleLowerCase",
+  "toLocaleUpperCase",
+  "toLowerCase",
+  "toString",
+  "toUpperCase",
+  "trim",
+  "trimEnd",
+  "trimStart",
+  "valueOf",
+]);
+export const OWNED_INPUT_CALLABLE_STYLED_NAMES: ReadonlySet<string> = new Set([
+  "default",
+  "styled",
+  "css",
+  "keyframes",
+  "createGlobalStyle",
+]);
+
+export const OWNED_INPUT_CALLABLE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "parseInt",
+  "parseFloat",
+  "isNaN",
+  "isFinite",
+  "decodeURI",
+  "decodeURIComponent",
+  "encodeURI",
+  "encodeURIComponent",
+  "escape",
+  "unescape",
+  "Number",
+  "BigInt",
+  "Boolean",
+  "String",
+  "Array",
+  "Object",
+  "RegExp",
+  "Date",
+  "Promise",
+  "Symbol",
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "WeakRef",
+  "FinalizationRegistry",
+  "Error",
+  "AggregateError",
+  "EvalError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+  "ArrayBuffer",
+  "SharedArrayBuffer",
+  "DataView",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
+]);
+
+export const OWNED_NATIVE_REF_RESERVED_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "as",
+  "$as",
+  "forwardedAs",
+  "asChild",
+  "is",
+  "innerRef",
+  "children",
+  "dangerouslySetInnerHTML",
+]);
+
+export const OWNED_NATIVE_REF_SINGLE_VALUE_COUNT = 1;
+export const OWNED_NATIVE_REF_MINIMUM_CHILD_INDEX = 0;
+
+export const OWNED_NATIVE_REF_CALLBACK_RECEIVER_TYPES: ReadonlySet<string> = new Set([
+  "ThisExpression",
+  "Super",
+  "MetaProperty",
+]);
+
+export const OWNED_DOM_EMPTY_COUNT = 0;
+export const OWNED_DOM_SINGLE_COUNT = 1;
+export const OWNED_DOM_NEGATIVE_ONE = -1;
+export const OWNED_DOM_REACT_CLASS_NAMES: ReadonlySet<string> = new Set([
+  "Component",
+  "PureComponent",
+]);
+export const OWNED_DOM_CLASS_METADATA_NAMES: ReadonlySet<string> = new Set([
+  "displayName",
+  "propTypes",
+  "defaultProps",
+]);
+export const OWNED_DOM_RESERVED_FIELD_NAMES: ReadonlySet<string> = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "props",
+  "state",
+  "refs",
+  "context",
+  "updater",
+  "setState",
+  "forceUpdate",
+]);
+export const OWNED_DOM_KEY_EVENT_NAMES: ReadonlySet<string> = new Set([
+  "keydown",
+  "keyup",
+  "keypress",
+]);
+export const OWNED_DOM_KEY_SCALAR_NAMES: ReadonlySet<string> = new Set([
+  "key",
+  "keyCode",
+  "shiftKey",
+]);
+export const OWNED_DOM_LISTENER_NAMES: ReadonlySet<string> = new Set([
+  "addEventListener",
+  "removeEventListener",
+]);
+
+export const OWNED_DOM_PAIR_COUNT = 2;
+
+export const OWNED_CSS_RECORD_EMPTY_COUNT = 0;
+export const OWNED_CSS_RECORD_SINGLE_COUNT = 1;
+export const OWNED_CSS_RECORD_PAIR_COUNT = 2;
+export const OWNED_CSS_RECORD_FIRST_INDEX = 0;
+export const OWNED_CSS_RECORD_SECOND_INDEX = 1;
+export const OWNED_CSS_RECORD_MAX_RESOLUTION_DEPTH = 24;
+export const OWNED_CSS_RECORD_ZERO_VALUE = 0;

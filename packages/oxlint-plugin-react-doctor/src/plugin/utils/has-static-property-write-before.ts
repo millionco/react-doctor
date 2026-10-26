@@ -15,9 +15,16 @@ import { resolvePossibleLocalFunctions } from "./resolve-exact-local-function.js
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
+interface PotentiallyAliasedSymbolIndex {
+  readonly program: EsTreeNode;
+  readonly symbolsBySourceId: ReadonlyMap<number, readonly SymbolDescriptor[]>;
+  readonly symbolOrder: ReadonlyMap<number, number>;
+  readonly symbolsByRootId: Map<number, SymbolDescriptor[]>;
+}
+
 const potentiallyAliasedSymbolsByAnalysis = new WeakMap<
   ScopeAnalysis,
-  Map<number, SymbolDescriptor[]>
+  PotentiallyAliasedSymbolIndex
 >();
 
 const getDirectAliasSourceSymbol = (
@@ -67,38 +74,9 @@ const isDirectAliasSourceReference = (identifier: EsTreeNode): boolean => {
   );
 };
 
-const isDirectAliasOfKnownSymbol = (
-  symbol: SymbolDescriptor,
-  knownSymbolIds: ReadonlySet<number>,
+const buildPotentiallyAliasedSymbolIndex = (
   scopes: ScopeAnalysis,
-): boolean => {
-  if (
-    symbol.initializer &&
-    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
-    symbol.declarationNode.id === symbol.bindingIdentifier
-  ) {
-    const initializerSymbol = getDirectAliasSourceSymbol(symbol.initializer, scopes);
-    if (initializerSymbol && knownSymbolIds.has(initializerSymbol.id)) return true;
-  }
-  return symbol.references.some((reference) => {
-    const assignmentSourceSymbol = getDirectAssignmentSourceSymbol(reference.identifier, scopes);
-    return Boolean(assignmentSourceSymbol && knownSymbolIds.has(assignmentSourceSymbol.id));
-  });
-};
-
-const getPotentiallyAliasedSymbols = (
-  identifier: EsTreeNode,
-  scopes: ScopeAnalysis,
-): SymbolDescriptor[] => {
-  const rootSymbol = resolveConstIdentifierAlias(identifier, scopes);
-  if (!rootSymbol) return [];
-  let symbolsByRootId = potentiallyAliasedSymbolsByAnalysis.get(scopes);
-  if (!symbolsByRootId) {
-    symbolsByRootId = new Map();
-    potentiallyAliasedSymbolsByAnalysis.set(scopes, symbolsByRootId);
-  }
-  const cachedSymbols = symbolsByRootId.get(rootSymbol.id);
-  if (cachedSymbols) return cachedSymbols;
+): PotentiallyAliasedSymbolIndex => {
   const allSymbols: SymbolDescriptor[] = [];
   const pendingScopes = [scopes.rootScope];
   while (pendingScopes.length > 0) {
@@ -107,19 +85,65 @@ const getPotentiallyAliasedSymbols = (
     allSymbols.push(...scope.symbols);
     pendingScopes.push(...scope.children);
   }
-  const aliasedSymbolIds = new Set([rootSymbol.id]);
-  let didAddAlias = true;
-  while (didAddAlias) {
-    didAddAlias = false;
-    for (const symbol of allSymbols) {
-      if (aliasedSymbolIds.has(symbol.id)) continue;
-      if (!isDirectAliasOfKnownSymbol(symbol, aliasedSymbolIds, scopes)) continue;
-      aliasedSymbolIds.add(symbol.id);
-      didAddAlias = true;
+  const symbolsBySourceId = new Map<number, SymbolDescriptor[]>();
+  const symbolOrder = new Map<number, number>();
+  for (const [index, symbol] of allSymbols.entries()) {
+    symbolOrder.set(symbol.id, index);
+    const sourceSymbols = new Set<SymbolDescriptor>();
+    if (
+      symbol.initializer &&
+      isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+      symbol.declarationNode.id === symbol.bindingIdentifier
+    ) {
+      const initializerSymbol = getDirectAliasSourceSymbol(symbol.initializer, scopes);
+      if (initializerSymbol) sourceSymbols.add(initializerSymbol);
+    }
+    for (const reference of symbol.references) {
+      const assignmentSource = getDirectAssignmentSourceSymbol(reference.identifier, scopes);
+      if (assignmentSource) sourceSymbols.add(assignmentSource);
+    }
+    for (const sourceSymbol of sourceSymbols) {
+      const aliases = symbolsBySourceId.get(sourceSymbol.id) ?? [];
+      aliases.push(symbol);
+      symbolsBySourceId.set(sourceSymbol.id, aliases);
     }
   }
-  const aliasedSymbols = allSymbols.filter((symbol) => aliasedSymbolIds.has(symbol.id));
-  symbolsByRootId.set(rootSymbol.id, aliasedSymbols);
+  return {
+    program: scopes.rootScope.node,
+    symbolsBySourceId,
+    symbolOrder,
+    symbolsByRootId: new Map(),
+  };
+};
+
+const getPotentiallyAliasedSymbols = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor[] => {
+  const rootSymbol = resolveConstIdentifierAlias(identifier, scopes);
+  if (!rootSymbol) return [];
+  let index = potentiallyAliasedSymbolsByAnalysis.get(scopes);
+  if (!index || index.program !== scopes.rootScope.node) {
+    index = buildPotentiallyAliasedSymbolIndex(scopes);
+    potentiallyAliasedSymbolsByAnalysis.set(scopes, index);
+  }
+  const cachedSymbols = index.symbolsByRootId.get(rootSymbol.id);
+  if (cachedSymbols) return cachedSymbols;
+  const aliasedSymbolIds = new Set<number>();
+  const aliasedSymbols: SymbolDescriptor[] = [];
+  const pendingSymbols = [rootSymbol];
+  while (pendingSymbols.length > 0) {
+    const symbol = pendingSymbols.pop();
+    if (!symbol || aliasedSymbolIds.has(symbol.id)) continue;
+    aliasedSymbolIds.add(symbol.id);
+    if (index.symbolOrder.has(symbol.id)) aliasedSymbols.push(symbol);
+    pendingSymbols.push(...(index.symbolsBySourceId.get(symbol.id) ?? []));
+  }
+  const symbolOrder = index.symbolOrder;
+  aliasedSymbols.sort(
+    (first, second) => (symbolOrder.get(first.id) ?? 0) - (symbolOrder.get(second.id) ?? 0),
+  );
+  index.symbolsByRootId.set(rootSymbol.id, aliasedSymbols);
   return aliasedSymbols;
 };
 
@@ -404,11 +428,16 @@ export const hasPossibleStaticPropertyMutationOrEscape = (
   identifier: EsTreeNode,
   propertyName: string,
   scopes: ScopeAnalysis,
+  isAdditionalReadonlyReference?: (reference: EsTreeNode) => boolean,
 ): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
   if (hasPossibleStaticPropertyWrite(identifier, propertyName, scopes)) return true;
   return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
-    symbol.references.some((reference) => !isStableStaticPropertyReference(reference.identifier)),
+    symbol.references.some(
+      (reference) =>
+        !isStableStaticPropertyReference(reference.identifier) &&
+        !isAdditionalReadonlyReference?.(reference.identifier),
+    ),
   );
 };
 

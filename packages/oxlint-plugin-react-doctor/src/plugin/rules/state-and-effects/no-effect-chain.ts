@@ -1,3 +1,9 @@
+import { collectOwnedInputStates } from "./utils/collect-owned-input-states.js";
+import type { OwnedInputState } from "./utils/collect-owned-input-states.js";
+import { resolveOwnedInputFocusReset } from "./utils/resolve-owned-input-focus-reset.js";
+import { resolveOwnedInputFocusTarget } from "./utils/resolve-owned-input-focus-target.js";
+import { isProvenUnmodifiedReactApiCall } from "../../utils/is-proven-unmodified-react-api-call.js";
+import { hasReactDefaultProviderMutation } from "../../utils/has-react-default-provider-mutation.js";
 import {
   EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
@@ -757,6 +763,7 @@ const canReaderWorkRunForStateValues = (
   stateValue: StaticEffectStateValue,
   scopes: ScopeAnalysis,
   additionalStateValues: ReadonlyMap<number, StaticEffectStateValue> = new Map(),
+  ignoredFocusResetCalls: ReadonlySet<EsTreeNode> = new Set(),
 ): boolean => {
   const pendingFrames: ReaderAnalysisFrame[] = [
     { functionNode: readerEffect.callback, parameterStateValues: new Map() },
@@ -786,7 +793,7 @@ const canReaderWorkRunForStateValues = (
     let didFindReachableWork = false;
 
     walkInsideStatementBlocks(frame.functionNode.body, (child) => {
-      if (didFindReachableWork) return;
+      if (didFindReachableWork || ignoredFocusResetCalls.has(child)) return;
       if (isNodeOfType(child, "CallExpression")) {
         const invokedFunction = resolveSynchronouslyInvokedFunction(child.callee, scopes);
         if (invokedFunction && readerEffect.analysisFunctions.has(invokedFunction)) {
@@ -839,10 +846,21 @@ const canStateWriteReachReaderWork = (
   if (!writeInfo || stateSymbolId === undefined) return true;
 
   if (writeInfo.hasUnknownValue) return true;
+  const ignoredFocusResetCalls =
+    writeInfo.values.size === 1 && writeInfo.values.has(false)
+      ? readerEffect.getOwnedFocusResetCalls()
+      : new Set<EsTreeNode>();
 
   for (const writtenValue of writeInfo.values) {
     if (
-      canReaderWorkRunForStateValues(readerEffect, stateSymbolId, { value: writtenValue }, scopes)
+      canReaderWorkRunForStateValues(
+        readerEffect,
+        stateSymbolId,
+        { value: writtenValue },
+        scopes,
+        new Map(),
+        ignoredFocusResetCalls,
+      )
     ) {
       return true;
     }
@@ -2442,6 +2460,7 @@ interface EffectInfo {
   isExternalSync: boolean;
   externallySynchronizedStateNames: ReadonlySet<string>;
   inputSelectionFocusResetStateIds: ReadonlySet<number>;
+  getOwnedFocusResetCalls: () => ReadonlySet<EsTreeNode>;
 }
 
 export const noEffectChain = defineRule({
@@ -2481,6 +2500,13 @@ export const noEffectChain = defineRule({
       const storageSetterNames = collectStorageHookSetterNames(componentBody);
       const stateSymbolIdSet = new Set(stateSymbolIds.values());
 
+      const component = findEnclosingFunction(componentBody);
+      let ownedInputStates: readonly OwnedInputState[] | null = null;
+      const getOwnedInputStates = (): readonly OwnedInputState[] => {
+        if (!component) return [];
+        ownedInputStates ??= collectOwnedInputStates(useStateBindings, component, context);
+        return ownedInputStates;
+      };
       const effectInfos: EffectInfo[] = [];
       for (const effectCall of effectCalls) {
         const callback = getEffectCallback(effectCall, context.scopes);
@@ -2506,6 +2532,36 @@ export const noEffectChain = defineRule({
           writtenStateNames.size === 0,
         );
         const doesCallStorageSetter = callsStorageHookSetter(analysisFunctions, storageSetterNames);
+        let ownedFocusResetCalls: ReadonlySet<EsTreeNode> | null = null;
+        const getOwnedFocusResetCalls = (): ReadonlySet<EsTreeNode> => {
+          if (ownedFocusResetCalls) return ownedFocusResetCalls;
+          const calls = new Set<EsTreeNode>();
+          ownedFocusResetCalls = calls;
+          if (
+            !component ||
+            !isProvenUnmodifiedReactApiCall(effectCall, EFFECT_HOOK_NAMES, context.scopes) ||
+            hasReactDefaultProviderMutation("useState", context.scopes) ||
+            [...EFFECT_HOOK_NAMES].some((name) =>
+              hasReactDefaultProviderMutation(name, context.scopes),
+            )
+          )
+            return calls;
+          const states = getOwnedInputStates();
+          visitSynchronousFunctionBodies(analysisFunctions, (node) => {
+            if (!isNodeOfType(node, "CallExpression")) return;
+            const focus = resolveOwnedInputFocusReset({
+              call: node,
+              component,
+              states,
+              context,
+              allowStableCallback: true,
+              allowUnguardedReset: true,
+            });
+            if (focus && resolveOwnedInputFocusTarget(focus.targetInitializer, context))
+              calls.add(node);
+          });
+          return calls;
+        };
         effectInfos.push({
           node: effectCall,
           callback,
@@ -2516,6 +2572,7 @@ export const noEffectChain = defineRule({
           ),
           stateWrites,
           analysisFunctions,
+          getOwnedFocusResetCalls,
           inputSelectionFocusResetStateIds: getOwnedInputSelectionFocusResetStateIds(
             callback,
             effectCall,

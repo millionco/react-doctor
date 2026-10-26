@@ -1,3 +1,5 @@
+import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
+
 export const MAX_RETURNED_SETTER_EXPRESSIONS = 64;
 
 export const REF_NOTIFICATION_INACTIVE_ATTRIBUTES: ReadonlySet<string> = new Set([
@@ -336,6 +338,7 @@ export const OWNED_INPUT_CUSTOM_COMPILER_PATTERN =
 export const OWNED_INPUT_REACT_API_NAMES: ReadonlySet<string> = new Set([
   "createElement",
   "useRef",
+  "useCallback",
   "useState",
   "useEffect",
   "useLayoutEffect",
@@ -662,3 +665,8 @@ export const OWNED_CSS_RECORD_FIRST_INDEX = 0;
 export const OWNED_CSS_RECORD_SECOND_INDEX = 1;
 export const OWNED_CSS_RECORD_MAX_RESOLUTION_DEPTH = 24;
 export const OWNED_CSS_RECORD_ZERO_VALUE = 0;
+
+export const OWNED_INPUT_RESTORATION_DEPENDENCY_HOOK_NAMES: ReadonlySet<string> = new Set([
+  ...EFFECT_HOOK_NAMES,
+  "useCallback",
+]);

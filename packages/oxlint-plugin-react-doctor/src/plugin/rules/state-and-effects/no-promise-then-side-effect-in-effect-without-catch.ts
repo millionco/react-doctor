@@ -1,4 +1,5 @@
 import { createNativeFetchJsonIdentityCatchChecker } from "../../utils/create-native-fetch-json-identity-catch-checker.js";
+import { isRejectableTrackPlayerRepeatModeCall } from "../../utils/is-rejectable-track-player-repeat-mode-call.js";
 import { isRejectableOidcUserManagerCall } from "../../utils/is-rejectable-oidc-user-manager-call.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
@@ -356,7 +357,11 @@ const isProvablyRejectableExpression = (
     return isProvablyRejectableExpression(stripped.argument, remainingDepth, context);
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
-  if (isRejectableOidcUserManagerCall(stripped, context)) return true;
+  if (
+    isRejectableOidcUserManagerCall(stripped, context) ||
+    isRejectableTrackPlayerRepeatModeCall(stripped, context)
+  )
+    return true;
   const callee = stripParenExpression(stripped.callee);
   if (isNodeOfType(callee, "Identifier")) {
     if (callee.name === "fetch" && context.scopes.isGlobalReference(callee)) {

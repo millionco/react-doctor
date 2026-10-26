@@ -1,3 +1,4 @@
+import { TRACK_PLAYER_REPEAT_METHOD_NAME } from "./utils/constants.js";
 import { getSingleReturnExpression } from "./utils/get-single-return-expression.js";
 import { NATIVE_LABEL_ATTRIBUTE_NAME } from "./constants/react-native.js";
 import { mayUseProjectContextSetter } from "./utils/create-project-context-setter-analyzer.js";
@@ -715,7 +716,16 @@ const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
 }) => {
   const program = getProgram();
   let hasIdentityCatch = false;
+  let hasTrackPlayerRepeatCall = false;
   walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = stripParenExpression(node.callee);
+      if (
+        isNodeOfType(callee, "MemberExpression") &&
+        getStaticPropertyName(callee) === TRACK_PLAYER_REPEAT_METHOD_NAME
+      )
+        hasTrackPlayerRepeatCall = true;
+    }
     if (
       !isNodeOfType(node, "CallExpression") ||
       !isNodeOfType(node.callee, "MemberExpression") ||
@@ -733,7 +743,7 @@ const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
     )
       hasIdentityCatch = true;
   });
-  if (hasIdentityCatch) return false;
+  if (hasIdentityCatch || hasTrackPlayerRepeatCall) return false;
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {

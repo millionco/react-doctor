@@ -1,0 +1,3 @@
+import {useEffect,useState} from "react";
+import Media from "react-native-track-player";
+export const PlaybackPanel=()=>{const [mode,setMode]=useState(0);useEffect(()=>{Media.getRepeatMode().then(setMode);},[]);return null;};

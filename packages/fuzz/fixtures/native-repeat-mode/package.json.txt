@@ -1,0 +1,10 @@
+{
+  "name": "synthetic-audio-panel",
+  "private": true,
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.73.6",
+    "expo": "~50.0.14",
+    "react-native-track-player": "^4.1.1"
+  }
+}

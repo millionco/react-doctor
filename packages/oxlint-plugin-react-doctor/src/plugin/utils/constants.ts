@@ -343,3 +343,78 @@ export const NATIVE_SELF_BLUR_REFUSED_RUNTIME_TYPESCRIPT_NODES = new Set([
   "TSParameterProperty",
   "TSExportAssignment",
 ]);
+
+export const TRACK_PLAYER_REPEAT_MODULE_SOURCE = "react-native-track-player";
+export const TRACK_PLAYER_REPEAT_METHOD_NAME = "getRepeatMode";
+export const TRACK_PLAYER_REPEAT_SUPPORTED_VERSION = "4.1.1";
+export const TRACK_PLAYER_REPEAT_DECLARED_VERSION_PATTERN = /^[~^]?4\.1\.1$/u;
+export const TRACK_PLAYER_REPEAT_SINGLE_COUNT = 1;
+export const TRACK_PLAYER_REPEAT_EMPTY_COUNT = 0;
+export const TRACK_PLAYER_REPEAT_FIRST_INDEX = 0;
+export const TRACK_PLAYER_REPEAT_SECOND_INDEX = 1;
+export const TRACK_PLAYER_REPEAT_BABEL_STATEMENT_COUNT = 2;
+export const TRACK_PLAYER_REPEAT_REFUSED_MANIFEST_FIELDS = [
+  "overrides",
+  "resolutions",
+  "pnpm",
+  "browser",
+  "imports",
+  "babel",
+  "react-native",
+];
+export const TRACK_PLAYER_REPEAT_CONFIG_NAMES = [
+  "metro.config.js",
+  "metro.config.cjs",
+  "metro.config.mjs",
+  "metro.config.ts",
+  "webpack.config.js",
+  "webpack.config.cjs",
+  "webpack.config.mjs",
+  ".babelrc.json5",
+  "babel.config.json5",
+];
+export const TRACK_PLAYER_REPEAT_GLOBAL_CAPABILITIES = new Set([
+  "NativeModules",
+  "TurboModuleRegistry",
+  "global",
+  "globalThis",
+  "window",
+  "self",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "Function",
+  "eval",
+  "require",
+  "process",
+  "__turboModuleProxy",
+  "nativeModuleProxy",
+]);
+export const TRACK_PLAYER_REPEAT_NO_WILDCARD_INDEX = -1;
+export const TRACK_PLAYER_REPEAT_INSTALLED_REFUSED_FIELDS = [
+  "exports",
+  "browser",
+  "imports",
+  "module",
+  "overrides",
+  "resolutions",
+  "pnpm",
+  "babel",
+];
+export const TRACK_PLAYER_REPEAT_COMPILER_PROVIDER_SOURCES = [
+  "babel-preset-expo",
+  "expo",
+  "expo/tsconfig.base",
+];
+export const TRACK_PLAYER_REPEAT_SUPPORTED_SCRIPT_RECIPES: Readonly<
+  Record<string, ReadonlySet<string>>
+> = {
+  android: new Set(["expo run:android", "react-native run-android"]),
+  ios: new Set(["expo run:ios", "react-native run-ios"]),
+  start: new Set(["expo start", "expo start --android", "expo start --ios", "react-native start"]),
+  lint: new Set(["eslint ."]),
+  typecheck: new Set(["tsc --noEmit"]),
+  test: new Set(["vitest", "vitest run"]),
+  format: new Set(["prettier --write ."]),
+  "format:check": new Set(["prettier --check ."]),
+};

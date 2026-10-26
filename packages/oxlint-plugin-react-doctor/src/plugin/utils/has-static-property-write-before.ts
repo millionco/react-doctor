@@ -313,7 +313,10 @@ const symbolHasStaticPropertyWriteBefore = (
       return false;
     }
     if (writeBoundary === referenceBoundary) {
-      return writeTarget.range[0] < getExecutionReferenceOffset(referenceNode);
+      return Boolean(
+        writeTarget.parent &&
+        writeTarget.parent.range[1] <= getExecutionReferenceOffset(referenceNode),
+      );
     }
     return (
       isFunctionLike(writeBoundary) &&

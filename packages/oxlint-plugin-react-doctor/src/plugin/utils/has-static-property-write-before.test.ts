@@ -205,6 +205,51 @@ interface DefinitePropertyWriteCase {
 }
 const definiteCases: ReadonlyArray<DefinitePropertyWriteCase> = [
   {
+    name: "direct assignment RHS",
+    statement: "Namespace.read=Namespace.read();",
+    expected: false,
+  },
+  {
+    name: "compound assignment RHS",
+    statement: "Namespace.read+=Namespace.read();",
+    expected: false,
+  },
+  {
+    name: "assignment RHS sequence",
+    statement: "Namespace.read=(Namespace.read(),replacement);",
+    expected: false,
+  },
+  {
+    name: "assignment RHS argument",
+    statement: "Namespace.read=consume(Namespace.read());",
+    expected: false,
+  },
+  {
+    name: "awaited assignment RHS",
+    statement: "async function run(){Namespace.read=await Namespace.read();}",
+    expected: false,
+  },
+  {
+    name: "read following completed write in sequence",
+    statement: "consume((Namespace.read=replacement),Namespace.read());",
+    expected: true,
+  },
+  {
+    name: "read inside assigned deferred function",
+    statement: "Namespace.read=()=>Namespace.read();",
+    expected: false,
+  },
+  {
+    name: "prior direct update",
+    statement: "Namespace.read++;Namespace.read();",
+    expected: true,
+  },
+  {
+    name: "prior direct delete",
+    statement: "delete Namespace.read;Namespace.read();",
+    expected: true,
+  },
+  {
     name: "outer-wrapped assignment RHS",
     statement: "((Namespace as any).read as any)=Namespace.read();",
     expected: false,

@@ -10,6 +10,7 @@ import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOnUnconditionalPath } from "./is-node-on-unconditional-path.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isMemberMutationTarget } from "./is-member-mutation-target.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { resolvePossibleLocalFunctions } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -255,18 +256,6 @@ const isFunctionSynchronouslyInvokedBefore = (
     synchronousNode,
   ).length > 0;
 
-const isMemberWriteTarget = (memberExpression: EsTreeNode): boolean => {
-  const parent = memberExpression.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "AssignmentExpression")) return parent.left === memberExpression;
-  if (isNodeOfType(parent, "UpdateExpression")) return parent.argument === memberExpression;
-  return (
-    isNodeOfType(parent, "UnaryExpression") &&
-    parent.operator === "delete" &&
-    parent.argument === memberExpression
-  );
-};
-
 const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
   let parent = identifier.parent;
   while (parent && stripParenExpression(parent) === identifier) {
@@ -276,22 +265,29 @@ const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
     !parent ||
     !isNodeOfType(parent, "MemberExpression") ||
     stripParenExpression(parent.object) !== identifier ||
-    !isMemberWriteTarget(parent)
+    !isMemberMutationTarget(parent)
   ) {
     return null;
   }
   return parent;
 };
 
-const getStaticPropertyWriteTarget = (
+const getDirectStaticPropertyWriteTarget = (
   identifier: EsTreeNode,
   propertyName: string,
   scopes: ScopeAnalysis,
 ): EsTreeNode | null => {
   const writeTarget = getMemberWriteTarget(identifier);
-  return writeTarget && getResolvedStaticPropertyName(writeTarget, scopes) === propertyName
-    ? writeTarget
-    : null;
+  if (
+    !writeTarget ||
+    !(
+      isNodeOfType(writeTarget.parent, "AssignmentExpression") ||
+      isNodeOfType(writeTarget.parent, "UpdateExpression") ||
+      isNodeOfType(writeTarget.parent, "UnaryExpression")
+    )
+  )
+    return null;
+  return getResolvedStaticPropertyName(writeTarget, scopes) === propertyName ? writeTarget : null;
 };
 
 const symbolHasStaticPropertyWriteBefore = (
@@ -301,7 +297,11 @@ const symbolHasStaticPropertyWriteBefore = (
   scopes: ScopeAnalysis,
 ): boolean =>
   symbol.references.some((reference) => {
-    const writeTarget = getStaticPropertyWriteTarget(reference.identifier, propertyName, scopes);
+    const writeTarget = getDirectStaticPropertyWriteTarget(
+      reference.identifier,
+      propertyName,
+      scopes,
+    );
     if (!writeTarget) return false;
     const writeBoundary = findExecutionBoundary(writeTarget);
     const referenceBoundary = findExecutionBoundary(referenceNode);
@@ -328,7 +328,7 @@ const isStableStaticPropertyReference = (identifier: EsTreeNode): boolean => {
   return Boolean(
     memberExpression &&
     isNodeOfType(memberExpression, "MemberExpression") &&
-    stripParenExpression(memberExpression.object) === identifierRoot,
+    memberExpression.object === identifierRoot,
   );
 };
 
@@ -339,7 +339,7 @@ const isNonMutatingStaticPropertyReference = (identifier: EsTreeNode): boolean =
   if (
     !memberExpression ||
     !isNodeOfType(memberExpression, "MemberExpression") ||
-    stripParenExpression(memberExpression.object) !== identifierRoot
+    memberExpression.object !== identifierRoot
   ) {
     return false;
   }

@@ -6,6 +6,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { hasJsxProp } from "../../utils/has-jsx-prop.js";
 import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNativeButtonSelfBlurHandler } from "../../utils/is-native-button-self-blur-handler.js";
 
 const buildMissingFocusMessage = (handler: string): string =>
   `Keyboard users miss this \`${handler}\` because it only fires with a mouse, so add an \`onFocus\` handler too.`;
@@ -81,6 +82,12 @@ export const mouseEventsHaveKeyEvents = defineRule({
           if (!handlerAttribute) continue;
           if (!handlerAttribute.value) continue;
           if (isExplicitUndefinedExpression(handlerAttribute.value as EsTreeNode)) continue;
+          if (
+            handler === "onMouseOut" &&
+            isNativeButtonSelfBlurHandler(node, handlerAttribute, context)
+          ) {
+            continue;
+          }
           const blurAttribute = hasJsxProp(node.attributes, "onBlur");
           if (!blurAttribute) {
             context.report({ node: handlerAttribute, message: buildMissingBlurMessage(handler) });

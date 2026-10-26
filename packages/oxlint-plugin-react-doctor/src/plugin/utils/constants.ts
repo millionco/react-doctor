@@ -283,3 +283,63 @@ export const COMBOBOX_WINDOW_VALUE_NAMES: ReadonlySet<string> = new Set([
   "innerWidth",
   "innerHeight",
 ]);
+
+export const NATIVE_SELF_BLUR_SINGLE_PARAMETER_COUNT = 1;
+export const NATIVE_SELF_BLUR_ARGUMENT_COUNT = 0;
+export const NATIVE_SELF_BLUR_REFUSED_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "ref",
+  "is",
+  "as",
+  "asChild",
+]);
+export const NATIVE_SELF_BLUR_REFUSED_RUNTIME_NAMES: ReadonlySet<string> = new Set([
+  "window",
+  "Window",
+  "self",
+  "globalThis",
+  "global",
+  "document",
+  "Document",
+  "HTMLDocument",
+  "HTMLElement",
+  "HTMLButtonElement",
+  "Element",
+  "Node",
+  "EventTarget",
+  "Event",
+  "MouseEvent",
+  "FocusEvent",
+  "PointerEvent",
+  "ShadowRoot",
+  "Object",
+  "Reflect",
+  "Function",
+  "eval",
+  "Proxy",
+  "React",
+  "parent",
+  "top",
+  "frames",
+  "opener",
+  "importScripts",
+]);
+export const NATIVE_SELF_BLUR_REFUSED_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  ...OBJECT_PROTOTYPE_PROPERTY_NAMES,
+  "prototype",
+  "call",
+  "apply",
+  "bind",
+]);
+export const NATIVE_SELF_BLUR_REFUSED_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "vm",
+  "node:vm",
+  "module",
+  "node:module",
+]);
+
+export const NATIVE_SELF_BLUR_TIMER_NAMES = new Set(["setTimeout", "setInterval"]);
+export const NATIVE_SELF_BLUR_REFUSED_RUNTIME_TYPESCRIPT_NODES = new Set([
+  "TSEnumDeclaration",
+  "TSParameterProperty",
+  "TSExportAssignment",
+]);

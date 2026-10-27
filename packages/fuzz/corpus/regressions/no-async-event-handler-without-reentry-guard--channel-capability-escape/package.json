@@ -1,0 +1,10 @@
+{
+  "name": "synthetic-channel-project",
+  "private": true,
+  "dependencies": {
+    "react": "17.0.2",
+    "react-dom": "17.0.2",
+    "stream-chat": "4.1.0",
+    "stream-chat-react": "6.5.1"
+  }
+}

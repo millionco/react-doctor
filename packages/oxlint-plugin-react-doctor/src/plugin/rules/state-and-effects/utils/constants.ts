@@ -834,3 +834,75 @@ export const OWN_HOOK_UNSUPPORTED_PREAWAIT_NODES: ReadonlySet<string> = new Set(
   "ForInStatement",
   "ForOfStatement",
 ]);
+
+export const STREAM_CHANNEL_PACKAGE_VERSIONS: Readonly<Record<string, string>> = {
+  "stream-chat": "4.1.0",
+  "stream-chat-react": "6.5.1",
+};
+export const STREAM_CHANNEL_ARCHIVE_URLS: Readonly<Record<string, string>> = {
+  "stream-chat": "https://registry.npmjs.org/stream-chat/-/stream-chat-4.1.0.tgz",
+  "stream-chat-react": "https://registry.npmjs.org/stream-chat-react/-/stream-chat-react-6.5.1.tgz",
+};
+export const STREAM_CHANNEL_ARCHIVE_INTEGRITIES: Readonly<Record<string, string>> = {
+  "stream-chat":
+    "sha512-zvl/4e8kJTOEi3BJjTTnxwEVh4Rv8tQtZqf0J4L1pZPsWjkzQ/QP39gEAqVfulhXrDWzGe4xVfaiJBmMGRGHlw==",
+  "stream-chat-react":
+    "sha512-76R4S2zdroRGkV0438pYQZXEIP22cIirHUIa9bI/9ulMoCyodHGphjWCyt7pr37Qqc4TGX1ooUwfeW7QmogNqw==",
+};
+export const STREAM_CHANNEL_PROVIDER_SOURCES = [
+  "stream-chat",
+  "stream-chat-react",
+  "stream-chat-react/dist/css/index.css",
+];
+export const STREAM_CHANNEL_MUTATION_METHODS: ReadonlySet<string> = new Set([
+  "update",
+  "addMembers",
+]);
+export const STREAM_CHANNEL_MUTATION_ARGUMENT_LIMIT: Readonly<Record<string, number>> = {
+  update: 3,
+  addMembers: 2,
+};
+export const STREAM_CHANNEL_ALLOWED_API_NAMES: ReadonlySet<string> = new Set([
+  "StreamChat",
+  "Chat",
+  "Channel",
+  "ChannelList",
+  "Avatar",
+  "MessageTeam",
+  "MessageList",
+  "MessageInput",
+  "Thread",
+  "Window",
+  "useChatContext",
+  "useChannelStateContext",
+  "useChannelActionContext",
+  "useMessageContext",
+]);
+export const STREAM_CHANNEL_SCALAR_PROPERTIES: ReadonlySet<string> = new Set([
+  "data",
+  "id",
+  "cid",
+  "type",
+  "state",
+  "user",
+  "userID",
+  "getConfig",
+  "countUnread",
+  "watch",
+  "queryUsers",
+  "connectUser",
+  "queryChannels",
+  "channel",
+]);
+
+export const STREAM_CHANNEL_LOCK_VERSION = 1;
+export const STREAM_CHANNEL_CHANNEL_LIST_PROP_NAMES: ReadonlySet<string> = new Set([
+  "filters",
+  "sort",
+  "options",
+  "channelRenderFilterFn",
+  "List",
+  "Preview",
+  "watchers",
+  "setActiveChannelOnMount",
+]);

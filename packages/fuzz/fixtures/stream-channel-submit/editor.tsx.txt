@@ -1,0 +1,18 @@
+import { useState } from "react";
+import { useChatContext } from "stream-chat-react";
+
+export const Editor = () => {
+  const { channel } = useChatContext();
+  const selected = channel;
+  const [label, setLabel] = useState("");
+  const save = async () => {
+    await selected.update({ name: label });
+    setLabel("");
+  };
+  return (
+    <div>
+      <input value={label} onChange={event => setLabel(event.target.value)} />
+      <button type="button" onClick={save}>Update</button>
+    </div>
+  );
+};

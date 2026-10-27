@@ -26,6 +26,11 @@ import { resolveWebpackAliasPath } from "../../../utils/resolve-webpack-alias-pa
 import { isTsconfigObjectRecord } from "../../../utils/resolve-tsconfig-alias.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import {
+  STREAM_CHANNEL_LOCK_VERSION,
+  STREAM_CHANNEL_PACKAGE_VERSIONS,
+  STREAM_CHANNEL_ARCHIVE_URLS,
+  STREAM_CHANNEL_ARCHIVE_INTEGRITIES,
+  STREAM_CHANNEL_PROVIDER_SOURCES,
   CANONICAL_CONTROL_PAIR_COUNT,
   CANONICAL_CONTROL_LOCK_VERSIONS,
   CANONICAL_CONTROL_SCRIPT_RECIPES,
@@ -43,7 +48,7 @@ import {
 
 interface CanonicalControlPackageProfileInput {
   readonly filename: string;
-  readonly packageName: "firebase" | "styled-components";
+  readonly packageName: "firebase" | "styled-components" | "stream-chat" | "stream-chat-react";
 }
 
 const readOwnJson = (filename: string): Record<string, unknown> | null => {
@@ -58,7 +63,10 @@ const readOwnJson = (filename: string): Record<string, unknown> | null => {
   return isTsconfigObjectRecord(value) && !Array.isArray(value) ? value : null;
 };
 
-const hasPlainCracoAliases = (filename: string): boolean => {
+const hasPlainCracoAliases = (
+  filename: string,
+  providerSources: ReadonlyArray<string> = CANONICAL_CONTROL_PROVIDER_SOURCES,
+): boolean => {
   const program = parseSourceFile(filename);
   if (
     !isNodeOfType(program, "Program") ||
@@ -153,7 +161,7 @@ const hasPlainCracoAliases = (filename: string): boolean => {
   for (const [name, value] of aliases) {
     if (
       /[$*]/u.test(name) ||
-      CANONICAL_CONTROL_PROVIDER_SOURCES.some(
+      providerSources.some(
         (source) =>
           source === name || source.startsWith(name + "/") || name.startsWith(source + "/"),
       ) ||
@@ -229,7 +237,43 @@ export const hasCanonicalControlPackageProfile = ({
     if (typeof declaration !== "string") return false;
     const resolution = resolvePackageVersion(filename, packageName);
     if (!resolution || resolution.version.isPrerelease) return false;
-    if (packageName === "styled-components") {
+    if (Object.hasOwn(STREAM_CHANNEL_PACKAGE_VERSIONS, packageName)) {
+      const expected = parsePackageVersion(STREAM_CHANNEL_PACKAGE_VERSIONS[packageName]);
+      const allowedDeclarations = new Set([
+        STREAM_CHANNEL_PACKAGE_VERSIONS[packageName],
+        "^" + STREAM_CHANNEL_PACKAGE_VERSIONS[packageName],
+        "~" + STREAM_CHANNEL_PACKAGE_VERSIONS[packageName],
+      ]);
+      if (
+        !expected ||
+        !allowedDeclarations.has(declaration) ||
+        comparePackageVersions(resolution.version, expected) !== 0
+      )
+        return false;
+      if (
+        resolution.declaredRange !== null &&
+        declaration !== STREAM_CHANNEL_PACKAGE_VERSIONS[packageName]
+      ) {
+        const lock = readOwnJson(path.join(root, "package-lock.json"));
+        if (
+          !lock ||
+          lock.lockfileVersion !== STREAM_CHANNEL_LOCK_VERSION ||
+          lock.name !== manifest.name ||
+          lock.version !== manifest.version ||
+          !isTsconfigObjectRecord(lock.dependencies)
+        )
+          return false;
+        const selected = lock.dependencies[packageName];
+        if (
+          !isTsconfigObjectRecord(selected) ||
+          selected.version !== STREAM_CHANNEL_PACKAGE_VERSIONS[packageName] ||
+          selected.resolved !== STREAM_CHANNEL_ARCHIVE_URLS[packageName] ||
+          selected.integrity !== STREAM_CHANNEL_ARCHIVE_INTEGRITIES[packageName] ||
+          Object.hasOwn(selected, "link")
+        )
+          return false;
+      }
+    } else if (packageName === "styled-components") {
       if (
         !/^[~^]?5(?:\.\d+){0,2}$/u.test(declaration) ||
         resolution.version.major !== CANONICAL_CONTROL_STYLED_MAJOR
@@ -285,7 +329,9 @@ export const hasCanonicalControlPackageProfile = ({
           return false;
       }
     }
-    for (const source of CANONICAL_CONTROL_PROVIDER_SOURCES)
+    for (const source of Object.hasOwn(STREAM_CHANNEL_PACKAGE_VERSIONS, packageName)
+      ? [...CANONICAL_CONTROL_PROVIDER_SOURCES, ...STREAM_CHANNEL_PROVIDER_SOURCES]
+      : CANONICAL_CONTROL_PROVIDER_SOURCES)
       if (
         resolveWebpackAliasPath(filename, source)?.declared ||
         resolveModulePath(filename, source)
@@ -307,7 +353,12 @@ export const hasCanonicalControlPackageProfile = ({
       fs.lstatSync(craco, { throwIfNoEntry: false }) &&
       (!fs.lstatSync(craco).isFile() ||
         fs.realpathSync(craco) !== craco ||
-        !hasPlainCracoAliases(craco))
+        !hasPlainCracoAliases(
+          craco,
+          Object.hasOwn(STREAM_CHANNEL_PACKAGE_VERSIONS, packageName)
+            ? [...CANONICAL_CONTROL_PROVIDER_SOURCES, ...STREAM_CHANNEL_PROVIDER_SOURCES]
+            : CANONICAL_CONTROL_PROVIDER_SOURCES,
+        ))
     )
       return false;
     return true;

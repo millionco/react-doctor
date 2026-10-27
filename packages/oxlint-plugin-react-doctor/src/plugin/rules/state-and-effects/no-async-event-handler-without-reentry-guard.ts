@@ -1,3 +1,4 @@
+import { isCanonicalStreamChannelMutationCall } from "./utils/is-canonical-stream-channel-mutation-call.js";
 import { getPublishedOwnHookAsyncHandlers } from "./utils/get-published-own-hook-async-handlers.js";
 import { isCanonicalFirebasePasswordSignInCall } from "./utils/is-canonical-firebase-password-sign-in-call.js";
 import { resolveImportedNativeControlEventProp } from "./utils/resolve-imported-native-control-event-prop.js";
@@ -110,6 +111,7 @@ const awaitedExpressionIsMutatingNetworkOp = (
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   if (isMutatingFetchCall(stripped, context)) return !targetsNonMutatingEndpoint(stripped);
   if (isCanonicalFirebasePasswordSignInCall({ expression: stripped, context })) return true;
+  if (isCanonicalStreamChannelMutationCall({ expression: stripped, context })) return true;
   const callee = stripped.callee;
   if (isNodeOfType(callee, "MemberExpression")) {
     const methodName = getStaticPropertyName(callee);

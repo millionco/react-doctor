@@ -1,3 +1,4 @@
+import { getPublishedOwnHookAsyncHandlers } from "./utils/get-published-own-hook-async-handlers.js";
 import { isCanonicalFirebasePasswordSignInCall } from "./utils/is-canonical-firebase-password-sign-in-call.js";
 import { resolveImportedNativeControlEventProp } from "./utils/resolve-imported-native-control-event-prop.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -420,17 +421,24 @@ const analyzeHandlerStatements = (
   return { states, unsafeAwait: null };
 };
 
-const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
-  if (!isFunctionLike(functionNode)) return;
-  if (!(functionNode as { async?: boolean }).async) return;
-  if (!isNodeOfType(functionNode.body, "BlockStatement")) return;
+const getUnsafeAsyncHandlerAwait = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+): EsTreeNode | null => {
+  if (!isFunctionLike(functionNode)) return null;
+  if (!functionNode.async) return null;
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) return null;
 
-  const analysis = analyzeHandlerStatements(
-    functionNode.body.body as EsTreeNode[],
+  return analyzeHandlerStatements(
+    functionNode.body.body,
     [{ hasReentryGuard: false, mutatingAwait: null }],
     context,
-  );
-  if (analysis.unsafeAwait) context.report({ node: analysis.unsafeAwait, message: MESSAGE });
+  ).unsafeAwait;
+};
+
+const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
+  const unsafeAwait = getUnsafeAsyncHandlerAwait(context, functionNode);
+  if (unsafeAwait) context.report({ node: unsafeAwait, message: MESSAGE });
 };
 
 export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
@@ -442,6 +450,16 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
   create: (context: RuleContext) => {
     const analyzedFunctions = new WeakSet<EsTreeNode>();
     return {
+      "Program:exit"() {
+        for (const handler of getPublishedOwnHookAsyncHandlers({
+          context,
+          getUnsafeAwait: (handler) => getUnsafeAsyncHandlerAwait(context, handler),
+        })) {
+          if (analyzedFunctions.has(handler)) continue;
+          analyzedFunctions.add(handler);
+          analyzeAsyncHandler(context, handler);
+        }
+      },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         if (!REENTRY_GUARDED_EVENT_HANDLER_NAMES.has(node.name.name)) return;

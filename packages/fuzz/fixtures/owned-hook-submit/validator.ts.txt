@@ -1,0 +1,18 @@
+interface Fields {
+  address: string;
+  message: string;
+  ready: boolean;
+}
+
+interface Issues {
+  address?: string;
+  message?: string;
+}
+
+export default (fields: Fields) => {
+  const issues: Issues = {};
+  if (!fields.address) issues.address = "Required";
+  else if (!/\S+@\S+\.\S+/.test(fields.address)) issues.address = "Invalid address";
+  if (!fields.message) issues.message = "Required";
+  return issues;
+};

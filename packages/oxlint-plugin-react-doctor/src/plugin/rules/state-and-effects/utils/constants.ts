@@ -777,3 +777,60 @@ export const CANONICAL_CONTROL_REFUSED_GLOBAL_NAMES: ReadonlySet<string> = new S
   "window",
   "global",
 ]);
+
+export const OWN_HOOK_SINGLE_COUNT = 1;
+export const OWN_HOOK_FIRST_INDEX = 0;
+export const OWN_HOOK_EVENT_NAMES: ReadonlySet<string> = new Set(["onSubmit", "onClick"]);
+export const OWN_HOOK_GUARD_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "disabled",
+  "loading",
+  "isLoading",
+  "pending",
+  "busy",
+  "submitting",
+  "aria-disabled",
+  "onSubmitCapture",
+  "onClickCapture",
+  "onKeyDownCapture",
+]);
+export const OWN_HOOK_DATA_OBJECT_METHODS: ReadonlySet<string> = new Set([
+  "keys",
+  "values",
+  "entries",
+]);
+export const OWN_HOOK_PROVIDER_CAPABILITIES: ReadonlySet<string> = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "defaultProps",
+  "attrs",
+  "withConfig",
+]);
+export const OWN_HOOK_REACT_API_NAMES: ReadonlySet<string> = new Set([
+  "useState",
+  "useReducer",
+  "useRef",
+]);
+export const OWN_HOOK_RUNTIME_TS_NODES: ReadonlySet<string> = new Set([
+  "TSParameterProperty",
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);
+export const OWN_HOOK_STATE_API_NAMES: ReadonlySet<string> = new Set(["useState", "useReducer"]);
+export const OWN_HOOK_UNSUPPORTED_PREAWAIT_NODES: ReadonlySet<string> = new Set([
+  "AssignmentExpression",
+  "UpdateExpression",
+  "NewExpression",
+  "TaggedTemplateExpression",
+  "YieldExpression",
+  "LogicalExpression",
+  "ConditionalExpression",
+  "SwitchStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+]);

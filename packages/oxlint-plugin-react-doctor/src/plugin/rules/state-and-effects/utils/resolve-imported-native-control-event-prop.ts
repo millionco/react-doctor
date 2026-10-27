@@ -66,7 +66,7 @@ const resolveControlValueExport = (
 
 interface ResolveImportedNativeControlEventPropInput {
   readonly attribute: EsTreeNodeOfType<"JSXAttribute">;
-  readonly context: RuleContext;
+  readonly context: Pick<RuleContext, "filename" | "scopes">;
 }
 
 interface NativeControlProp {

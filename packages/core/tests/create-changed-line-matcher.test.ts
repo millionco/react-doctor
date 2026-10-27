@@ -454,6 +454,55 @@ describe("called listener helper ownership", () => {
   });
 });
 
+describe("two-level listener helper ownership", () => {
+  it("keeps both helpers and the effect while excluding the sibling", () => {
+    const source = [
+      'import { useEffect } from "react";',
+      "const attach = () => {",
+      '  document.addEventListener("pointermove", () => {});',
+      "};",
+      "const prepare = () => {",
+      "  attach();",
+      "};",
+      'const unrelated = () => "ready";',
+      "export const Panel = () => {",
+      "  useEffect(() => {",
+      "    prepare();",
+      '    return () => { console.info("finished"); };',
+      "  }, []);",
+      "  return null;",
+      "};",
+    ].join("\n");
+    const reportedDescriptors: ReportDescriptor[] = [];
+    const result = runRule(
+      {
+        ...effectNeedsCleanup,
+        create: (context) =>
+          effectNeedsCleanup.create({
+            ...context,
+            report: (descriptor) => reportedDescriptors.push(descriptor),
+          }),
+      },
+      source,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(reportedDescriptors).toHaveLength(1);
+    const contextRanges = reportedDescriptors
+      .flatMap((descriptor) => descriptor.contextNodes ?? [])
+      .map((node) => ({ offset: node.range[0], length: node.range[1] - node.range[0] }));
+    expect(contextRanges).toHaveLength(4);
+    const input = { source, anchor: "useEffect(()", rule: "effect-needs-cleanup", contextRanges };
+    for (const anchor of ["document.addEventListener", "  attach();", "    prepare();"]) {
+      const ownerLine = source.slice(0, source.indexOf(anchor)).split("\n").length;
+      expect(match({ ...input, ranges: [[ownerLine, ownerLine]] })).toBe(true);
+      expect(match({ ...input, deletionLines: [ownerLine] })).toBe(true);
+    }
+    const siblingLine = source.slice(0, source.indexOf("const unrelated")).split("\n").length;
+    expect(match({ ...input, ranges: [[siblingLine, siblingLine]] })).toBe(false);
+    expect(match({ ...input, deletionLines: [siblingLine] })).toBe(false);
+  });
+});
+
 describe("eager dependency ownership", () => {
   it("uses actual call and declaration owners without including the intervening sibling", () => {
     const source = [

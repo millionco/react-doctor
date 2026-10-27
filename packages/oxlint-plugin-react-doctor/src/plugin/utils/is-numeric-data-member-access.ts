@@ -1,3 +1,4 @@
+import { isNumericResultExpression } from "./is-numeric-result-expression.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
@@ -148,13 +149,7 @@ export const isNumericDataMemberAccess = (member: EsTreeNode, scopes: ScopeAnaly
     evaluationPosition = expression.range[0],
   ): boolean => {
     const candidate = stripParenExpression(expression);
-    if (isNodeOfType(candidate, "Literal")) return typeof candidate.value === "number";
-    if (isNodeOfType(candidate, "UnaryExpression"))
-      return candidate.operator === "+" || candidate.operator === "-" || candidate.operator === "~";
-    if (isNodeOfType(candidate, "BinaryExpression"))
-      return ["-", "*", "/", "%", "**", "<<", ">>", ">>>", "&", "|", "^"].includes(
-        candidate.operator,
-      );
+    if (isNumericResultExpression(candidate)) return true;
     if (isNodeOfType(candidate, "CallExpression")) {
       if (
         candidate.optional ||

@@ -176,6 +176,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "nextjs-no-img-element",
       "nextjs-no-use-search-params-without-suspense",
       "no-adjust-state-on-prop-change",
+      "no-async-event-handler-without-reentry-guard",
       "no-barrel-import",
       "no-create-object-url-without-revoke",
       "no-create-ref-in-function-component",

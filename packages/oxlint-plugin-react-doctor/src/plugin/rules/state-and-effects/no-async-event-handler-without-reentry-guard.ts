@@ -1,3 +1,4 @@
+import { resolveImportedNativeControlEventProp } from "./utils/resolve-imported-native-control-event-prop.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
@@ -446,14 +447,17 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         if (
           !openingElement ||
           !isNodeOfType(openingElement, "JSXOpeningElement") ||
-          !isNodeOfType(openingElement.name, "JSXIdentifier") ||
-          !/^[a-z]/.test(openingElement.name.name)
+          !isNodeOfType(openingElement.name, "JSXIdentifier")
         ) {
           return;
         }
         const value = node.value;
         if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return;
-        const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode, context);
+        const handlerExpression = /^[a-z]/.test(openingElement.name.name)
+          ? value.expression
+          : resolveImportedNativeControlEventProp({ attribute: node, context });
+        if (!handlerExpression) return;
+        const handlerFunction = resolveHandlerFunction(handlerExpression, context);
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
         analyzeAsyncHandler(context, handlerFunction);

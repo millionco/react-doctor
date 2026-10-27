@@ -878,6 +878,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "no-async-event-handler-without-reentry-guard",
   "iframe-missing-sandbox",
   "no-effect-chain",
   "no-unescaped-dynamic-string-in-regexp",

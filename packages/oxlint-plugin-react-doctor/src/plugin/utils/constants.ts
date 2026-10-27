@@ -418,3 +418,22 @@ export const TRACK_PLAYER_REPEAT_SUPPORTED_SCRIPT_RECIPES: Readonly<
   format: new Set(["prettier --write ."]),
   "format:check": new Set(["prettier --check ."]),
 };
+
+export const REFERENCED_VITE_CONFIG_FILENAMES: readonly string[] = [
+  "vite.config.js",
+  "vite.config.mjs",
+  "vite.config.ts",
+  "vite.config.cjs",
+  "vite.config.mts",
+  "vite.config.cts",
+];
+export const REFERENCED_VITE_SINGLE_COUNT = 1;
+export const REFERENCED_VITE_RESOLVE_ARGUMENT_COUNT = 2;
+export const REFERENCED_VITE_WEBPACK_CONFIG_FILENAMES: readonly string[] = [
+  "webpack.config.js",
+  "webpack.config.cjs",
+  "webpack.config.mjs",
+  "webpack.config.ts",
+  "webpack.config.cts",
+  "webpack.config.mts",
+];

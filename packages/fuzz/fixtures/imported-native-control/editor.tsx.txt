@@ -1,0 +1,11 @@
+import { useState } from "react";
+import { ActionControl } from "./action-control";
+
+export const Editor = () => {
+  const [, setSaved] = useState(false);
+  const save = async () => {
+    await fetch("/entries", { method: "POST" });
+    setSaved(true);
+  };
+  return <ActionControl onClick={save}>Save</ActionControl>;
+};

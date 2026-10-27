@@ -670,3 +670,24 @@ export const OWNED_INPUT_RESTORATION_DEPENDENCY_HOOK_NAMES: ReadonlySet<string> 
   ...EFFECT_HOOK_NAMES,
   "useCallback",
 ]);
+
+export const IMPORTED_NATIVE_CONTROL_POLYMORPHIC_PROP_NAMES: ReadonlySet<string> = new Set([
+  "as",
+  "asChild",
+  "is",
+  "forwardedAs",
+  "$as",
+  "innerRef",
+]);
+export const IMPORTED_NATIVE_CONTROL_REACT_API_NAMES: ReadonlySet<string> = new Set([
+  "forwardRef",
+  "createElement",
+  "useState",
+  "useReducer",
+  "useCallback",
+]);
+
+export const IMPORTED_NATIVE_CONTROL_SINGLE_COUNT = 1;
+export const IMPORTED_NATIVE_CONTROL_RENDER_PARAMETER_COUNT = 2;
+
+export const REFERENCED_TSCONFIG_SINGLE_COUNT = 1;

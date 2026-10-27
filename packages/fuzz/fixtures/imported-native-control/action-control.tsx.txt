@@ -1,0 +1,9 @@
+import { forwardRef } from "react";
+
+export const ActionControl = forwardRef(
+  ({ children, disabled, pending = false, ...nativeProps }, forwardedRef) => (
+    <button ref={forwardedRef} disabled={disabled || pending} {...nativeProps}>
+      {children}
+    </button>
+  ),
+);

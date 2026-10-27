@@ -12,6 +12,7 @@ import {
   BOUND_RESOURCE_RELEASE_METHOD_NAMES,
   EVENT_LISTENER_HANDLER_ARGUMENT_INDEX,
   EFFECT_HOOK_NAMES,
+  MEMO_TUPLE_ARGUMENT_COUNT,
   GLOBAL_RELEASE_METHOD_NAMES,
   UNARY_LISTENER_ARGUMENT_COUNT,
   UNARY_LISTENER_HANDLER_ARGUMENT_INDEX,
@@ -52,6 +53,7 @@ import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { getProvenDomEventTargetPrototypeOwnerNames } from "../../utils/is-proven-browser-api-receiver.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
+import { isProvenUnmodifiedReactApiCall } from "../../utils/is-proven-unmodified-react-api-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
@@ -1573,11 +1575,13 @@ const collectEffectOwnedResourceCallbackFunctions = (
 const findSubscribeLikeUsages = (
   callback: EsTreeNode,
   context: RuleContext,
+  allowFunctionDeclaration = false,
 ): SubscribeLikeUsage[] => {
   const usages: SubscribeLikeUsage[] = [];
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
-    !isNodeOfType(callback, "FunctionExpression")
+    !isNodeOfType(callback, "FunctionExpression") &&
+    !(allowFunctionDeclaration && isNodeOfType(callback, "FunctionDeclaration"))
   ) {
     return usages;
   }
@@ -1691,10 +1695,12 @@ const removeSynchronouslyReleasedUsages = (
   callback: EsTreeNode,
   usages: SubscribeLikeUsage[],
   context: RuleContext,
+  allowFunctionDeclaration = false,
 ): SubscribeLikeUsage[] => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
-    !isNodeOfType(callback, "FunctionExpression")
+    !isNodeOfType(callback, "FunctionExpression") &&
+    !(allowFunctionDeclaration && isNodeOfType(callback, "FunctionDeclaration"))
   ) {
     return usages;
   }
@@ -6669,10 +6675,12 @@ const effectHasCleanupForUsage = (
   usage: SubscribeLikeUsage,
   context: RuleContext,
   allUsages: ReadonlyArray<SubscribeLikeUsage> = [usage],
+  allowFunctionDeclaration = false,
 ): boolean => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
-    !isNodeOfType(callback, "FunctionExpression")
+    !isNodeOfType(callback, "FunctionExpression") &&
+    !(allowFunctionDeclaration && isNodeOfType(callback, "FunctionDeclaration"))
   ) {
     return false;
   }
@@ -6808,10 +6816,11 @@ const findFirstUsageWithoutCleanup = (
   callback: EsTreeNode,
   usages: ReadonlyArray<SubscribeLikeUsage>,
   context: RuleContext,
+  allowFunctionDeclaration = false,
 ): SubscribeLikeUsage | null => {
   for (const usage of usages) {
     if (
-      !effectHasCleanupForUsage(callback, usage, context, usages) &&
+      !effectHasCleanupForUsage(callback, usage, context, usages, allowFunctionDeclaration) &&
       !hasSplitLifecycleCleanup(callback, usage, context)
     ) {
       return usage;
@@ -11096,6 +11105,142 @@ const getEffectRetainedInvocations = (
   return invocationsByRetainedFunction.get(retainedFunction) ?? [];
 };
 
+const findEffectInvokedHelperLeak = (
+  callback: EsTreeNode,
+  context: RuleContext,
+): SubscribeLikeUsage | null => {
+  if (
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  )
+    return null;
+  const callbackCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+  let callbackReturnsValue = false;
+  walkInsideStatementBlocks(callback.body, (child) => {
+    if (isNodeOfType(child, "ReturnStatement") && child.argument) callbackReturnsValue = true;
+    if (isNodeOfType(child, "CallExpression")) callbackCalls.push(child);
+  });
+  if (callbackReturnsValue) return null;
+  for (const call of callbackCalls) {
+    if (
+      call.optional ||
+      !isNodeOfType(call.callee, "Identifier") ||
+      !isNodeOfType(call.parent, "ExpressionStatement") ||
+      call.arguments.some((argument) => isNodeOfType(argument, "SpreadElement")) ||
+      !isNodeReachableWithinFunction(call, context)
+    )
+      continue;
+    const symbol = context.scopes.symbolFor(call.callee);
+    const helper = resolveExactLocalFunction(call.callee, context.scopes);
+    if (
+      !symbol ||
+      !helper ||
+      !isFunctionLike(helper) ||
+      helper.async ||
+      helper.generator ||
+      !isNodeOfType(helper.body, "BlockStatement") ||
+      !helper.params.every((parameter) => isNodeOfType(parameter, "Identifier")) ||
+      !isAstDescendant(helper, context.scopes.rootScope.node) ||
+      isAstDescendant(helper, callback) ||
+      helper === callback ||
+      (symbol.declarationNode !== helper &&
+        !(
+          symbol.kind === "const" &&
+          symbol.initializer &&
+          stripParenExpression(symbol.initializer) === helper
+        )) ||
+      symbol.references.some(
+        (reference) =>
+          reference.flag !== "read" ||
+          isWithinAssignmentTarget(reference.identifier) ||
+          !isNodeOfType(reference.identifier.parent, "CallExpression") ||
+          reference.identifier.parent.callee !== reference.identifier,
+      )
+    )
+      continue;
+    let hasUnsupportedHelperFlow = false;
+    walkInsideStatementBlocks(helper.body, (child) => {
+      if (isNodeOfType(child, "ReturnStatement") && child.argument) hasUnsupportedHelperFlow = true;
+      if (
+        isNodeOfType(child, "CallExpression") &&
+        resolveExactLocalFunction(child.callee, context.scopes) !== null
+      )
+        hasUnsupportedHelperFlow = true;
+    });
+    if (hasUnsupportedHelperFlow) continue;
+    if (
+      isRetainedComponentScopeFunction(helper) &&
+      isPotentiallyReachableFunction(helper, context) &&
+      findRetainedFunctionLeak(helper, context, {
+        allowReturnedTimerEscape: false,
+        includeOneShotTimers: true,
+        isEffectInvoked: true,
+      })
+    )
+      continue;
+    const usages = removeSynchronouslyReleasedUsages(
+      helper,
+      findSubscribeLikeUsages(helper, context, true).filter((usage) => {
+        if (
+          usage.kind !== "subscribe" ||
+          usage.registrationVerbName !== "addEventListener" ||
+          findEnclosingFunction(usage.node) !== helper ||
+          !isNodeOfType(usage.node, "CallExpression") ||
+          usage.node.optional ||
+          !isNodeOfType(usage.node.callee, "MemberExpression") ||
+          usage.node.callee.computed ||
+          usage.node.callee.optional ||
+          !isNodeOfType(usage.node.callee.object, "Identifier") ||
+          (usage.node.callee.object.name !== "window" &&
+            usage.node.callee.object.name !== "document") ||
+          !context.scopes.isGlobalReference(usage.node.callee.object) ||
+          hasSelfReleasingListenerOptions(usage.node, context) ||
+          isLeakPathDisabledForInvocation(helper, usage.node, { call, isDirect: true }, context)
+        )
+          return false;
+        const callbackArgument = getSubscribeUsageCallbackArgument(usage);
+        const listenerValue = callbackArgument && resolveStableValue(callbackArgument, context);
+        if (
+          !isFunctionLike(listenerValue) &&
+          !(
+            isNodeOfType(listenerValue, "CallExpression") &&
+            listenerValue.arguments.length === MEMO_TUPLE_ARGUMENT_COUNT &&
+            isProvenUnmodifiedReactApiCall(listenerValue, "useCallback", context.scopes) &&
+            isFunctionLike(getEffectCallback(listenerValue))
+          )
+        )
+          return false;
+        let callerMayRelease = false;
+        for (const callbackCall of callbackCalls) {
+          if (
+            doesReleaseCallMatchUsage(callbackCall, usage, context) ||
+            (helper.params.length > 0 && getCalleeName(callbackCall) === "removeEventListener")
+          )
+            callerMayRelease = true;
+          const releaseHelper = resolveExactLocalFunction(callbackCall.callee, context.scopes);
+          if (!releaseHelper || releaseHelper === helper || !isFunctionLike(releaseHelper))
+            continue;
+          walkInsideStatementBlocks(releaseHelper.body, (releaseChild) => {
+            if (
+              doesReleaseCallMatchUsage(releaseChild, usage, context) ||
+              (helper.params.length > 0 && getCalleeName(releaseChild) === "removeEventListener")
+            )
+              callerMayRelease = true;
+          });
+        }
+        return !callerMayRelease;
+      }),
+      context,
+      true,
+    );
+    const leak = findFirstUsageWithoutCleanup(helper, usages, context, true);
+    if (leak) return leak;
+  }
+  return null;
+};
+
 export const effectNeedsCleanup = defineRule({
   id: "effect-needs-cleanup",
   title: "Effect subscription or timer never cleaned up",
@@ -11169,8 +11314,10 @@ export const effectNeedsCleanup = defineRule({
           findSubscribeLikeUsages(callback, context),
           context,
         );
-        const firstUsage =
+        const directUsage =
           usages.length > 0 ? findFirstUsageWithoutCleanup(callback, usages, context) : null;
+        const helperUsage = directUsage ? null : findEffectInvokedHelperLeak(callback, context);
+        const firstUsage = directUsage ?? helperUsage;
         const importedConnection = firstUsage
           ? null
           : findImportedConnectionMethodValueLeak(node, callback, context);
@@ -11182,6 +11329,9 @@ export const effectNeedsCleanup = defineRule({
         const hookName = getCalleeName(node) ?? "effect";
         context.report({
           node,
+          ...(helperUsage
+            ? { contextNodes: [node, findEnclosingFunction(helperUsage.node) ?? helperUsage.node] }
+            : {}),
           message: `\`${resourceName}\` creates a ${resourceNoun} in ${hookName} without guaranteed cleanup. Return a cleanup function that owns every allocation so it does not leak after unmount.`,
         });
       },

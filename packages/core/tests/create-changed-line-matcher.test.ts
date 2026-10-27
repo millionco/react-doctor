@@ -4,6 +4,9 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ChangedFileLineRanges, Diagnostic } from "../src/types/index.js";
 import { createChangedLineMatcher } from "../src/utils/create-changed-line-matcher.js";
+import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { effectNeedsCleanup } from "../../oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.js";
+import type { ReportDescriptor } from "../../oxlint-plugin-react-doctor/src/plugin/utils/report-descriptor.js";
 
 let directory: string;
 
@@ -398,5 +401,54 @@ describe("expanded shorthand coverage", () => {
     expect(match({ source: JSX_SOURCE, anchor: "button className", rule, ranges: [[9, 9]] })).toBe(
       false,
     );
+  });
+});
+
+describe("called listener helper ownership", () => {
+  it("uses actual rule owners for helper edits, sibling edits, and deletions", () => {
+    const source = [
+      'import { useEffect } from "react";',
+      "const listener = () => {};",
+      "const register = () => {",
+      '  window.addEventListener("resize", listener);',
+      "};",
+      'const unrelated = () => "ready";',
+      "export const Panel = () => {",
+      "  useEffect(() => { register(); }, []);",
+      "  return null;",
+      "};",
+    ].join("\n");
+    const reportedDescriptors: ReportDescriptor[] = [];
+    const result = runRule(
+      {
+        ...effectNeedsCleanup,
+        create: (context) =>
+          effectNeedsCleanup.create({
+            ...context,
+            report: (descriptor) => {
+              reportedDescriptors.push(descriptor);
+            },
+          }),
+      },
+      source,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(reportedDescriptors).toHaveLength(1);
+    const contextRanges = reportedDescriptors
+      .flatMap((descriptor) => descriptor.contextNodes ?? [])
+      .map((node) => ({
+        offset: node.range[0],
+        length: node.range[1] - node.range[0],
+      }));
+    expect(contextRanges).toHaveLength(2);
+    const helperLine = source
+      .slice(0, source.indexOf("window.addEventListener"))
+      .split("\n").length;
+    const siblingLine = source.slice(0, source.indexOf("const unrelated")).split("\n").length;
+    const input = { source, anchor: "useEffect(()", rule: "effect-needs-cleanup", contextRanges };
+    expect(match({ ...input, ranges: [[helperLine, helperLine]] })).toBe(true);
+    expect(match({ ...input, ranges: [[siblingLine, siblingLine]] })).toBe(false);
+    expect(match({ ...input, deletionLines: [helperLine] })).toBe(true);
+    expect(match({ ...input, ranges: [[helperLine, helperLine]], contextual: false })).toBe(false);
   });
 });

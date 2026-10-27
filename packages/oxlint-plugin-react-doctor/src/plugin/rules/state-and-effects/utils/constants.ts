@@ -691,3 +691,89 @@ export const IMPORTED_NATIVE_CONTROL_SINGLE_COUNT = 1;
 export const IMPORTED_NATIVE_CONTROL_RENDER_PARAMETER_COUNT = 2;
 
 export const REFERENCED_TSCONFIG_SINGLE_COUNT = 1;
+
+export const CANONICAL_CONTROL_PAIR_COUNT = 2;
+export const CANONICAL_CONTROL_CRACO_STATEMENT_COUNT = 3;
+export const CANONICAL_CONTROL_STYLED_MAJOR = 5;
+export const CANONICAL_CONTROL_REFUSED_MANIFEST_FIELDS = [
+  "browser",
+  "exports",
+  "imports",
+  "alias",
+  "resolutions",
+  "overrides",
+  "pnpm",
+  "_moduleAliases",
+  "babel",
+  "react-native",
+];
+export const CANONICAL_CONTROL_PROVIDER_SOURCES = [
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+  "styled-components",
+  "firebase",
+  "firebase/auth",
+  "@firebase/auth",
+];
+export const CANONICAL_CONTROL_REFUSED_CONFIG_FILENAMES = [
+  "webpack.config.js",
+  "webpack.config.cjs",
+  "webpack.config.mjs",
+  "webpack.config.ts",
+  "vite.config.js",
+  "vite.config.mjs",
+  "vite.config.ts",
+  "vite.config.cjs",
+  "vite.config.mts",
+  "vite.config.cts",
+  "craco.config.cjs",
+  "craco.config.ts",
+];
+export const FIREBASE_PASSWORD_SIGN_IN_VERSION = "9.0.1";
+export const FIREBASE_PASSWORD_SIGN_IN_DECLARATION_PATTERN = /^[~^]?9\.0\.1$/u;
+export const FIREBASE_PASSWORD_SIGN_IN_ARCHIVE_URL =
+  "https://registry.npmjs.org/firebase/-/firebase-9.0.1.tgz";
+export const FIREBASE_PASSWORD_SIGN_IN_ARCHIVE_INTEGRITY =
+  "sha512-RMpbXsVlxqMX+s/gYudnUZeSZXPiLCJMdaxbZ0WRiMjLuJc6ZkbpRy7yz7rZQpL0wRD6gN4K5C+JaKEQtN3jAQ==";
+export const FIREBASE_PASSWORD_SIGN_IN_ARGUMENT_COUNT = 3;
+export const FIREBASE_AUTH_ALLOWED_API_NAMES: ReadonlySet<string> = new Set([
+  "getAuth",
+  "signInWithEmailAndPassword",
+  "signInWithPopup",
+  "GoogleAuthProvider",
+  "onAuthStateChanged",
+]);
+export const FIREBASE_AUTH_INSTANCE_API_NAMES: ReadonlySet<string> = new Set([
+  "signInWithEmailAndPassword",
+  "signInWithPopup",
+  "onAuthStateChanged",
+]);
+export const FIREBASE_AUTH_REFUSED_SOURCE_NAMES: ReadonlySet<string> = new Set([
+  "firebase",
+  "@firebase/auth",
+  "firebase/compat",
+  "firebase/compat/auth",
+  "module",
+  "node:module",
+  "vm",
+  "node:vm",
+]);
+export const CANONICAL_CONTROL_LOCK_VERSIONS: ReadonlySet<number> = new Set([2, 3]);
+export const CANONICAL_CONTROL_SCRIPT_RECIPES: ReadonlySet<string> = new Set([
+  "craco start",
+  "craco build",
+  "craco test",
+  "react-scripts start",
+  "react-scripts build",
+  "react-scripts test",
+  "react-scripts eject",
+]);
+export const CANONICAL_CONTROL_REFUSED_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+  "require",
+  "eval",
+  "Function",
+  "globalThis",
+  "window",
+  "global",
+]);

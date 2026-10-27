@@ -1,6 +1,10 @@
+import { hasReadonlyAsyncEventBinding } from "./has-readonly-async-event-binding.js";
+import type { AsyncEventSourceModule } from "./has-readonly-async-event-binding.js";
 import type { ResolvedCrossFileValueExport } from "../../../utils/resolve-cross-file-function-export.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { hasCanonicalControlPackageProfile } from "./has-canonical-control-package-profile.js";
+import { OBJECT_PROTOTYPE_PROPERTY_NAMES } from "../../../utils/constants.js";
 import { analyzeScopes } from "../../../semantic/scope-analysis.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
@@ -13,11 +17,9 @@ import { getImportDeclarationForSymbol } from "../../../utils/get-import-declara
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
-import { hasCompleteSymbolReferences } from "../../../utils/has-complete-symbol-references.js";
 import { hasOnlyAllowedSymbolReads } from "../../../utils/has-only-allowed-symbol-reads.js";
 import { hasReactDefaultProviderMutation } from "../../../utils/has-react-default-provider-mutation.js";
 import { hasJsxRuntimePragma } from "../../../utils/has-jsx-runtime-pragma.js";
-import { isBindingAssignmentTarget } from "../../../utils/is-binding-assignment-target.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
@@ -36,6 +38,7 @@ import {
   IMPORTED_NATIVE_CONTROL_REACT_API_NAMES,
   IMPORTED_NATIVE_CONTROL_SINGLE_COUNT,
   IMPORTED_NATIVE_CONTROL_RENDER_PARAMETER_COUNT,
+  CANONICAL_CONTROL_REFUSED_GLOBAL_NAMES,
 } from "./constants.js";
 
 import { readDirectReferencedTsconfig } from "./read-direct-referenced-tsconfig.js";
@@ -66,27 +69,15 @@ interface ResolveImportedNativeControlEventPropInput {
   readonly context: RuleContext;
 }
 
-interface NativeControlModule {
-  readonly filename: string;
-  readonly program: EsTreeNode;
-  readonly scopes: ScopeAnalysis;
-}
-
 interface NativeControlProp {
   readonly symbol: SymbolDescriptor;
   readonly defaultValue: EsTreeNode | null;
 }
 
-const isReadonlyBinding = (symbol: SymbolDescriptor, module: NativeControlModule): boolean =>
-  hasCompleteSymbolReferences(symbol, module.program, module.scopes) &&
-  symbol.references.every(
-    (reference) => reference.flag === "read" && !isBindingAssignmentTarget(reference.identifier),
-  );
-
 const hasClosedReads = (
   symbol: SymbolDescriptor,
   allowedIdentifiers: ReadonlySet<EsTreeNode>,
-  module: NativeControlModule,
+  module: AsyncEventSourceModule,
 ): boolean =>
   hasOnlyAllowedSymbolReads({
     symbol,
@@ -95,7 +86,7 @@ const hasClosedReads = (
     scopes: module.scopes,
   });
 
-const hasOrdinaryReactSource = (module: NativeControlModule): boolean => {
+const hasOrdinaryReactSource = (module: AsyncEventSourceModule): boolean => {
   const sourceText = fs.readFileSync(module.filename, "utf8");
   if (readDirectReferencedTsconfig(module.filename) === false) return false;
   const pendingScopes = [module.scopes.rootScope];
@@ -166,7 +157,7 @@ const hasOrdinaryReactSource = (module: NativeControlModule): boolean => {
 
 const hasClosedComponentBinding = (
   symbol: SymbolDescriptor,
-  module: NativeControlModule,
+  module: AsyncEventSourceModule,
 ): boolean => {
   const allowed = new Set<EsTreeNode>();
   for (const reference of symbol.references) {
@@ -196,6 +187,157 @@ const hasClosedComponentBinding = (
     else return false;
   }
   return hasClosedReads(symbol, allowed, module);
+};
+
+interface NativeControlAliasInput {
+  readonly modules: readonly AsyncEventSourceModule[];
+  readonly resolved: ResolvedCrossFileValueExport;
+}
+
+const hasClosedImportedControlAliases = ({
+  modules,
+  resolved,
+}: NativeControlAliasInput): boolean => {
+  for (const module of modules) {
+    for (const symbol of module.scopes.rootScope.symbols) {
+      if (symbol.kind !== "import") continue;
+      const imported = getImportBindingForName(module.program, symbol.name);
+      if (!imported || imported.isNamespace || imported.exportedName === null) continue;
+      const importedValue = resolveControlValueExport(
+        module.filename,
+        imported.source,
+        imported.exportedName,
+      );
+      if (
+        importedValue?.filePath === resolved.filePath &&
+        importedValue.exportedNode === resolved.exportedNode &&
+        !hasClosedComponentBinding(symbol, module)
+      )
+        return false;
+    }
+  }
+  return true;
+};
+
+const hasClosedPlainStyledProviders = (module: AsyncEventSourceModule): boolean => {
+  if (
+    !hasCanonicalControlPackageProfile({
+      filename: module.filename,
+      packageName: "styled-components",
+    })
+  )
+    return false;
+  let supported = true;
+  walkAst(module.program, (node) => {
+    if (!supported) return false;
+    if (isNodeOfType(node, "ImportExpression") || isNodeOfType(node, "TSImportEqualsDeclaration")) {
+      supported = false;
+      return false;
+    }
+    if (
+      isNodeOfType(node, "Identifier") &&
+      CANONICAL_CONTROL_REFUSED_GLOBAL_NAMES.has(node.name) &&
+      module.scopes.isGlobalReference(node)
+    ) {
+      supported = false;
+      return false;
+    }
+    if (
+      (isNodeOfType(node, "ExportAllDeclaration") ||
+        isNodeOfType(node, "ExportNamedDeclaration")) &&
+      node.source?.value === "styled-components" &&
+      node.exportKind !== "type"
+    ) {
+      supported = false;
+      return false;
+    }
+    if (
+      !isNodeOfType(node, "ImportDeclaration") ||
+      node.importKind === "type" ||
+      node.source.value !== "styled-components"
+    )
+      return;
+    for (const specifier of node.specifiers) {
+      if (isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type") continue;
+      const imported = getImportBindingForName(module.program, specifier.local.name);
+      const symbol = module.scopes.symbolFor(specifier.local);
+      if (
+        !imported ||
+        imported.isNamespace ||
+        !["default", "css"].includes(imported.exportedName ?? "") ||
+        !symbol ||
+        !hasReadonlyAsyncEventBinding(symbol, module)
+      ) {
+        supported = false;
+        return false;
+      }
+      const allowed = new Set<EsTreeNode>();
+      for (const reference of symbol.references) {
+        let use = findTransparentExpressionRoot(reference.identifier);
+        if (imported.exportedName === "default") {
+          const parent = use.parent;
+          if (
+            isNodeOfType(parent, "MemberExpression") &&
+            parent.object === use &&
+            !parent.computed &&
+            !parent.optional
+          ) {
+            const name = getStaticPropertyName(parent);
+            if (!name || name === "prototype" || OBJECT_PROTOTYPE_PROPERTY_NAMES.has(name)) {
+              supported = false;
+              return false;
+            }
+            use = findTransparentExpressionRoot(parent);
+          } else if (
+            isNodeOfType(parent, "CallExpression") &&
+            parent.callee === use &&
+            !parent.optional &&
+            parent.arguments.length === IMPORTED_NATIVE_CONTROL_SINGLE_COUNT
+          )
+            use = findTransparentExpressionRoot(parent);
+        }
+        if (!isNodeOfType(use.parent, "TaggedTemplateExpression") || use.parent.tag !== use) {
+          supported = false;
+          return false;
+        }
+        allowed.add(reference.identifier);
+      }
+      if (!hasClosedReads(symbol, allowed, module)) supported = false;
+    }
+  });
+  return supported;
+};
+
+const readPlainStyledControlHost = (
+  expression: EsTreeNode,
+  module: AsyncEventSourceModule,
+): string | null => {
+  if (!isNodeOfType(expression, "TaggedTemplateExpression")) return null;
+  const tag = stripParenExpression(expression.tag);
+  let provider: EsTreeNode;
+  let host: string | null = null;
+  if (isNodeOfType(tag, "MemberExpression") && !tag.computed && !tag.optional) {
+    provider = stripParenExpression(tag.object);
+    host = getStaticPropertyName(tag);
+  } else if (
+    isNodeOfType(tag, "CallExpression") &&
+    !tag.optional &&
+    tag.arguments.length === IMPORTED_NATIVE_CONTROL_SINGLE_COUNT
+  ) {
+    provider = stripParenExpression(tag.callee);
+    const target = stripParenExpression(tag.arguments[0]);
+    if (isNodeOfType(target, "Literal") && typeof target.value === "string") host = target.value;
+  } else return null;
+  if (!isNodeOfType(provider, "Identifier") || (host !== "button" && host !== "form")) return null;
+  const symbol = module.scopes.symbolFor(provider);
+  const imported = getImportBindingForName(module.program, provider.name);
+  return symbol?.kind === "import" &&
+    imported?.source === "styled-components" &&
+    imported.exportedName === "default" &&
+    !imported.isNamespace &&
+    hasReadonlyAsyncEventBinding(symbol, module)
+    ? host
+    : null;
 };
 
 const readSelectedBoolean = (
@@ -229,7 +371,7 @@ const readHostName = (
   node: EsTreeNode,
   props: ReadonlyMap<string, NativeControlProp>,
   opening: EsTreeNodeOfType<"JSXOpeningElement">,
-  module: NativeControlModule,
+  module: AsyncEventSourceModule,
   visited: Set<SymbolDescriptor> = new Set(),
 ): string | null => {
   const expression = stripParenExpression(node);
@@ -249,7 +391,7 @@ const readHostName = (
     visited.has(symbol) ||
     symbol.kind !== "const" ||
     !symbol.initializer ||
-    !isReadonlyBinding(symbol, module)
+    !hasReadonlyAsyncEventBinding(symbol, module)
   )
     return null;
   visited.add(symbol);
@@ -292,7 +434,7 @@ export const resolveImportedNativeControlEventProp = ({
     getAuthoritativeJsxAttribute(opening.attributes, eventName) !== attribute
   )
     return null;
-  const caller: NativeControlModule = {
+  const caller: AsyncEventSourceModule = {
     filename: path.resolve(filename),
     program: context.scopes.rootScope.node,
     scopes: context.scopes,
@@ -324,6 +466,42 @@ export const resolveImportedNativeControlEventProp = ({
     if (!modules.every(hasOrdinaryReactSource)) return null;
     const definition = modules.find((module) => module.program === resolved.programNode);
     const factory = stripParenExpression(resolved.exportedNode);
+    if (definition && isNodeOfType(factory, "TaggedTemplateExpression")) {
+      const hostName = readPlainStyledControlHost(factory, definition);
+      if (
+        hostName !== (eventName === "onClick" ? "button" : "form") ||
+        !modules.every(hasClosedPlainStyledProviders)
+      )
+        return null;
+      if (
+        [...IMPORTED_NATIVE_CONTROL_POLYMORPHIC_PROP_NAMES, "ref"].some((name) =>
+          getAuthoritativeJsxAttribute(opening.attributes, name),
+        )
+      )
+        return null;
+      if (
+        getAuthoritativeJsxAttribute(opening.attributes, "disabled") &&
+        readSelectedBoolean("disabled", new Map<string, NativeControlProp>(), opening) !== false
+      )
+        return null;
+      const symbols = getFunctionBindingSymbols(factory, definition.scopes);
+      if (
+        symbols.length !== IMPORTED_NATIVE_CONTROL_SINGLE_COUNT ||
+        !hasClosedComponentBinding(symbols[0], definition)
+      )
+        return null;
+      const declaration = symbols[0].declarationNode;
+      if (
+        !isNodeOfType(declaration, "VariableDeclarator") ||
+        !isNodeOfType(declaration.parent, "VariableDeclaration") ||
+        declaration.parent.kind !== "const" ||
+        !declaration.init ||
+        stripParenExpression(declaration.init) !== factory ||
+        !hasClosedImportedControlAliases({ modules, resolved })
+      )
+        return null;
+      return attribute.value.expression;
+    }
     if (
       !definition ||
       !isNodeOfType(factory, "CallExpression") ||
@@ -361,24 +539,7 @@ export const resolveImportedNativeControlEventProp = ({
       stripParenExpression(componentDeclaration.init) !== factory
     )
       return null;
-    for (const module of modules) {
-      for (const symbol of module.scopes.rootScope.symbols) {
-        if (symbol.kind !== "import") continue;
-        const imported = getImportBindingForName(module.program, symbol.name);
-        if (!imported || imported.isNamespace || imported.exportedName === null) continue;
-        const importedValue = resolveControlValueExport(
-          module.filename,
-          imported.source,
-          imported.exportedName,
-        );
-        if (
-          importedValue?.filePath === resolved.filePath &&
-          importedValue.exportedNode === resolved.exportedNode &&
-          !hasClosedComponentBinding(symbol, module)
-        )
-          return null;
-      }
-    }
+    if (!hasClosedImportedControlAliases({ modules, resolved })) return null;
     const [pattern, forwardedRef] = render.params;
     if (!isNodeOfType(pattern, "ObjectPattern") || !isNodeOfType(forwardedRef, "Identifier"))
       return null;
@@ -413,7 +574,7 @@ export const resolveImportedNativeControlEventProp = ({
       )
         return null;
       const symbol = definition.scopes.symbolFor(target);
-      if (!symbol || !isReadonlyBinding(symbol, definition)) return null;
+      if (!symbol || !hasReadonlyAsyncEventBinding(symbol, definition)) return null;
       props.set(name, { symbol, defaultValue });
     }
     if (!rest) return null;

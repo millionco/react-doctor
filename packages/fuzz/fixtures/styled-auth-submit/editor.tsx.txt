@@ -1,0 +1,14 @@
+import { useState } from "react";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { session } from "./session";
+import { EntryForm } from "./controls";
+
+export const CredentialPanel = ({ email, password }) => {
+  const [, setSaved] = useState(false);
+  const save = async event => {
+    event.preventDefault();
+    await signInWithEmailAndPassword(session, email, password);
+    setSaved(true);
+  };
+  return <EntryForm onSubmit={save}><button type="submit">Continue</button></EntryForm>;
+};

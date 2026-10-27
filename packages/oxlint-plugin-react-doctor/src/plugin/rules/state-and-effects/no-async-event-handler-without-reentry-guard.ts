@@ -1,3 +1,4 @@
+import { isCanonicalFirebasePasswordSignInCall } from "./utils/is-canonical-firebase-password-sign-in-call.js";
 import { resolveImportedNativeControlEventProp } from "./utils/resolve-imported-native-control-event-prop.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -107,6 +108,7 @@ const awaitedExpressionIsMutatingNetworkOp = (
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "CallExpression")) return false;
   if (isMutatingFetchCall(stripped, context)) return !targetsNonMutatingEndpoint(stripped);
+  if (isCanonicalFirebasePasswordSignInCall({ expression: stripped, context })) return true;
   const callee = stripped.callee;
   if (isNodeOfType(callee, "MemberExpression")) {
     const methodName = getStaticPropertyName(callee);

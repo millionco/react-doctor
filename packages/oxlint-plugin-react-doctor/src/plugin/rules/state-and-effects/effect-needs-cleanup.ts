@@ -1,3 +1,4 @@
+import { findImportedTimerClassLifetimeLeak } from "../../utils/find-imported-timer-class-lifetime-leak.js";
 import { findImportedConnectionMethodValueLeak } from "../../utils/find-imported-connection-method-value-leak.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
@@ -11321,11 +11322,17 @@ export const effectNeedsCleanup = defineRule({
         const importedConnection = firstUsage
           ? null
           : findImportedConnectionMethodValueLeak(node, callback, context);
-        if (!firstUsage && !importedConnection) return;
-        const resourceName = firstUsage?.resourceName ?? importedConnection;
+        const importedTimer =
+          firstUsage || importedConnection
+            ? null
+            : findImportedTimerClassLifetimeLeak(node, callback, context);
+        if (!firstUsage && !importedConnection && !importedTimer) return;
+        const resourceName = firstUsage?.resourceName ?? importedConnection ?? importedTimer;
         const resourceNoun = firstUsage
           ? RESOURCE_NOUN_BY_KIND[firstUsage.kind]
-          : RESOURCE_NOUN_BY_KIND.socket;
+          : importedTimer
+            ? RESOURCE_NOUN_BY_KIND.timer
+            : RESOURCE_NOUN_BY_KIND.socket;
         const hookName = getCalleeName(node) ?? "effect";
         context.report({
           node,

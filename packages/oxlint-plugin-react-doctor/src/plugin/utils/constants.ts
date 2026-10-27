@@ -437,3 +437,6 @@ export const REFERENCED_VITE_WEBPACK_CONFIG_FILENAMES: readonly string[] = [
   "webpack.config.cts",
   "webpack.config.mts",
 ];
+
+export const IMPORTED_TIMER_CONSTRUCTOR_ARGUMENT_COUNT = 2;
+export const IMPORTED_TIMER_ROLE_METHOD_COUNT = 2;

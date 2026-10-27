@@ -93,6 +93,10 @@ export const HANDLER_FUNCTION_NAME_PATTERN = /^(?:on|handle)[A-Z]/;
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+export const REACT_DEPENDENCY_ARRAY_HOOK_NAMES = new Set([
+  ...HOOKS_WITH_DEPS,
+  "useInsertionEffect",
+]);
 
 // React's own built-in hooks — the complement of "custom hook" when a
 // callee name already matches the hook naming convention

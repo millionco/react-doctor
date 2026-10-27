@@ -7998,6 +7998,23 @@
     }
   },
   {
+    "key": "react-doctor/no-use-before-define",
+    "id": "no-use-before-define",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-use-before-define",
+      "title": "Hook dependency read before initialization",
+      "severity": "error",
+      "recommendation": "Move the local declaration above the Hook call. Dependency arrays read their values immediately, even when the callback runs later.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "diffScope": "line",
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-usememo-simple-expression",
     "id": "no-usememo-simple-expression",
     "source": "react-doctor",

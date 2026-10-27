@@ -1,3 +1,4 @@
+import { REACT_DEPENDENCY_ARRAY_HOOK_NAMES } from "../../constants/react.js";
 import type {
   ScopeAnalysis,
   ScopeDescriptor,
@@ -40,13 +41,6 @@ interface SnapshotTarget {
 
 const VALTIO_REACT_MODULE_SOURCES = new Set(["valtio", "valtio/react"]);
 const VALTIO_REACT_MODULE_SOURCE_LIST = [...VALTIO_REACT_MODULE_SOURCES];
-const REACT_DEPENDENCY_ARRAY_HOOK_NAMES = new Set([
-  "useCallback",
-  "useEffect",
-  "useInsertionEffect",
-  "useLayoutEffect",
-  "useMemo",
-]);
 
 const MESSAGE =
   "Read this Valtio value from the useSnapshot result during render. Keep proxy reads for callbacks so render uses the tracked, consistent snapshot.";

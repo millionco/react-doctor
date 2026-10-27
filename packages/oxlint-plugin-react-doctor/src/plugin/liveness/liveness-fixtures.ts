@@ -1338,6 +1338,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "\n                    function ParentComponent() {\n                      function UnstableNestedFunctionComponent() {\n                        return <div />;\n                      }\n            \n                      return (\n                        <div>\n                          <UnstableNestedFunctionComponent />\n                        </div>\n                      );\n                    }\n                  ",
     forceJsx: true,
   },
+  "no-use-before-define": {
+    code: 'import { useCallback } from "react"; export const Screen = () => { const handler = useCallback(() => later, [later]); const later = 1; return <button onClick={handler} />; };',
+  },
   "no-usememo-simple-expression": {
     code: "function C({ x }) { const v = useMemo(() => x + 1, [x]); return <p>{v}</p>; }",
   },

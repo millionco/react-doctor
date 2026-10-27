@@ -490,6 +490,7 @@ import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-n
 import { noUnthrottledScrollMutation } from "./rules/performance/no-unthrottled-scroll-mutation.js";
 import { noUppercaseMonoLabel } from "./rules/design/no-uppercase-mono-label.js";
 import { noUppercaseTrackedNavigationLabel } from "./rules/design/no-uppercase-tracked-navigation-label.js";
+import { noUseBeforeDefine } from "./rules/correctness/no-use-before-define.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
 import { noWholeObjectDefaultLosingPerKeyDefaults } from "./rules/correctness/no-whole-object-default-losing-per-key-defaults.js";
 import { noWholeObjectDepWithMemberReads } from "./rules/state-and-effects/no-whole-object-dep-with-member-reads.js";
@@ -6740,6 +6741,17 @@ export const reactDoctorRules: ReadonlyArray<RuleRegistryEntry> = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noUppercaseTrackedNavigationLabel.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-use-before-define",
+    id: "no-use-before-define",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUseBeforeDefine,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

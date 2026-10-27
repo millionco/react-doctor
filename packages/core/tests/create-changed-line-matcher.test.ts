@@ -6,6 +6,7 @@ import type { ChangedFileLineRanges, Diagnostic } from "../src/types/index.js";
 import { createChangedLineMatcher } from "../src/utils/create-changed-line-matcher.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import { effectNeedsCleanup } from "../../oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.js";
+import { noUseBeforeDefine } from "../../oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-use-before-define.js";
 import type { ReportDescriptor } from "../../oxlint-plugin-react-doctor/src/plugin/utils/report-descriptor.js";
 
 let directory: string;
@@ -450,5 +451,58 @@ describe("called listener helper ownership", () => {
     expect(match({ ...input, ranges: [[siblingLine, siblingLine]] })).toBe(false);
     expect(match({ ...input, deletionLines: [helperLine] })).toBe(true);
     expect(match({ ...input, ranges: [[helperLine, helperLine]], contextual: false })).toBe(false);
+  });
+});
+
+describe("eager dependency ownership", () => {
+  it("uses actual call and declaration owners without including the intervening sibling", () => {
+    const source = [
+      'import { useCallback } from "react";',
+      "export const Panel = () => {",
+      "  const selected = useCallback(",
+      "    () => later(),",
+      "    [later],",
+      "  );",
+      '  const unrelated = () => "ready";',
+      "  const later = () => {",
+      "    return 1;",
+      "  };",
+      "  return null;",
+      "};",
+    ].join("\n");
+    const reportedDescriptors: ReportDescriptor[] = [];
+    const result = runRule(
+      {
+        ...noUseBeforeDefine,
+        create: (context) =>
+          noUseBeforeDefine.create({
+            ...context,
+            report: (descriptor) => reportedDescriptors.push(descriptor),
+          }),
+      },
+      source,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(reportedDescriptors).toHaveLength(1);
+    expect(reportedDescriptors[0]?.node.range[0]).toBe(source.indexOf("[later]") + "[".length);
+    const contextRanges = reportedDescriptors
+      .flatMap((descriptor) => descriptor.contextNodes ?? [])
+      .map((node) => ({
+        offset: node.range[0],
+        length: node.range[1] - node.range[0],
+      }));
+    expect(contextRanges).toHaveLength(2);
+    const declarationLine = source.slice(0, source.indexOf("const later")).split("\n").length;
+    const callbackLine = source.slice(0, source.indexOf("() => later()")).split("\n").length;
+    const siblingLine = source.slice(0, source.indexOf("const unrelated")).split("\n").length;
+    const input = { source, anchor: "[later]", rule: "no-use-before-define", contextRanges };
+    expect(match({ ...input, ranges: [[declarationLine, declarationLine]] })).toBe(true);
+    expect(match({ ...input, ranges: [[callbackLine, callbackLine]] })).toBe(true);
+    expect(match({ ...input, ranges: [[siblingLine, siblingLine]] })).toBe(false);
+    expect(match({ ...input, deletionLines: [declarationLine] })).toBe(true);
+    expect(match({ ...input, deletionLines: [siblingLine] })).toBe(false);
+    expect(
+      match({ ...input, ranges: [[declarationLine, declarationLine]], contextual: false }),
+    ).toBe(false);
   });
 });

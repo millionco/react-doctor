@@ -1,5 +1,12 @@
 import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { hasSymbolBindingWrites } from "../../utils/has-symbol-binding-writes.js";
+import {
+  hasPossibleStaticPropertyMutationOrEscape,
+  hasPossibleStaticPropertyMutationOrEscapeBefore,
+} from "../../utils/has-static-property-write-before.js";
+import { isProvenUnmodifiedReactApiCall } from "../../utils/is-proven-unmodified-react-api-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -29,8 +36,14 @@ interface RequestOwnerState {
   setterSymbol: SymbolDescriptor;
 }
 
+interface RequestIdentityProjection {
+  receiverSymbol: SymbolDescriptor;
+  scalarSymbol: SymbolDescriptor | null;
+}
+
 interface RequestScopedState {
   componentFunction: EsTreeNode;
+  requestIdentityProjections?: RequestIdentityProjection[];
   isBooleanActivityState: boolean;
   setterSymbol: SymbolDescriptor;
 }
@@ -228,6 +241,295 @@ const getRequestOwnerState = (
     : null;
 };
 
+const getRequestScopedIdentityProjection = (
+  componentFunction: EsTreeNode,
+  context: RuleContext,
+): RequestIdentityProjection[] => {
+  const projections: RequestIdentityProjection[] = [];
+  walkAst(componentFunction, (child) => {
+    if (
+      !isNodeOfType(child, "MemberExpression") ||
+      child.optional ||
+      getStaticPropertyName(child) !== "requestId"
+    ) {
+      return;
+    }
+    const receiver = stripParenExpression(child.object);
+    if (!isNodeOfType(receiver, "Identifier")) return;
+    const receiverSymbol = context.scopes.symbolFor(receiver);
+    if (!receiverSymbol || hasSymbolBindingWrites(receiverSymbol)) return;
+    let parameterSymbol = receiverSymbol;
+    if (receiverSymbol.kind !== "parameter") {
+      const initializer = getDirectConstInitializer(receiverSymbol);
+      const source = initializer ? stripParenExpression(initializer) : null;
+      if (
+        !source ||
+        !isNodeOfType(source, "Identifier") ||
+        findEnclosingFunction(receiverSymbol.declarationNode) !== componentFunction ||
+        receiverSymbol.declarationNode.range[1] > child.range[0]
+      ) {
+        return;
+      }
+      const sourceSymbol = context.scopes.symbolFor(source);
+      if (!sourceSymbol) return;
+      parameterSymbol = sourceSymbol;
+    }
+    if (
+      parameterSymbol.kind !== "parameter" ||
+      parameterSymbol.scope.node !== componentFunction ||
+      parameterSymbol.initializer !== null ||
+      hasSymbolBindingWrites(parameterSymbol) ||
+      hasPossibleStaticPropertyMutationOrEscape(receiver, "requestId", context.scopes)
+    ) {
+      return;
+    }
+    projections.push({ receiverSymbol, scalarSymbol: null });
+    const memberRoot = findTransparentExpressionRoot(child);
+    const declarator = memberRoot.parent;
+    if (
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.init !== memberRoot ||
+      !isNodeOfType(declarator.id, "Identifier") ||
+      findEnclosingFunction(declarator) !== componentFunction
+    ) {
+      return;
+    }
+    const scalarSymbol = context.scopes.symbolFor(declarator.id);
+    if (
+      !scalarSymbol ||
+      !getDirectConstInitializer(scalarSymbol) ||
+      hasSymbolBindingWrites(scalarSymbol)
+    ) {
+      return;
+    }
+    projections.push({ receiverSymbol, scalarSymbol });
+  });
+  return projections;
+};
+
+const asyncWriterUsesRequestIdentityProjection = (
+  asyncFunction: EsTreeNode,
+  state: RequestScopedState,
+  completionCalls: EsTreeNodeOfType<"CallExpression">[],
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(asyncFunction) || !asyncFunction.async) return false;
+  const projections = state.requestIdentityProjections;
+  if (!projections) return false;
+  const requestReads = new Set<RequestIdentityProjection>();
+  const failureReads = new Set<RequestIdentityProjection>();
+  const projectionGuardTests = new Set<EsTreeNode>();
+  const awaitedResultSymbols = new Set<number>();
+  let firstProjectedAwaitEnd = Number.POSITIVE_INFINITY;
+  const unsupportedCompletionTests = new Set<EsTreeNode>();
+  let hasUnsupportedProjectionControl = false;
+  walkOwnFunctionScope(asyncFunction, (child) => {
+    let matchingProjections: RequestIdentityProjection[] = [];
+    if (isNodeOfType(child, "Identifier")) {
+      const symbol = context.scopes.symbolFor(child);
+      matchingProjections = projections.filter(
+        (projection) =>
+          projection.scalarSymbol !== null &&
+          symbol !== null &&
+          projection.scalarSymbol.id === symbol.id,
+      );
+    } else if (
+      isNodeOfType(child, "MemberExpression") &&
+      !child.optional &&
+      getStaticPropertyName(child) === "requestId"
+    ) {
+      const receiver = stripParenExpression(child.object);
+      const symbol = isNodeOfType(receiver, "Identifier")
+        ? context.scopes.symbolFor(receiver)
+        : null;
+      matchingProjections = projections.filter(
+        (projection) =>
+          projection.scalarSymbol === null && projection.receiverSymbol.id === symbol?.id,
+      );
+    }
+    if (matchingProjections.length === 0) return;
+    let ancestor = child.parent;
+    while (ancestor && ancestor !== asyncFunction) {
+      if (isNodeOfType(ancestor, "AwaitExpression") && isAstDescendant(child, ancestor.argument)) {
+        for (const projection of matchingProjections) requestReads.add(projection);
+        firstProjectedAwaitEnd = Math.min(firstProjectedAwaitEnd, ancestor.range[1]);
+        const requestCall = stripParenExpression(ancestor.argument);
+        const awaitRoot = findTransparentExpressionRoot(ancestor);
+        const declarator = awaitRoot.parent;
+        if (
+          isNodeOfType(requestCall, "CallExpression") &&
+          !requestCall.optional &&
+          requestCall.arguments.some((argument) => isAstDescendant(child, argument)) &&
+          isNodeOfType(declarator, "VariableDeclarator") &&
+          declarator.init === awaitRoot &&
+          isNodeOfType(declarator.id, "Identifier")
+        ) {
+          const resultSymbol = context.scopes.symbolFor(declarator.id);
+          if (
+            resultSymbol &&
+            getDirectConstInitializer(resultSymbol) &&
+            !hasSymbolBindingWrites(resultSymbol)
+          ) {
+            awaitedResultSymbols.add(resultSymbol.id);
+          }
+        }
+      }
+      if (
+        (isNodeOfType(ancestor, "IfStatement") ||
+          isNodeOfType(ancestor, "ConditionalExpression")) &&
+        isAstDescendant(child, ancestor.test)
+      ) {
+        projectionGuardTests.add(ancestor.test);
+        if (
+          isNodeOfType(ancestor, "IfStatement") &&
+          (statementAlwaysExits(ancestor.consequent) ||
+            Boolean(ancestor.alternate && statementAlwaysExits(ancestor.alternate)))
+        ) {
+          hasUnsupportedProjectionControl = true;
+        }
+      }
+      if (
+        (isNodeOfType(ancestor, "SwitchStatement") &&
+          isAstDescendant(child, ancestor.discriminant)) ||
+        (isNodeOfType(ancestor, "SwitchCase") &&
+          ancestor.test &&
+          isAstDescendant(child, ancestor.test)) ||
+        ((isNodeOfType(ancestor, "WhileStatement") ||
+          isNodeOfType(ancestor, "DoWhileStatement") ||
+          isNodeOfType(ancestor, "ForStatement")) &&
+          ancestor.test &&
+          isAstDescendant(child, ancestor.test)) ||
+        ((isNodeOfType(ancestor, "ForInStatement") || isNodeOfType(ancestor, "ForOfStatement")) &&
+          isAstDescendant(child, ancestor.right))
+      ) {
+        hasUnsupportedProjectionControl = true;
+      }
+      if (isNodeOfType(ancestor, "LogicalExpression") && isAstDescendant(child, ancestor.left)) {
+        projectionGuardTests.add(ancestor.left);
+      }
+      ancestor = ancestor.parent;
+    }
+    for (const call of completionCalls) {
+      const argument = call.arguments[0];
+      if (
+        argument &&
+        !isFunctionLike(stripParenExpression(argument)) &&
+        expressionContainsNonNullValue(argument) &&
+        isAstDescendant(child, argument)
+      ) {
+        for (const projection of matchingProjections) failureReads.add(projection);
+      }
+    }
+  });
+  walkOwnFunctionScope(asyncFunction, (child) => {
+    let test: EsTreeNode | null = null;
+    if (
+      isNodeOfType(child, "IfStatement") ||
+      isNodeOfType(child, "ConditionalExpression") ||
+      isNodeOfType(child, "WhileStatement") ||
+      isNodeOfType(child, "DoWhileStatement")
+    ) {
+      test = child.test;
+    } else if (isNodeOfType(child, "ForStatement") || isNodeOfType(child, "SwitchCase")) {
+      test = child.test ?? null;
+    } else if (isNodeOfType(child, "LogicalExpression")) {
+      test = child.left;
+    } else if (isNodeOfType(child, "SwitchStatement")) {
+      test = child.discriminant;
+    } else if (isNodeOfType(child, "ForInStatement") || isNodeOfType(child, "ForOfStatement")) {
+      test = child.right;
+    }
+    if (!test || test.range[0] < firstProjectedAwaitEnd) return;
+    let expression = stripParenExpression(test);
+    if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+      expression = stripParenExpression(expression.argument);
+    }
+    if (
+      isNodeOfType(expression, "MemberExpression") &&
+      !expression.optional &&
+      getStaticPropertyName(expression) === "ok"
+    ) {
+      const receiver = stripParenExpression(expression.object);
+      const resultSymbol = isNodeOfType(receiver, "Identifier")
+        ? context.scopes.symbolFor(receiver)
+        : null;
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        resultSymbol &&
+        awaitedResultSymbols.has(resultSymbol.id) &&
+        !hasPossibleStaticPropertyMutationOrEscapeBefore(receiver, "ok", test, context.scopes)
+      ) {
+        return;
+      }
+    }
+    unsupportedCompletionTests.add(test);
+    if (
+      (isNodeOfType(child, "IfStatement") &&
+        (statementAlwaysExits(child.consequent) ||
+          Boolean(child.alternate && statementAlwaysExits(child.alternate)))) ||
+      isNodeOfType(child, "SwitchStatement") ||
+      isNodeOfType(child, "SwitchCase") ||
+      isNodeOfType(child, "WhileStatement") ||
+      isNodeOfType(child, "DoWhileStatement") ||
+      isNodeOfType(child, "ForStatement") ||
+      isNodeOfType(child, "ForInStatement") ||
+      isNodeOfType(child, "ForOfStatement")
+    ) {
+      hasUnsupportedProjectionControl = true;
+    }
+  });
+  if (hasUnsupportedProjectionControl) return false;
+  for (const call of completionCalls) {
+    const argument = call.arguments[0];
+    if (
+      !argument ||
+      isFunctionLike(stripParenExpression(argument)) ||
+      !(state.isBooleanActivityState
+        ? isBooleanLiteral(argument, false)
+        : expressionContainsNull(argument)) ||
+      callIsOwnershipGuarded(call, asyncFunction)
+    ) {
+      continue;
+    }
+    let ancestor = call.parent;
+    while (ancestor && ancestor !== asyncFunction) {
+      if (
+        isNodeOfType(ancestor, "LabeledStatement") ||
+        isNodeOfType(ancestor, "SwitchStatement") ||
+        isNodeOfType(ancestor, "WhileStatement") ||
+        isNodeOfType(ancestor, "DoWhileStatement") ||
+        isNodeOfType(ancestor, "ForStatement") ||
+        isNodeOfType(ancestor, "ForInStatement") ||
+        isNodeOfType(ancestor, "ForOfStatement")
+      ) {
+        return false;
+      }
+      if (
+        (isNodeOfType(ancestor, "IfStatement") ||
+          isNodeOfType(ancestor, "ConditionalExpression")) &&
+        (projectionGuardTests.has(ancestor.test) ||
+          unsupportedCompletionTests.has(ancestor.test)) &&
+        (isAstDescendant(call, ancestor.consequent) ||
+          Boolean(ancestor.alternate && isAstDescendant(call, ancestor.alternate)))
+      ) {
+        return false;
+      }
+      if (
+        isNodeOfType(ancestor, "LogicalExpression") &&
+        (projectionGuardTests.has(ancestor.left) ||
+          unsupportedCompletionTests.has(ancestor.left)) &&
+        isAstDescendant(call, ancestor.right)
+      ) {
+        return false;
+      }
+      ancestor = ancestor.parent;
+    }
+  }
+  return [...requestReads].some(
+    (projection) => state.isBooleanActivityState || failureReads.has(projection),
+  );
+};
+
 const getRequestScopedState = (
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
   context: RuleContext,
@@ -255,10 +557,20 @@ const getRequestScopedState = (
       /pending|loading|delivering/i.test(stateIdentifier.name),
     );
   if (!isNullLiteral(declarator.init.arguments[0]) && !isBooleanActivityState) return null;
-  if (!setterSymbol || !componentFunction || !functionReceivesRequestIdentity(componentFunction)) {
+  if (!setterSymbol || !componentFunction) return null;
+  if (functionReceivesRequestIdentity(componentFunction)) {
+    return { componentFunction, isBooleanActivityState, setterSymbol };
+  }
+  if (
+    hasSymbolBindingWrites(setterSymbol) ||
+    !isProvenUnmodifiedReactApiCall(declarator.init, "useState", context.scopes)
+  ) {
     return null;
   }
-  return { componentFunction, isBooleanActivityState, setterSymbol };
+  const requestIdentityProjections = getRequestScopedIdentityProjection(componentFunction, context);
+  return requestIdentityProjections.length > 0
+    ? { componentFunction, isBooleanActivityState, setterSymbol, requestIdentityProjections }
+    : null;
 };
 
 const openingElementHasKey = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
@@ -598,6 +910,12 @@ const findUnsafeRequestScopedClear = (
       }
     }
     if (completionCalls.length === 0) return false;
+    if (
+      state.requestIdentityProjections &&
+      !asyncWriterUsesRequestIdentityProjection(child, state, completionCalls, context)
+    ) {
+      return false;
+    }
     if (state.isBooleanActivityState) {
       const startsActivity = activityStartCalls.some((call) =>
         isBooleanLiteral(call.arguments[0], true),
@@ -610,7 +928,7 @@ const findUnsafeRequestScopedClear = (
         : null;
       return unsafeClear ? false : undefined;
     }
-    if (!nodeContainsRequestIdentity(child)) return false;
+    if (!state.requestIdentityProjections && !nodeContainsRequestIdentity(child)) return false;
     const hasClear = completionCalls.some((call) => {
       const argument = call.arguments[0];
       return Boolean(argument && expressionContainsNull(argument));

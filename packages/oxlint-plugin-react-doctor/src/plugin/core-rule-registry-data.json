@@ -5976,7 +5976,7 @@
       "id": "no-mutate-queried-dom-node-in-component",
       "title": "Mutating a queried DOM node this component renders",
       "severity": "warn",
-      "recommendation": "Drive the node with state/props (or a ref for genuinely uncontrolled nodes) instead of querying it and mutating its style/class. Imperative edits to a node React renders are invisible to the virtual DOM and get reverted or clobbered on the next render.",
+      "recommendation": "When state/props dynamically control the same style property or className on this node, React can overwrite imperative edits as those declarative values change. Update that value through state/props, or use a ref for deliberately uncontrolled nodes.",
       "category": "Bugs",
       "framework": "global",
       "isScanRule": false

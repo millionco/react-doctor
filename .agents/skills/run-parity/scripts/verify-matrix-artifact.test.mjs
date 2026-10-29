@@ -405,3 +405,39 @@ test("rejects rehashed descriptor and impact schema drift", async () => {
     },
   );
 });
+
+test("verifies complete multi-chunk artifact hashes and rejects same-length trailing tampering", async () => {
+  await withArtifact(
+    async ({
+      artifactDirectory,
+      repositories,
+      candidateProducer,
+      baseProducer,
+      provenance,
+      writeProvenance,
+    }) => {
+      const padding = " ".repeat(2 * 1024 * 1024);
+      const candidate = `${padding}${serializeRecords(repositories, candidateProducer)}${padding}`;
+      const base = `${padding}${serializeRecords(repositories, baseProducer)}${padding}`;
+      await writeFile(join(artifactDirectory, "candidate.ndjson"), candidate);
+      await writeFile(join(artifactDirectory, "base.ndjson"), base);
+      provenance.artifact.sha256 = hash(candidate);
+      provenance.artifact.byteLength = Buffer.byteLength(candidate);
+      provenance.baseArtifact.sha256 = hash(base);
+      provenance.baseArtifact.byteLength = Buffer.byteLength(base);
+      await writeProvenance();
+      await assert.doesNotReject(verifyMatrixArtifact(artifactDirectory));
+      await writeFile(join(artifactDirectory, "candidate.ndjson"), `${candidate.slice(0, -1)}\t`);
+      await assert.rejects(
+        verifyMatrixArtifact(artifactDirectory),
+        /bytes do not match provenance/,
+      );
+      await writeFile(join(artifactDirectory, "candidate.ndjson"), candidate);
+      await writeFile(join(artifactDirectory, "base.ndjson"), `${base.slice(0, -1)}\t`);
+      await assert.rejects(
+        verifyMatrixArtifact(artifactDirectory),
+        /bytes do not match provenance/,
+      );
+    },
+  );
+});

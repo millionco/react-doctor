@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -60,7 +61,11 @@ const PROJECT_KEYS = ["name", "org", "ref", "rootDir"];
 
 const hashBytes = (contents) => createHash("sha256").update(contents).digest("hex");
 
-const hashFile = async (filePath) => hashBytes(await readFile(filePath));
+const hashFile = async (filePath) => {
+  const hasher = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hasher.update(chunk);
+  return hasher.digest("hex");
+};
 
 const compareCodeUnitStrings = (left, right) => {
   if (left === right) return 0;

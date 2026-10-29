@@ -25,8 +25,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 //
 // Both `noDerivedStateEffect` and `noDerivedUseState` independently
 // nudge at parts of this. This rule produces a single, more
-// actionable diagnostic that names the prop and recommends deleting
-// both the useState and the effect.
+// actionable diagnostic that names the prop and accounts for local edits
+// when recommending how to remove the synchronization effect.
 //
 // Detector pre-conditions:
 //   (1) `[X, setX] = useState(<propExpr>)` where <propExpr> is a
@@ -81,7 +81,7 @@ export const noMirrorPropEffect = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Delete both the `useState` and the `useEffect` and read the prop directly while rendering. Copying a prop into state shows the old value on the first render before the effect catches up.",
+    "For a pure mirror, read the prop directly without local state or an effect. If this state also has local updates, preserve them and choose an explicit reset strategy, such as a component key when the record changes.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

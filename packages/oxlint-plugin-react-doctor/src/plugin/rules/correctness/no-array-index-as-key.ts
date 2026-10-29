@@ -22,6 +22,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
@@ -1804,7 +1805,141 @@ const collectDerivedRowContentNames = (
       const rootName = getRootIdentifierName(child.init as EsTreeNode, {
         followCallChains: true,
       });
-      if (rootName !== null && itemNames.has(rootName)) names.add(child.id.name);
+      if (rootName !== null && itemNames.has(rootName)) {
+        const initializer = stripParenExpression(child.init);
+        const aliasSymbol = context.scopes.symbolFor(child.id);
+        if (
+          aliasSymbol?.kind === "const" &&
+          aliasSymbol.references.every((reference) => {
+            if (
+              reference.flag !== "read" ||
+              findEnclosingFunction(reference.identifier) !== bindingFunction
+            )
+              return false;
+            let publication: EsTreeNode = reference.identifier;
+            let publicationBudget = DERIVED_NAME_SCAN_BUDGET;
+            let hasNativePublication = false;
+            while (publication.parent && publicationBudget > 0) {
+              publicationBudget -= 1;
+              const owner = publication.parent;
+              if (isNodeOfType(owner, "ReturnStatement"))
+                return hasNativePublication && owner.argument === publication;
+              if (
+                stripParenExpression(owner) === stripParenExpression(publication) ||
+                (isNodeOfType(owner, "JSXExpressionContainer") && owner.expression === publication)
+              ) {
+                publication = owner;
+                continue;
+              }
+              if (
+                (isNodeOfType(owner, "JSXFragment") ||
+                  (isNodeOfType(owner, "JSXElement") &&
+                    isNodeOfType(owner.openingElement.name, "JSXIdentifier") &&
+                    (STATELESS_HTML_LEAF_TAGS.has(owner.openingElement.name.name) ||
+                      PURE_SVG_PRIMITIVE_TAGS.has(owner.openingElement.name.name)))) &&
+                owner.children.some((jsxChild) => jsxChild === publication)
+              ) {
+                hasNativePublication = true;
+                publication = owner;
+                continue;
+              }
+              return false;
+            }
+            return false;
+          }) &&
+          isNodeOfType(initializer, "CallExpression") &&
+          isNodeOfType(initializer.callee, "MemberExpression") &&
+          getStaticPropertyName(initializer.callee) === "map"
+        ) {
+          const fieldReceiver = stripParenExpression(initializer.callee.object);
+          const fieldName = isNodeOfType(fieldReceiver, "MemberExpression")
+            ? getStaticPropertyName(fieldReceiver)
+            : null;
+          const outerIterator = bindingFunction.parent;
+          if (
+            isNodeOfType(fieldReceiver, "MemberExpression") &&
+            isNodeOfType(fieldReceiver.object, "Identifier") &&
+            fieldName !== null &&
+            isFunctionLike(bindingFunction) &&
+            context.scopes.symbolFor(fieldReceiver.object)?.bindingIdentifier ===
+              bindingFunction.params[0] &&
+            isNodeOfType(outerIterator, "CallExpression") &&
+            outerIterator.arguments[0] === bindingFunction &&
+            isNodeOfType(outerIterator.callee, "MemberExpression") &&
+            getStaticPropertyName(outerIterator.callee) === "map"
+          ) {
+            const outerReceiver = stripParenExpression(outerIterator.callee.object);
+            const outerSymbol = resolveConstIdentifierAlias(outerReceiver, context.scopes);
+            const outerInitializer =
+              outerSymbol?.kind === "const" && outerSymbol.initializer
+                ? stripParenExpression(outerSymbol.initializer)
+                : outerReceiver;
+            let hasSupportedProvider =
+              !outerSymbol?.initializer && !isNodeOfType(outerInitializer, "ObjectExpression");
+            if (isNodeOfType(outerInitializer, "ArrayExpression")) {
+              hasSupportedProvider =
+                outerInitializer.elements.length > 0 &&
+                outerInitializer.elements.length <= DERIVED_NAME_SCAN_BUDGET &&
+                (!outerSymbol ||
+                  outerSymbol.references.every(
+                    (reference) => reference.identifier === outerReceiver,
+                  )) &&
+                Boolean(
+                  context.scopes
+                    .symbolFor(fieldReceiver.object)
+                    ?.references.every(
+                      (reference) => reference.identifier === fieldReceiver.object,
+                    ),
+                ) &&
+                outerInitializer.elements.every((element) => {
+                  if (!isNodeOfType(element, "ObjectExpression")) return false;
+                  const fieldValue = getStaticObjectPropertyValue(element, fieldName);
+                  if (!fieldValue) return false;
+                  const fieldInitializer = stripParenExpression(fieldValue);
+                  return (
+                    isNodeOfType(fieldInitializer, "ArrayExpression") &&
+                    fieldInitializer.elements.some(
+                      (value) => value !== null && !isNodeOfType(value, "SpreadElement"),
+                    )
+                  );
+                });
+            }
+            const callback = initializer.arguments[0];
+            if (hasSupportedProvider && isNodeOfType(callback, "ArrowFunctionExpression")) {
+              const output = stripParenExpression(callback.body);
+              if (isNodeOfType(output, "JSXElement") || isNodeOfType(output, "JSXFragment")) {
+                let outputBudget = DERIVED_NAME_SCAN_BUDGET;
+                let hasUnsupportedOutput = false;
+                walkAst(output, (outputNode) => {
+                  if (hasUnsupportedOutput) return false;
+                  if (outputBudget <= 0) {
+                    hasUnsupportedOutput = true;
+                    return false;
+                  }
+                  outputBudget -= 1;
+                  if (
+                    isNodeOfType(outputNode, "ConditionalExpression") ||
+                    isNodeOfType(outputNode, "LogicalExpression") ||
+                    (isNodeOfType(outputNode, "JSXElement") &&
+                      isJsxFragmentElement(outputNode.openingElement, context.scopes))
+                  ) {
+                    hasUnsupportedOutput = true;
+                    return false;
+                  }
+                });
+                if (
+                  !hasUnsupportedOutput &&
+                  containsStatefulDescendant(output, {
+                    onlyExplicitStatefulJsx: true,
+                  })
+                )
+                  return;
+              }
+            }
+          }
+        }
+        names.add(child.id.name);
+      }
     }
   });
   return names;

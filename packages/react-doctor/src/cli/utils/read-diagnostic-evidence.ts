@@ -79,30 +79,36 @@ const readSourceRecord = (
   rootDirectory: string,
   filePath: string,
   state: DiagnosticEvidenceReaderState,
+  deferSourceFile = false,
 ): SourceRecord | null => {
   const normalizedFilePath = filePath.replace(/\\/g, "/");
-  if (state.recordByFilePath.has(normalizedFilePath)) {
-    return state.recordByFilePath.get(normalizedFilePath) ?? null;
-  }
-  const absolutePath = resolveSafeSourcePath(rootDirectory, normalizedFilePath);
-  if (absolutePath === null) {
-    state.recordByFilePath.set(normalizedFilePath, null);
-    return null;
-  }
+  let record = state.recordByFilePath.get(normalizedFilePath);
+  if (record === null) return null;
   try {
-    const sourceText = fs.readFileSync(absolutePath, "utf-8");
-    const record = {
-      absolutePath,
-      filePath: normalizedFilePath,
-      sourceFile: ts.createSourceFile(
+    if (record === undefined) {
+      const absolutePath = resolveSafeSourcePath(rootDirectory, normalizedFilePath);
+      if (absolutePath === null) {
+        state.recordByFilePath.set(normalizedFilePath, null);
+        return null;
+      }
+      const sourceText = fs.readFileSync(absolutePath, "utf-8");
+      let sourceFile: ts.SourceFile | undefined;
+      record = {
         absolutePath,
+        filePath: normalizedFilePath,
+        get sourceFile() {
+          return (sourceFile ??= ts.createSourceFile(
+            absolutePath,
+            sourceText,
+            ts.ScriptTarget.Latest,
+            true,
+            getScriptKind(absolutePath),
+          ));
+        },
         sourceText,
-        ts.ScriptTarget.Latest,
-        true,
-        getScriptKind(absolutePath),
-      ),
-      sourceText,
-    } satisfies SourceRecord;
+      } satisfies SourceRecord;
+    }
+    if (!deferSourceFile) void record.sourceFile;
     state.recordByFilePath.set(normalizedFilePath, record);
     return record;
   } catch {
@@ -528,7 +534,12 @@ export const createDiagnosticEvidenceReader = (
   };
 
   return (diagnostic) => {
-    const record = readSourceRecord(rootDirectory, diagnostic.filePath, state);
+    const record = readSourceRecord(
+      rootDirectory,
+      diagnostic.filePath,
+      state,
+      !options.resolveForwardedHandlers,
+    );
     if (record === null || !Number.isInteger(diagnostic.line)) return null;
     const sourceLines = record.sourceText.split(/\r?\n/);
     const startLineIndex = Math.max(0, diagnostic.line - 1);

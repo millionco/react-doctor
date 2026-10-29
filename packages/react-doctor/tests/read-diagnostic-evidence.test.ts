@@ -7,10 +7,26 @@ import {
   fingerprintDiagnosticEvidence,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createDiagnosticEvidenceReader } from "../src/cli/utils/read-diagnostic-evidence.js";
 
 import { withDiagnosticFingerprints } from "../src/cli/utils/with-diagnostic-fingerprints.js";
+
+const { observeSourceParse } = vi.hoisted(() => ({ observeSourceParse: vi.fn() }));
+
+vi.mock("typescript", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("typescript")>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      createSourceFile: (...parameters: Parameters<typeof actual.createSourceFile>) => {
+        observeSourceParse(parameters[0]);
+        return actual.createSourceFile(...parameters);
+      },
+    },
+  };
+});
 
 const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/wrapper-before.tsx",
@@ -32,8 +48,91 @@ describe("createDiagnosticEvidenceReader", () => {
   let rootDirectory: string;
 
   beforeEach(() => {
+    observeSourceParse.mockReset();
     rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-evidence-"));
     fs.mkdirSync(path.join(rootDirectory, "src"));
+  });
+
+  it("reads UTF-8 byte and line evidence without parsing a source file", () => {
+    const source = 'const label = "😀";\nexport const Rows = () => <input />;\n';
+    fs.writeFileSync(path.join(rootDirectory, "src/wrapper-before.tsx"), source);
+    observeSourceParse.mockImplementation(() => {
+      throw new Error("Byte-only evidence must not require a parser");
+    });
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+    const offset = Buffer.byteLength(source.slice(0, source.indexOf("<input")));
+    expect(reader(makeDiagnostic({ line: 2, endLine: 2, offset, length: 9 }))).toBe("<input />");
+    expect(reader(makeDiagnostic({ line: 2, endLine: 2 }))).toBe(
+      "export const Rows = () => <input />;",
+    );
+    expect(observeSourceParse).not.toHaveBeenCalled();
+  });
+
+  it("parses each forwarded-handler source once across repeated diagnostics", () => {
+    const source = "export const Card = ({ onSubmit }) => <span onClick={onSubmit} />;\n";
+    fs.writeFileSync(path.join(rootDirectory, "src/card.tsx"), source);
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/page.tsx"),
+      'import { Card } from "./card";\n<Card onSubmit={handleSave} />;\n',
+    );
+    const reader = createDiagnosticEvidenceReader(rootDirectory, {
+      resolveForwardedHandlers: true,
+    });
+    const diagnostic = makeDiagnostic({
+      filePath: "src/card.tsx",
+      line: 1,
+      endLine: 1,
+      column: source.indexOf("<span") + 1,
+    });
+    expect(reader(diagnostic)).toContain("onClick={handleSave}");
+    expect(reader(diagnostic)).toContain("onClick={handleSave}");
+    expect(
+      observeSourceParse.mock.calls.map(([filename]) => path.basename(filename)).sort(),
+    ).toEqual(["card.tsx", "page.tsx"]);
+  });
+
+  it("keeps parser failures null and cached for forwarded-handler readers", () => {
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/wrapper-before.tsx"),
+      "export const Rows = () => <input />;\n",
+    );
+    observeSourceParse.mockImplementation(() => {
+      throw new Error("Parser unavailable");
+    });
+    const reader = createDiagnosticEvidenceReader(rootDirectory, {
+      resolveForwardedHandlers: true,
+    });
+    expect(reader(makeDiagnostic())).toBeNull();
+    expect(reader(makeDiagnostic())).toBeNull();
+    expect(observeSourceParse).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips caller sources whose parser fails while resolving forwarded handlers", () => {
+    const source = "export const Card = ({ onSubmit }) => <span onClick={onSubmit} />;\n";
+    fs.writeFileSync(path.join(rootDirectory, "src/card.tsx"), source);
+    fs.writeFileSync(
+      path.join(rootDirectory, "src/page.tsx"),
+      'import { Card } from "./card";\n<Card onSubmit={handleSave} />;\n',
+    );
+    observeSourceParse.mockImplementation((filename) => {
+      if (path.basename(filename) === "page.tsx") throw new Error("Caller parser unavailable");
+    });
+    const reader = createDiagnosticEvidenceReader(rootDirectory, {
+      resolveForwardedHandlers: true,
+    });
+    expect(
+      reader(
+        makeDiagnostic({
+          filePath: "src/card.tsx",
+          line: 1,
+          endLine: 1,
+          column: source.indexOf("<span") + 1,
+        }),
+      ),
+    ).toContain("onClick={onSubmit}");
+    expect(
+      observeSourceParse.mock.calls.map(([filename]) => path.basename(filename)).sort(),
+    ).toEqual(["card.tsx", "page.tsx"]);
   });
 
   it("preserves detector identities through a saved JSON report", () => {

@@ -176,6 +176,7 @@ const hasStatefulHtmlAttribute = (openingElement: EsTreeNode): boolean => {
 const STATEFUL_DESCENDANT_SCAN_BUDGET = 200;
 
 interface RowContentScanOptions {
+  onlyExplicitStatefulJsx?: boolean;
   // Member reads rooted at these names (`{token.text}` where `token` is
   // the iteration item) are row content that travels with the row.
   memberRootNames?: ReadonlySet<string>;
@@ -243,15 +244,18 @@ export const containsStatefulDescendant = (
         if (options.allowAnyMemberRead === true) continue;
         const rootName = rootIdentifierNameOf(expression);
         if (rootName !== null && memberRootNames.has(rootName)) continue;
+        if (options.onlyExplicitStatefulJsx === true) continue;
         return true;
       }
       if (isNodeOfType(expression, "Identifier")) {
         if (bareIdentifierNames.has(expression.name)) continue;
+        if (options.onlyExplicitStatefulJsx === true) continue;
         return true;
       }
       if (isNodeOfType(expression, "CallExpression")) {
         const callee = expression.callee as EsTreeNode;
         if (isNodeOfType(callee, "Identifier") && callCalleeRootNames.has(callee.name)) continue;
+        if (options.onlyExplicitStatefulJsx === true) continue;
         return true;
       }
       stack.push(expression);

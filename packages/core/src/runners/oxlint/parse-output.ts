@@ -30,6 +30,7 @@ import type { PreparedSourceMap } from "../../utils/prepare-lint-sources.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
+import { createDeferredEffectStateDiagnosticChecker } from "./should-suppress-deferred-effect-state-diagnostic.js";
 import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -476,6 +477,8 @@ export const parseOxlintOutput = (
       : [{ ...diagnostic, filename: sourceFilename, labels, contextRanges: [] }];
   });
 
+  const shouldSuppressDeferredEffectStateDiagnostic =
+    createDeferredEffectStateDiagnosticChecker(rootDirectory);
   const mappedDiagnostics = sourceMappedDiagnostics
     .filter(
       (diagnostic) =>
@@ -486,6 +489,7 @@ export const parseOxlintOutput = (
         ) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&
+        !shouldSuppressDeferredEffectStateDiagnostic(diagnostic) &&
         !shouldSuppressCompilerFindingInWorklet(diagnostic, project, rootDirectory),
     )
     .map((diagnostic) => {

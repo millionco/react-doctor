@@ -6663,6 +6663,172 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
+const hasSynchronousDisposerSlotCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "timer" ||
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const effectCall = callback.parent;
+  if (
+    !isNodeOfType(effectCall, "CallExpression") ||
+    effectCall.optional ||
+    effectCall.arguments[0] !== callback ||
+    !isReactApiCall(effectCall, "useEffect", context.scopes, { resolveNamedAliases: true })
+  ) {
+    return false;
+  }
+  const [storageDeclaration, invocationStatement, cleanupReturn, ...otherStatements] =
+    callback.body.body;
+  if (
+    otherStatements.length > 0 ||
+    !isNodeOfType(storageDeclaration, "VariableDeclaration") ||
+    storageDeclaration.kind !== "let" ||
+    !isNodeOfType(invocationStatement, "ExpressionStatement") ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+    !cleanupReturn.argument
+  ) {
+    return false;
+  }
+  const [storage, ...otherDeclarations] = storageDeclaration.declarations;
+  const initializer = storage?.init ? stripParenExpression(storage.init) : null;
+  if (
+    otherDeclarations.length > 0 ||
+    !isNodeOfType(storage?.id, "Identifier") ||
+    !isFunctionLike(initializer) ||
+    initializer.async ||
+    initializer.generator ||
+    initializer.params.length > 0 ||
+    !isNodeOfType(initializer.body, "BlockStatement") ||
+    initializer.body.body.length > 0
+  ) {
+    return false;
+  }
+  const invocationExpression = stripParenExpression(invocationStatement.expression);
+  const invocation =
+    isNodeOfType(invocationExpression, "UnaryExpression") &&
+    invocationExpression.operator === "void"
+      ? stripParenExpression(invocationExpression.argument)
+      : invocationExpression;
+  if (
+    !isNodeOfType(invocation, "CallExpression") ||
+    invocation.optional ||
+    invocation.arguments.length > 0
+  ) {
+    return false;
+  }
+  const owner = stripParenExpression(invocation.callee);
+  if (
+    !isNodeOfType(owner, "ArrowFunctionExpression") ||
+    !owner.async ||
+    owner.params.length > 0 ||
+    !isNodeOfType(owner.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const [allocation, publication, suspension, ...laterStatements] = owner.body.body;
+  if (
+    laterStatements.length > 0 ||
+    !isNodeOfType(allocation, "VariableDeclaration") ||
+    allocation.kind !== "const" ||
+    !isNodeOfType(publication, "ExpressionStatement") ||
+    !isNodeOfType(suspension, "ExpressionStatement") ||
+    !isNodeOfType(stripParenExpression(suspension.expression), "AwaitExpression")
+  ) {
+    return false;
+  }
+  const [handle, ...otherHandles] = allocation.declarations;
+  const assignment = stripParenExpression(publication.expression);
+  if (
+    otherHandles.length > 0 ||
+    !isNodeOfType(handle?.id, "Identifier") ||
+    !handle.init ||
+    stripParenExpression(handle.init) !== usage.node ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    usage.node.optional ||
+    !isNodeOfType(usage.node.callee, "Identifier") ||
+    !isNativeTimerIdentifier(usage.node.callee, context.scopes) ||
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.operator !== "=" ||
+    !isNodeOfType(assignment.left, "Identifier")
+  ) {
+    return false;
+  }
+  const [timerCallback, delay, ...extraArguments] = usage.node.arguments;
+  if (
+    !isFunctionLike(timerCallback) ||
+    !isNodeOfType(delay, "Literal") ||
+    typeof delay.value !== "number" ||
+    !Number.isFinite(delay.value) ||
+    extraArguments.length > 0
+  ) {
+    return false;
+  }
+  const disposer = stripParenExpression(assignment.right);
+  const cleanup = stripParenExpression(cleanupReturn.argument);
+  if (
+    !isNodeOfType(disposer, "ArrowFunctionExpression") ||
+    disposer.async ||
+    disposer.params.length > 0 ||
+    !isNodeOfType(cleanup, "ArrowFunctionExpression") ||
+    cleanup.async ||
+    cleanup.params.length > 0
+  ) {
+    return false;
+  }
+  const releaseCall = stripParenExpression(disposer.body);
+  const cleanupCall = stripParenExpression(cleanup.body);
+  if (
+    !isNodeOfType(releaseCall, "CallExpression") ||
+    releaseCall.optional ||
+    !isNodeOfType(releaseCall.callee, "Identifier") ||
+    !context.scopes.isGlobalReference(releaseCall.callee) ||
+    !TIMER_CLEANUP_CALLEE_NAMES.has(releaseCall.callee.name) ||
+    releaseCall.arguments.length !== 1 ||
+    !isNodeOfType(cleanupCall, "CallExpression") ||
+    cleanupCall.optional ||
+    cleanupCall.arguments.length > 0 ||
+    !isNodeOfType(cleanupCall.callee, "Identifier")
+  ) {
+    return false;
+  }
+  const storageSymbol = context.scopes.symbolFor(storage.id);
+  const handleSymbol = context.scopes.symbolFor(handle.id);
+  if (
+    !storageSymbol ||
+    !handleSymbol ||
+    storageSymbol.kind !== "let" ||
+    handleSymbol.kind !== "const" ||
+    context.scopes.symbolFor(assignment.left) !== storageSymbol ||
+    context.scopes.symbolFor(cleanupCall.callee) !== storageSymbol ||
+    !storageSymbol.references.every(
+      (reference) =>
+        reference.identifier === assignment.left || reference.identifier === cleanupCall.callee,
+    ) ||
+    !handleSymbol.references.every((reference) =>
+      releaseCall.arguments.some((argument) => argument === reference.identifier),
+    )
+  ) {
+    return false;
+  }
+  let hasDirectEval = false;
+  walkAst(callback, (child) => {
+    if (hasDirectEval) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (isNodeOfType(callee, "Identifier") && callee.name === "eval") hasDirectEval = true;
+  });
+  return !hasDirectEval && doesReleaseCallMatchUsage(releaseCall, usage, context);
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6681,6 +6847,7 @@ const effectHasCleanupForUsage = (
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
     hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||
     hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
+    hasSynchronousDisposerSlotCleanup(callback, usage, context) ||
     oneShotTimerHasUnmountGuard(usage, context) ||
     hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context)
   ) {

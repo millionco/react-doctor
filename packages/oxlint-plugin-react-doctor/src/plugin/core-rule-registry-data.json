@@ -11760,6 +11760,24 @@
     }
   },
   {
+    "key": "react-doctor/rn-no-layout-animation-in-render",
+    "id": "rn-no-layout-animation-in-render",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "rn-no-layout-animation-in-render",
+      "title": "Layout animation API is called during render",
+      "severity": "warn",
+      "recommendation": "Schedule the animation before the intended layout update in an event handler or effect.",
+      "category": "Bugs",
+      "framework": "react-native",
+      "requires": ["react-native"],
+      "tags": ["react-native", "react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/rn-no-legacy-expo-packages",
     "id": "rn-no-legacy-expo-packages",
     "source": "react-doctor",

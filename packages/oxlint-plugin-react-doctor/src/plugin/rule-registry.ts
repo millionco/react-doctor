@@ -712,6 +712,7 @@ import { rnNoFalsyAndRender } from "./rules/react-native/rn-no-falsy-and-render.
 import { rnNoImageChildren } from "./rules/react-native/rn-no-image-children.js";
 import { rnNoInlineFlatlistRenderitem } from "./rules/react-native/rn-no-inline-flatlist-renderitem.js";
 import { rnNoInlineObjectInListItem } from "./rules/react-native/rn-no-inline-object-in-list-item.js";
+import { rnNoLayoutAnimationInRender } from "./rules/react-native/rn-no-layout-animation-in-render.js";
 import { rnNoLegacyExpoPackages } from "./rules/react-native/rn-no-legacy-expo-packages.js";
 import { rnNoLegacyShadowStyles } from "./rules/react-native/rn-no-legacy-shadow-styles.js";
 import { rnNoNonNativeNavigator } from "./rules/react-native/rn-no-non-native-navigator.js";
@@ -9677,6 +9678,18 @@ export const reactDoctorRules: ReadonlyArray<RuleRegistryEntry> = [
       framework: "react-native",
       category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoInlineObjectInListItem.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-no-layout-animation-in-render",
+    id: "rn-no-layout-animation-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoLayoutAnimationInRender,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnNoLayoutAnimationInRender.tags ?? [])])],
     },
   },
   {

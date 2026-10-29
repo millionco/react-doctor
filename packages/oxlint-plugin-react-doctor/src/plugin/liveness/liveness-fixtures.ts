@@ -1664,6 +1664,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "rn-no-panresponder": {
     code: 'import { View, PanResponder } from "react-native";',
   },
+  "rn-no-layout-animation-in-render": {
+    code: 'import { LayoutAnimation, View } from "react-native"; export const Tile = () => { LayoutAnimation.linear(); return <View />; };',
+  },
   "rn-no-raw-text": {
     code: "const Screen = () => <View>Hello</View>;",
   },

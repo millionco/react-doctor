@@ -33,6 +33,7 @@ import {
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
+import { getDirectPrimitiveSetterArgument } from "./utils/get-direct-primitive-setter-argument.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
@@ -1106,7 +1107,7 @@ const getSetterExposureConditions = (
   return conditionsByReference;
 };
 
-const areAllSetterWritesVisibilityGuarded = (
+const areAllSetterWritesHiddenSafe = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   componentNode: EsTreeNode,
@@ -1119,8 +1120,41 @@ const areAllSetterWritesVisibilityGuarded = (
     resetSetterReferences.map((setterReference) => setterReference.identifier),
   );
   const setterVariables = new Set(resetSetterReferences.map((reference) => reference.resolved));
+  const areFocalResetsHidden = resetSetterReferences.every((setterReference) => {
+    const setterCall = getCallExpr(setterReference);
+    return Boolean(
+      setterCall &&
+      getImpliedDependencyValue(
+        collectExposureConditions(
+          analysis,
+          context,
+          setterCall,
+          componentNode,
+          dependencySymbolIds,
+        ),
+        dependencyFormulas,
+      ) === !visibleDependencyValue,
+    );
+  });
+  const resetLiteralBySetter = new Map<Reference["resolved"], EsTreeNodeOfType<"Literal"> | null>();
+  if (areFocalResetsHidden) {
+    for (const resetReference of resetSetterReferences) {
+      const resetLiteral = getDirectPrimitiveSetterArgument(resetReference);
+      const previousLiteral = resetLiteralBySetter.get(resetReference.resolved);
+      const hasConflictingLiteral =
+        resetLiteralBySetter.has(resetReference.resolved) &&
+        (!previousLiteral ||
+          !resetLiteral ||
+          !Object.is(previousLiteral.value, resetLiteral.value));
+      resetLiteralBySetter.set(
+        resetReference.resolved,
+        hasConflictingLiteral ? null : resetLiteral,
+      );
+    }
+  }
   for (const setterVariable of setterVariables) {
     if (!setterVariable) return false;
+    const resetLiteral = resetLiteralBySetter.get(setterVariable);
     for (const setterReference of setterVariable.references) {
       if (
         setterVariable.identifiers.some((identifier) => identifier === setterReference.identifier)
@@ -1130,6 +1164,12 @@ const areAllSetterWritesVisibilityGuarded = (
       if (resetIdentifiers.has(setterReference.identifier)) continue;
       const setterCall = getCallExpr(setterReference);
       if (!setterCall) return false;
+      const writtenLiteral = resetLiteral
+        ? getDirectPrimitiveSetterArgument(setterReference)
+        : null;
+      if (resetLiteral && writtenLiteral && Object.is(resetLiteral.value, writtenLiteral.value)) {
+        continue;
+      }
       const conditionsByExposure = getSetterExposureConditions(
         analysis,
         context,
@@ -1217,7 +1257,7 @@ const areAllResetStateReadsHiddenUntilReset = (
   return Boolean(
     resetStateSymbolsById.size > 0 &&
     visibleDependencyValue !== null &&
-    areAllSetterWritesVisibilityGuarded(
+    areAllSetterWritesHiddenSafe(
       analysis,
       context,
       componentNode,

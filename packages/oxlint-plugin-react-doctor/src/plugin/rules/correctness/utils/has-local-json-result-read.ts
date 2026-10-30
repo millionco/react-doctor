@@ -111,6 +111,10 @@ export const hasLocalJsonResultRead = (
   };
   const isMemberRead = (expression: EsTreeNode): boolean => {
     let current = stripParenExpression(expression);
+    if (isNodeOfType(current, "CallExpression")) {
+      if (current.optional) return false;
+      current = stripParenExpression(current.callee);
+    }
     if (!isNodeOfType(current, "MemberExpression")) return false;
     while (isNodeOfType(current, "MemberExpression")) {
       if (current.optional || getStaticPropertyName(current) === null) return false;

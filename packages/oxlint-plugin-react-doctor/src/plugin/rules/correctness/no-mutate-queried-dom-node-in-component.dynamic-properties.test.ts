@@ -375,3 +375,30 @@ describe("queried DOM style surface independence", () => {
     expect(result.diagnostics).toHaveLength(expectedCount);
   });
 });
+
+describe("queried DOM absent style properties", () => {
+  it.each([
+    ["dynamic transform leaves absent height quiet", "{ transform }", 'node.style.height = "40px"'],
+    [
+      "dynamic accentColor leaves absent height quiet",
+      "{ accentColor }",
+      'node.style.height = "40px"',
+    ],
+    [
+      "shorthand-only style preserves absent longhand boundary",
+      "{ margin: gap }",
+      'node.style.marginTop = "40px"',
+    ],
+  ])("%s", (_name, style, mutation) => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Panel({transform,accentColor,gap}) {
+        const node = document.getElementById("panel");
+        ${mutation};
+        return <div id="panel" style={${style}} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

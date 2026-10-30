@@ -33,6 +33,7 @@ const EXCLUDED_QUERY_TOKENS = new Set(["root", "__next"]);
 // element means the component deliberately manages it imperatively, so
 // query-based writes to it are part of that sanctioned pattern.
 interface OwnedStyleAttributeInfo {
+  knownPropertyNames: Set<string> | null;
   dynamicPropertyNames: Set<string> | null;
   hasOrdinaryDynamicProperty: boolean;
   hasUncertifiedDynamicProperty: boolean;
@@ -85,6 +86,7 @@ const styleAttributeInfoFromValue = (
 ): OwnedStyleAttributeInfo => {
   if (!value || isNodeOfType(value, "Literal")) {
     return {
+      knownPropertyNames: new Set(),
       dynamicPropertyNames: new Set(),
       hasOrdinaryDynamicProperty: false,
       hasUncertifiedDynamicProperty: false,
@@ -92,6 +94,7 @@ const styleAttributeInfoFromValue = (
   }
   if (!isNodeOfType(value, "JSXExpressionContainer")) {
     return {
+      knownPropertyNames: null,
       dynamicPropertyNames: null,
       hasOrdinaryDynamicProperty: true,
       hasUncertifiedDynamicProperty: true,
@@ -100,15 +103,18 @@ const styleAttributeInfoFromValue = (
   const expression = stripParenExpression(value.expression);
   if (!isNodeOfType(expression, "ObjectExpression")) {
     return {
+      knownPropertyNames: null,
       dynamicPropertyNames: null,
       hasOrdinaryDynamicProperty: true,
       hasUncertifiedDynamicProperty: true,
     };
   }
+  const knownPropertyNames = new Set<string>();
   const dynamicPropertyNames = new Set<string>();
   for (const property of expression.properties) {
     if (!isNodeOfType(property, "Property") || property.computed) {
       return {
+        knownPropertyNames: null,
         dynamicPropertyNames: null,
         hasOrdinaryDynamicProperty: true,
         hasUncertifiedDynamicProperty: true,
@@ -121,11 +127,13 @@ const styleAttributeInfoFromValue = (
       propertyName = String(property.key.value);
     } else {
       return {
+        knownPropertyNames: null,
         dynamicPropertyNames: null,
         hasOrdinaryDynamicProperty: true,
         hasUncertifiedDynamicProperty: true,
       };
     }
+    knownPropertyNames.add(propertyName);
     if (isStaticLiteralExpression(property.value)) {
       dynamicPropertyNames.delete(propertyName);
     } else {
@@ -141,7 +149,12 @@ const styleAttributeInfoFromValue = (
       hasUncertifiedDynamicProperty = true;
     }
   }
-  return { dynamicPropertyNames, hasOrdinaryDynamicProperty, hasUncertifiedDynamicProperty };
+  return {
+    knownPropertyNames,
+    dynamicPropertyNames,
+    hasOrdinaryDynamicProperty,
+    hasUncertifiedDynamicProperty,
+  };
 };
 
 const classNameAttributeInfoFromValue = (
@@ -297,6 +310,14 @@ const canReactClobberStyleMutation = (
     if (dynamicPropertyNames === null) return true;
     if (mutatedPropertyName === null) return dynamicPropertyNames.size > 0;
     const normalizedMutationName = camelizeCssPropertyName(mutatedPropertyName);
+    const knownPropertyNames = info.styleAttribute.knownPropertyNames;
+    if (
+      knownPropertyNames !== null &&
+      !knownPropertyNames.has(mutatedPropertyName) &&
+      !knownPropertyNames.has(normalizedMutationName)
+    ) {
+      return false;
+    }
     if (
       dynamicPropertyNames.has(mutatedPropertyName) ||
       dynamicPropertyNames.has(normalizedMutationName)

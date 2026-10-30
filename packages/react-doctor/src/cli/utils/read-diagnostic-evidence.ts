@@ -12,7 +12,8 @@ interface SourceRecord {
   readonly absolutePath: string;
   readonly filePath: string;
   readonly sourceFile: ts.SourceFile;
-  readonly sourceText: string;
+  readonly sourceLines: ReadonlyArray<string>;
+  readonly sourceBuffer: Buffer;
 }
 
 interface ComponentDeclaration {
@@ -91,6 +92,8 @@ const readSourceRecord = (
   }
   try {
     const sourceText = fs.readFileSync(absolutePath, "utf-8");
+    let sourceLines: ReadonlyArray<string> | undefined;
+    let sourceBuffer: Buffer | undefined;
     const record = {
       absolutePath,
       filePath: normalizedFilePath,
@@ -101,7 +104,12 @@ const readSourceRecord = (
         true,
         getScriptKind(absolutePath),
       ),
-      sourceText,
+      get sourceLines() {
+        return (sourceLines ??= sourceText.split(/\r?\n/));
+      },
+      get sourceBuffer() {
+        return (sourceBuffer ??= Buffer.from(sourceText));
+      },
     } satisfies SourceRecord;
     state.recordByFilePath.set(normalizedFilePath, record);
     return record;
@@ -530,12 +538,12 @@ export const createDiagnosticEvidenceReader = (
   return (diagnostic) => {
     const record = readSourceRecord(rootDirectory, diagnostic.filePath, state);
     if (record === null || !Number.isInteger(diagnostic.line)) return null;
-    const sourceLines = record.sourceText.split(/\r?\n/);
+    const sourceLines = record.sourceLines;
     const startLineIndex = Math.max(0, diagnostic.line - 1);
     const endLineIndex = Math.max(startLineIndex, (diagnostic.endLine ?? diagnostic.line) - 1);
     const evidence =
       diagnostic.offset !== undefined && diagnostic.length !== undefined && diagnostic.length > 0
-        ? Buffer.from(record.sourceText)
+        ? record.sourceBuffer
             .subarray(diagnostic.offset, diagnostic.offset + diagnostic.length)
             .toString("utf-8")
         : sourceLines

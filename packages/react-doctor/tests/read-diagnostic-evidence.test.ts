@@ -7,7 +7,7 @@ import {
   fingerprintDiagnosticEvidence,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createDiagnosticEvidenceReader } from "../src/cli/utils/read-diagnostic-evidence.js";
 
 import { withDiagnosticFingerprints } from "../src/cli/utils/with-diagnostic-fingerprints.js";
@@ -34,6 +34,123 @@ describe("createDiagnosticEvidenceReader", () => {
   beforeEach(() => {
     rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-evidence-"));
     fs.mkdirSync(path.join(rootDirectory, "src"));
+  });
+
+  it("reuses one line split and UTF-8 buffer for repeated CRLF evidence", () => {
+    const sourceText =
+      '// 🦄 café\r\nconst café = <section role="region">😀</section>;\r\nconst next = <section role="region" />;\r\n';
+    fs.writeFileSync(path.join(rootDirectory, "src/regions.tsx"), sourceText);
+    const marker = 'role="region"';
+    const firstMarker = sourceText.indexOf(marker);
+    const secondMarker = sourceText.indexOf(marker, firstMarker + marker.length);
+    const diagnostics = [firstMarker, secondMarker].map((start, index) =>
+      makeDiagnostic({
+        filePath: "src/regions.tsx",
+        line: index + 2,
+        endLine: index + 2,
+        offset: Buffer.byteLength(sourceText.slice(0, start)),
+        length: Buffer.byteLength(marker),
+      }),
+    );
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+    const splitSpy = vi.spyOn(String.prototype, "split");
+    const bufferSpy = vi.spyOn(Buffer, "from");
+    let evidence: Array<string | null>;
+    let matchingSplits: number;
+    let matchingBuffers: number;
+    try {
+      evidence = [...diagnostics, ...diagnostics].map(reader);
+      matchingSplits = splitSpy.mock.calls.filter(
+        ([separator], index) =>
+          separator instanceof RegExp &&
+          separator.source === "\\r?\\n" &&
+          String(splitSpy.mock.contexts[index]) === sourceText,
+      ).length;
+      matchingBuffers = bufferSpy.mock.calls.filter(([input]) => input === sourceText).length;
+    } finally {
+      splitSpy.mockRestore();
+      bufferSpy.mockRestore();
+    }
+    expect(evidence).toEqual([marker, marker, marker, marker]);
+    expect(matchingSplits).toBe(1);
+    expect(matchingBuffers).toBe(1);
+  });
+
+  it("preserves UTF-16 columns alongside UTF-8 byte offsets", () => {
+    const line = "const café = <section>😀</section>;";
+    const sourceText = `// 🦄\r\n${line}\r\n`;
+    fs.writeFileSync(path.join(rootDirectory, "src/unicode.tsx"), sourceText);
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+    const column = line.indexOf("😀") + 1;
+    const byteOffset = Buffer.byteLength(sourceText.slice(0, sourceText.indexOf("😀")));
+    expect(
+      reader(
+        makeDiagnostic({
+          filePath: "src/unicode.tsx",
+          line: 2,
+          endLine: 2,
+          column,
+          endColumn: column + "😀".length,
+        }),
+      ),
+    ).toBe("😀");
+    expect(
+      reader(
+        makeDiagnostic({
+          filePath: "src/unicode.tsx",
+          line: 2,
+          endLine: 2,
+          offset: byteOffset,
+          length: Buffer.byteLength("😀"),
+        }),
+      ),
+    ).toBe("😀");
+  });
+
+  it("keeps each file's derived evidence independent", () => {
+    fs.writeFileSync(path.join(rootDirectory, "src/first.tsx"), "first\r\n");
+    fs.writeFileSync(path.join(rootDirectory, "src/second.tsx"), "second\n");
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+    for (const filePath of ["src/first.tsx", "src/second.tsx", "src/first.tsx", "src/second.tsx"]) {
+      expect(
+        reader(makeDiagnostic({ filePath, line: 1, endLine: 1, column: 1, endColumn: undefined })),
+      ).toBe(filePath.includes("first") ? "first" : "second");
+    }
+  });
+
+  it("retains the reader snapshot and refreshes changed files in a new reader", () => {
+    const filePath = "src/snapshot.tsx";
+    fs.writeFileSync(path.join(rootDirectory, filePath), "first\r\n");
+    const diagnostic = makeDiagnostic({
+      filePath,
+      line: 1,
+      endLine: 1,
+      column: 1,
+      endColumn: undefined,
+    });
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+    expect(reader(diagnostic)).toBe("first");
+    fs.writeFileSync(path.join(rootDirectory, filePath), "changed\n");
+    expect(reader(diagnostic)).toBe("first");
+    expect(createDiagnosticEvidenceReader(rootDirectory)(diagnostic)).toBe("changed");
+    fs.rmSync(path.join(rootDirectory, filePath));
+    expect(reader(diagnostic)).toBe("first");
+    expect(createDiagnosticEvidenceReader(rootDirectory)(diagnostic)).toBeNull();
+  });
+
+  it("keeps missing-file null caching local to one reader", () => {
+    const diagnostic = makeDiagnostic({
+      filePath: "src/added.tsx",
+      line: 1,
+      endLine: 1,
+      column: 1,
+      endColumn: undefined,
+    });
+    const reader = createDiagnosticEvidenceReader(rootDirectory);
+    expect(reader(diagnostic)).toBeNull();
+    fs.writeFileSync(path.join(rootDirectory, "src/added.tsx"), "added\n");
+    expect(reader(diagnostic)).toBeNull();
+    expect(createDiagnosticEvidenceReader(rootDirectory)(diagnostic)).toBe("added");
   });
 
   it("preserves detector identities through a saved JSON report", () => {

@@ -1,0 +1,572 @@
+[
+  {
+    "id": "author-fp-native-two-hop",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "author-fp-native-one-hop",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const dismiss = () => setOpen(false);useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "author-fp-native-three-hop",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup(); const listenerCallback = () => dismiss();useEffect(() => {  document.addEventListener('click', listenerCallback); return () => document.removeEventListener('click', listenerCallback); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-fp-native-inline-two-hop",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', () => dismiss()); return () => document.removeEventListener('click', () => dismiss()); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-fp-native-callback-wrapper",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = useCallback(() => setOpen(false), []); const dismiss = useCallback(() => closePopup(), [closePopup]);useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-fp-native-effect-local-callback",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); useEffect(() => { const dismiss = () => closePopup(); document.addEventListener(\"click\", dismiss); return () => document.removeEventListener(\"click\", dismiss); }, [closePopup]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "author-fp-native-function-declaration",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); function closePopup() { setOpen(false); } function dismiss() { closePopup(); }useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-known-jsx-two-hop",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup(); useEffect(() => setOpen(expanded), [expanded]); return <section onClick={dismiss}>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "author-known-native-inline-setter",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); useEffect(() => { document.addEventListener(\"click\", () => setOpen(false)); }, []); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "author-tp-no-listener",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false);  useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-unregistered-helper-chain",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup(); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-effect-only-helper-chain",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => dismiss(), [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-render-only-helper-chain",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();dismiss(); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-removed-only-listener",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { document.removeEventListener(\"click\", dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-unreachable-registration",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { return; document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-false-registration",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { if (false) document.addEventListener(\"click\", dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-unreachable-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => { return; closePopup(); };useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-false-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => { if (false) closePopup(); };useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-unreachable-setter",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => { return; setOpen(false); }; const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-other-state-writer",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const [notice, setNotice] = useState(false); const closePopup = () => setNotice(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-shadowed-helper-at-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => { const closePopup = () => undefined; closePopup(); };useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-tp-shadowed-handler-at-registration",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { const dismiss = () => undefined; document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-shadowed-document",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, document }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-imported-document",
+    "source": "import { useState, useEffect, useCallback } from 'react'; import document from \"event-provider\"; const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-custom-provider",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, events }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  events.addEventListener('click', dismiss); return () => events.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-mutated-native-method",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); document.addEventListener = (_event, callback) => callback();const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-mutated-native-method-alias",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const page = document; page.addEventListener = (_event, callback) => callback();const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-object-assign-provider",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); Object.assign(document, { addEventListener: (_event, callback) => callback() });const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-native-receiver-alias",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const page = document;const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  page.addEventListener('click', dismiss); return () => page.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-listener-alias",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();const listenerAlias = dismiss;useEffect(() => {  document.addEventListener('click', listenerAlias); return () => document.removeEventListener('click', listenerAlias); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-mutated-writer",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); let closePopup = () => setOpen(false); const dismiss = () => closePopup(); closePopup = () => undefined;useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-mutated-handler",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); let dismiss = () => closePopup(); dismiss = () => undefined;useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-helper-escape",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, register }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();register(closePopup);useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-handler-escape",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, register }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();register(dismiss);useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-nested-factory",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-generator-handler",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); function* dismiss() { closePopup(); }useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-async-handler",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = async () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-userland-use-callback",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const useCallback = (callback) => () => undefined; const closePopup = useCallback(() => setOpen(false), []); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-non-event-effect-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]);useEffect(() => dismiss(), [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-immediate-setup-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { dismiss(); document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-prop-only-event-write",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(expanded); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-effect-local-unused-closure",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { const mount = () => document.addEventListener(\"click\", dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-dynamic-event-name",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, eventName }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener(eventName, dismiss); return () => document.removeEventListener(eventName, dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-non-user-event",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('load', dismiss); return () => document.removeEventListener('load', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-object-define-property-provider",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); Object.defineProperty(document, \"addEventListener\", { value: (_event, callback) => callback() });const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-reflect-set-provider",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); Reflect.set(document, \"addEventListener\", (_event, callback) => callback());const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-document-escape",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, patch }) => { const [open, setOpen] = useState(false); patch(document);const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-extracted-method-alias",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const register = document.addEventListener;const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { register(\"click\", dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-global-document-replacement",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); globalThis.document = { addEventListener: (_event, callback) => callback(), removeEventListener() {} };const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-indirect-dynamic-provider",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const execute = eval; execute(\"document.addEventListener = function () {}\");const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-immediate-listener-removal",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { document.addEventListener(\"click\", dismiss); document.removeEventListener(\"click\", dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-already-aborted-signal",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { const controller = new AbortController(); controller.abort(); document.addEventListener(\"click\", dismiss, { signal: controller.signal }); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-listener-call-throw-prefix",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => { throw new Error(\"blocked\"); closePopup(); };useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-helper-unknown-prefix-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, notify }) => { const [open, setOpen] = useState(false); const closePopup = () => { notify(); setOpen(false); }; const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-optional-registration",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => { document.addEventListener?.(\"click\", dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-optional-helper-call",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup?.();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-unused-registered-sibling",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();const sibling = () => undefined;useEffect(() => {  document.addEventListener('click', sibling); return () => document.removeEventListener('click', sibling); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-nested-component-setter",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const Child = () => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]);return <aside>{open}</aside>; }; useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-writer-function-alias",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const closeAlias = closePopup; const dismiss = () => closeAlias();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-setter-binding-alias",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closeState = setOpen; const closePopup = () => closeState(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-shadowed-setter-at-writer",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = (setOpen = () => undefined) => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-recursive-callback-cycle",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => bridge(); const bridge = () => dismiss();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-writer-returned-as-value",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup;useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-mutated-state-hook-provider",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); useState = () => [false, () => undefined];const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "author-unsafe-global-root-alias-replacement",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const root = globalThis; root.document = { addEventListener: (_event, callback) => callback(), removeEventListener() {} };const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-exact-expression-chain",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "peer-exact-block-chain",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => { setVisible(false); }; const dismissPanel = () => { closePanel(); };useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "peer-listener-default-argument-not-evaluated",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = (event = closePanel()) => undefined;useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-helper-default-parameter-throws",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = (ignored = fail()) => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-helper-extra-argument-may-throw",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel(fail());useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-listener-params-can-shadow-setter",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = (setVisible = () => undefined) => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-listener-is-event-type-argument",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener(dismissPanel, () => undefined); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-listener-is-options-argument",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', () => undefined, dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-registration-via-call",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener.call(document, 'click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-new-expression-helper-not-called",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => new closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-helper-function-returned-not-invoked",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel;useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-conditional-helper-call",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => ready && closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-unreachable-registration-after-throw",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { throw new Error(); document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-registration-immediately-removed",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-cleanup-expression-executes-immediately",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-cleanup-paired-different-capture",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel, true); return () => document.removeEventListener('click', dismissPanel, false); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-already-aborted-signal-global",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel, { signal: AbortSignal.abort() }); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-prototype-assignment",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); EventTarget.prototype.addEventListener = () => undefined;const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-prototype-reflective-write",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); Reflect.defineProperty(EventTarget.prototype, 'addEventListener', { value: () => undefined });const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-global-root-destructured-alias",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const { window: rootAlias } = globalThis; rootAlias.document = fakeDocument;const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-document-assignment-alias",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); let documentAlias; documentAlias = document; documentAlias.addEventListener = () => undefined;const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-document-destructured-alias",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const { document: documentAlias } = globalThis; Object.assign(documentAlias, { addEventListener: () => undefined });const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-delete-computed-member",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); delete document[methodName];const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-object-set-prototype",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); Object.setPrototypeOf(document, { addEventListener: () => undefined });const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-spread-escape",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); unknownOperation(...[document]);const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-provider-global-root-escape",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); unknownOperation(globalThis);const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-listener-dispatch-during-setup",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); document.dispatchEvent(new Event('click')); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-nested-component-owner",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const Child = () => { const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]);return null; }; useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-unused-nested-registration-function",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();const registerPanel = () => {useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]);}; useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-listener-const-alias-escape",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();const otherDismiss = dismissPanel;useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-helper-export-to-property",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();sink.close = closePanel;useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-same-spelling-other-state",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const [otherVisible, setOtherVisible] = useState(false); const closePanel = () => setOtherVisible(false); const dismissPanel = () => closePanel();useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-hook-provider-namespace-mutation",
+    "source": "import { useState, useEffect } from 'react'; import * as React from 'react'; const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); React.useEffect = (setup) => undefined;const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();React.useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-hook-provider-local-shadow",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); const closePanel = () => setVisible(false); const dismissPanel = () => closePanel();const install = (useEffect) => {useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]);}; install(() => undefined); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-constant-after-hook-safe-deferred-initialization",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]);const closePanel = () => setVisible(false); const dismissPanel = () => closePanel(); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "peer-constant-after-early-return-uninitialized",
+    "source": "import { useState, useEffect } from 'react';  const Panel = ({ expanded, ready, fail, fakeDocument, unknownOperation, methodName, sink }) => { const [visible, setVisible] = useState(false); useEffect(() => { document.addEventListener('click', dismissPanel); return () => document.removeEventListener('click', dismissPanel); }, [dismissPanel]);return null;const closePanel = () => setVisible(false); const dismissPanel = () => closePanel(); useEffect(() => setVisible(expanded), [expanded]); return <aside>{visible ? 'open' : 'closed'}</aside>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-repeated-writer-var",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); var closePopup = () => setOpen(false); var closePopup = () => undefined; const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-repeated-callback-var",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); var dismiss = () => closePopup(); var dismiss = () => undefined;useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-writer-default",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = (unused = fail()) => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-callback-return-block",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => { return closePopup(); };useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "additional-cleanup-return-block",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => { return document.removeEventListener('click', dismiss); }; }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [0, 0, 0, 0]
+  },
+  {
+    "id": "additional-alias-global-root",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const externalRoot = globalThis; patch(externalRoot); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-constructor-destructuring",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const {constructor: execute} = {}; execute(\"document.addEventListener = () => undefined\")(); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-computed-constructor",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const execute = ({})[\"constructor\"][\"constructor\"]; execute(\"document.addEventListener = () => undefined\")(); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-jsx-render-ClosePanel",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const ClosePanel = () => setOpen(false); const dismiss = () => ClosePanel();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section><ClosePanel/>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-jsx-render-DismissPanel",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const DismissPanel = () => closePopup();useEffect(() => {  document.addEventListener('click', DismissPanel); return () => document.removeEventListener('click', DismissPanel); }, [DismissPanel]); useEffect(() => setOpen(expanded), [expanded]); return <section><DismissPanel/>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-jsx-provider-document-addEventListener",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, target }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section><document.addEventListener/>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-jsx-provider-globalThis-Component",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, target }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section><globalThis.Component/>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  },
+  {
+    "id": "additional-jsx-provider-target-addEventListener",
+    "source": "import { useState, useEffect, useCallback } from 'react';  const Popup = ({ expanded, target }) => { const [open, setOpen] = useState(false); const closePopup = () => setOpen(false); const dismiss = () => closePopup();useEffect(() => {  document.addEventListener('click', dismiss); return () => document.removeEventListener('click', dismiss); }, [dismiss]); useEffect(() => setOpen(expanded), [expanded]); return <section><target.addEventListener/>{open ? \"shown\" : \"hidden\"}</section>; };",
+    "counts": [1, 1, 0, 0]
+  }
+]

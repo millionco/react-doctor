@@ -1,5 +1,9 @@
 import type { Reference, Variable } from "eslint-scope";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { getExecutionReferenceOffset } from "../../../utils/get-execution-reference-offset.js";
+import { isReactApiCall } from "../../../utils/is-react-api-call.js";
+import { hasFiniteDocumentListenerProvider } from "./has-finite-document-listener-provider.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
@@ -89,16 +93,25 @@ const isSynchronousFunction = (functionNode: EsTreeNode): boolean => {
   return functionMetadata.async !== true && functionMetadata.generator !== true;
 };
 
+const bindingVariablesByAnalysis = new WeakMap<ProgramAnalysis, WeakMap<EsTreeNode, Variable>>();
+
 const findBindingVariable = (
   analysis: ProgramAnalysis,
   bindingIdentifier: EsTreeNode,
 ): Variable | null => {
-  for (const scope of analysis.scopeManager.scopes) {
-    for (const variable of scope.variables) {
-      if (variable.identifiers.includes(bindingIdentifier as never)) return variable;
+  let bindingVariables = bindingVariablesByAnalysis.get(analysis);
+  if (!bindingVariables) {
+    bindingVariables = new WeakMap();
+    for (const scope of analysis.scopeManager.scopes) {
+      for (const variable of scope.variables) {
+        for (const identifier of variable.identifiers) {
+          bindingVariables.set(identifier as unknown as EsTreeNode, variable);
+        }
+      }
     }
+    bindingVariablesByAnalysis.set(analysis, bindingVariables);
   }
-  return null;
+  return bindingVariables.get(bindingIdentifier) ?? null;
 };
 
 const getImmutableFunctionVariable = (
@@ -250,6 +263,393 @@ const hasReachableJsxEventCallPath = (
   return false;
 };
 
+const getFiniteCall = (functionNode: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (
+    !isNodeOfType(functionNode, "ArrowFunctionExpression") ||
+    !isSynchronousFunction(functionNode) ||
+    functionNode.params.length !== 0
+  ) {
+    return null;
+  }
+  let expression: EsTreeNode | null | undefined = functionNode.body;
+  if (isNodeOfType(expression, "BlockStatement")) {
+    if (expression.body.length !== 1) return null;
+    const statement = expression.body[0];
+    expression = isNodeOfType(statement, "ExpressionStatement")
+      ? statement.expression
+      : isNodeOfType(statement, "ReturnStatement")
+        ? statement.argument
+        : null;
+  }
+  return isNodeOfType(expression, "CallExpression") && !expression.optional ? expression : null;
+};
+
+const completeVariables = new WeakMap<Variable, boolean>();
+
+const hasCompleteVariableReferences = (context: RuleContext, variable: Variable): boolean => {
+  const cached = completeVariables.get(variable);
+  if (cached !== undefined) return cached;
+  const identifier = variable.identifiers[0] as unknown as EsTreeNode;
+  const symbol = context.scopes.symbolFor(identifier);
+  const eslintReferences = new Set(
+    variable.references.map((reference) => reference.identifier as unknown as EsTreeNode),
+  );
+  const semanticReferences = new Set(symbol?.references.map((reference) => reference.identifier));
+  const complete = Boolean(
+    symbol &&
+    symbol.bindingIdentifier === identifier &&
+    symbol.references.every((reference) => eslintReferences.has(reference.identifier)) &&
+    variable.references.every(
+      (reference) =>
+        reference.init ||
+        (context.scopes.symbolFor(reference.identifier as unknown as EsTreeNode) === symbol &&
+          semanticReferences.has(reference.identifier as unknown as EsTreeNode)),
+    ),
+  );
+  completeVariables.set(variable, complete);
+  return complete;
+};
+
+const isReadonlyConstVariable = (
+  context: RuleContext,
+  variable: Variable,
+  initializer: EsTreeNode,
+): boolean => {
+  const definition = variable.defs[0];
+  const declaration = definition?.node as unknown as EsTreeNode;
+  return Boolean(
+    variable.defs.length === 1 &&
+    variable.identifiers.length === 1 &&
+    hasCompleteVariableReferences(context, variable) &&
+    definition.type === "Variable" &&
+    isNodeOfType(declaration, "VariableDeclarator") &&
+    declaration.init === initializer &&
+    isNodeOfType(declaration.parent, "VariableDeclaration") &&
+    declaration.parent.kind === "const" &&
+    variable.references.every(
+      (reference) =>
+        !reference.isWrite() ||
+        (reference.init &&
+          reference.identifier === variable.identifiers[0] &&
+          reference.writeExpr === initializer),
+    ),
+  );
+};
+
+const readonlyInputBindings = new WeakMap<Variable, boolean>();
+
+const hasReadonlyInputReferences = (variable: Variable): boolean => {
+  const cached = readonlyInputBindings.get(variable);
+  if (cached !== undefined) return cached;
+  const readonly = variable.references.every((reference) => !reference.isWrite());
+  readonlyInputBindings.set(variable, readonly);
+  return readonly;
+};
+
+const supportedDocumentWriterComponents = new WeakMap<EsTreeNode, boolean>();
+
+const isFiniteHookCall = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  call: EsTreeNode,
+  hookName: string,
+): boolean => {
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    !isNodeOfType(call.callee, "Identifier") ||
+    !isReactApiCall(call, hookName, context.scopes)
+  ) {
+    return false;
+  }
+  const hookVariable = analysis.referenceByIdentifier.get(call.callee)?.resolved;
+  if (!hookVariable) return false;
+  return (
+    hookVariable.defs.length === 1 &&
+    hookVariable.defs[0].type === "ImportBinding" &&
+    hasReadonlyInputReferences(hookVariable)
+  );
+};
+
+const isFiniteDependencyReference = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  reference: Reference,
+  componentFunction: EsTreeNode,
+): boolean => {
+  const identifier = reference.identifier as unknown as EsTreeNode;
+  const dependencies = identifier.parent;
+  const hookCall = dependencies?.parent;
+  return Boolean(
+    isNodeOfType(dependencies, "ArrayExpression") &&
+    isNodeOfType(hookCall, "CallExpression") &&
+    hookCall.arguments[1] === dependencies &&
+    findEnclosingFunction(hookCall) === componentFunction &&
+    isFiniteHookCall(analysis, context, hookCall, "useEffect"),
+  );
+};
+
+const getDocumentListenerCall = (
+  analysis: ProgramAnalysis,
+  identifier: EsTreeNode,
+  methodName: string,
+): EsTreeNode | null => {
+  const call = identifier.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.arguments.length !== 2 ||
+    call.arguments[1] !== identifier ||
+    !isNodeOfType(call.arguments[0], "Literal") ||
+    call.arguments[0].value !== "click" ||
+    !isNodeOfType(call.callee, "MemberExpression") ||
+    call.callee.optional ||
+    call.callee.computed ||
+    !isNodeOfType(call.callee.object, "Identifier") ||
+    call.callee.object.name !== "document" ||
+    analysis.referenceByIdentifier.get(call.callee.object)?.resolved !== null ||
+    !isNodeOfType(call.callee.property, "Identifier") ||
+    call.callee.property.name !== methodName
+  ) {
+    return null;
+  }
+  return call;
+};
+
+const hasFiniteDocumentRegistration = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  componentFunction: EsTreeNode,
+  callbackVariable: Variable,
+  callbackFunction: EsTreeNode,
+  writerVariable: Variable,
+): boolean => {
+  let registration: EsTreeNode | null = null;
+  let removal: EsTreeNode | null = null;
+  for (const reference of callbackVariable.references) {
+    if (reference.init) continue;
+    if (isFiniteDependencyReference(analysis, context, reference, componentFunction)) continue;
+    const identifier = reference.identifier as unknown as EsTreeNode;
+    const addCall = getDocumentListenerCall(analysis, identifier, "addEventListener");
+    const removeCall = getDocumentListenerCall(analysis, identifier, "removeEventListener");
+    if (addCall && !registration) registration = addCall;
+    else if (removeCall && !removal) removal = removeCall;
+    else return false;
+  }
+  if (!registration || !removal) return false;
+  const setupFunction = findEnclosingFunction(registration);
+  if (
+    !isNodeOfType(setupFunction, "ArrowFunctionExpression") ||
+    !isSynchronousFunction(setupFunction) ||
+    setupFunction.params.length !== 0 ||
+    !isNodeOfType(setupFunction.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const hookCall = setupFunction.parent;
+  if (
+    !isNodeOfType(hookCall, "CallExpression") ||
+    hookCall.arguments.length !== 2 ||
+    hookCall.arguments[0] !== setupFunction ||
+    !isNodeOfType(hookCall.arguments[1], "ArrayExpression") ||
+    !isFiniteHookCall(analysis, context, hookCall, "useEffect") ||
+    findEnclosingFunction(hookCall) !== componentFunction ||
+    !isNodeReachableWithinFunction(hookCall, context)
+  ) {
+    return false;
+  }
+  const callbackOwner = findEnclosingFunction(callbackFunction);
+  const callbackDeclaration = callbackFunction.parent;
+  if (!isNodeOfType(callbackDeclaration, "VariableDeclarator")) return false;
+  const callbackStatement = callbackDeclaration.parent;
+  if (!isNodeOfType(callbackStatement, "VariableDeclaration")) return false;
+  const setupStatements = setupFunction.body.body;
+  const callbackIsEffectLocal = callbackOwner === setupFunction;
+  const expectedStatements = callbackIsEffectLocal ? setupStatements.slice(1) : setupStatements;
+  if (
+    (callbackIsEffectLocal &&
+      (setupStatements[0] !== callbackStatement || callbackStatement.declarations.length !== 1)) ||
+    (!callbackIsEffectLocal && callbackOwner !== componentFunction) ||
+    expectedStatements.length !== 2 ||
+    !isNodeOfType(expectedStatements[0], "ExpressionStatement") ||
+    expectedStatements[0].expression !== registration ||
+    !isNodeOfType(expectedStatements[1], "ReturnStatement")
+  ) {
+    return false;
+  }
+  const cleanup = expectedStatements[1].argument;
+  if (getFiniteCall(cleanup ?? setupFunction) !== removal) return false;
+  if (findEnclosingFunction(removal) !== cleanup) return false;
+  const componentBody = isFunctionLike(componentFunction) ? componentFunction.body : null;
+  const hookStatement = hookCall.parent;
+  if (
+    !isNodeOfType(componentBody, "BlockStatement") ||
+    !isNodeOfType(hookStatement, "ExpressionStatement") ||
+    hookStatement.parent !== componentBody ||
+    !isSynchronousFunction(componentFunction)
+  ) {
+    return false;
+  }
+  let supportedComponent = supportedDocumentWriterComponents.get(componentFunction);
+  if (supportedComponent === undefined) {
+    supportedComponent = componentBody.body.every(
+      (statement) =>
+        isNodeOfType(statement, "VariableDeclaration") ||
+        isNodeOfType(statement, "ExpressionStatement") ||
+        isNodeOfType(statement, "ReturnStatement"),
+    );
+    supportedDocumentWriterComponents.set(componentFunction, supportedComponent);
+  }
+  if (!supportedComponent) return false;
+  for (const variable of new Set([callbackVariable, writerVariable])) {
+    const declaration = variable.defs[0].node as unknown as EsTreeNode;
+    const declarationOwner = findEnclosingFunction(declaration);
+    if (declarationOwner === setupFunction && variable === callbackVariable) continue;
+    if (
+      declarationOwner !== componentFunction ||
+      declaration.parent?.parent !== componentBody ||
+      getExecutionReferenceOffset(declaration) >= getExecutionReferenceOffset(hookStatement) ||
+      !isNodeReachableWithinFunction(declaration, context)
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const hasFiniteDocumentClickWriter = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  componentFunction: EsTreeNode,
+  setterVariable: Variable,
+  effectNode: EsTreeNode,
+  writerFunction: EsTreeNode,
+  writerVariable: Variable,
+): boolean => {
+  const setterDeclaration = setterVariable.defs[0]?.node as unknown as EsTreeNode;
+  const setterCall = getFiniteCall(writerFunction);
+  const syncFunction = isNodeOfType(effectNode, "CallExpression") ? effectNode.arguments[0] : null;
+  const syncCall = syncFunction ? getFiniteCall(syncFunction) : null;
+  if (
+    !setterCall ||
+    !syncCall ||
+    !isNodeOfType(setterDeclaration, "VariableDeclarator") ||
+    !isNodeOfType(setterDeclaration.init, "CallExpression") ||
+    !isNodeOfType(setterDeclaration.id, "ArrayPattern") ||
+    setterDeclaration.id.elements.length !== 2 ||
+    !isNodeOfType(setterDeclaration.id.elements[0], "Identifier") ||
+    setterDeclaration.init.arguments.length !== 1 ||
+    !isNodeOfType(setterDeclaration.init.arguments[0], "Literal") ||
+    setterDeclaration.init.arguments[0].value !== false ||
+    setterDeclaration.parent?.parent !==
+      (isFunctionLike(componentFunction) ? componentFunction.body : null) ||
+    setterDeclaration.id.elements[1] !== setterVariable.identifiers[0] ||
+    findEnclosingFunction(setterDeclaration) !== componentFunction ||
+    !isFiniteHookCall(analysis, context, setterDeclaration.init, "useState") ||
+    !isReadonlyConstVariable(context, setterVariable, setterDeclaration.init) ||
+    !isFiniteHookCall(analysis, context, effectNode, "useEffect") ||
+    !isReadonlyConstVariable(context, writerVariable, writerFunction) ||
+    setterCall.arguments.length !== 1 ||
+    !isNodeOfType(setterCall.arguments[0], "Literal") ||
+    setterCall.arguments[0].value !== false ||
+    analysis.referenceByIdentifier.get(setterCall.callee)?.resolved !== setterVariable ||
+    analysis.referenceByIdentifier.get(syncCall.callee)?.resolved !== setterVariable ||
+    syncCall.arguments.length !== 1 ||
+    !isNodeOfType(syncCall.arguments[0], "Identifier")
+  ) {
+    return false;
+  }
+  if (
+    !isFunctionLike(componentFunction) ||
+    !isNodeOfType(componentFunction.params[0], "ObjectPattern") ||
+    !isNodeOfType(effectNode, "CallExpression") ||
+    !isNodeOfType(effectNode.parent, "ExpressionStatement") ||
+    effectNode.parent.parent !== componentFunction.body ||
+    effectNode.arguments.length !== 2 ||
+    !isNodeOfType(effectNode.arguments[1], "ArrayExpression") ||
+    effectNode.arguments[1].elements.length !== 1 ||
+    !isNodeOfType(effectNode.arguments[1].elements[0], "Identifier") ||
+    analysis.referenceByIdentifier.get(effectNode.arguments[1].elements[0])?.resolved !==
+      analysis.referenceByIdentifier.get(syncCall.arguments[0])?.resolved
+  )
+    return false;
+  const propVariable = analysis.referenceByIdentifier.get(syncCall.arguments[0])?.resolved;
+  const propDefinition = propVariable?.defs[0];
+  if (
+    !propVariable ||
+    propVariable.defs.length !== 1 ||
+    propDefinition?.type !== "Parameter" ||
+    !componentFunction.params[0].properties.some(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        !property.computed &&
+        !property.method &&
+        property.kind === "init" &&
+        property.value === propVariable.identifiers[0],
+    ) ||
+    propDefinition.node !== componentFunction ||
+    !hasReadonlyInputReferences(propVariable) ||
+    setterVariable.references.some(
+      (reference) =>
+        !reference.init &&
+        getCallExpr(reference) !== setterCall &&
+        getCallExpr(reference) !== syncCall,
+    ) ||
+    !hasFiniteDocumentListenerProvider(analysis, context)
+  ) {
+    return false;
+  }
+  if (
+    hasFiniteDocumentRegistration(
+      analysis,
+      context,
+      componentFunction,
+      writerVariable,
+      writerFunction,
+      writerVariable,
+    )
+  )
+    return true;
+  let writerCall: EsTreeNodeOfType<"CallExpression"> | null = null;
+  for (const reference of writerVariable.references) {
+    if (
+      reference.init ||
+      isFiniteDependencyReference(analysis, context, reference, componentFunction)
+    )
+      continue;
+    const call = getCallExpr(reference);
+    if (
+      writerCall ||
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      call.arguments.length !== 0 ||
+      call.callee !== reference.identifier
+    )
+      return false;
+    writerCall = call;
+  }
+  if (!writerCall) return false;
+  const callbackFunction = findEnclosingFunction(writerCall);
+  if (!callbackFunction || getFiniteCall(callbackFunction) !== writerCall) return false;
+  const callbackVariable = getImmutableFunctionVariable(
+    analysis,
+    componentFunction,
+    callbackFunction,
+  );
+  return Boolean(
+    callbackVariable &&
+    isReadonlyConstVariable(context, callbackVariable, callbackFunction) &&
+    hasFiniteDocumentRegistration(
+      analysis,
+      context,
+      componentFunction,
+      callbackVariable,
+      callbackFunction,
+      writerVariable,
+    ),
+  );
+};
+
 // The state behind `setterRef` has an independent writer: some OTHER
 // reference to the same setter binding (outside the flagged effect)
 // writes it from an event-handler path — or, with
@@ -281,6 +681,21 @@ export const hasUserInputSetterWriter = (
       componentFunction,
       writerFunction,
     );
+    if (
+      includeDeferredWriters &&
+      writerVariable &&
+      hasFiniteDocumentClickWriter(
+        analysis,
+        context,
+        componentFunction,
+        setterRef.resolved,
+        effectNode,
+        writerFunction,
+        writerVariable,
+      )
+    ) {
+      return true;
+    }
     if (
       writerVariable &&
       hasReachableJsxEventCallPath(analysis, context, componentFunction, writerVariable, new Set())

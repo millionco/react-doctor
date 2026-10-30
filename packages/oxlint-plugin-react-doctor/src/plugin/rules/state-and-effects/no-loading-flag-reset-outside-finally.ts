@@ -1,3 +1,4 @@
+import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
 import { collectLoadingLifecycleResets } from "../../utils/collect-loading-lifecycle-resets.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
@@ -36,6 +37,7 @@ import { isReactHookResultReference } from "../../utils/is-react-hook-result-ref
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveJumpTarget } from "../../utils/resolve-jump-target.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -2451,6 +2453,16 @@ const isInactiveResetBackedInvalidation = (
   return false;
 };
 
+interface OwnershipTransferProof {
+  safety: "safe" | "unsafe" | "unknown";
+  hasContextualRestart: boolean;
+}
+
+const ownershipTransfersByScopes = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, Map<string, OwnershipTransferProof>>
+>();
+
 const findOwnershipClaim = (
   comparison: AsyncOwnershipComparison,
   functionNode: EsTreeNode,
@@ -2475,42 +2487,319 @@ const findOwnershipClaim = (
     firstTruthyNode && isNodeOfType(firstTruthyNode, "CallExpression")
       ? getSetterBooleanValue(firstTruthyNode, context)?.setterKey
       : null;
-  const isPairedOwnershipTransfer = (writeNode: EsTreeNode): boolean => {
-    if (!loadingSetterKey) return false;
-    let writeFunction: EsTreeNode | null | undefined = writeNode.parent;
-    while (writeFunction && !isFunctionLike(writeFunction)) {
-      writeFunction = writeFunction.parent ?? null;
-    }
-    if (!writeFunction) return false;
+  const analyzeOwnershipTransfer = (writeNode: EsTreeNode): OwnershipTransferProof => {
+    if (!loadingSetterKey) return { safety: "unknown", hasContextualRestart: false };
+    const writeFunction = findEnclosingFunction(writeNode);
+    if (!writeFunction || !isFunctionLike(writeFunction))
+      return { safety: "unknown", hasContextualRestart: false };
     const writeEntry = getDirectBlockEntry(writeNode, writeFunction);
-    if (!writeEntry) return false;
-    let isPaired = false;
-    walkOwnFunctionScope(writeFunction, (child) => {
-      if (isPaired || !isNodeOfType(child, "CallExpression")) return;
-      const setter = getSetterBooleanValue(child, context);
-      if (setter?.setterKey !== loadingSetterKey) return;
-      const setterEntry = getDirectBlockEntry(child, writeFunction);
+    if (!writeEntry) return { safety: "unknown", hasContextualRestart: false };
+    const writeIndex = writeEntry.block.body.findIndex(
+      (statement) => statement === writeEntry.entry,
+    );
+    if (writeIndex === -1) return { safety: "unknown", hasContextualRestart: false };
+    const canReachSynchronously = (
+      statement: EsTreeNode,
+      boundary: EsTreeNode = writeFunction,
+    ): boolean => {
+      if (subtreeHasAbruptSynchronousOperation(statement, boundary, context)) return false;
+      let canBypass = false;
+      walkAst(statement, (candidate) => {
+        if (isFunctionLike(candidate)) return false;
+        if (
+          isNodeOfType(candidate, "ReturnStatement") ||
+          isNodeOfType(candidate, "AwaitExpression") ||
+          isNodeOfType(candidate, "YieldExpression")
+        )
+          canBypass = true;
+        if (
+          isNodeOfType(candidate, "BreakStatement") ||
+          isNodeOfType(candidate, "ContinueStatement")
+        ) {
+          const target = resolveJumpTarget(candidate);
+          if (!target || target.range[1] > statement.range[1]) canBypass = true;
+        }
+      });
+      return !canBypass;
+    };
+    let hasContextualRestart = false;
+    const setterCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    walkOwnFunctionScope(writeFunction, (candidate) => {
+      if (
+        isNodeOfType(candidate, "CallExpression") &&
+        candidate.range[0] > writeNode.range[0] &&
+        canNodeReachLaterNodeWithinFunction(writeNode, candidate, writeFunction, context) &&
+        resolveExpressionKey(candidate.callee, context) === loadingSetterKey
+      )
+        setterCalls.push(candidate);
+    });
+    const hasProtectedSuccessor = (
+      truthyCall: EsTreeNodeOfType<"CallExpression">,
+      successorClaim: EsTreeNode = writeNode,
+      successorFunction: EsTreeNode = writeFunction,
+      successorSetterCalls: ReadonlyArray<EsTreeNodeOfType<"CallExpression">> = setterCalls,
+    ): boolean => {
+      if (!isFunctionLike(successorFunction)) return false;
+      const successorEntry = getDirectBlockEntry(successorClaim, successorFunction);
+      if (!successorEntry) return false;
+      const successorIndex = successorEntry.block.body.findIndex(
+        (statement) => statement === successorEntry.entry,
+      );
+      if (!successorFunction.async) return false;
+      const truthyEntry = getDirectBlockEntry(truthyCall, successorFunction);
+      if (
+        !truthyEntry ||
+        truthyEntry.block !== successorEntry.block ||
+        !isNodeOnUnconditionalPath(truthyCall, truthyEntry.block)
+      )
+        return false;
+      const truthyIndex = successorEntry.block.body.findIndex(
+        (statement) => statement === truthyEntry.entry,
+      );
+      if (truthyIndex <= successorIndex) return false;
+      const protectingTryIndex = successorEntry.block.body.findIndex(
+        (statement, statementIndex) =>
+          statementIndex > truthyIndex && isNodeOfType(statement, "TryStatement"),
+      );
+      const protectingTry = successorEntry.block.body[protectingTryIndex];
+      if (
+        !isNodeOfType(protectingTry, "TryStatement") ||
+        !protectingTry.finalizer ||
+        !successorEntry.block.body
+          .slice(successorIndex, protectingTryIndex)
+          .every((statement) => canReachSynchronously(statement, successorFunction))
+      )
+        return false;
+      const finalizer = protectingTry.finalizer;
+      return successorSetterCalls.some((resetCall) => {
+        if (getSetterBooleanValue(resetCall, context)?.value !== false) return false;
+        const protection = getExceptionalResetProtection(resetCall, successorFunction, context);
+        if (
+          protection.protectingTry !== protectingTry ||
+          !isInsideTryFinalizer(resetCall, protectingTry)
+        )
+          return false;
+        const guards = collectFinalizerGuardExpressions(resetCall, protectingTry, context);
+        if (!protection.isUnconditional && !guards) return false;
+        const matchesClaim = (
+          guard: EsTreeNode,
+          mode: AsyncOwnershipComparison["mode"],
+          visitedGuards = new Set<EsTreeNode>(),
+        ): boolean => {
+          if (visitedGuards.has(guard)) return false;
+          visitedGuards.add(guard);
+          const expression = stripParenExpression(guard);
+          if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+            return collectLogicalOperands(
+              expression.argument,
+              mode === "owns" ? "||" : "&&",
+              context,
+            ).every((operand) =>
+              matchesClaim(operand, mode === "owns" ? "lost" : "owns", new Set(visitedGuards)),
+            );
+          }
+          if (
+            mode === "owns" &&
+            (isCleanupBackedLifecycleGuard(expression, successorFunction, context) ||
+              isResetBackedMirroredGuard(expression, successorFunction, truthySets, context))
+          )
+            return true;
+          const ownership = getAsyncOwnershipComparison(expression, context);
+          if (
+            !ownership ||
+            ownership.mode !== mode ||
+            serializeReferenceKey({ node: ownership.refCurrent, scopes: context.scopes }) !== refKey
+          )
+            return false;
+          const tokenValue = context.scopes.symbolFor(ownership.token)?.initializer;
+          const initializer = tokenValue ? stripParenExpression(tokenValue) : null;
+          return (
+            initializer === successorClaim ||
+            (isNodeOfType(successorClaim, "AssignmentExpression") &&
+              successorClaim.operator === "=" &&
+              serializeReferenceKey({ node: successorClaim.right, scopes: context.scopes }) ===
+                serializeReferenceKey({ node: ownership.token, scopes: context.scopes }))
+          );
+        };
+        let hasUnsafePrefix = false;
+        walkAst(finalizer, (candidate) => {
+          if (candidate.range[0] >= resetCall.range[0] || isFunctionLike(candidate)) return false;
+          if (isNodeOfType(candidate, "ReturnStatement")) {
+            const branch = isNodeOfType(candidate.parent, "BlockStatement")
+              ? candidate.parent
+              : candidate;
+            const conditional = branch.parent;
+            if (
+              !isNodeOfType(conditional, "IfStatement") ||
+              conditional.consequent !== branch ||
+              conditional.alternate ||
+              !isUnconditionalReturnBranch(branch) ||
+              !collectLogicalOperands(conditional.test, "||", context).every((guard) =>
+                matchesClaim(guard, "lost"),
+              )
+            )
+              hasUnsafePrefix = true;
+          }
+          if (
+            isNodeOfType(candidate, "ThrowStatement") ||
+            isNodeOfType(candidate, "NewExpression") ||
+            isNodeOfType(candidate, "AwaitExpression") ||
+            isNodeOfType(candidate, "YieldExpression") ||
+            (isNodeOfType(candidate, "CallExpression") &&
+              !isProvenNonThrowingSynchronousCall(candidate, context))
+          )
+            hasUnsafePrefix = true;
+          if (
+            isNodeOfType(candidate, "BreakStatement") ||
+            isNodeOfType(candidate, "ContinueStatement")
+          ) {
+            const target = resolveJumpTarget(candidate);
+            if (!target || target.range[1] > resetCall.range[0]) hasUnsafePrefix = true;
+          }
+        });
+        return (
+          !hasUnsafePrefix &&
+          (!guards ||
+            (guards.positive.every((guard) => matchesClaim(guard, "owns")) &&
+              guards.negative.every((guard) => matchesClaim(guard, "lost"))))
+        );
+      });
+    };
+    const hasProtectedRestartCall = (truthyCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+      const truthyEntry = getDirectBlockEntry(truthyCall, writeFunction);
+      if (!truthyEntry || truthyEntry.block !== writeEntry.block) return false;
+      const truthyIndex = writeEntry.block.body.findIndex(
+        (statement) => statement === truthyEntry.entry,
+      );
+      let hasRestart = false;
+      walkOwnFunctionScope(writeFunction, (candidate) => {
+        if (
+          hasRestart ||
+          !isNodeOfType(candidate, "CallExpression") ||
+          candidate.arguments.length > 0 ||
+          !isNodeOnUnconditionalPath(candidate, writeEntry.block)
+        )
+          return;
+        const successorFunction = resolveSameFileHelperFunction(candidate, context.scopes);
+        if (
+          !isFunctionLike(successorFunction) ||
+          !successorFunction.async ||
+          !isNodeOfType(successorFunction.body, "BlockStatement")
+        )
+          return;
+        const entry = getDirectBlockEntry(candidate, writeFunction);
+        const callIndex = entry
+          ? writeEntry.block.body.findIndex((statement) => statement === entry.entry)
+          : -1;
+        if (
+          callIndex <= truthyIndex ||
+          !writeEntry.block.body
+            .slice(writeIndex, callIndex)
+            .every((statement) => canReachSynchronously(statement))
+        )
+          return;
+        const claims: EsTreeNode[] = [];
+        const successorSetters: EsTreeNodeOfType<"CallExpression">[] = [];
+        walkOwnFunctionScope(successorFunction, (child) => {
+          const target =
+            isNodeOfType(child, "AssignmentExpression") && child.operator === "="
+              ? child.left
+              : isNodeOfType(child, "UpdateExpression") && child.operator === "++"
+                ? child.argument
+                : null;
+          if (target && serializeReferenceKey({ node: target, scopes: context.scopes }) === refKey)
+            claims.push(child);
+          if (
+            isNodeOfType(child, "CallExpression") &&
+            resolveExpressionKey(child.callee, context) === loadingSetterKey
+          )
+            successorSetters.push(child);
+        });
+        hasRestart = claims.some((claim) => {
+          const claimEntry = getDirectBlockEntry(claim, successorFunction);
+          if (!claimEntry || claimEntry.block !== successorFunction.body) return false;
+          const claimIndex = claimEntry.block.body.findIndex(
+            (statement) => statement === claimEntry.entry,
+          );
+          return (
+            claimEntry.block.body
+              .slice(0, claimIndex + 1)
+              .every((statement) => canReachSynchronously(statement, successorFunction)) &&
+            successorSetters.every((setterCall) => {
+              const setter = getSetterBooleanValue(setterCall, context);
+              return Boolean(
+                setter &&
+                (!setter.value ||
+                  hasProtectedSuccessor(setterCall, claim, successorFunction, successorSetters)),
+              );
+            }) &&
+            successorSetters.some(
+              (setterCall) => getSetterBooleanValue(setterCall, context)?.value === true,
+            )
+          );
+        });
+      });
+      hasContextualRestart ||= hasRestart;
+      return hasRestart;
+    };
+    if (
+      setterCalls.some((setterCall) => {
+        const setter = getSetterBooleanValue(setterCall, context);
+        return (
+          !setter ||
+          (setter.value &&
+            !hasProtectedSuccessor(setterCall) &&
+            !hasProtectedRestartCall(setterCall))
+        );
+      })
+    )
+      return { safety: "unsafe", hasContextualRestart };
+    const isPaired = setterCalls.some((setterCall) => {
+      const setter = getSetterBooleanValue(setterCall, context);
+      if (!setter) return false;
+      if (setter.value)
+        return hasProtectedSuccessor(setterCall) || hasProtectedRestartCall(setterCall);
+      const setterEntry = getDirectBlockEntry(setterCall, writeFunction);
       if (
         !setterEntry ||
         setterEntry.block !== writeEntry.block ||
-        !isNodeOnUnconditionalPath(child, setterEntry.block)
+        !isNodeOnUnconditionalPath(setterCall, setterEntry.block)
       )
-        return;
-      const writeIndex = writeEntry.block.body.findIndex(
-        (statement) => statement === writeEntry.entry,
-      );
-      const setterIndex = setterEntry.block.body.findIndex(
+        return false;
+      const setterIndex = writeEntry.block.body.findIndex(
         (statement) => statement === setterEntry.entry,
       );
-      if (writeIndex === -1 || setterIndex <= writeIndex) return;
-      isPaired = writeEntry.block.body
-        .slice(writeIndex + 1, setterIndex)
-        .every(
-          (statement) => !subtreeHasAbruptSynchronousOperation(statement, writeFunction, context),
-        );
-      return isPaired ? false : undefined;
+      return (
+        setterIndex > writeIndex &&
+        writeEntry.block.body
+          .slice(writeIndex, setterIndex)
+          .every((statement) => canReachSynchronously(statement))
+      );
     });
-    return isPaired;
+    return { safety: isPaired ? "safe" : "unknown", hasContextualRestart };
+  };
+  const ownershipTransferMemo = new Map<EsTreeNode, OwnershipTransferProof>();
+  let provenTransfers = ownershipTransfersByScopes.get(context.scopes);
+  if (!provenTransfers) {
+    provenTransfers = new WeakMap();
+    ownershipTransfersByScopes.set(context.scopes, provenTransfers);
+  }
+  const transferKey = JSON.stringify([loadingSetterKey, refKey]);
+  const getOwnershipTransferSafety = (writeNode: EsTreeNode): OwnershipTransferProof["safety"] => {
+    const proven = provenTransfers.get(writeNode)?.get(transferKey);
+    const cached = proven ?? ownershipTransferMemo.get(writeNode);
+    if (cached) return cached.safety;
+    const proof = analyzeOwnershipTransfer(writeNode);
+    ownershipTransferMemo.set(writeNode, proof);
+    if (proof.safety === "safe" && !proof.hasContextualRestart) {
+      let proofs = provenTransfers.get(writeNode);
+      if (!proofs) {
+        proofs = new Map();
+        provenTransfers.set(writeNode, proofs);
+      }
+      proofs.set(transferKey, proof);
+    }
+    return proof.safety;
   };
   if (comparison.isOrdered && !isNodeOfType(tokenInitializer, "UpdateExpression")) return null;
   if (
@@ -2555,11 +2844,17 @@ const findOwnershipClaim = (
         if (
           writeTarget &&
           serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === generationKey &&
-          !isPairedOwnershipTransfer(candidate) &&
-          !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
-          !isInactiveResetBackedInvalidation(candidate, functionNode, truthySets, context) &&
-          !isLifecycleResetPairedInvalidation(candidate, functionNode, truthySets, context) &&
-          !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)
+          (getOwnershipTransferSafety(candidate) === "unsafe" ||
+            (getOwnershipTransferSafety(candidate) !== "safe" &&
+              !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
+              !isInactiveResetBackedInvalidation(candidate, functionNode, truthySets, context) &&
+              !isLifecycleResetPairedInvalidation(candidate, functionNode, truthySets, context) &&
+              !isCleanupInvalidationPairedWithRestart(
+                candidate,
+                functionNode,
+                truthySets,
+                context,
+              )))
         ) {
           didFindOtherGenerationWrite = true;
         }
@@ -2594,11 +2889,12 @@ const findOwnershipClaim = (
     if (
       writeTarget &&
       serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === refKey &&
-      !isPairedOwnershipTransfer(candidate) &&
-      !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
-      !isInactiveResetBackedInvalidation(candidate, functionNode, truthySets, context) &&
-      !isLifecycleResetPairedInvalidation(candidate, functionNode, truthySets, context) &&
-      !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)
+      (getOwnershipTransferSafety(candidate) === "unsafe" ||
+        (getOwnershipTransferSafety(candidate) !== "safe" &&
+          !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
+          !isInactiveResetBackedInvalidation(candidate, functionNode, truthySets, context) &&
+          !isLifecycleResetPairedInvalidation(candidate, functionNode, truthySets, context) &&
+          !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)))
     ) {
       didFindOtherWrite = true;
     }

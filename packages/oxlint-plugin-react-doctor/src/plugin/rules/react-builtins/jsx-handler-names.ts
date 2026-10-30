@@ -12,6 +12,8 @@ import {
 } from "../../utils/has-static-property-write-before.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -65,6 +67,7 @@ const isDirectReturnedJsxAttribute = (
 const hasOnlyComponentBindingReferences = (
   component: EsTreeNode,
   context: RuleContext,
+  bindingSymbolsByScope: WeakMap<ScopeDescriptor, WeakMap<EsTreeNode, SymbolDescriptor[]>>,
 ): boolean => {
   const componentRoot = findTransparentExpressionRoot(component);
   const parent = componentRoot.parent;
@@ -82,7 +85,15 @@ const hasOnlyComponentBindingReferences = (
     return false;
   }
   if (isNodeOfType(component, "FunctionExpression") && component.id) return false;
-  const symbols = getFunctionBindingSymbols(component, context.scopes);
+  const symbols = getFunctionBindingSymbols(component, context.scopes, bindingSymbolsByScope);
+  if (isNodeOfType(component, "FunctionDeclaration") && component.id) {
+    const functionBindingIdentifier = component.id;
+    const innerFunctionBindingSymbols = context.scopes
+      .ownScopeFor(component)
+      ?.symbols.filter((symbol) => symbol.bindingIdentifier === functionBindingIdentifier);
+    if (!innerFunctionBindingSymbols || innerFunctionBindingSymbols.length === 0) return false;
+    symbols.push(...innerFunctionBindingSymbols);
+  }
   let hasJsxReference = false;
   for (const symbol of symbols) {
     for (const reference of symbol.references) {
@@ -118,6 +129,7 @@ const isForwardedComponentHandler = (
   memberExpression: EsTreeNodeOfType<"MemberExpression">,
   context: RuleContext,
   forwardedHandlerProofs: WeakMap<EsTreeNode, ForwardedComponentHandlerProof>,
+  bindingSymbolsByScope: WeakMap<ScopeDescriptor, WeakMap<EsTreeNode, SymbolDescriptor[]>>,
 ): boolean => {
   const receiver = memberExpression.object;
   if (
@@ -145,7 +157,7 @@ const isForwardedComponentHandler = (
   let proof = forwardedHandlerProofs.get(symbol.bindingIdentifier);
   if (!proof) {
     const isComponentProps =
-      hasOnlyComponentBindingReferences(component, context) &&
+      hasOnlyComponentBindingReferences(component, context, bindingSymbolsByScope) &&
       symbol.references.every((reference) => {
         const referenceRoot = findTransparentExpressionRoot(reference.identifier);
         const property = referenceRoot.parent;
@@ -171,8 +183,44 @@ const isForwardedComponentHandler = (
     let writtenPropertyNames: Set<string> | null = new Set();
     if (isComponentProps) {
       for (const reference of symbol.references) {
-        const writeTarget = getMemberWriteTarget(reference.identifier);
-        if (!writeTarget) continue;
+        let writeTarget = getMemberWriteTarget(reference.identifier);
+        if (!writeTarget) {
+          const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+          const property = referenceRoot.parent;
+          if (!isNodeOfType(property, "MemberExpression") || property.object !== referenceRoot) {
+            continue;
+          }
+          let assignmentTarget: EsTreeNode = findTransparentExpressionRoot(property);
+          let assignmentParent = assignmentTarget.parent;
+          while (
+            (isNodeOfType(assignmentParent, "AssignmentPattern") &&
+              assignmentParent.left === assignmentTarget) ||
+            (isNodeOfType(assignmentParent, "RestElement") &&
+              assignmentParent.argument === assignmentTarget) ||
+            (isNodeOfType(assignmentParent, "Property") &&
+              assignmentParent.value === assignmentTarget &&
+              isNodeOfType(assignmentParent.parent, "ObjectPattern")) ||
+            isNodeOfType(assignmentParent, "ArrayPattern") ||
+            isNodeOfType(assignmentParent, "ObjectPattern")
+          ) {
+            assignmentTarget = assignmentParent;
+            assignmentParent = assignmentParent.parent;
+          }
+          if (
+            !(
+              isNodeOfType(assignmentParent, "AssignmentExpression") ||
+              isNodeOfType(assignmentParent, "UpdateExpression") ||
+              (isNodeOfType(assignmentParent, "UnaryExpression") &&
+                assignmentParent.operator === "delete") ||
+              isNodeOfType(assignmentParent, "ForInStatement") ||
+              isNodeOfType(assignmentParent, "ForOfStatement")
+            ) ||
+            !isWithinAssignmentTarget(assignmentTarget)
+          ) {
+            continue;
+          }
+          writeTarget = property;
+        }
         const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, context.scopes);
         if (writtenPropertyName === null) {
           writtenPropertyNames = null;
@@ -365,6 +413,10 @@ export const jsxHandlerNames = defineRule({
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const forwardedHandlerProofs = new WeakMap<EsTreeNode, ForwardedComponentHandlerProof>();
+    const bindingSymbolsByScope = new WeakMap<
+      ScopeDescriptor,
+      WeakMap<EsTreeNode, SymbolDescriptor[]>
+    >();
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         // ignoreComponentNames check.
@@ -400,6 +452,7 @@ export const jsxHandlerNames = defineRule({
               expression,
               context,
               forwardedHandlerProofs,
+              bindingSymbolsByScope,
             );
           }
         } else if (isNodeOfType(expression, "Identifier")) {

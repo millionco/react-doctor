@@ -1,3 +1,4 @@
+import { ACCESSIBLE_NAME_ATTRIBUTE_NAMES } from "../../constants/accessible-name.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
@@ -18,7 +19,6 @@ const DIALOG_ROLES = new Set(["dialog", "alertdialog"]);
 // or `title` — unlike most elements it gets no name from its text content. We
 // treat the presence of any of these (even a dynamic value) as named and stay
 // quiet; only a dialog with none of them is flagged.
-const NAME_PROVIDING_ATTRIBUTES = ["aria-label", "aria-labelledby", "title"] as const;
 
 export const dialogHasAccessibleName = defineRule({
   id: "dialog-has-accessible-name",
@@ -45,7 +45,7 @@ export const dialogHasAccessibleName = defineRule({
         // A spread could supply `aria-label`; don't risk a false positive.
         if (hasJsxSpreadAttribute(node.attributes)) return;
 
-        const hasName = NAME_PROVIDING_ATTRIBUTES.some((attribute) =>
+        const hasName = ACCESSIBLE_NAME_ATTRIBUTE_NAMES.some((attribute) =>
           hasJsxPropIgnoreCase(node.attributes, attribute),
         );
         if (hasName) return;

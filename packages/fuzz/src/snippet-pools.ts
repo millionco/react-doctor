@@ -886,6 +886,7 @@ export const JSX_LEAF_POOL = [
   `<FuzzMarkdown rehypePlugins={[fuzzRehypeRaw]}>{String(value)}</FuzzMarkdown>`,
   `<form><form /></form>`,
   `<div role="status" aria-live="assertive" />`,
+  `<section role="region"><h2>Overview</h2></section>`,
   `<><main className="scroll-smooth" /><header className="sticky" /><img src="/avatar.jpg" alt="Ada" /></>`,
   `<><input className="text-sm" /><button aria-label="Close" className="size-4 p-0"><CloseIcon /></button><button className="hover:px-6">Save</button></>`,
   `<button className="text-[var(--muted)] hover:text-[var(--foreground)]">Save</button>`,

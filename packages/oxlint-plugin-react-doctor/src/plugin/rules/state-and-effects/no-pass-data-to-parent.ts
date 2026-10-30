@@ -59,6 +59,7 @@ import {
 } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 import { isComparisonMemoizerHookName } from "./utils/is-comparison-memoizer-hook-name.js";
+import { isImportedRecordMemberAlias } from "./utils/is-imported-record-member-alias.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
@@ -1659,6 +1660,15 @@ export const noPassDataToParent = defineRule({
               isReactUseRefCall,
             );
             if (callbackPropName && COMMAND_PROP_NAME_PATTERN.test(callbackPropName)) {
+              continue;
+            }
+            if (
+              isImportedRecordMemberAlias({
+                analysis,
+                expression: calleeNode,
+                scopes: context.scopes,
+              })
+            ) {
               continue;
             }
             if (!isDirectParentCallbackRef(analysis, ref, context.scopes)) continue;

@@ -17,6 +17,7 @@ import { walkAst } from "../../../utils/walk-ast.js";
 import { getCallExpr, getRef, getUpstreamRefs } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { hasDeferredOrExternalEffectWork } from "./has-deferred-or-external-effect-work.js";
+import { getDirectMotionResourceLifecycleTag } from "./get-direct-motion-resource-lifecycle-tag.js";
 import {
   isSetterWiredToJsxHandler,
   referencesIdentifierNamed,
@@ -89,16 +90,25 @@ const isResourceLifecycleAttribute = (
   context: RuleContext,
   dependencyVariables: ReadonlySet<unknown>,
   attribute: EsTreeNode,
+  effectNode: EsTreeNode,
+  setterReference: Reference,
 ): boolean => {
   if (!isNodeOfType(attribute, "JSXAttribute")) return false;
   const attributeName = getJsxAttributeName(attribute.name);
   if (!attributeName || !RESOURCE_LIFECYCLE_EVENT_NAMES.has(attributeName)) return false;
   const openingElement = attribute.parent;
-  if (
-    !isNodeOfType(openingElement, "JSXOpeningElement") ||
-    !isProvenIntrinsicJsxElement(openingElement, context.scopes)
-  ) {
-    return false;
+  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  if (!isProvenIntrinsicJsxElement(openingElement, context.scopes)) {
+    const motionTag = getDirectMotionResourceLifecycleTag({
+      analysis,
+      attribute,
+      context,
+      effectNode,
+      matchesFailureLatchWriter: (reference) =>
+        writesFailureLatch(analysis, reference, dependencyVariables),
+      setterReference,
+    });
+    return Boolean(motionTag && DOM_PROPERTY_TO_ALLOWED_TAGS.get(attributeName)?.has(motionTag));
   }
   const elementName = resolveJsxElementType(openingElement);
   if (!DOM_PROPERTY_TO_ALLOWED_TAGS.get(attributeName)?.has(elementName)) return false;
@@ -295,7 +305,14 @@ export const hasResourceLifecycleSetterWriter = (
   }
   if (!matchesStateInitializer && !isResourceKeyReconciliation) return false;
   const matchesAttribute = (attribute: EsTreeNode): boolean =>
-    isResourceLifecycleAttribute(analysis, context, dependencyVariables, attribute);
+    isResourceLifecycleAttribute(
+      analysis,
+      context,
+      dependencyVariables,
+      attribute,
+      effectNode,
+      setterReference,
+    );
   const hasMatchingResourceIdentity = hasResourceIdentityElement(
     analysis,
     context,

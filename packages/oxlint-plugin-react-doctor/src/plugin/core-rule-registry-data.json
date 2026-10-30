@@ -6566,9 +6566,9 @@
     "originallyExternal": false,
     "rule": {
       "id": "no-prop-callback-in-effect",
-      "title": "Parent kept in sync with a callback effect",
+      "title": "Callback prop called from an effect",
       "severity": "warn",
-      "recommendation": "Move the shared state into a Provider so both sides read the same value. Then you don't need a useEffect to keep them in sync.",
+      "recommendation": "If this callback mirrors local state in a parent, lift the shared state to a common owner. For event-driven changes, call the callback in the same event handler as the local update. Keep effects that synchronize with external systems.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

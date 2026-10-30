@@ -36,6 +36,7 @@ export interface UpstreamParityOptions {
   // `invalid` cases the rule reports a different count for (false
   // negatives or over-reports).
   invalidSkips?: ReadonlyArray<number | UpstreamSkipEntry>;
+  invalidDiagnosticCountOverrides?: Readonly<Record<number, number>>;
   // Optional translator that turns upstream `options[0]` (the
   // first-arg config eslint-plugin-react-hooks accepts) into the
   // `settings: { "react-doctor": { <ruleKey>: …} }` shape our rule
@@ -107,7 +108,10 @@ export const runUpstreamParity = (
   ): void => {
     const isSkipped = Boolean(testCase.skip) || skipSet.has(caseIndex);
     const itFunction = isSkipped ? it.skip : it;
-    const expectedDiagnostics = kind === "valid" ? 0 : (testCase.errorCount ?? 1);
+    const expectedDiagnostics =
+      kind === "valid"
+        ? 0
+        : (options.invalidDiagnosticCountOverrides?.[caseIndex] ?? testCase.errorCount ?? 1);
     const label = `${kind} #${caseIndex} ${testCase.name ?? truncate(testCase.code)}`;
     itFunction(label, () => {
       const settings =

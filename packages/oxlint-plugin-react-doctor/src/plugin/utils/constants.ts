@@ -57,3 +57,39 @@ export const WEBPACK_ALIAS_ALLOWED_BUILTIN_SOURCES = new Set([
 export const WEBPACK_ALIAS_MIN_MERGE_ARGUMENT_COUNT = 2;
 
 export const WEBPACK_ALIAS_MAX_NAME_SEGMENT_COUNT = 16;
+
+export const NATIVE_FOCUS_CALLBACK_ARGUMENT_COUNT = 2;
+export const NATIVE_FOCUS_CALLBACK_DEPENDENCIES_INDEX = 1;
+export const NATIVE_FOCUS_LOOKUP_ARGUMENT_COUNT = 1;
+export const NATIVE_FOCUS_LOOKUP_DECLARATOR_COUNT = 1;
+export const NATIVE_FOCUS_LOOKUP_STATEMENT_COUNT = 2;
+export const NATIVE_FOCUS_SINGLE_STATEMENT_COUNT = 1;
+export const NATIVE_FOCUS_MAX_PARAMETER_COUNT = 1;
+export const NATIVE_FOCUS_DOM_CONSTRUCTOR_PATTERN = /(?:Element|Document|Node|Event)$/;
+export const NATIVE_FOCUS_REFUSED_MEMBER_NAMES = new Set([
+  "prototype",
+  "__proto__",
+  "getPrototypeOf",
+  "setPrototypeOf",
+  "__defineGetter__",
+  "__defineSetter__",
+]);
+export const NATIVE_FOCUS_MUTATED_MEMBER_NAMES = new Set([
+  "focus",
+  "closest",
+  "querySelector",
+  "getElementById",
+]);
+export const NATIVE_FOCUS_REFUSED_GLOBAL_NAMES = new Set([
+  "Document",
+  "Element",
+  "HTMLElement",
+  "Node",
+  "eval",
+  "Function",
+  "Image",
+  "Audio",
+  "Option",
+  "Window",
+  "EventTarget",
+]);

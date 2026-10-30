@@ -743,8 +743,28 @@ const isImmediatelyGuardedFinderResult = (
     (statement) => statement === declaration,
   );
   const guardingStatement = declarationBlock.body[declarationIndex + 1];
+  if (declarationIndex < 0) return false;
+  if (isNodeOfType(guardingStatement, "VariableDeclaration")) {
+    const guardedDeclarator = guardingStatement.declarations[0];
+    if (
+      guardingStatement.kind !== "const" ||
+      guardingStatement.declarations.length !== 1 ||
+      !guardedDeclarator ||
+      !isNodeOfType(guardedDeclarator.id, "Identifier") ||
+      !guardedDeclarator.init
+    ) {
+      return false;
+    }
+    const conditional = stripParenExpression(guardedDeclarator.init);
+    if (!isNodeOfType(conditional, "ConditionalExpression")) return false;
+    const guardedResult = stripParenExpression(conditional.test);
+    return (
+      isNodeOfType(guardedResult, "Identifier") &&
+      context.scopes.symbolFor(guardedResult) === resultSymbol &&
+      conditional.consequent === getAssertedResultAccess(assertion)
+    );
+  }
   if (
-    declarationIndex < 0 ||
     !isNodeOfType(guardingStatement, "IfStatement") ||
     !isFirstStatementOnBranch(assertion, guardingStatement.consequent)
   ) {
@@ -760,11 +780,12 @@ const isImmediatelyGuardedFinderResult = (
   );
 };
 
-const isDirectFinderMatchReturn = (assertion: EsTreeNode): boolean => {
+const isDirectFinderMatchConsumer = (assertion: EsTreeNode): boolean => {
   const resultAccess = getAssertedResultAccess(assertion);
   if (!resultAccess) return false;
   const consumer = resultAccess.parent;
   if (isNodeOfType(consumer, "ReturnStatement")) return consumer.argument === resultAccess;
+  if (isNodeOfType(consumer, "ConditionalExpression")) return consumer.consequent === resultAccess;
   return Boolean(
     consumer &&
     isNodeOfType(consumer, "LogicalExpression") &&
@@ -848,7 +869,7 @@ const isMatchProvenByFindUpUntilPredicate = (
   const resultPath = receiverPathKey(matchReceiver);
   if (!resultIdentifier || !resultPath) return false;
   const isOptionalResultPath = pathUsesOptionalAccess(matchReceiver);
-  if (!isDirectFinderMatchReturn(assertion) && !isOptionalResultPath) return false;
+  if (!isDirectFinderMatchConsumer(assertion) && !isOptionalResultPath) return false;
   const resultSymbol = context.scopes.symbolFor(resultIdentifier);
   const initializer = resultSymbol?.initializer
     ? stripParenExpression(resultSymbol.initializer)

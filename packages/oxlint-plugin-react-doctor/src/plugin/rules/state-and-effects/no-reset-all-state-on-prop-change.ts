@@ -98,7 +98,7 @@ const getNodeText = (node: EsTreeNode | null | undefined): string => {
     if (key === "parent" || key === "loc" || key === "range" || key === "start" || key === "end") {
       return undefined;
     }
-    return value;
+    return typeof value === "bigint" ? { bigint: value.toString() } : value;
   });
 };
 

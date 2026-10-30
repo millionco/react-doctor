@@ -1,3 +1,7 @@
+import { hasUnsafeFrameCallbackReference } from "./utils/has-unsafe-frame-callback-reference.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { hasIdentifierEvalCall } from "../../utils/has-identifier-eval-call.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -772,6 +776,7 @@ const isBooleanTransitionAfterEarlyReturn = (
   callback: EsTreeNode,
   frameCall: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
+  callbackReferenceFacts: WeakMap<EsTreeNode, boolean>,
 ): boolean => {
   if (
     !isFunctionLike(callback) ||
@@ -834,6 +839,8 @@ const isBooleanTransitionAfterEarlyReturn = (
   ) {
     return false;
   }
+  const stateOwner = findEnclosingFunction(declaration) ?? findProgramRoot(declaration);
+  if (!stateOwner || hasIdentifierEvalCall(stateOwner)) return false;
   const initialState = hookCall.arguments[0];
   const [nextState, extraArgument] = setterCall.arguments;
   if (
@@ -852,6 +859,12 @@ const isBooleanTransitionAfterEarlyReturn = (
   ) {
     return false;
   }
+  let hasUnsafeReferences = callbackReferenceFacts.get(callback);
+  if (hasUnsafeReferences === undefined) {
+    hasUnsafeReferences = hasUnsafeFrameCallbackReference({ callback, scopes });
+    callbackReferenceFacts.set(callback, hasUnsafeReferences);
+  }
+  if (hasUnsafeReferences) return false;
   for (const statement of callback.body.body) {
     if (statement.range[1] > setterCall.range[0]) break;
     if (!isNodeOfType(statement, "IfStatement") || statement.alternate) continue;
@@ -888,6 +901,7 @@ export const r3fNoStateInUseFrame = defineRule({
   recommendation:
     "Mutate Three.js refs or an external transient store inside useFrame; reserve React state for guarded, infrequent transitions",
   create: (context: RuleContext) => {
+    const callbackReferenceFacts = new WeakMap<EsTreeNode, boolean>();
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callback = resolveR3fCallback(node, "useFrame", context.scopes);
@@ -899,7 +913,13 @@ export const r3fNoStateInUseFrame = defineRule({
           if (
             !resolveStateSetterBinding(candidate.callee, context.scopes) ||
             isGuardedStateTransition(candidate, callback, context.scopes) ||
-            isBooleanTransitionAfterEarlyReturn(candidate, callback, node, context.scopes)
+            isBooleanTransitionAfterEarlyReturn(
+              candidate,
+              callback,
+              node,
+              context.scopes,
+              callbackReferenceFacts,
+            )
           ) {
             return;
           }

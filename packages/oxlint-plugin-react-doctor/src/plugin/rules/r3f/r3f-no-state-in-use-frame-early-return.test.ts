@@ -262,3 +262,155 @@ describe("r3f early return callback provenance", () => {
     expect(runRule(r3fNoStateInUseFrame, source).diagnostics).toHaveLength(expectedDiagnostics);
   });
 });
+
+describe("r3f early return named callback ownership", () => {
+  it.each([
+    [
+      "inline named recursive call",
+      "useFrame(function frame() { if (ready) return; setReady(true); frame(); });",
+      1,
+    ],
+    [
+      "inline named callback escape",
+      "useFrame(function frame() { if (ready) return; setReady(true); queueMicrotask(frame); });",
+      1,
+    ],
+    [
+      "const arrow recursive control",
+      "const frame = () => { if (ready) return; setReady(true); frame(); }; useFrame(frame);",
+      1,
+    ],
+    [
+      "nonrecursive named callback",
+      "useFrame(function frame() { if (ready) return; setReady(true); });",
+      0,
+    ],
+    ["anonymous callback", "useFrame(() => { if (ready) return; setReady(true); });", 0],
+    [
+      "readonly function name",
+      "useFrame(function frame() { void frame.name; if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "readonly function length",
+      "useFrame(function frame() { void frame.length; if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "readonly function typeof",
+      "useFrame(function frame() { void typeof frame; if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "static dead self call",
+      "useFrame(function frame() { if (false) frame(); if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "static dead BigInt self call",
+      "useFrame(function frame() { if (0n) frame(); if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "short circuited self call",
+      "useFrame(function frame() { false && frame(); if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "shadowed same-name callback",
+      "useFrame(function frame() { { const frame = () => {}; frame(); } if (ready) return; setReady(true); });",
+      0,
+    ],
+    [
+      "called metadata cannot prove harmlessness",
+      "useFrame(function frame() { frame.name(); if (ready) return; setReady(true); });",
+      1,
+    ],
+    [
+      "metadata write cannot prove harmlessness",
+      'useFrame(function frame() { frame.name = "other"; if (ready) return; setReady(true); });',
+      1,
+    ],
+    [
+      "deferred self use crosses apparent dead enclosing declaration",
+      "useFrame(function frame() { const nested = () => { if (unknown) frame(); }; retain(nested); if (ready) return; setReady(true); });",
+      1,
+    ],
+  ])("%s", (_name, body, expectedCount) => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react";
+      import { useFrame } from "@react-three/fiber";
+      const Panel = () => {
+        const [ready, setReady] = useState(false);
+        ${body}
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});
+
+describe("r3f early-return lexical eval ownership", () => {
+  it.each([
+    {
+      name: "direct eval callback reentry",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready, setReady] = useState(false); useFrame(function frame() { if (ready) return; setReady(true); eval("frame()"); }); return null; };',
+      expectedDiagnostics: 1,
+    },
+    {
+      name: "direct eval hidden reset",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready, setReady] = useState(false); useFrame(() => { if (ready) return; setReady(true); eval("setReady(false)"); }); return null; };',
+      expectedDiagnostics: 1,
+    },
+    {
+      name: "parenthesized direct eval reentry",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready, setReady] = useState(false); useFrame(function frame() { if (ready) return; setReady(true); (eval)("frame()"); }); return null; };',
+      expectedDiagnostics: 1,
+    },
+    {
+      name: "member eval does not see lexical latch",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready, setReady] = useState(false); useFrame(function frame() { if (ready) return; setReady(true); tools.eval("frame()"); }); return null; };',
+      expectedDiagnostics: 0,
+    },
+    {
+      name: "indirect eval does not see lexical latch",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready, setReady] = useState(false); useFrame(function frame() { if (ready) return; setReady(true); (0,eval)("frame()"); }); return null; };',
+      expectedDiagnostics: 0,
+    },
+    {
+      name: "local member named eval is not direct eval",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready, setReady] = useState(false); const local = {eval: value => value}; useFrame(function frame() { if (ready) return; setReady(true); local.eval("frame()"); }); return null; };',
+      expectedDiagnostics: 0,
+    },
+    {
+      name: "outer lexical helper eval reset",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready,setReady]=useState(false); const reset=()=>eval("setReady(false)"); useFrame(()=>{if(ready)return;setReady(true);reset();}); return null; };',
+      expectedDiagnostics: 1,
+    },
+    {
+      name: "nested deferred eval reset",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Panel = () => { const [ready,setReady]=useState(false); useFrame(()=>{if(ready)return;setReady(true);queueMicrotask(()=>eval("setReady(false)"));}); return null; };',
+      expectedDiagnostics: 1,
+    },
+    {
+      name: "unrelated sibling eval owner remains independent",
+      source:
+        'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Other = () => { eval("unrelated()"); return null; }; const Panel = () => { const [ready,setReady]=useState(false); useFrame(()=>{if(ready)return;setReady(true);}); return null; };',
+      expectedDiagnostics: 0,
+    },
+  ])("$name", ({ source, expectedDiagnostics }) => {
+    const result = runRule(r3fNoStateInUseFrame, source, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedDiagnostics);
+  });
+});

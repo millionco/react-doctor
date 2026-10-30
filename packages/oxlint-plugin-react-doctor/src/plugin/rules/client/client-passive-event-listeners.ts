@@ -501,7 +501,7 @@ const hasExplicitPassiveValue = (
 
 export const clientPassiveEventListeners = defineRule({
   id: "client-passive-event-listeners",
-  title: "Non-passive scroll listener",
+  title: "Non-passive wheel or touch listener",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:

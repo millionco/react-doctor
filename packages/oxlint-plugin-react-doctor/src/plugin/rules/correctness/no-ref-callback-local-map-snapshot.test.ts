@@ -185,7 +185,7 @@ const cases: readonly SnapshotCase[] = [
         },
       },
     },
-    expected: 0,
+    expected: 1,
   },
   {
     name: "b-nested-renderer-readonly-property-input",

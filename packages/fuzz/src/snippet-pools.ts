@@ -204,7 +204,6 @@ export const STATE_SNIPPET_POOL = [
 // Handlers — async submits with loading flags, keyboard commit paths,
 // numeric input parsing, window.open, clipboard, toggles.
 export const HANDLER_SNIPPET_POOL = [
-  `const FuzzGuardedMapReturn = () => { const entries = React.useRef(new Map()); return <li ref={(element) => { if (element) { entries.current.set("entry", element); return () => { if (entries.current.get("entry") === element) entries.current.delete("entry"); }; } else entries.current.delete("entry"); }}>Entry</li>; }; const fuzzGuardedMapReturnNode = <FuzzGuardedMapReturn />;`,
   `const FuzzLocalMapSnapshot = () => { const entries = React.useRef(new Map()); return <li ref={(element) => { const snapshot = entries.current; if (element) snapshot.set("entry", element); else snapshot.delete("entry"); return () => { snapshot.delete("entry"); }; }}>Entry</li>; }; const fuzzLocalMapSnapshotNode = <FuzzLocalMapSnapshot />;`,
   `const latestRequest = { current: 0 }; const latestReview = { current: 0 }; const handleFreshRequest = async () => { const requestId = latestRequest.current; const reviewVersion = latestReview.current; const response = await fetch(url); if (requestId !== latestRequest.current || reviewVersion !== latestReview.current) return; setState(await response.json()); };`,
   `const handleSyncRequest = () => { const request = new XMLHttpRequest(); request.open("GET", String(url), false); request.send(); };`,

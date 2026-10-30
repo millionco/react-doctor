@@ -35,5 +35,3 @@ export const UNSUPPORTED_RUNTIME_TYPES: ReadonlySet<string> = new Set([
   "TSParameterProperty",
   "WithStatement",
 ]);
-export const GUARDED_CALLBACK_STATEMENT_COUNT = 1;
-export const GUARDED_ATTACH_STATEMENT_COUNT = 2;

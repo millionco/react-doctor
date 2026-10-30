@@ -46,7 +46,7 @@ export const readStoreAction = (
     return null;
   const [key, ...remainingArguments] = call.arguments;
   if (!key || isNodeOfType(key, "SpreadElement")) return null;
-  if (methodName === "delete" || methodName === "get") {
+  if (methodName === "delete") {
     return remainingArguments.length ? null : { receiver: callee.object, key, value: null };
   }
   const [value, ...extraArguments] = remainingArguments;

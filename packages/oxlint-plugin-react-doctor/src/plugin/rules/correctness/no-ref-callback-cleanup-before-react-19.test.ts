@@ -212,9 +212,9 @@ const nullDetachCases = [
     },
   },
   {
-    name: "guarded-return-with-null-detach",
+    name: "guarded-return-deferred",
     code: 'import * as React from "react";\nconst Tile = () => { const tileKey = "tile"; const slots = React.useRef(new Map());  return <li ref={(entry) => { if (entry) { slots.current.set(tileKey, entry); return () => { if (slots.current.get(tileKey) === entry) slots.current.delete(tileKey); }; } else slots.current.delete(tileKey); }}>Tile</li>; };\n',
-    expected: 0,
+    expected: 1,
     settings: {
       "react-doctor": {
         capabilities: ["react", "react:18"],

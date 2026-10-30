@@ -118,6 +118,26 @@ const isNativeFocusLookup = (expression: EsTreeNode, scopes: ScopeAnalysis): boo
   );
 };
 
+const isNativeFocusLookupFallback = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const fallback = stripParenExpression(expression);
+  return (
+    isNodeOfType(fallback, "LogicalExpression") &&
+    (fallback.operator === "||" || fallback.operator === "??") &&
+    [fallback.left, fallback.right].every((lookupExpression) => {
+      const lookup = stripParenExpression(lookupExpression);
+      if (!isNodeOfType(lookup, "CallExpression") || lookup.optional) return false;
+      const method = stripParenExpression(lookup.callee);
+      if (!isNodeOfType(method, "MemberExpression") || method.optional) return false;
+      const document = stripParenExpression(method.object);
+      return (
+        isNodeOfType(document, "Identifier") &&
+        document.name === "document" &&
+        isNativeFocusLookup(lookup, scopes)
+      );
+    })
+  );
+};
+
 const isImmediateNativeFocusUse = (expression: EsTreeNode): boolean => {
   const expressionRoot = findTransparentExpressionRoot(expression);
   const member = expressionRoot.parent;
@@ -137,7 +157,14 @@ const hasClosedNativeFocusLookupResult = (
   scopes: ScopeAnalysis,
 ): boolean => {
   if (isImmediateNativeFocusUse(expression)) return true;
-  const expressionRoot = findTransparentExpressionRoot(expression);
+  let expressionRoot = findTransparentExpressionRoot(expression);
+  const fallback = expressionRoot.parent;
+  if (
+    isNodeOfType(fallback, "LogicalExpression") &&
+    (fallback.left === expressionRoot || fallback.right === expressionRoot) &&
+    isNativeFocusLookupFallback(fallback, scopes)
+  )
+    expressionRoot = findTransparentExpressionRoot(fallback);
   const declaration = expressionRoot.parent;
   if (
     !isNodeOfType(declaration, "VariableDeclarator") ||
@@ -464,7 +491,8 @@ const hasOnlyNativeFocusStatements = (statements: EsTreeNode[], scopes: ScopeAna
   if (
     !declaration?.init ||
     !isNodeOfType(declaration.id, "Identifier") ||
-    !isNativeFocusLookup(declaration.init, scopes)
+    (!isNativeFocusLookup(declaration.init, scopes) &&
+      !isNativeFocusLookupFallback(declaration.init, scopes))
   )
     return false;
   const symbol = scopes.symbolFor(declaration.id);
@@ -527,6 +555,53 @@ const isNativeFocusClosestGuard = (
   );
 };
 
+const isNativeFocusSelfClickGuard = (
+  expression: EsTreeNode,
+  parameter: EsTreeNode | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const comparison = stripParenExpression(expression);
+  if (
+    !isNodeOfType(parameter, "Identifier") ||
+    !isNodeOfType(comparison, "BinaryExpression") ||
+    comparison.operator !== "==="
+  )
+    return false;
+  const left = stripParenExpression(comparison.left);
+  const right = stripParenExpression(comparison.right);
+  if (
+    !isNodeOfType(left, "MemberExpression") ||
+    !isNodeOfType(right, "MemberExpression") ||
+    left.computed ||
+    right.computed ||
+    left.optional ||
+    right.optional ||
+    !(
+      (getStaticPropertyName(left) === "target" &&
+        getStaticPropertyName(right) === "currentTarget") ||
+      (getStaticPropertyName(left) === "currentTarget" && getStaticPropertyName(right) === "target")
+    )
+  )
+    return false;
+  const leftEvent = stripParenExpression(left.object);
+  const rightEvent = stripParenExpression(right.object);
+  const parameterSymbol = scopes.symbolFor(parameter);
+  return Boolean(
+    parameterSymbol &&
+    isNodeOfType(leftEvent, "Identifier") &&
+    isNodeOfType(rightEvent, "Identifier") &&
+    scopes.symbolFor(leftEvent) === parameterSymbol &&
+    scopes.symbolFor(rightEvent) === parameterSymbol &&
+    !hasSymbolBindingWrites(parameterSymbol) &&
+    hasOnlyAllowedSymbolReads({
+      symbol: parameterSymbol,
+      allowedIdentifiers: new Set([leftEvent, rightEvent]),
+      program: scopes.rootScope.node,
+      scopes,
+    }),
+  );
+};
+
 const isNativeFocusFunction = (handlerFunction: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const analysis = getNativeFocusAnalysis(scopes);
   const cached = analysis.handlerFunctions.get(handlerFunction);
@@ -550,9 +625,10 @@ const isNativeFocusFunction = (handlerFunction: EsTreeNode, scopes: ScopeAnalysi
         const [parameter] = handlerFunction.params;
         if (
           body.body.length === NATIVE_FOCUS_SINGLE_STATEMENT_COUNT &&
-          isNodeOfType(test, "UnaryExpression") &&
-          test.operator === "!" &&
-          isNativeFocusClosestGuard(test.argument, parameter, scopes)
+          ((isNodeOfType(test, "UnaryExpression") &&
+            test.operator === "!" &&
+            isNativeFocusClosestGuard(test.argument, parameter, scopes)) ||
+            isNativeFocusSelfClickGuard(test, parameter, scopes))
         ) {
           const consequent = firstStatement.consequent;
           isNative = hasOnlyNativeFocusStatements(

@@ -109,6 +109,7 @@ export const runRuleOnParsedFixture = (
     // to exercise a host with no filename.
     filename: "filename" in options ? options.filename : "fixture.tsx",
     settings: withCuratedPortBehavior(options.settings),
+    sourceComments: parsed.comments ?? [],
     sourceCode: {
       ast: parsed.program,
       getText: (node) => {

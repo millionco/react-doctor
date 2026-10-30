@@ -20,6 +20,7 @@ import {
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
+import { isNativeViewportStateWithMountSnapshot } from "./utils/is-native-viewport-state-with-mount-snapshot.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
@@ -179,7 +180,14 @@ export const noChainStateUpdates = defineRule({
       // Every triggering state dep is driven by a timer / listener / observer
       // / subscription — there is no single event handler to set all the
       // related state together, so the chain is the correct shape here.
-      if (stateDeps.every((ref) => isExternallyDrivenState(analysis, ref))) return;
+      if (
+        stateDeps.every(
+          (ref) =>
+            isExternallyDrivenState(analysis, ref) ||
+            isNativeViewportStateWithMountSnapshot(getUseStateDeclarator(ref), context),
+        )
+      )
+        return;
 
       const stateDepDeclarators = new Set(
         stateDeps

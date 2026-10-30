@@ -55,7 +55,7 @@ export const collectReturnedCleanupFunctions = (
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
     return resolveCleanupFunctions(effectCallback.body, effectCallback, scopes);
   }
-  return collectFunctionReturnStatements(effectCallback).flatMap((returnStatement) =>
+  return collectFunctionReturnStatements(effectCallback, scopes).flatMap((returnStatement) =>
     returnStatement.argument
       ? resolveCleanupFunctions(returnStatement.argument as EsTreeNode, returnStatement, scopes)
       : [],

@@ -1,3 +1,5 @@
+import { createStoredDisposerCleanupProof } from "../../utils/create-stored-disposer-cleanup-proof.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -16,7 +18,10 @@ import {
   UNARY_LISTENER_HANDLER_ARGUMENT_INDEX,
   WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT,
 } from "../../constants/react.js";
-import { INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS } from "../../constants/thresholds.js";
+import {
+  FUNCTION_RESOLUTION_MAX_DEPTH,
+  INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS,
+} from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
 import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
@@ -52,6 +57,7 @@ import { getProvenDomEventTargetPrototypeOwnerNames } from "../../utils/is-prove
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { readStaticLiteralTruthiness } from "../../utils/read-static-literal-truthiness.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "../../utils/resolve-cross-file-function-export.js";
@@ -71,6 +77,8 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { isFunctionMetadataRead } from "../../utils/is-function-metadata-read.js";
+import { isInsideStaticallyUnreachableBranch } from "../../utils/is-inside-statically-unreachable-branch.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -3140,6 +3148,56 @@ const doesCleanupFunctionReleaseUsage = (
 ): boolean => {
   if (!isFunctionLike(cleanupFunction) || visitedFunctions.has(cleanupFunction)) return false;
   visitedFunctions.add(cleanupFunction);
+  if (
+    !requireExhaustivePaths &&
+    parameterSubstitutions.size === 0 &&
+    !cleanupFunction.async &&
+    !cleanupFunction.generator &&
+    usage.kind === "subscribe" &&
+    usage.registrationVerbName === "observe" &&
+    isNodeOfType(usage.node, "CallExpression")
+  ) {
+    const registrationCallee = stripParenExpression(usage.node.callee);
+    const registrationReceiver = isNodeOfType(registrationCallee, "MemberExpression")
+      ? stripParenExpression(registrationCallee.object)
+      : null;
+    const observerSymbol = isNodeOfType(registrationReceiver, "Identifier")
+      ? context.scopes.symbolFor(registrationReceiver)
+      : null;
+    if (
+      observerSymbol?.kind === "const" &&
+      observerSymbol.references.length === 2 &&
+      observerSymbol.references.some(
+        (reference) => reference.identifier === registrationReceiver,
+      ) &&
+      observerSymbol.initializer &&
+      isGlobalObserverConstruction(stripParenExpression(observerSymbol.initializer), context)
+    ) {
+      for (const reference of observerSymbol.references) {
+        const cleanupMember = reference.identifier.parent;
+        const cleanupCall = cleanupMember?.parent;
+        const cleanupStatement = cleanupCall?.parent;
+        if (
+          isNodeOfType(cleanupMember, "MemberExpression") &&
+          cleanupMember.object === reference.identifier &&
+          !cleanupMember.computed &&
+          !cleanupMember.optional &&
+          isNodeOfType(cleanupMember.property, "Identifier") &&
+          cleanupMember.property.name === "disconnect" &&
+          isNodeOfType(cleanupCall, "CallExpression") &&
+          cleanupCall.callee === cleanupMember &&
+          !cleanupCall.optional &&
+          cleanupCall.arguments.length === 0 &&
+          isNodeOfType(cleanupStatement, "ExpressionStatement") &&
+          cleanupStatement.expression === cleanupCall &&
+          cleanupStatement.parent === cleanupFunction.body &&
+          doesReleaseCallMatchUsage(cleanupCall, usage, context, parameterSubstitutions)
+        ) {
+          return true;
+        }
+      }
+    }
+  }
   let didCleanupFunctionMatch = false;
   const matchingLoopOrHelperAnchors: EsTreeNode[] = [];
   walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
@@ -6686,22 +6744,18 @@ const hasSynchronousDisposerSlotCleanup = (
   ) {
     return false;
   }
-  const [storageDeclaration, invocationStatement, cleanupReturn, ...otherStatements] =
-    callback.body.body;
+  const [storageDeclaration, invocationStatement] = callback.body.body;
   if (
-    otherStatements.length > 0 ||
     !isNodeOfType(storageDeclaration, "VariableDeclaration") ||
     storageDeclaration.kind !== "let" ||
-    !isNodeOfType(invocationStatement, "ExpressionStatement") ||
-    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
-    !cleanupReturn.argument
+    !isNodeOfType(invocationStatement, "ExpressionStatement")
   ) {
     return false;
   }
-  const [storage, ...otherDeclarations] = storageDeclaration.declarations;
+  const [storage] = storageDeclaration.declarations;
   const initializer = storage?.init ? stripParenExpression(storage.init) : null;
   if (
-    otherDeclarations.length > 0 ||
+    storageDeclaration.declarations.length !== 1 ||
     !isNodeOfType(storage?.id, "Identifier") ||
     !isFunctionLike(initializer) ||
     initializer.async ||
@@ -6734,9 +6788,9 @@ const hasSynchronousDisposerSlotCleanup = (
   ) {
     return false;
   }
-  const [allocation, publication, suspension, ...laterStatements] = owner.body.body;
+  const [allocation, publication, suspension, extraStatement] = owner.body.body;
   if (
-    laterStatements.length > 0 ||
+    extraStatement !== undefined ||
     !isNodeOfType(allocation, "VariableDeclaration") ||
     allocation.kind !== "const" ||
     !isNodeOfType(publication, "ExpressionStatement") ||
@@ -6745,10 +6799,10 @@ const hasSynchronousDisposerSlotCleanup = (
   ) {
     return false;
   }
-  const [handle, ...otherHandles] = allocation.declarations;
+  const [handle] = allocation.declarations;
   const assignment = stripParenExpression(publication.expression);
   if (
-    otherHandles.length > 0 ||
+    allocation.declarations.length !== 1 ||
     !isNodeOfType(handle?.id, "Identifier") ||
     !handle.init ||
     stripParenExpression(handle.init) !== usage.node ||
@@ -6761,6 +6815,35 @@ const hasSynchronousDisposerSlotCleanup = (
     !isNodeOfType(assignment.left, "Identifier")
   ) {
     return false;
+  }
+  const [, , ...cleanupStatements] = callback.body.body;
+  const cleanupReturn = cleanupStatements.at(-1);
+  const helperStatements = cleanupStatements.slice(0, -1);
+  if (
+    helperStatements.length >= FUNCTION_RESOLUTION_MAX_DEPTH ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+    !cleanupReturn.argument
+  ) {
+    return false;
+  }
+  if (isNodeOfType(callback, "FunctionExpression") && callback.id) {
+    const callbackSymbol = context.scopes.symbolFor(callback.id);
+    if (
+      !callbackSymbol ||
+      callbackSymbol.references.some((reference) => {
+        if (
+          isInsideStaticallyUnreachableBranch(reference.identifier, {
+            executionBoundary: findEnclosingFunction(reference.identifier),
+            readLiteralTruthiness: readStaticLiteralTruthiness,
+          })
+        ) {
+          return false;
+        }
+        return reference.flag !== "read" || !isFunctionMetadataRead(reference.identifier);
+      })
+    ) {
+      return false;
+    }
   }
   const [timerCallback, delay, ...extraArguments] = usage.node.arguments;
   if (
@@ -6785,18 +6868,13 @@ const hasSynchronousDisposerSlotCleanup = (
     return false;
   }
   const releaseCall = stripParenExpression(disposer.body);
-  const cleanupCall = stripParenExpression(cleanup.body);
   if (
     !isNodeOfType(releaseCall, "CallExpression") ||
     releaseCall.optional ||
     !isNodeOfType(releaseCall.callee, "Identifier") ||
     !context.scopes.isGlobalReference(releaseCall.callee) ||
     !TIMER_CLEANUP_CALLEE_NAMES.has(releaseCall.callee.name) ||
-    releaseCall.arguments.length !== 1 ||
-    !isNodeOfType(cleanupCall, "CallExpression") ||
-    cleanupCall.optional ||
-    cleanupCall.arguments.length > 0 ||
-    !isNodeOfType(cleanupCall.callee, "Identifier")
+    releaseCall.arguments.length !== 1
   ) {
     return false;
   }
@@ -6808,13 +6886,77 @@ const hasSynchronousDisposerSlotCleanup = (
     storageSymbol.kind !== "let" ||
     handleSymbol.kind !== "const" ||
     context.scopes.symbolFor(assignment.left) !== storageSymbol ||
+    !handleSymbol.references.every((reference) =>
+      releaseCall.arguments.some((argument) => argument === reference.identifier),
+    )
+  ) {
+    return false;
+  }
+  if (helperStatements.length > 0) {
+    const helperDeclarations: EsTreeNode[] = [];
+    for (const helperStatement of helperStatements) {
+      if (
+        !isNodeOfType(helperStatement, "VariableDeclaration") ||
+        helperStatement.kind !== "const" ||
+        helperStatement.declarations.length !== 1
+      ) {
+        return false;
+      }
+      const helperDeclaration = helperStatement.declarations[0];
+      const helperFunction = helperDeclaration?.init
+        ? stripParenExpression(helperDeclaration.init)
+        : null;
+      if (
+        !isNodeOfType(helperDeclaration, "VariableDeclarator") ||
+        !isNodeOfType(helperDeclaration.id, "Identifier") ||
+        !isNodeOfType(helperFunction, "ArrowFunctionExpression") ||
+        helperFunction.async ||
+        helperFunction.params.length > 0
+      ) {
+        return false;
+      }
+      const returnedExpression = getSingleReturnExpression(helperFunction);
+      const onlyStatement =
+        isNodeOfType(helperFunction.body, "BlockStatement") && helperFunction.body.body.length === 1
+          ? helperFunction.body.body[0]
+          : null;
+      const helperExpression =
+        returnedExpression ??
+        (isNodeOfType(onlyStatement, "ExpressionStatement") ? onlyStatement.expression : null);
+      const helperCall = helperExpression ? stripParenExpression(helperExpression) : null;
+      if (
+        !isNodeOfType(helperCall, "CallExpression") ||
+        helperCall.optional ||
+        helperCall.arguments.length > 0 ||
+        !isNodeOfType(stripParenExpression(helperCall.callee), "Identifier")
+      ) {
+        return false;
+      }
+      helperDeclarations.push(helperDeclaration);
+    }
+    const cleanupProof = createStoredDisposerCleanupProof({
+      context,
+      effectCallback: callback,
+      storageAssignment: assignment,
+    });
+    const traversedHelpers = cleanupProof?.(cleanup, cleanupReturn);
+    return Boolean(
+      traversedHelpers &&
+      traversedHelpers.size === helperDeclarations.length &&
+      helperDeclarations.every((declaration) => traversedHelpers.has(declaration)) &&
+      doesReleaseCallMatchUsage(releaseCall, usage, context),
+    );
+  }
+  const cleanupCall = stripParenExpression(cleanup.body);
+  if (
+    !isNodeOfType(cleanupCall, "CallExpression") ||
+    cleanupCall.optional ||
+    cleanupCall.arguments.length > 0 ||
+    !isNodeOfType(cleanupCall.callee, "Identifier") ||
     context.scopes.symbolFor(cleanupCall.callee) !== storageSymbol ||
     !storageSymbol.references.every(
       (reference) =>
         reference.identifier === assignment.left || reference.identifier === cleanupCall.callee,
-    ) ||
-    !handleSymbol.references.every((reference) =>
-      releaseCall.arguments.some((argument) => argument === reference.identifier),
     )
   ) {
     return false;

@@ -1,3 +1,4 @@
+import { QUERIED_DOM_INDEPENDENT_STYLE_PROPERTY_NAMES } from "../../constants/queried-dom-independent-style-property-names.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
@@ -33,6 +34,8 @@ const EXCLUDED_QUERY_TOKENS = new Set(["root", "__next"]);
 // query-based writes to it are part of that sanctioned pattern.
 interface OwnedStyleAttributeInfo {
   dynamicPropertyNames: Set<string> | null;
+  hasOrdinaryDynamicProperty: boolean;
+  hasUncertifiedDynamicProperty: boolean;
 }
 
 interface OwnedElementInfo {
@@ -81,19 +84,35 @@ const styleAttributeInfoFromValue = (
   value: EsTreeNode | null | undefined,
 ): OwnedStyleAttributeInfo => {
   if (!value || isNodeOfType(value, "Literal")) {
-    return { dynamicPropertyNames: new Set() };
+    return {
+      dynamicPropertyNames: new Set(),
+      hasOrdinaryDynamicProperty: false,
+      hasUncertifiedDynamicProperty: false,
+    };
   }
   if (!isNodeOfType(value, "JSXExpressionContainer")) {
-    return { dynamicPropertyNames: null };
+    return {
+      dynamicPropertyNames: null,
+      hasOrdinaryDynamicProperty: true,
+      hasUncertifiedDynamicProperty: true,
+    };
   }
   const expression = stripParenExpression(value.expression);
   if (!isNodeOfType(expression, "ObjectExpression")) {
-    return { dynamicPropertyNames: null };
+    return {
+      dynamicPropertyNames: null,
+      hasOrdinaryDynamicProperty: true,
+      hasUncertifiedDynamicProperty: true,
+    };
   }
   const dynamicPropertyNames = new Set<string>();
   for (const property of expression.properties) {
     if (!isNodeOfType(property, "Property") || property.computed) {
-      return { dynamicPropertyNames: null };
+      return {
+        dynamicPropertyNames: null,
+        hasOrdinaryDynamicProperty: true,
+        hasUncertifiedDynamicProperty: true,
+      };
     }
     let propertyName: string;
     if (isNodeOfType(property.key, "Identifier")) {
@@ -101,7 +120,11 @@ const styleAttributeInfoFromValue = (
     } else if (isNodeOfType(property.key, "Literal")) {
       propertyName = String(property.key.value);
     } else {
-      return { dynamicPropertyNames: null };
+      return {
+        dynamicPropertyNames: null,
+        hasOrdinaryDynamicProperty: true,
+        hasUncertifiedDynamicProperty: true,
+      };
     }
     if (isStaticLiteralExpression(property.value)) {
       dynamicPropertyNames.delete(propertyName);
@@ -109,7 +132,16 @@ const styleAttributeInfoFromValue = (
       dynamicPropertyNames.add(propertyName);
     }
   }
-  return { dynamicPropertyNames };
+  let hasOrdinaryDynamicProperty = false;
+  let hasUncertifiedDynamicProperty = false;
+  for (const propertyName of dynamicPropertyNames) {
+    if (propertyName.startsWith("--")) continue;
+    hasOrdinaryDynamicProperty = true;
+    if (!QUERIED_DOM_INDEPENDENT_STYLE_PROPERTY_NAMES.has(propertyName)) {
+      hasUncertifiedDynamicProperty = true;
+    }
+  }
+  return { dynamicPropertyNames, hasOrdinaryDynamicProperty, hasUncertifiedDynamicProperty };
 };
 
 const classNameAttributeInfoFromValue = (
@@ -264,9 +296,18 @@ const canReactClobberStyleMutation = (
     const dynamicPropertyNames = info.styleAttribute.dynamicPropertyNames;
     if (dynamicPropertyNames === null) return true;
     if (mutatedPropertyName === null) return dynamicPropertyNames.size > 0;
-    return (
+    const normalizedMutationName = camelizeCssPropertyName(mutatedPropertyName);
+    if (
       dynamicPropertyNames.has(mutatedPropertyName) ||
-      dynamicPropertyNames.has(camelizeCssPropertyName(mutatedPropertyName))
+      dynamicPropertyNames.has(normalizedMutationName)
+    ) {
+      return true;
+    }
+    if (mutatedPropertyName.startsWith("--")) return false;
+    return (
+      info.styleAttribute.hasUncertifiedDynamicProperty ||
+      (!QUERIED_DOM_INDEPENDENT_STYLE_PROPERTY_NAMES.has(normalizedMutationName) &&
+        info.styleAttribute.hasOrdinaryDynamicProperty)
     );
   });
 

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { parseSync } from "oxc-parser";
 import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
+import type { RuleSourceComment } from "../plugin/utils/rule-context.js";
 
 interface ParseFixtureOptions {
   filename?: string;
@@ -14,6 +15,7 @@ interface ParseFixtureOptions {
 export interface ParseFixtureResult {
   program: EsTreeNode;
   errors: ReadonlyArray<{ message: string }>;
+  comments?: ReadonlyArray<RuleSourceComment>;
 }
 
 const FILENAME_TO_LANG: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
@@ -49,5 +51,6 @@ export const parseFixture = (
   return {
     program: result.program as unknown as EsTreeNode,
     errors: result.errors.map((parseError) => ({ message: parseError.message })),
+    comments: result.comments,
   };
 };

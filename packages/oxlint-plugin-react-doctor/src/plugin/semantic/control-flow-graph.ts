@@ -140,7 +140,7 @@ const hasInternalControlFlow = (node: EsTreeNode): boolean => {
   }
 };
 
-const getStaticBooleanValue = (expression: EsTreeNode): boolean | null => {
+export const getStaticBooleanValue = (expression: EsTreeNode): boolean | null => {
   if (expression.type === "Literal") return Boolean(expression.value);
   if (expression.type === "UnaryExpression" && expression.operator === "!") {
     const argumentValue = getStaticBooleanValue(expression.argument);

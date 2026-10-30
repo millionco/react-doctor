@@ -662,6 +662,7 @@ import { reactRouterV8NoRemovedFutureFlags } from "./rules/architecture/react-ro
 import { reactRouterValidRouteObject } from "./rules/correctness/react-router-valid-route-object.js";
 import { reduxUseselectorInlineDerivation } from "./rules/state-and-effects/redux-useselector-inline-derivation.js";
 import { reduxUseselectorReturnsNewCollection } from "./rules/state-and-effects/redux-useselector-returns-new-collection.js";
+import { regionHasAccessibleName } from "./rules/a11y/region-has-accessible-name.js";
 import { remotionCalculateMetadataFetchSignal } from "./rules/correctness/remotion-calculate-metadata-fetch-signal.js";
 import { remotionDeterministicRandomness } from "./rules/correctness/remotion-deterministic-randomness.js";
 import { remotionNoCssAnimation } from "./rules/correctness/remotion-no-css-animation.js";
@@ -9074,6 +9075,18 @@ export const reactDoctorRules: ReadonlyArray<RuleRegistryEntry> = [
       requires: [
         ...new Set<Capability>(["react", ...(reduxUseselectorReturnsNewCollection.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/region-has-accessible-name",
+    id: "region-has-accessible-name",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...regionHasAccessibleName,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(regionHasAccessibleName.requires ?? [])])],
     },
   },
   {

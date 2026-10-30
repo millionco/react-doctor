@@ -10904,6 +10904,23 @@
     }
   },
   {
+    "key": "react-doctor/region-has-accessible-name",
+    "id": "region-has-accessible-name",
+    "source": "react-doctor",
+    "originallyExternal": true,
+    "rule": {
+      "id": "region-has-accessible-name",
+      "title": "Region has no naming attribute",
+      "severity": "warn",
+      "recommendation": "Name explicit regions with aria-label or aria-labelledby referencing a visible heading.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/remotion-calculate-metadata-fetch-signal",
     "id": "remotion-calculate-metadata-fetch-signal",
     "source": "react-doctor",

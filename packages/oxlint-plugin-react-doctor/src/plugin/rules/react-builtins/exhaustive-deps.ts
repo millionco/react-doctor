@@ -1,4 +1,8 @@
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
+import {
+  collectConfiguredHookForwardingCandidates,
+  type ConfiguredHookForwardingCandidate,
+} from "../../utils/collect-configured-hook-forwarding-candidates.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { getStableImportedHookMemberKeys } from "../../utils/get-stable-imported-hook-member-keys.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -109,6 +113,11 @@ const EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS: ReadonlySet<string> = new Set([
 const SOLE_WRITER_GUARD_HOOKS: ReadonlySet<string> = new Set(["useEffect", "useLayoutEffect"]);
 
 const NON_NULLISH_GLOBAL_TYPE_REFERENCES: ReadonlySet<string> = new Set(["Array", "ReadonlyArray"]);
+
+interface ConfiguredHookForwardingAnalysis extends ConfiguredHookForwardingCandidate {
+  readonly completedCallers: Set<EsTreeNodeOfType<"CallExpression">>;
+  report: (() => void) | null;
+}
 
 const buildAdditionalHooksRegex = (additional: string): RegExp | null => {
   if (!additional) return null;
@@ -2180,7 +2189,34 @@ If the missing value is recreated every render, move it inside the hook or stabi
     const isAutoDependenciesHook = (hookName: string): boolean =>
       settings.experimental_autoDependenciesHooks.includes(hookName);
 
+    const forwardingByInnerCall = new Map<
+      EsTreeNodeOfType<"CallExpression">,
+      ConfiguredHookForwardingAnalysis
+    >();
+    const forwardingByCaller = new Map<
+      EsTreeNodeOfType<"CallExpression">,
+      ConfiguredHookForwardingAnalysis
+    >();
+    let didInitializeForwarding = false;
+
     return {
+      Program() {
+        if (didInitializeForwarding) return;
+        didInitializeForwarding = true;
+        if (!shouldUseCuratedBehavior || !additionalHooksRegex) return;
+        for (const candidate of collectConfiguredHookForwardingCandidates(
+          context.scopes,
+          additionalHooksRegex,
+        )) {
+          const analysis: ConfiguredHookForwardingAnalysis = {
+            ...candidate,
+            completedCallers: new Set(),
+            report: null,
+          };
+          forwardingByInnerCall.set(candidate.innerCall, analysis);
+          for (const caller of candidate.callers) forwardingByCaller.set(caller, analysis);
+        }
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const hookName = getHookName(node.callee, context.scopes);
         if (!hookName || !isHookOfInterest(hookName, node.callee)) return;
@@ -2248,10 +2284,13 @@ If the missing value is recreated every render, move it inside the hook or stabi
             ) {
               return;
             }
-            report({
+            const descriptor: ReportDescriptor = {
               node: callbackExpression,
               message: buildUnknownCallbackMessage(hookName),
-            });
+            };
+            const forwarding = forwardingByInnerCall.get(node);
+            if (forwarding) forwarding.report = () => report(descriptor);
+            else report(descriptor);
             return;
           }
         } else if (depsArgumentRaw) {
@@ -2687,6 +2726,16 @@ If the missing value is recreated every render, move it inside the hook or stabi
               ? buildModuleScopeDepMessage(hookName, unnecessaryDeclaredKeys.join(", "))
               : buildUnnecessaryDepMessage(hookName, unnecessaryDeclaredKeys.join(", ")),
           });
+        }
+        forwardingByCaller.get(node)?.completedCallers.add(node);
+      },
+      "Program:exit"() {
+        for (const forwarding of forwardingByInnerCall.values()) {
+          if (
+            forwarding.completedCallers.size !== forwarding.callers.size ||
+            [...forwarding.callers].some((caller) => !forwarding.completedCallers.has(caller))
+          )
+            forwarding.report?.();
         }
       },
     };

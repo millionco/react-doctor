@@ -1,0 +1,12 @@
+// rule: exhaustive-deps
+// verdict: pass
+// weakness: wrapper-transparency
+// source: invented
+import { useEffect } from "react";
+
+const useScopedEffect = (callback, dependencies) => useEffect(callback, dependencies);
+
+export const Panel = ({ token }) => {
+  useScopedEffect(() => console.info(token), [token]);
+  return null;
+};

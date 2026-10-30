@@ -5,12 +5,21 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
-import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
+import {
+  getMemberWriteTarget,
+  isStableStaticPropertyReference,
+} from "../../utils/has-static-property-write-before.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+
+interface ForwardedComponentHandlerProof {
+  readonly isComponentProps: boolean;
+  readonly writtenPropertyNames: ReadonlySet<string> | null;
+}
 
 const isDirectReturnedJsxAttribute = (
   memberExpression: EsTreeNodeOfType<"MemberExpression">,
@@ -37,19 +46,13 @@ const isDirectReturnedJsxAttribute = (
     if (isNodeOfType(parent, "ReturnStatement")) {
       return parent.argument === outputRoot && findEnclosingFunction(parent) === component;
     }
-    if (
-      (isNodeOfType(parent, "JSXElement") || isNodeOfType(parent, "JSXFragment")) &&
-      parent.children.some((child) => child === outputRoot)
-    ) {
+    if (isNodeOfType(parent, "JSXElement") || isNodeOfType(parent, "JSXFragment")) {
       output = parent;
       continue;
     }
     if (isNodeOfType(parent, "JSXExpressionContainer") && parent.expression === outputRoot) {
       const owner = parent.parent;
-      if (
-        (isNodeOfType(owner, "JSXElement") || isNodeOfType(owner, "JSXFragment")) &&
-        owner.children.some((child) => child === parent)
-      ) {
+      if (isNodeOfType(owner, "JSXElement") || isNodeOfType(owner, "JSXFragment")) {
         output = owner;
         continue;
       }
@@ -114,6 +117,7 @@ const hasOnlyComponentBindingReferences = (
 const isForwardedComponentHandler = (
   memberExpression: EsTreeNodeOfType<"MemberExpression">,
   context: RuleContext,
+  forwardedHandlerProofs: WeakMap<EsTreeNode, ForwardedComponentHandlerProof>,
 ): boolean => {
   const receiver = memberExpression.object;
   if (
@@ -134,37 +138,57 @@ const isForwardedComponentHandler = (
     component.params[0] !== symbol.bindingIdentifier ||
     !isNodeOfType(component.params[0], "Identifier") ||
     findEnclosingFunction(memberExpression) !== component ||
-    !isDirectReturnedJsxAttribute(memberExpression, component) ||
-    !hasOnlyComponentBindingReferences(component, context) ||
-    hasPossibleStaticPropertyMutationOrEscape(
-      receiver,
-      memberExpression.property.name,
-      context.scopes,
-    )
+    !isDirectReturnedJsxAttribute(memberExpression, component)
   ) {
     return false;
   }
-  return symbol.references.every((reference) => {
-    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-    const property = referenceRoot.parent;
-    if (
-      reference.flag !== "read" ||
-      findEnclosingFunction(reference.identifier) !== component ||
-      !isNodeOfType(property, "MemberExpression") ||
-      property.object !== referenceRoot
-    ) {
-      return false;
+  let proof = forwardedHandlerProofs.get(symbol.bindingIdentifier);
+  if (!proof) {
+    const isComponentProps =
+      hasOnlyComponentBindingReferences(component, context) &&
+      symbol.references.every((reference) => {
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const property = referenceRoot.parent;
+        if (
+          reference.flag !== "read" ||
+          findEnclosingFunction(reference.identifier) !== component ||
+          !isNodeOfType(property, "MemberExpression") ||
+          property.object !== referenceRoot ||
+          !isStableStaticPropertyReference(reference.identifier)
+        ) {
+          return false;
+        }
+        const propertyRoot = findTransparentExpressionRoot(property);
+        const propertyParent = propertyRoot.parent;
+        return !(
+          ((isNodeOfType(propertyParent, "CallExpression") ||
+            isNodeOfType(propertyParent, "NewExpression")) &&
+            propertyParent.callee === propertyRoot) ||
+          (isNodeOfType(propertyParent, "TaggedTemplateExpression") &&
+            propertyParent.tag === propertyRoot)
+        );
+      });
+    let writtenPropertyNames: Set<string> | null = new Set();
+    if (isComponentProps) {
+      for (const reference of symbol.references) {
+        const writeTarget = getMemberWriteTarget(reference.identifier);
+        if (!writeTarget) continue;
+        const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, context.scopes);
+        if (writtenPropertyName === null) {
+          writtenPropertyNames = null;
+          break;
+        }
+        writtenPropertyNames.add(writtenPropertyName);
+      }
     }
-    const propertyRoot = findTransparentExpressionRoot(property);
-    const propertyParent = propertyRoot.parent;
-    return !(
-      ((isNodeOfType(propertyParent, "CallExpression") ||
-        isNodeOfType(propertyParent, "NewExpression")) &&
-        propertyParent.callee === propertyRoot) ||
-      (isNodeOfType(propertyParent, "TaggedTemplateExpression") &&
-        propertyParent.tag === propertyRoot)
-    );
-  });
+    proof = { isComponentProps, writtenPropertyNames };
+    forwardedHandlerProofs.set(symbol.bindingIdentifier, proof);
+  }
+  return (
+    proof.isComponentProps &&
+    proof.writtenPropertyNames !== null &&
+    !proof.writtenPropertyNames.has(memberExpression.property.name)
+  );
 };
 
 const buildHandlerNameMessage = (handlerName: string, propKey: string): string =>
@@ -340,6 +364,7 @@ export const jsxHandlerNames = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const forwardedHandlerProofs = new WeakMap<EsTreeNode, ForwardedComponentHandlerProof>();
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         // ignoreComponentNames check.
@@ -371,7 +396,11 @@ export const jsxHandlerNames = defineRule({
           handlerName = result?.name ?? null;
           isPropsHandler = result?.isPropsHandler ?? false;
           if (!isPropsHandler && result && settings.propRegex?.test(result.name)) {
-            isPropsHandler = isForwardedComponentHandler(expression, context);
+            isPropsHandler = isForwardedComponentHandler(
+              expression,
+              context,
+              forwardedHandlerProofs,
+            );
           }
         } else if (isNodeOfType(expression, "Identifier")) {
           if (!settings.checkLocalVariables) return;

@@ -284,6 +284,96 @@ const cases: ForwardedHandlerCase[] = [
     code: "export const Action = (input) => { new input.prepare(); return <button onClick={input.onClick} />; };",
     expectedCount: 1,
   },
+  {
+    name: "repeated properties keep independent mutation results",
+    code: "export const Action = (input) => { input.onDismiss = callback; return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 2,
+  },
+  {
+    name: "a rejected property does not reject another received prop",
+    code: "export const Action = (input) => { input.onDismiss = callback; return <><Dialog onDismiss={input.onDismiss} /><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /><button onClick={input.onClick} /></>; };",
+    expectedCount: 2,
+  },
+  {
+    name: "separate components keep distinct same-named parameter bindings",
+    code: "export const Replaced = (input) => { input.onClick = callback; return <button onClick={input.onClick} />; }; export const Untouched = (input) => <button onClick={input.onClick} />;",
+    expectedCount: 1,
+  },
+  {
+    name: "ordinary-call evidence stays local to its component binding",
+    code: "export const Untouched = (input) => <button onClick={input.onClick} />; export const Called = (input) => <button onClick={input.onClick} />; Called(value);",
+    expectedCount: 1,
+  },
+  {
+    name: "stored JSX does not reject a later direct return",
+    code: "export const Action = (input) => { const preview = <button onClick={input.onClick} />; return <button onClick={input.onClick} />; };",
+    expectedCount: 1,
+  },
+  {
+    name: "a direct return does not authorize later stored JSX",
+    code: "export const Action = (input) => { if (active) return <button onClick={input.onClick} />; const preview = <button onClick={input.onClick} />; return <main />; };",
+    expectedCount: 1,
+  },
+  {
+    name: "later member writes are known before the first forwarding site",
+    code: "export const Action = (input) => { if (active) return <button onClick={input.onClick} />; input.onClick = callback; return <button onClick={input.onClick} />; };",
+    expectedCount: 2,
+  },
+  {
+    name: "expression children and attribute payloads keep distinct ownership",
+    code: "export const Action = (input) => <main>{<button onClick={input.onClick} />}<Panel content={<button onClick={input.onClick} />} />{<button onClick={input.onClick} />}</main>;",
+    expectedCount: 1,
+  },
+  {
+    name: "direct JSX attribute payloads remain outside returned children",
+    code: "export const Action = (input) => <main><Panel content=<button onClick={input.onClick} /> /><button onClick={input.onClick} /></main>;",
+    expectedCount: 1,
+  },
+  {
+    name: "spread children remain outside the direct output profile",
+    code: "export const Action = (input) => <main>{...<button onClick={input.onClick} />}<button onClick={input.onClick} /></main>;",
+    expectedCount: 1,
+  },
+  {
+    name: "updated event props stay separate from another received prop",
+    code: "export const Action = (input) => { input.onDismiss++; return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 1,
+  },
+  {
+    name: "deleted event props stay separate from another received prop",
+    code: "export const Action = (input) => { delete input.onDismiss; return <><Dialog onDismiss={input.onDismiss} /><button onClick={input.onClick} /></>; };",
+    expectedCount: 1,
+  },
+  {
+    name: "computed string writes retain exact property identity",
+    code: "export const Action = (input) => { input['onDismiss'] = callback; return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 1,
+  },
+  {
+    name: "constant alias keys retain exact property identity",
+    code: "export const Action = (input) => { const first = 'onDismiss'; const key = first; input[key] = callback; return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 1,
+  },
+  {
+    name: "unknown member writes refuse every received event prop",
+    code: "export const Action = (input) => { input[key] = callback; return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 2,
+  },
+  {
+    name: "transparent receiver writes retain the conservative escape boundary",
+    code: "export const Action = (input) => { (input as Receiver).onDismiss = callback; return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 2,
+  },
+  {
+    name: "an event value alias does not alias the receiver",
+    code: "export const Action = (input) => { const callback = input.onClick; return <><button onClick={input.onClick} /><button onClick={input.onClick} /></>; };",
+    expectedCount: 0,
+  },
+  {
+    name: "getter definitions still escape the entire receiver",
+    code: "export const Action = (input) => { Object.defineProperty(input, 'onDismiss', { get: () => callback }); return <><button onClick={input.onClick} /><Dialog onDismiss={input.onDismiss} /></>; };",
+    expectedCount: 2,
+  },
 ];
 
 describe("jsx-handler-names forwarded component props", () => {
@@ -294,4 +384,18 @@ describe("jsx-handler-names forwarded component props", () => {
       expect(result.diagnostics).toHaveLength(control.expectedCount);
     });
   }
+
+  it("keeps received props independent across files and repeated scans", () => {
+    const received = "export const Action = (input) => <button onClick={input.onClick} />;";
+    const replaced =
+      "export const Action = (input) => { input.onClick = callback; return <button onClick={input.onClick} />; };";
+    for (const filename of ["first.tsx", "second.tsx", "first.tsx"]) {
+      const valid = runRule(jsxHandlerNames, received, { filename });
+      const invalid = runRule(jsxHandlerNames, replaced, { filename });
+      expect(valid.parseErrors).toEqual([]);
+      expect(invalid.parseErrors).toEqual([]);
+      expect(valid.diagnostics).toEqual([]);
+      expect(invalid.diagnostics).toHaveLength(1);
+    }
+  });
 });

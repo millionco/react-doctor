@@ -31,9 +31,9 @@ const REACT_API_CALL_OPTIONS = {
   resolveNamedAliases: true,
 };
 const MOUNT_FLASH_MESSAGE =
-  "`useEffect(setState, [])` runs after the first paint, so users can see the initial state flash. Initialize from a render-safe value or use `useSyncExternalStore` for external values.";
+  "`useEffect(setState, [])` can change visible output after the first paint. Keep server and initial client output identical. Initialize from shared render data when available, or retain an intentional hydration fallback.";
 const EXTERNAL_SYNC_FLASH_MESSAGE =
-  "`useEffect` updates a rendered branch from a browser capability after the first paint, so users can see the fallback flash. Preserve a stable first render or switch in a layout effect when the pre-paint replacement is intentional.";
+  "This Effect can replace a browser-capability fallback after paint. Keep server and initial client output identical. A layout Effect cannot prevent server HTML from appearing before hydration.";
 
 interface PairedStateBinding {
   componentFunction: EsTreeNode;
@@ -709,11 +709,11 @@ const isExactViewportSubscriptionEffect = (
 
 export const renderingHydrationNoFlicker = defineRule({
   id: "rendering-hydration-no-flicker",
-  title: "useEffect state synchronization flashes after paint",
+  title: "Effects can change visible output after paint",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Initialize state from a render-safe value before the first paint, or read external mutable values with `useSyncExternalStore`.",
+    "Keep server and initial client output identical. Initialize from shared render data when available. Otherwise, retain an intentional fallback. For external mutable values, consider `useSyncExternalStore` with a `getServerSnapshot` that matches on the server and during hydration.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       // useLayoutEffect runs synchronously BEFORE paint, so a mount-time

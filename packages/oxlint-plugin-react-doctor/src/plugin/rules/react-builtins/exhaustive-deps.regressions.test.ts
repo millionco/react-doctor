@@ -232,7 +232,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     const result = runRule(exhaustiveDeps, code);
     expect(result.parseErrors).toEqual([]);
     const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
-    expect(messages).toContain("`getConfig` is rebuilt every render");
+    expect(messages).toContain("`getConfig` can be recreated during render");
   });
 
   it("still flags the identifier form of an unstable local function dep", () => {
@@ -246,7 +246,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     const result = runRule(exhaustiveDeps, code);
     expect(result.parseErrors).toEqual([]);
     const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
-    expect(messages).toContain("`getConfig` is rebuilt every render");
+    expect(messages).toContain("`getConfig` can be recreated during render");
   });
 
   // Solid signal accessors are not function-value symbols, so the
@@ -1553,7 +1553,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("effectiveCallback");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("accepts an unreachable fresh fallback after controlled-state narrowing", () => {
@@ -1643,7 +1643,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("selectedOptions");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("still reports a controlled-state fallback when uncontrolled state may be nullish", () => {
@@ -1659,7 +1659,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("selectedOptions");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("still reports a controlled-state fallback when the controlled value may be null", () => {
@@ -1678,7 +1678,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("selectedOptions");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it.each(["React.ReactNode", "ImportedSelection"])(
@@ -1700,7 +1700,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
         expect(result.parseErrors).toEqual([]);
         const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
         expect(messages).toContain("selectedValue");
-        expect(messages).toContain("rebuilt every render");
+        expect(messages).toContain("can be recreated during render");
       },
     );
 
@@ -1722,7 +1722,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("selectedValue");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("still reports a controlled-state fallback when the discriminator is mutable", () => {
@@ -1739,7 +1739,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("selectedOptions");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("still reports a controlled-state fallback with a lazy nullish state initializer", () => {
@@ -1755,7 +1755,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("selectedOptions");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("still reports an exact derived dependency with a fresh ternary branch as unstable", () => {
@@ -1769,7 +1769,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("effectiveCallback");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("does not let a narrower member satisfy an exact derived binding", () => {
@@ -2155,7 +2155,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
       expect(messages).toContain("setStatus");
-      expect(messages).toContain("rebuilt every render");
+      expect(messages).toContain("can be recreated during render");
     });
 
     it("does not resolve an alias with a fresh fallback", () => {

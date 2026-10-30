@@ -19,6 +19,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFetchCompletionGuardedByJsonPredicate } from "./utils/is-fetch-completion-guarded-by-json-predicate.js";
 
 const IMPORT_INITIALIZER_TYPES = new Set([
   "ImportSpecifier",
@@ -326,6 +327,7 @@ const readCancellationCondition = (
 
 const isCompletionSinkInsideCancellationGuard = (
   completionSink: EsTreeNode,
+  request: EsTreeNode,
   cancellationFlagKey: string,
   context: RuleContext,
 ): boolean => {
@@ -341,6 +343,18 @@ const isCompletionSinkInsideCancellationGuard = (
       );
       if (currentNode === parentNode.consequent && cancellationResult === false) return true;
       if (currentNode === parentNode.alternate && cancellationResult === true) return true;
+      if (
+        currentNode === parentNode.consequent &&
+        isFetchCompletionGuardedByJsonPredicate({
+          guard: parentNode,
+          completionSink,
+          request,
+          cancellationFlagKey,
+          context,
+        })
+      ) {
+        return true;
+      }
     }
     if (isNodeOfType(parentNode, "ConditionalExpression")) {
       const cancellationResult = readCancellationCondition(
@@ -404,10 +418,11 @@ const isCompletionSinkAfterCancellationEarlyExit = (
 
 const isCompletionSinkGuardedByCancellationFlag = (
   completionSink: EsTreeNode,
+  request: EsTreeNode,
   cancellationFlagKey: string,
   context: RuleContext,
 ): boolean =>
-  isCompletionSinkInsideCancellationGuard(completionSink, cancellationFlagKey, context) ||
+  isCompletionSinkInsideCancellationGuard(completionSink, request, cancellationFlagKey, context) ||
   isCompletionSinkAfterCancellationEarlyExit(completionSink, cancellationFlagKey, context);
 
 const isPromiseContinuationForRequest = (
@@ -465,7 +480,12 @@ const requestHasGuardedCompletionSinks = (
     followingCompletionSinks.length > 0 &&
     followingCompletionSinks.every((completionSink) =>
       [...assignedCancellationFlagKeys].some((cancellationFlagKey) =>
-        isCompletionSinkGuardedByCancellationFlag(completionSink, cancellationFlagKey, context),
+        isCompletionSinkGuardedByCancellationFlag(
+          completionSink,
+          request,
+          cancellationFlagKey,
+          context,
+        ),
       ),
     )
   );

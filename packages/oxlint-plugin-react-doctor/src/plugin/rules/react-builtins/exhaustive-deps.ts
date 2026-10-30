@@ -1,3 +1,5 @@
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
+import { isCoveredByReadonlyMemberAlias } from "../../utils/is-covered-by-readonly-member-alias.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { getStableImportedHookMemberKeys } from "../../utils/get-stable-imported-hook-member-keys.js";
@@ -2521,13 +2523,51 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (isCoveredByDeclared) continue;
           missingCaptureKeys.push(captureKey);
         }
+        let shouldOmitMissingAliasReport = false;
+        if (
+          shouldUseCuratedBehavior &&
+          hookName === "useMemo" &&
+          missingCaptureKeys.length === 1 &&
+          depsArgument.elements.length === 1 &&
+          callbackArgument === callbackToAnalyze &&
+          isFunctionLike(callbackToAnalyze) &&
+          !callbackToAnalyze.async &&
+          !callbackToAnalyze.generator &&
+          callbackToAnalyze.params.length === 0
+        ) {
+          const helperCall = getSingleReturnExpression(callbackToAnalyze);
+          const argument =
+            isNodeOfType(helperCall, "CallExpression") &&
+            !helperCall.optional &&
+            helperCall.arguments.length === 1
+              ? helperCall.arguments[0]
+              : null;
+          const rootReference = isNodeOfType(argument, "Identifier")
+            ? context.scopes.referenceFor(argument)
+            : null;
+          if (rootReference) {
+            shouldOmitMissingAliasReport = isCoveredByReadonlyMemberAlias({
+              hookCall: node,
+              callback: callbackToAnalyze,
+              dependencies: depsArgument,
+              missingKey: missingCaptureKeys[0],
+              rootReference,
+              admittedKeys: resolveCalledArgumentPropertyKeys(rootReference, context.scopes),
+              context,
+            });
+          }
+        }
         const shouldGroupMissingDeps = !hasLiteralDepElement;
-        if (missingCaptureKeys.length > 0 && shouldGroupMissingDeps) {
+        if (
+          !shouldOmitMissingAliasReport &&
+          missingCaptureKeys.length > 0 &&
+          shouldGroupMissingDeps
+        ) {
           report({
             node: depsArgument,
             message: buildMissingDepMessage(hookName, missingCaptureKeys.join(", ")),
           });
-        } else {
+        } else if (!shouldOmitMissingAliasReport) {
           for (const missingCaptureKey of missingCaptureKeys) {
             report({
               node: depsArgument,

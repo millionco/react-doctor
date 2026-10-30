@@ -175,7 +175,12 @@ export class Legacy extends React.Component<{}, {}> {
     const hits = await collectRuleHits(projectDir, "no-legacy-class-lifecycles");
     expect(hits.length).toBe(3);
     expect(hits.every((hit) => hit.message.includes("UNSAFE_"))).toBe(true);
-    expect(hits.every((hit) => hit.message.includes("React 19"))).toBe(true);
+    expect(hits.every((hit) => hit.message.includes("concurrent-rendering risks"))).toBe(true);
+    expect(
+      hits.every((hit) =>
+        hit.message.includes("UNSAFE_ prefix does not make its work concurrent-safe"),
+      ),
+    ).toBe(true);
   });
 
   it("does not flag componentDidMount / componentDidUpdate / componentWillUnmount", async () => {

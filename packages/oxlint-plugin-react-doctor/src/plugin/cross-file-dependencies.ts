@@ -1,8 +1,20 @@
+import { hasNativeIframeReadinessConsumption } from "./rules/state-and-effects/utils/has-native-iframe-readiness-consumption.js";
+import { isImportedSupabaseServerClientFactory } from "./utils/is-imported-supabase-server-client-factory.js";
+import { analyzeControlFlow } from "./semantic/control-flow-graph.js";
+import { isPropTypesObjectValidatorReference } from "./utils/is-prop-types-object-validator-reference.js";
+import { isRejectableOidcUserManagerCall } from "./utils/is-rejectable-oidc-user-manager-call.js";
+import { findNextPagesDefaultComponent } from "./utils/find-next-pages-default-component.js";
+import { hasSupportedTwilioVideoSnapshotApi } from "./rules/state-and-effects/utils/has-supported-twilio-video-snapshot-api.js";
+import { isSlateCurrentFocusProvider } from "./rules/state-and-effects/utils/is-slate-current-focus-provider.js";
+import { collectTanstackFormRenderFunctions } from "./utils/collect-tanstack-form-render-functions.js";
+import { isInheritedStringTokenReceiver } from "./utils/is-inherited-string-token-receiver.js";
+import { isTypedReduxStoreFactoryInitialization } from "./rules/state-and-effects/utils/is-typed-redux-store-factory-initialization.js";
+import { resolveReactRefSymbol } from "./utils/react-ref-origin.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
-import { analyzeScopes } from "./semantic/scope-analysis.js";
+import { analyzeScopes, type ScopeAnalysis } from "./semantic/scope-analysis.js";
 import { awaitedStatementsMayShareWork } from "./utils/awaited-statements-may-share-work.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
@@ -198,7 +210,38 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   }
 };
 
-const collectImportedHookDependencies: CrossFileDependencyCollector = ({
+const collectDerivedStateDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  if (flattenImportEntries(input.staticImports).some((entry) => entry.source === "twilio-video")) {
+    hasSupportedTwilioVideoSnapshotApi(input.absoluteFilePath);
+  }
+};
+
+const collectSlateCurrentFocusDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  const program = input.getProgram();
+  let scopes: ScopeAnalysis | undefined;
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "CallExpression") || node.optional) return;
+    const member = node.callee;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.computed ||
+      member.optional ||
+      !isNodeOfType(member.object, "Identifier") ||
+      !isNodeOfType(member.property, "Identifier") ||
+      member.property.name !== "isFocused"
+    )
+      return;
+    if (!scopes) {
+      attachParentReferences(program);
+      scopes = analyzeScopes(program);
+    }
+    isSlateCurrentFocusProvider({ filename: input.absoluteFilePath, scopes }, member.object);
+  });
+};
+
+const collectInheritedStringTokenDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   getProgram,
 }) => {
@@ -206,7 +249,41 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression"))
+      isInheritedStringTokenReceiver(node, absoluteFilePath, scopes);
+  });
+};
+
+const collectNativeIframeReadinessDependencies: CrossFileDependencyCollector = (input) => {
+  collectSlateCurrentFocusDependencies(input);
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression"))
+      hasNativeIframeReadinessConsumption(node, {
+        filename: input.absoluteFilePath,
+        scopes,
+        sourceText: input.sourceText,
+      });
+  });
+};
+
+const collectImportedHookDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  if (normalizeFilename(absoluteFilePath).endsWith("/browser.api.js")) {
+    readNearestPackageManifest(absoluteFilePath);
+  }
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  findNextPagesDefaultComponent({ program, filename: absoluteFilePath, getScopes: () => scopes });
+  collectTanstackFormRenderFunctions(program, scopes, absoluteFilePath);
+  walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
+    isImportedSupabaseServerClientFactory(node, { filename: absoluteFilePath, scopes });
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);
@@ -382,6 +459,22 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
   collectImportedValueDependencies(input);
   resolvePackageVersion(input.absoluteFilePath, "@xstate/react");
+};
+
+const collectPropTypesObjectValidatorDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+  getProgram,
+}) => {
+  if (!staticImports.some((entry) => entry.moduleRequest.value === "prop-types")) return;
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  const cfg = analyzeControlFlow(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "Identifier") || node.name !== "Object") return;
+    isPropTypesObjectValidatorReference(node, { scopes, cfg, filename: absoluteFilePath });
+  });
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
@@ -573,6 +666,49 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression")) {
+      isRejectableOidcUserManagerCall(node, { filename: absoluteFilePath, scopes });
+    }
+  });
+};
+
+const collectExpoImageDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  for (const staticImport of input.staticImports) {
+    resolveModulePath(input.absoluteFilePath, staticImport.moduleRequest.value);
+  }
+  collectImportedValueDependencies(input);
+};
+
+const collectTypedReduxStoreInitializationDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  sourceText,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "AssignmentExpression")) return;
+    const refSymbol = resolveReactRefSymbol(node.left, scopes);
+    if (refSymbol) {
+      isTypedReduxStoreFactoryInitialization(node.right, refSymbol, {
+        filename: absoluteFilePath,
+        scopes,
+        sourceCode: { getText: () => sourceText },
+      });
+    }
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -580,12 +716,19 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
       collectInkVersionDependencies,
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
+    ["class-component-missing-component-will-unmount-teardown", collectImportedValueDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
+    ["class-component-missing-component-will-unmount-teardown", collectImportedValueDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
+    ["effect-observer-needs-disconnect", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["hook-use-state", collectPropTypesObjectValidatorDependencies],
+    ["no-ref-current-in-render", collectTypedReduxStoreInitializationDependencies],
+    ["no-promise-then-side-effect-in-effect-without-catch", collectOidcUserManagerDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["no-array-index-as-key", collectInheritedStringTokenDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
@@ -597,11 +740,12 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
-    ["no-derived-state", collectEffectValueHelperDependencies],
+    ["no-derived-state", collectDerivedStateDependencies],
+    ["no-derived-useState", (input) => collectFunctionExportDependencies(input, 0)],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
-    ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-reset-all-state-on-prop-change", collectNativeIframeReadinessDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
@@ -614,7 +758,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
-    ["rn-prefer-expo-image", collectNearestManifestDependencies],
+    ["rn-prefer-expo-image", collectExpoImageDependencies],
     ["rn-style-prefer-boxshadow", collectLegacyArchDependencies],
     ...REACT_ROUTER_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
       ruleId,
@@ -630,6 +774,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "no-direct-state-mutation",
   "anchor-target-exists",
   "nextjs-no-img-element",
   "no-img-without-dimensions",

@@ -14,6 +14,7 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { functionReturnsDisplayNameRenderOutput } from "../../utils/function-returns-display-name-render-output.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { hasTypedDisplayNameAssignment } from "./utils/has-typed-display-name-assignment.js";
 
 const hasOnlyNullArgumentRenderPaths = (
   functionNode: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
@@ -578,6 +579,11 @@ export const displayName = defineRule({
         // Anonymous arrow assigned to a PascalCase var binding or
         // declared as a default export → name is inferable; skip.
         while (parent) {
+          if (
+            shouldUseCuratedBehavior &&
+            (isNodeOfType(parent, "ObjectExpression") || isNodeOfType(parent, "ArrayExpression"))
+          )
+            break;
           if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
             if (isReactComponentName(parent.id.name) && ignoreNamed) return;
             break;
@@ -627,7 +633,10 @@ export const displayName = defineRule({
           reportAt(node as EsTreeNode);
           return;
         }
-        if (shouldReportHoCDisplayName(node as EsTreeNode, settings)) {
+        if (
+          shouldReportHoCDisplayName(node as EsTreeNode, settings) &&
+          !hasTypedDisplayNameAssignment({ node, scopes: context.scopes })
+        ) {
           reportAt(node as EsTreeNode);
           return;
         }

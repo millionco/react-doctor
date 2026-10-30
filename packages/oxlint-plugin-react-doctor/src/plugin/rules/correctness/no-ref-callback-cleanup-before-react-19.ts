@@ -9,6 +9,9 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { hasEquivalentNullDetachAction } from "./utils/has-equivalent-null-detach-action.js";
+import { hasOwnedGuardedCallbackMapReturn } from "./utils/has-owned-guarded-callback-map-return.js";
+import { hasOwnedCallbackMapSnapshot } from "./utils/has-owned-callback-map-snapshot.js";
 
 const resolveFunctionExpressions = (
   rawExpression: EsTreeNode,
@@ -117,6 +120,9 @@ export const noRefCallbackCleanupBeforeReact19 = defineRule({
       const callback = node.value.expression;
       if (!callback || isNodeOfType(callback, "JSXEmptyExpression")) return;
       if (!callbackReturnsCleanupFunction(callback, context.scopes)) return;
+      if (hasEquivalentNullDetachAction({ attribute: node, scopes: context.scopes })) return;
+      if (hasOwnedCallbackMapSnapshot({ attribute: node, scopes: context.scopes })) return;
+      if (hasOwnedGuardedCallbackMapReturn({ attribute: node, scopes: context.scopes })) return;
       context.report({
         node,
         message:

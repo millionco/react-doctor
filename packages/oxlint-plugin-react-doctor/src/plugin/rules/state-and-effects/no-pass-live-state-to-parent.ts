@@ -6,6 +6,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isCallResultConsumedAsArgument } from "../../utils/is-call-result-consumed-as-argument.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isReactForwardedRefParameter } from "../../utils/is-react-forwarded-ref-parameter.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import {
   DATA_SINK_METHOD_NAMES,
@@ -45,6 +46,8 @@ import {
 } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
+
+import { isTemplateGetterResultConsumedByLocalStateSetter } from "./utils/is-template-getter-result-consumed-by-local-state-setter.js";
 
 const SETTER_NAMED_CALLBACK_PATTERN = /^set[A-Z]/;
 const DATA_FETCHING_CALLBACK_PATTERN = /^(fetch|refetch|load|query|request)([A-Z_]|$)/;
@@ -119,6 +122,7 @@ const isParentNotificationCallbackRef = (
   if (!isPropCallbackInvocationRef(analysis, ref)) return false;
   const callExpr = getCallExpr(ref);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  if (isReactForwardedRefParameter(callExpr.callee, context.scopes)) return false;
   const hasUnresolvedCurrentSnapshot = Boolean(
     ref.resolved?.defs.some((definition) => {
       const definitionNode = definition.node as unknown as EsTreeNode;
@@ -346,6 +350,7 @@ const getTransparentWrapperPropReference = (
 const isSetterNamedCallbackReceivingData = (callbackRef: Reference): boolean => {
   const callExpr = getCallExpr(callbackRef);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  if (!isNodeOfType(stripParenExpression(callExpr.callee), "Identifier")) return false;
   const calleeName = getCallCalleeName(callExpr);
   if (!calleeName || !SETTER_NAMED_CALLBACK_PATTERN.test(calleeName)) return false;
   if (!isCustomHookParameter(callbackRef)) return false;
@@ -477,6 +482,7 @@ export const noPassLiveStateToParent = defineRule({
       for (const ref of effectFnRefs) {
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        if (isReactForwardedRefParameter(callExpr.callee, context.scopes)) continue;
         const directLocalEffectHelper = getDirectLocalEffectHelper(callExpr, effectFn, context);
         const discardedDirectLocalEffectHelper =
           directLocalEffectHelper && !isCallResultCapturedToLocal(callExpr)
@@ -562,6 +568,8 @@ export const noPassLiveStateToParent = defineRule({
         // chain receiver (`load().catch(...)`), an initializer — still hands
         // live state up to the parent.
         if (isCallResultConsumedAsArgument(callExpr)) continue;
+        if (isTemplateGetterResultConsumedByLocalStateSetter(callExpr, analysis, context.scopes))
+          continue;
 
         // Skip JS prototype / observer / promise methods — see
         // `no-pass-data-to-parent` for the full rationale — except when

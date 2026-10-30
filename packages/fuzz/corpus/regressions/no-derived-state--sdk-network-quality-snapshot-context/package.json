@@ -1,0 +1,8 @@
+{
+  "name": "synthetic-sdk-snapshot-regression-context",
+  "private": true,
+  "dependencies": {
+    "react": "16.14.0",
+    "twilio-video": "^2.34.0"
+  }
+}

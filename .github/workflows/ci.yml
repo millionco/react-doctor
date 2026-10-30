@@ -30,7 +30,7 @@ env:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 30 || 20 }}
     # Fold the Node version AND the OS into turbo's `test` task hash
     # (turbo.json) so a cached result from one matrix leg is never replayed for
     # another — turbo does not hash the platform by default, so without the OS

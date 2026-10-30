@@ -57,6 +57,37 @@ const collectFor = (absoluteFilePath: string, ruleIds: ReadonlyArray<string>) =>
 
 const fixturePath = (relativePath: string): string => path.join(temporaryDirectory, relativePath);
 
+describe("no-derived-state SDK version dependencies", () => {
+  it.each([null, "null", '{"version":"2.34.0"}'])(
+    "records and replays installed metadata probes for type-only SDK imports: %s",
+    (installedManifest) => {
+      writeFixtureFile(
+        "package.json",
+        JSON.stringify({
+          dependencies: { "twilio-video": "^2.34.0" },
+        }),
+      );
+      const sourcePath = writeFixtureFile(
+        "src/snapshot.tsx",
+        `
+import type { Participant } from "twilio-video";
+export const readSnapshot = (remote: Participant) => remote.networkQualityLevel;
+`,
+      );
+      const installedPath = fixturePath("node_modules/twilio-video/package.json");
+      if (installedManifest !== null) {
+        writeFixtureFile("node_modules/twilio-video/package.json", installedManifest);
+      }
+      const cold = collectFor(sourcePath, ["no-derived-state"]);
+      const warm = collectFor(sourcePath, ["no-derived-state"]);
+      expect(cold).not.toBeNull();
+      expect(cold?.existencePaths.has(installedPath)).toBe(true);
+      expect(cold?.contentPaths.has(installedPath)).toBe(true);
+      expect(warm).toEqual(cold);
+    },
+  );
+});
+
 describe("collectCrossFileDependencyProbes — driver", () => {
   it("returns null for a rule without a collector (must degrade to unbounded)", () => {
     const appPath = writeFixtureFile("App.tsx", "export const App = () => null;\n");
@@ -79,6 +110,73 @@ describe("collectCrossFileDependencyProbes — driver", () => {
     expect(trace).not.toBeNull();
     expect(trace?.contentPaths.size).toBe(0);
     expect(trace?.existencePaths.size).toBe(0);
+  });
+});
+
+describe("no-derived-useState dependency collector", () => {
+  it("records type-only record domains, input providers, and alias resolution probes on cached collections", () => {
+    const config = writeFixtureFile(
+      "tsconfig.json",
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@/*": ["src/*"] },
+        },
+      }),
+    );
+    const domain = writeFixtureFile(
+      "src/domain/index.ts",
+      "export interface Entity {slug:string;label:string}",
+    );
+    const input = writeFixtureFile(
+      "src/input.tsx",
+      "export const Field=({...props})=><input {...props}/>;",
+    );
+    const app = writeFixtureFile(
+      "src/App.tsx",
+      "import type {Entity} from '@/domain';import {Field} from './input';export const App=()=>null;",
+    );
+    const first = collectFor(app, ["no-derived-useState"]);
+    const cached = collectFor(app, ["no-derived-useState"]);
+    for (const trace of [first, cached]) {
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(config)).toBe(true);
+      expect(trace?.contentPaths.has(domain)).toBe(true);
+      expect(trace?.contentPaths.has(input)).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("src/domain.ts"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("src/domain.tsx"))).toBe(true);
+    }
+    expect([...(cached?.contentPaths ?? [])].sort()).toEqual(
+      [...(first?.contentPaths ?? [])].sort(),
+    );
+    expect([...(cached?.existencePaths ?? [])].sort()).toEqual(
+      [...(first?.existencePaths ?? [])].sort(),
+    );
+  });
+
+  it("records an absent record provider so adding it invalidates the verdict", () => {
+    const app = writeFixtureFile(
+      "src/App.tsx",
+      "import type {Entity} from './missing-domain';export const App=()=>null;",
+    );
+    const trace = collectFor(app, ["no-derived-useState"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.existencePaths.has(fixturePath("src/missing-domain.ts"))).toBe(true);
+  });
+
+  it("records a controlled wrapper reached through a re-export", () => {
+    const input = writeFixtureFile(
+      "src/input.tsx",
+      "export const Field=({...props})=><textarea {...props}/>;",
+    );
+    const barrel = writeFixtureFile("src/controls.ts", "export {Field} from './input';");
+    const app = writeFixtureFile(
+      "src/App.tsx",
+      "import {Field} from './controls';export const App=()=>null;",
+    );
+    const trace = collectFor(app, ["no-derived-useState"]);
+    expect(trace?.contentPaths.has(barrel)).toBe(true);
+    expect(trace?.contentPaths.has(input)).toBe(true);
   });
 });
 
@@ -941,4 +1039,81 @@ it("records the API Platform provider manifest", () => {
   );
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
+});
+
+it("records Next Pages package, routing configuration and root-pages probes", () => {
+  const manifest = writeFixtureFile(
+    "package.json",
+    JSON.stringify({ dependencies: { next: "16.0.0" } }),
+  );
+  const page = writeFixtureFile(
+    "src/pages/index.tsx",
+    'import { useState } from "react"; const home = () => { useState(0); return <main />; }; export default home;',
+  );
+  const trace = collectFor(page, ["rules-of-hooks"]);
+  expect(trace?.contentPaths).toContain(manifest);
+  for (const filename of [
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.cjs",
+    "next.config.ts",
+    "next.config.mts",
+    "next.config.cts",
+    "pages",
+  ]) {
+    expect(trace?.existencePaths).toContain(fixturePath(filename));
+  }
+});
+
+describe("Splide event-vector dependencies", () => {
+  it("retains provider contents and negative resolution probes on cold and warm collection", () => {
+    const providerPath = writeFixtureFile(
+      "event-list.ts",
+      'export const subscriptions = [["ready", "onReady"]];',
+    );
+    const appPath = writeFixtureFile(
+      "GalleryView.tsx",
+      'import { subscriptions } from "./event-list"; export const value = subscriptions;',
+    );
+    const cold = collectFor(appPath, ["class-component-missing-component-will-unmount-teardown"]);
+    const warm = collectFor(appPath, ["class-component-missing-component-will-unmount-teardown"]);
+    expect(cold?.contentPaths.has(providerPath)).toBe(true);
+    expect(warm?.contentPaths).toEqual(cold?.contentPaths);
+    expect(warm?.existencePaths).toEqual(cold?.existencePaths);
+    expect(cold?.existencePaths.size).toBeGreaterThan(0);
+  });
+});
+
+describe("TanStack form facade hook dependency probes", () => {
+  it.each(["./form", "@forms/api"])(
+    "tracks the selected facade and resolution for %s",
+    (source) => {
+      const configPath = writeFixtureFile(
+        "tsconfig.json",
+        JSON.stringify({
+          compilerOptions: { baseUrl: ".", paths: { "@forms/api": ["src/form/index.ts"] } },
+        }),
+      );
+      const providerPath = writeFixtureFile(
+        "src/form/index.ts",
+        `
+      import {createFormHook} from "@tanstack/react-form";
+      export const {withForm}=createFormHook({});
+    `,
+      );
+      const consumerPath = writeFixtureFile(
+        "src/Panel.tsx",
+        `
+      import {withForm} from "${source}"; import {useState} from "react";
+      const Form=withForm({render:()=>{useState(0);return <div/>}});
+      export const Panel=()=><Form/>;
+    `,
+      );
+      const trace = collectFor(consumerPath, ["rules-of-hooks"]);
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(providerPath)).toBe(true);
+      if (source === "@forms/api") expect(trace?.contentPaths.has(configPath)).toBe(true);
+      else expect(trace?.existencePaths.has(fixturePath("src/form.ts"))).toBe(true);
+    },
+  );
 });

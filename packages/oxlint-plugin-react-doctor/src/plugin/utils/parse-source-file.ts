@@ -1,5 +1,5 @@
+import { resolveLang } from "./resolve-lang.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { parseSync, rawTransferSupported } from "oxc-parser";
 import type { ParserOptions } from "oxc-parser";
 import {
@@ -9,24 +9,6 @@ import {
 import { attachParentReferences } from "./attach-parent-references.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-
-const FILENAME_TO_LANG: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
-  ".ts": "ts",
-  ".tsx": "tsx",
-  ".js": "js",
-  ".jsx": "jsx",
-  ".mjs": "js",
-  ".cjs": "js",
-  ".mts": "ts",
-  ".cts": "ts",
-};
-
-// Exported so the cross-file dependency collectors parse a file with the
-// SAME language selection as the rules' own cross-file parses.
-export const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
-  const extension = path.extname(filename).toLowerCase();
-  return FILENAME_TO_LANG[extension] ?? "tsx";
-};
 
 // oxc's default transfer hands the AST over as one JSON string that
 // `JSON.parse` rebuilds on first `.program` access; raw transfer deserializes
@@ -47,6 +29,8 @@ let shouldUseRawTransfer = process.platform !== "win32" && rawTransferSupported(
 interface CrossFileParseOptions extends ParserOptions {
   readonly experimentalRawTransfer?: boolean;
 }
+
+export { resolveLang };
 
 const buildCrossFileParseOptions = (
   filename: string,
@@ -103,8 +87,8 @@ export const parseSourceText = ({
 };
 
 // Module-level cache of parsed Programs keyed by absolute file path.
-// Each entry stores the file's mtime + byte size at parse time so a
-// changed file invalidates the cache automatically. Storing `null`
+// Hosts clear entries at filesystem-cache epoch boundaries. Within one
+// frozen epoch, mtime + byte size select an existing parse. Storing `null`
 // for known-broken files prevents re-parsing the same .d.ts /
 // generated / unparseable file on every rule invocation.
 //
@@ -130,9 +114,8 @@ const rememberParsedFile = (absoluteFilePath: string, entry: CacheEntry): void =
 // / too large / .d.ts-only / fails to parse.
 //
 // Cached by (absolute path, mtime, size). Re-parsing only happens
-// when one of those changes. Cache lives for the lifetime of the
-// Node process, which matches the way oxlint runs a single batch
-// of files per process.
+// when one of those changes. Hosts also reset entries before a different
+// filesystem epoch; jobs within one epoch share a frozen filesystem.
 export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => {
   // Declaration files are constant-null regardless of the filesystem (absent,
   // present, any size — every branch below lands on `null`), so they are not
@@ -203,8 +186,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   return parsedProgram;
 };
 
-// Exposed for tests. Production callers don't need to clear the
-// cache — the mtime/size key handles invalidation.
-export const __clearParseSourceFileCacheForTests = (): void => {
+export const resetParseSourceFileCache = (): void => {
   parseCache.clear();
 };
+
+export { resetParseSourceFileCache as __clearParseSourceFileCacheForTests };

@@ -4,8 +4,12 @@ import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
+import { hasAdjacentImperativeRefCommand } from "./utils/has-adjacent-imperative-ref-command.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isCachedAsyncResultIdentityStamp } from "./utils/is-cached-async-result-identity-stamp.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
+import { hasUserInputSetterWriter } from "./utils/has-user-input-setter-writer.js";
+import { isMatchedSdkStateSnapshot } from "./utils/is-matched-sdk-state-snapshot.js";
 
 export const noDerivedStateEffect = defineRule({
   id: "no-derived-state-effect",
@@ -19,15 +23,25 @@ export const noDerivedStateEffect = defineRule({
       if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
-      const derivedWrite = collectEffectStateWriteFacts(
-        analysis,
-        context,
-        node,
-        context.filename,
-      ).find(
+      const derivedWrite = collectEffectStateWriteFacts(analysis, context, node, context.filename, {
+        includeConsumedStateAccumulator: true,
+      }).find(
         (fact) =>
-          (fact.isRenderKnownCopy && !fact.resetsSourceState) ||
-          isRenderKnownSelectionRepair(analysis, node, fact),
+          ((fact.isRenderKnownCopy &&
+            !fact.resetsSourceState &&
+            !fact.hasConsumedStateAccumulator) ||
+            isRenderKnownSelectionRepair(analysis, node, fact)) &&
+          !hasAdjacentImperativeRefCommand(analysis, context, node, fact.callExpression) &&
+          !isCachedAsyncResultIdentityStamp(
+            node,
+            fact.stateDeclarator,
+            fact.callExpression,
+            context,
+          ) &&
+          !hasUserInputSetterWriter(analysis, context, fact.setterReference, node, false, {
+            nativeEventWitnessOnly: true,
+          }) &&
+          !isMatchedSdkStateSnapshot({ context, effectCall: node, fact }),
       );
       if (!derivedWrite) return;
       context.report({

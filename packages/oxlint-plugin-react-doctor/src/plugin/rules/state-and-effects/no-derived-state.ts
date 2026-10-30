@@ -8,7 +8,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { hasUserInputSetterWriter } from "./utils/has-user-input-setter-writer.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
+import { isCachedAsyncResultIdentityStamp } from "./utils/is-cached-async-result-identity-stamp.js";
+import { isMatchedSdkStateSnapshot } from "./utils/is-matched-sdk-state-snapshot.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator")) return "<state>";
@@ -74,18 +77,35 @@ export const noDerivedState = defineRule({
         if (!isReactHookCall(node, "useEffect", context.scopes)) return;
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
-        for (const fact of collectEffectStateWriteFacts(
-          analysis,
-          context,
-          node,
-          context.filename,
-        )) {
+        for (const fact of collectEffectStateWriteFacts(analysis, context, node, context.filename, {
+          includeConsumedStateAccumulator: true,
+        })) {
           if (
-            (!fact.isRenderKnownCopy || fact.resetsSourceState) &&
+            (!fact.isRenderKnownCopy ||
+              fact.resetsSourceState ||
+              fact.hasConsumedStateAccumulator) &&
             !isRenderKnownSelectionRepair(analysis, node, fact)
           ) {
             continue;
           }
+          if (
+            hasUserInputSetterWriter(analysis, context, fact.setterReference, node, false, {
+              nativeEventWitnessOnly: true,
+            })
+          ) {
+            continue;
+          }
+          if (
+            isCachedAsyncResultIdentityStamp(
+              node,
+              fact.stateDeclarator,
+              fact.callExpression,
+              context,
+            )
+          ) {
+            continue;
+          }
+          if (isMatchedSdkStateSnapshot({ context, effectCall: node, fact })) continue;
           reportStateWrite(fact.callExpression, fact.stateDeclarator);
         }
       },

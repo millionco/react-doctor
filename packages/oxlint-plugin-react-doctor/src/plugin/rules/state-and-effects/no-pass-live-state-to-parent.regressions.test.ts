@@ -1091,3 +1091,49 @@ describe("local loaders that read props", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("setter callback provenance", () => {
+  it.each([
+    "device.setLevel(level)",
+    "device.setLevel(level.get())",
+    "device?.setLevel(level)",
+    "device.setLevel?.(level)",
+    "device['setLevel'](level)",
+    "(device.setLevel)(level)",
+  ])("does not infer parent state from an object method: %s", (invocation) => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `
+      const useDeviceLevel = (device, level) => {
+        useEffect(() => { ${invocation}; }, [device, level]);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["setLevel, input", "setLevel(input + 1)"],
+    ["{ setLevel }, input", "setLevel(input + 1)"],
+    ["setLevel, input", "(setLevel)(input + 1)"],
+  ])("keeps direct setter callbacks from parameters %s", (parameters, invocation) => {
+    expectFiresOnce(`
+      const useDerivedLevel = (${parameters}) => {
+        useEffect(() => { ${invocation}; }, []);
+      };
+    `);
+  });
+
+  it.each(["callbacks.setLevel(level)", "callbacks.onChange(level)"])(
+    "keeps object callback calls with local state: %s",
+    (invocation) => {
+      expectFiresOnce(`
+        const useLevel = (callbacks) => {
+          const [level] = useState(0);
+          useEffect(() => { ${invocation}; }, [callbacks, level]);
+        };
+      `);
+    },
+  );
+});

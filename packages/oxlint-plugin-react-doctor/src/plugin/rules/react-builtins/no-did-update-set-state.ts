@@ -1,3 +1,21 @@
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import {
+  BARE_RETURN_BLOCK_STATEMENT_COUNT,
+  DIRECT_PROP_PATH_MEMBER_COUNT,
+  PRECEDING_STATEMENT_OFFSET,
+} from "./constants.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { getEquivalentSymbols } from "../../utils/get-equivalent-symbols.js";
+import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { hasReactDefaultProviderMutation } from "../../utils/has-react-default-provider-mutation.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
+import { isMemberMutationTarget } from "../../utils/is-member-mutation-target.js";
+import { hasEmptyRecordComparatorConvergence } from "./utils/has-empty-record-comparator-convergence.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { collectMutationReceiverKinds } from "../../utils/collect-mutation-receiver-kinds.js";
@@ -394,6 +412,77 @@ const isPreviousCurrentComparatorGuard = (
           haveMatchingStateSourcePaths(path, candidate),
       ),
   );
+};
+
+const isEmptyRecordComparatorGuard = (
+  test: EsTreeNode,
+  setStateCall: EsTreeNode,
+  previousSourcePaths: ReadonlyMap<number, StateSourcePath>,
+  scopes: ScopeAnalysis,
+  isTruthfulBranch: boolean,
+): boolean => {
+  let expression = stripParenExpression(test);
+  let expectsEqual = isTruthfulBranch;
+  while (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    expectsEqual = !expectsEqual;
+    expression = stripParenExpression(expression.argument);
+  }
+  if (
+    expectsEqual ||
+    !isNodeOfType(expression, "CallExpression") ||
+    expression.arguments.length !== 2
+  )
+    return false;
+  const [first, second] = expression.arguments;
+  if (
+    !first ||
+    !second ||
+    isNodeOfType(first, "SpreadElement") ||
+    isNodeOfType(second, "SpreadElement")
+  )
+    return false;
+  const firstPath = getStateSourcePath(first, previousSourcePaths, scopes);
+  const secondPath = getStateSourcePath(second, previousSourcePaths, scopes);
+  const fieldName = firstPath?.members[0];
+  if (
+    !firstPath ||
+    !secondPath ||
+    firstPath.domain !== "state" ||
+    firstPath.source === secondPath.source ||
+    firstPath.members.length !== 1 ||
+    !fieldName ||
+    !haveMatchingStateSourcePaths(firstPath, secondPath)
+  )
+    return false;
+  const previousPropsPaths = new Map(
+    [...previousSourcePaths].filter(([, path]) => path.domain === "props"),
+  );
+  return hasEmptyRecordComparatorConvergence({
+    comparison: expression,
+    fieldName,
+    setStateCall,
+    scopes,
+    isPropsTransitionUpdate: (call) => {
+      const owner = findEnclosingLifecycleFunction(call);
+      let child = call;
+      for (
+        let ancestor = child.parent;
+        ancestor && ancestor !== owner;
+        ancestor = ancestor.parent
+      ) {
+        if (
+          isNodeOfType(ancestor, "IfStatement") &&
+          child === ancestor.consequent &&
+          collectTruthfulGuardBranches(ancestor.test, scopes).every((branch) =>
+            isHistoricalToCurrentTransitionGuard(branch.terms, previousPropsPaths, scopes),
+          )
+        )
+          return true;
+        child = ancestor;
+      }
+      return false;
+    },
+  });
 };
 
 const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
@@ -1153,6 +1242,9 @@ const isTruthfulGuardTest = (
       branch.terms.some((term) =>
         isPreviousCurrentComparatorGuard(term, previousSourcePaths, scopes, true),
       ) ||
+      branch.terms.some((term) =>
+        isEmptyRecordComparatorGuard(term, setStateCall, previousSourcePaths, scopes, true),
+      ) ||
       isHistoricalToCurrentTransitionGuard(branch.terms, previousSourcePaths, scopes) ||
       branch.terms.some((term) =>
         isConvergentExactGuard(
@@ -1202,6 +1294,250 @@ const isHistoricalTransitionAcrossPathConditions = (
   );
 };
 
+const isPrecededByPropsEqualityReturn = (
+  setStateCall: EsTreeNode,
+  lifecycleFunction: EsTreeNode,
+  previousPropsParameter: EsTreeNode | undefined,
+  previousSourcePaths: ReadonlyMap<number, StateSourcePath>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isFunctionLike(lifecycleFunction)) return false;
+  const body = lifecycleFunction.body;
+  const statement = setStateCall.parent;
+  if (
+    !isNodeOfType(body, "BlockStatement") ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    stripParenExpression(statement.expression) !== setStateCall ||
+    statement.parent !== body ||
+    !isNodeOfType(previousPropsParameter, "Identifier") ||
+    lifecycleFunction.async === true ||
+    (!isNodeOfType(lifecycleFunction, "ArrowFunctionExpression") &&
+      lifecycleFunction.generator === true)
+  ) {
+    return false;
+  }
+  const statementIndex = body.body.findIndex((candidate) => candidate === statement);
+  const precedingStatement = body.body[statementIndex - PRECEDING_STATEMENT_OFFSET];
+  if (!isNodeOfType(precedingStatement, "IfStatement") || precedingStatement.alternate)
+    return false;
+  const consequent = precedingStatement.consequent;
+  const exit =
+    isNodeOfType(consequent, "BlockStatement") &&
+    consequent.body.length === BARE_RETURN_BLOCK_STATEMENT_COUNT
+      ? consequent.body[0]
+      : consequent;
+  if (!isNodeOfType(exit, "ReturnStatement") || exit.argument) return false;
+  const test = stripParenExpression(precedingStatement.test);
+  if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return false;
+  const left = getStateSourcePath(test.left, previousSourcePaths, scopes);
+  const right = getStateSourcePath(test.right, previousSourcePaths, scopes);
+  if (
+    !left ||
+    !right ||
+    left.domain !== "props" ||
+    right.domain !== "props" ||
+    left.source === right.source ||
+    left.members.length !== DIRECT_PROP_PATH_MEMBER_COUNT ||
+    !haveMatchingStateSourcePaths(left, right)
+  ) {
+    return false;
+  }
+  const previousPropsSymbol = scopes.symbolFor(previousPropsParameter);
+  if (
+    !previousPropsSymbol ||
+    previousPropsSymbol.references.some(
+      (reference) => reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+    )
+  )
+    return false;
+  const classNode = findEnclosingClass(lifecycleFunction);
+  const superClass = classNode?.superClass ? stripParenExpression(classNode.superClass) : null;
+  const provider = isNodeOfType(superClass, "Identifier") ? scopes.symbolFor(superClass) : null;
+  const importDeclaration = provider ? getImportDeclarationForSymbol(provider) : null;
+  const importedName = provider ? getImportedName(provider.declarationNode) : null;
+  if (
+    !isNodeOfType(classNode, "ClassDeclaration") ||
+    !classNode.id ||
+    !provider ||
+    !importDeclaration ||
+    importDeclaration.source.value !== "react" ||
+    importDeclaration.importKind === "type" ||
+    !isNodeOfType(provider.declarationNode, "ImportSpecifier") ||
+    provider.declarationNode.importKind === "type" ||
+    (importedName !== "Component" && importedName !== "PureComponent") ||
+    provider.references.some(
+      (reference) =>
+        reference.flag !== "read" ||
+        isBindingAssignmentTarget(reference.identifier) ||
+        (!isNodeOfType(reference.identifier.parent, "ClassDeclaration") &&
+          !isNodeOfType(reference.identifier.parent, "ClassExpression")) ||
+        reference.identifier.parent.superClass !== reference.identifier,
+    ) ||
+    hasReactDefaultProviderMutation(importedName, scopes)
+  ) {
+    return false;
+  }
+  let hasSourceMutation = false;
+  const classSymbols = getEquivalentSymbols(classNode.id, scopes);
+  const classSymbolIds = new Set(classSymbols.map((symbol) => symbol.id));
+  for (const classSymbol of classSymbols) {
+    if (
+      classSymbol.references.some((reference) => {
+        if (reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier))
+          return true;
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const parent = referenceRoot.parent;
+        if (isNodeOfType(parent, "VariableDeclarator") && parent.init === referenceRoot) {
+          const alias = isNodeOfType(parent.id, "Identifier") ? scopes.symbolFor(parent.id) : null;
+          return (
+            !isNodeOfType(parent.parent, "VariableDeclaration") ||
+            parent.parent.kind !== "const" ||
+            !alias ||
+            alias.references.some(
+              (aliasReference) =>
+                aliasReference.flag !== "read" ||
+                isBindingAssignmentTarget(aliasReference.identifier),
+            )
+          );
+        }
+        return (
+          isNodeOfType(parent, "AssignmentExpression") ||
+          isNodeOfType(parent, "Property") ||
+          isNodeOfType(parent, "ArrayExpression") ||
+          isNodeOfType(parent, "ReturnStatement") ||
+          isNodeOfType(parent, "ArrowFunctionExpression")
+        );
+      })
+    )
+      return false;
+  }
+  for (const siblingProvider of scopes.rootScope.symbols) {
+    if (
+      getImportedName(siblingProvider.declarationNode) !== importedName ||
+      getImportDeclarationForSymbol(siblingProvider)?.source.value !== "react"
+    )
+      continue;
+    if (
+      siblingProvider.references.some(
+        (reference) =>
+          (!isNodeOfType(reference.identifier.parent, "ClassDeclaration") &&
+            !isNodeOfType(reference.identifier.parent, "ClassExpression")) ||
+          reference.identifier.parent.superClass !== reference.identifier,
+      )
+    )
+      return false;
+  }
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasSourceMutation) return false;
+    if (getGlobalRequireModuleSource(node, scopes) === "react") hasSourceMutation = true;
+    if (
+      isProvenGlobalNamespaceReference(node, "eval", scopes) ||
+      isProvenGlobalNamespaceReference(node, "Function", scopes)
+    )
+      hasSourceMutation = true;
+    if (isNodeOfType(node, "MemberExpression")) {
+      const rootIdentifier = getRootIdentifier(node);
+      const rootSymbol = rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;
+      if (rootSymbol && classSymbolIds.has(rootSymbol.id)) {
+        hasSourceMutation = true;
+      }
+      if (isNodeOfType(node.object, "Identifier")) {
+        const namespace = scopes.symbolFor(node.object);
+        const namespaceImport = namespace ? getImportDeclarationForSymbol(namespace) : null;
+        if (
+          (namespaceImport?.source.value === "react" ||
+            isReactNamespaceImport(node.object, scopes)) &&
+          getStaticMemberName(node) === importedName &&
+          !(
+            (isNodeOfType(node.parent, "ClassDeclaration") ||
+              isNodeOfType(node.parent, "ClassExpression")) &&
+            node.parent.superClass === node
+          )
+        ) {
+          hasSourceMutation = true;
+        }
+      }
+    }
+    if (findEnclosingClass(node) !== classNode) return;
+    if (isNodeOfType(node, "ThisExpression")) {
+      const parent = node.parent;
+      const boundReceiver =
+        isNodeOfType(parent, "CallExpression") && isNodeOfType(parent.callee, "MemberExpression")
+          ? stripParenExpression(parent.callee.object)
+          : null;
+      if (
+        !(isNodeOfType(parent, "MemberExpression") && parent.object === node) &&
+        !(
+          isNodeOfType(parent, "CallExpression") &&
+          isNodeOfType(parent.callee, "MemberExpression") &&
+          getStaticMemberName(parent.callee) === "bind" &&
+          isNodeOfType(boundReceiver, "MemberExpression") &&
+          isNodeOfType(boundReceiver.object, "ThisExpression") &&
+          classNode.body.body.some(
+            (member) =>
+              isNodeOfType(member, "MethodDefinition") &&
+              !member.static &&
+              member.kind === "method" &&
+              getStaticPropertyKeyName(member, { allowComputedString: true }) ===
+                getStaticMemberName(boundReceiver),
+          )
+        )
+      )
+        hasSourceMutation = true;
+    }
+    if (
+      (isNodeOfType(node, "MethodDefinition") || isNodeOfType(node, "PropertyDefinition")) &&
+      node.parent === classNode.body
+    ) {
+      const classMemberName = getStaticPropertyKeyName(node, { allowComputedString: true });
+      if (
+        classMemberName === null ||
+        classMemberName === "setState" ||
+        classMemberName === "props" ||
+        (classMemberName === "componentDidUpdate" && node.value !== lifecycleFunction)
+      )
+        hasSourceMutation = true;
+    }
+    if (isNodeOfType(node, "VariableDeclarator") && node.init) {
+      const initializer = stripParenExpression(node.init);
+      if (
+        isNodeOfType(initializer, "MemberExpression") &&
+        isNodeOfType(stripParenExpression(initializer.object), "ThisExpression") &&
+        getStaticMemberName(initializer) === "props"
+      )
+        hasSourceMutation = true;
+    }
+    if (!isNodeOfType(node, "MemberExpression") || !isMemberMutationTarget(node)) return;
+    let receiver: EsTreeNode = node;
+    while (isNodeOfType(receiver, "MemberExpression"))
+      receiver = stripParenExpression(receiver.object);
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      scopes.symbolFor(receiver)?.id === previousPropsSymbol.id
+    ) {
+      hasSourceMutation = true;
+    }
+    if (isNodeOfType(receiver, "ThisExpression")) {
+      let field: EsTreeNode = node;
+      while (
+        isNodeOfType(field, "MemberExpression") &&
+        !isNodeOfType(stripParenExpression(field.object), "ThisExpression")
+      ) {
+        field = stripParenExpression(field.object);
+      }
+      const fieldName = getStaticMemberName(field);
+      if (
+        fieldName === "props" ||
+        fieldName === "setState" ||
+        fieldName === "componentDidUpdate" ||
+        fieldName === null
+      )
+        hasSourceMutation = true;
+    }
+  });
+  return !hasSourceMutation;
+};
+
 const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const lifecycleFunction = findEnclosingLifecycleFunction(setStateCall);
   if (!lifecycleFunction) return false;
@@ -1214,6 +1550,16 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
   const [previousPropsParameter, previousStateParameter] = parameters;
   collectPreviousSourcePaths(previousPropsParameter, "props", [], previousSourcePaths, scopes);
   collectPreviousSourcePaths(previousStateParameter, "state", [], previousSourcePaths, scopes);
+  if (
+    isPrecededByPropsEqualityReturn(
+      setStateCall,
+      lifecycleFunction,
+      previousPropsParameter,
+      previousSourcePaths,
+      scopes,
+    )
+  )
+    return true;
   const derivedNames = collectDiffSourceLocalNames(lifecycleFunction, paramNames);
   const localInitializers = collectLocalInitializers(lifecycleFunction);
   const lifecycleWrittenFieldNames = collectLifecycleWrittenFieldNames(lifecycleFunction);
@@ -1268,6 +1614,13 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
           )
         : isDiffGuardTest(guardTest, paramNames, derivedNames, false) ||
           isPreviousCurrentComparatorGuard(guardTest, previousSourcePaths, scopes, false) ||
+          isEmptyRecordComparatorGuard(
+            guardTest,
+            setStateCall,
+            previousSourcePaths,
+            scopes,
+            false,
+          ) ||
           isConvergentExactGuard(
             guardTest,
             setStateCall,

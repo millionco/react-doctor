@@ -6,6 +6,7 @@ import { getDirectConstInitializer } from "../../utils/get-direct-const-initiali
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { createMethodMutationAnalysis } from "../../utils/has-proven-method-mutation.js";
+import { getProvenReactUseCallbackHandler } from "../../utils/get-proven-react-use-callback-handler.js";
 import { getPropertyKeyName } from "../../utils/get-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
@@ -113,6 +114,8 @@ const resolveHandlerFunction = (
     const symbol = context.scopes.symbolFor(unwrappedHandler);
     const candidate = symbol?.initializer ?? symbol?.declarationNode;
     if (candidate && isFunctionLike(candidate)) return candidate;
+    const wrappedCallback = getProvenReactUseCallbackHandler(unwrappedHandler, context.scopes);
+    if (wrappedCallback) return wrappedCallback;
     const binding = findVariableInitializer(unwrappedHandler, unwrappedHandler.name);
     let assignedFunction: EsTreeNode | undefined;
     if (symbol && binding) {

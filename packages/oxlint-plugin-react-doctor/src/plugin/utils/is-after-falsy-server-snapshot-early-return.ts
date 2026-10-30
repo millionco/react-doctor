@@ -5,7 +5,6 @@ import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { readServerSnapshotBoolean } from "./read-server-snapshot-boolean.js";
-import { statementAlwaysExits } from "./statement-always-exits.js";
 
 export const isAfterFalsyServerSnapshotEarlyReturn = (
   node: EsTreeNode,
@@ -32,14 +31,15 @@ export const isAfterFalsyServerSnapshotEarlyReturn = (
         if (statement === currentNode) break;
         if (!isNodeOfType(statement, "IfStatement")) continue;
         const serverResult = readServerSnapshotBoolean(statement.test, scopes, filename);
-        if (serverResult === true && statementAlwaysExits(statement.consequent)) return true;
-        if (
-          serverResult === false &&
-          statement.alternate &&
-          statementAlwaysExits(statement.alternate)
-        ) {
-          return true;
+        let serverBranch: EsTreeNode | null = null;
+        if (serverResult === true) serverBranch = statement.consequent;
+        else if (serverResult === false) serverBranch = statement.alternate;
+        if (isNodeOfType(serverBranch, "BlockStatement")) {
+          const [firstStatement, ...additionalStatements] = serverBranch.body;
+          if (additionalStatements.length) continue;
+          serverBranch = firstStatement ?? null;
         }
+        if (isNodeOfType(serverBranch, "ReturnStatement")) return true;
       }
     }
     currentNode = parentNode;

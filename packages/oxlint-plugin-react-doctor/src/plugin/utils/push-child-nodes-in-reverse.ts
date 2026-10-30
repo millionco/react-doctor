@@ -2,9 +2,12 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isAstNode } from "./is-ast-node.js";
 import { RUNTIME_VISITOR_KEYS } from "./runtime-visitor-keys.js";
 
-export const pushChildNodesInReverse = (node: EsTreeNode, pendingNodes: EsTreeNode[]): void => {
+export const pushChildNodesInReverse = (
+  node: EsTreeNode,
+  pendingNodes: EsTreeNode[],
+  childKeys: ReadonlyArray<string> | undefined = RUNTIME_VISITOR_KEYS[node.type],
+): void => {
   const nodeRecord = node as unknown as Record<string, unknown>;
-  const childKeys = RUNTIME_VISITOR_KEYS[node.type];
   if (childKeys !== undefined) {
     for (let keyIndex = childKeys.length - 1; keyIndex >= 0; keyIndex -= 1) {
       const child = nodeRecord[childKeys[keyIndex]];

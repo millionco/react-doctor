@@ -1,3 +1,5 @@
+import { isOwnedChartOptionsStateAssignment } from "./utils/is-owned-chart-options-state-assignment.js";
+import { isWorkspaceRefVisibilityAssignment } from "../../utils/is-workspace-ref-visibility-assignment.js";
 import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -11,6 +13,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNativeDomPointerEventsStateWrite } from "./utils/is-native-dom-pointer-events-state-write.js";
 
 // Global producers whose result is always plain React-owned data — never an
 // opaque third-party instance: `Array(5)`, `structuredClone(defaults)`.
@@ -213,7 +216,7 @@ export const noDirectStateMutation = defineRule({
   title: "State mutated in place",
   severity: "warn",
   recommendation:
-    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. React only redraws when the value is new, so changing it in place does nothing.",
+    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. When changing a nested record, copy that record and every containing object or array. Passing the same state value back can make React skip that update.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -266,6 +269,24 @@ export const noDirectStateMutation = defineRule({
             parent.left === expressionRoot &&
             isNodeOfType(expressionRoot, "MemberExpression")
           ) {
+            if (isNativeDomPointerEventsStateWrite({ assignment: parent, binding, context }))
+              continue;
+            if (
+              isOwnedChartOptionsStateAssignment(
+                parent,
+                stateSymbol,
+                binding.declarator,
+                componentBody,
+                context,
+              )
+            )
+              continue;
+            const setterIdentifier = binding.declarator.id.elements?.[1];
+            if (
+              setterIdentifier &&
+              isWorkspaceRefVisibilityAssignment(context, parent, stateIdentifier, setterIdentifier)
+            )
+              continue;
             context.report({
               node: parent,
               message: `React can't tell you changed "${binding.valueName}" in place, so this update can be skipped or lost.`,

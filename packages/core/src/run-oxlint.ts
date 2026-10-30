@@ -19,6 +19,8 @@ import {
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
+import { collectGitLinguistIgnoredPathsCooperative } from "./utils/collect-git-linguist-ignored-paths.js";
+import { toRelativePath } from "./utils/to-relative-path.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import { readAdoptedLintConfigSettings } from "./read-adopted-lint-config-settings.js";
 import { ReactDoctorError } from "./errors.js";
@@ -534,16 +536,24 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     const sizedScanFiles =
       options.precomputedSourceFiles ??
       (includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null);
-    const candidateFiles =
+    const discoveredFiles =
       sizedScanFiles === null ? (includePaths ?? []) : sizedScanFiles.map((entry) => entry.path);
     const projectIndexModuleSources =
       includePaths === undefined && options.deadlineEpochMs === undefined
-        ? await collectProjectIndexModuleSources(rootDirectory, candidateFiles)
+        ? await collectProjectIndexModuleSources(rootDirectory, discoveredFiles)
         : undefined;
     unpluginAutoImportGlobalScopes = collectUnpluginAutoImportGlobalScopes({
       rootDirectory,
-      candidateFiles,
+      candidateFiles: discoveredFiles,
     });
+    const linguistIgnoredPaths = await collectGitLinguistIgnoredPathsCooperative(
+      rootDirectory,
+      discoveredFiles.map((filePath) => toRelativePath(filePath, rootDirectory)),
+      options.signal,
+    );
+    const candidateFiles = discoveredFiles.filter(
+      (filePath) => !linguistIgnoredPaths.has(toRelativePath(filePath, rootDirectory)),
+    );
     const preparedLintSources = prepareLintSources(rootDirectory, configDirectory, candidateFiles);
     const lintFiles = preparedLintSources.lintFiles;
     const hasPreparedFiles = preparedLintSources.sourcePathByLintPath.size > 0;

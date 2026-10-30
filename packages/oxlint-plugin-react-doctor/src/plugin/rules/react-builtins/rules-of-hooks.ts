@@ -1,9 +1,16 @@
+import { collectTanstackFormRenderFunctions } from "../../utils/collect-tanstack-form-render-functions.js";
+import { collectReactStaticPluginRenderFunctions } from "../../utils/collect-react-static-plugin-render-functions.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { findNextPagesDefaultComponent } from "../../utils/find-next-pages-default-component.js";
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNitroRuntimeAppGetter } from "../../utils/is-nitro-runtime-app-getter.js";
+import { hasReadonlySymbolReferences } from "../../utils/has-readonly-symbol-references.js";
+import { resolveRuntimeValueBinding } from "../../utils/resolve-runtime-value-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import {
@@ -17,15 +24,20 @@ import {
   getImportSourceForName,
 } from "../../utils/find-import-source-for-name.js";
 import { isImportedStaticDataGetter } from "../../utils/is-imported-static-data-getter.js";
+import { isImportedSupabaseServerClientFactory } from "../../utils/is-imported-supabase-server-client-factory.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
+import { isReactMarkdownComponentFunction } from "../../utils/is-react-markdown-component-function.js";
+import { isTanstackFileRouteComponent } from "../../utils/is-tanstack-file-route-component.js";
 import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getPlainClassHookFieldName } from "../../utils/get-plain-class-hook-field-name.js";
 import {
   hasPossibleStaticPropertyMutationOrEscape,
   hasPossibleStaticPropertyWriteBefore,
@@ -168,6 +180,8 @@ const resolveSettings = (
   };
 };
 
+const readonlyVidstackLayoutUtilityImports = new WeakMap<SymbolDescriptor, boolean>();
+
 // Mirrors OXC's `is_react_hook` — matches:
 //   useFoo(...)                 (bare identifier with use prefix)
 //   React.useFoo(...)           (the React namespace)
@@ -200,6 +214,58 @@ const isHookCall = (
     //     stance on `useBasename` from `history` etc.
     const symbol = scopes.symbolFor(callee);
     if (symbol) {
+      if (
+        symbol.kind === "import" ||
+        symbol.kind === "ts-interface" ||
+        symbol.kind === "ts-type-alias"
+      ) {
+        const runtimeBinding = resolveRuntimeValueBinding(scopes.scopeFor(callee), callee.name);
+        const importDeclaration = runtimeBinding && getImportDeclarationForSymbol(runtimeBinding);
+        if (
+          runtimeBinding &&
+          importDeclaration &&
+          importDeclaration.importKind !== "type" &&
+          isNodeOfType(runtimeBinding.declarationNode, "ImportSpecifier") &&
+          runtimeBinding.declarationNode.importKind !== "type" &&
+          getImportedName(runtimeBinding.declarationNode) === "useDeviceLanguage" &&
+          (importDeclaration.source.value === "firebase/auth" ||
+            importDeclaration.source.value ===
+              "@react-native-firebase/app/dist/module/internal/web/firebaseAuth") &&
+          hasReadonlySymbolReferences(runtimeBinding) &&
+          hasReadonlySymbolReferences(symbol)
+        )
+          return null;
+      }
+      if (
+        symbol.kind === "const" ||
+        symbol.kind === "ts-interface" ||
+        symbol.kind === "ts-type-alias"
+      ) {
+        const runtimeBinding = resolveRuntimeValueBinding(scopes.scopeFor(callee), callee.name);
+        if (
+          runtimeBinding &&
+          isNitroRuntimeAppGetter(runtimeBinding) &&
+          hasReadonlySymbolReferences(symbol)
+        )
+          return null;
+      }
+      if (symbol.kind === "import") {
+        const importedApi = resolveImportedApiReference(callee, scopes);
+        if (
+          importedApi?.source === "vidstack" &&
+          importedApi.importedName === "usePlyrLayoutClasses"
+        ) {
+          let isReadOnlyImport = readonlyVidstackLayoutUtilityImports.get(symbol);
+          if (isReadOnlyImport === undefined) {
+            isReadOnlyImport = symbol.references.every(
+              (reference) =>
+                reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+            );
+            readonlyVidstackLayoutUtilityImports.set(symbol, isReadOnlyImport);
+          }
+          if (isReadOnlyImport) return null;
+        }
+      }
       if (symbol.kind === "parameter" || symbol.kind === "catch-clause-parameter") {
         return null;
       }
@@ -603,7 +669,9 @@ const getCallExpressionCalleeName = (
 // Best-effort name inference: looks at the function's parent for a
 // VariableDeclarator / AssignmentExpression / Property / CallExpression
 // that gives the function a usable name.
-const inferFunctionName = (functionNode: EsTreeNode): string | null => {
+const inferFunctionName = (functionNode: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+  const classHookFieldName = getPlainClassHookFieldName(functionNode, scopes);
+  if (classHookFieldName !== null) return classHookFieldName;
   if (
     (isNodeOfType(functionNode, "FunctionDeclaration") ||
       isNodeOfType(functionNode, "FunctionExpression")) &&
@@ -831,6 +899,9 @@ const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpressio
 const findEnclosingFunctionInfo = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  pageComponent: EsTreeNode | null,
+  isPluginRenderFunction: (node: EsTreeNode) => boolean,
+  formRenderFunctions: ReadonlySet<EsTreeNode>,
 ): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -839,7 +910,7 @@ const findEnclosingFunctionInfo = (
       isNodeOfType(current, "FunctionExpression") ||
       isNodeOfType(current, "ArrowFunctionExpression")
     ) {
-      const resolvedName = inferFunctionName(current);
+      const resolvedName = inferFunctionName(current, scopes);
       const displayName = resolvedName ?? "anonymous";
       return {
         node: current,
@@ -847,7 +918,12 @@ const findEnclosingFunctionInfo = (
         hasResolvedName: resolvedName !== null,
         isAsync: Boolean(current.async),
         isComponentOrHook:
+          current === pageComponent ||
+          isPluginRenderFunction(current) ||
+          formRenderFunctions.has(current) ||
           isReactHocCallbackArgument(current, scopes) ||
+          isReactMarkdownComponentFunction(current, scopes) ||
+          isTanstackFileRouteComponent(current, scopes) ||
           (resolvedName === null ? false : isComponentOrHookDisplayName(displayName, current)),
       };
     }
@@ -913,12 +989,23 @@ const isInsideLoop = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => 
 const findEnclosingComponentOrHookFunction = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  pageComponent: EsTreeNode | null,
+  isPluginRenderFunction: (node: EsTreeNode) => boolean,
+  formRenderFunctions: ReadonlySet<EsTreeNode>,
 ): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
-      if (isReactHocCallbackArgument(current, scopes)) return current;
-      const resolvedName = inferFunctionName(current);
+      if (
+        current === pageComponent ||
+        isPluginRenderFunction(current) ||
+        formRenderFunctions.has(current) ||
+        isReactHocCallbackArgument(current, scopes) ||
+        isReactMarkdownComponentFunction(current, scopes) ||
+        isTanstackFileRouteComponent(current, scopes)
+      )
+        return current;
+      const resolvedName = inferFunctionName(current, scopes);
       if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
         return current;
       }
@@ -932,9 +1019,24 @@ const isSameComponentOrHookScope = (
   symbol: SymbolDescriptor,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  pageComponent: EsTreeNode | null,
+  isPluginRenderFunction: (node: EsTreeNode) => boolean,
+  formRenderFunctions: ReadonlySet<EsTreeNode>,
 ): boolean =>
-  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes) ===
-  findEnclosingComponentOrHookFunction(referenceNode, scopes);
+  findEnclosingComponentOrHookFunction(
+    symbol.declarationNode,
+    scopes,
+    pageComponent,
+    isPluginRenderFunction,
+    formRenderFunctions,
+  ) ===
+  findEnclosingComponentOrHookFunction(
+    referenceNode,
+    scopes,
+    pageComponent,
+    isPluginRenderFunction,
+    formRenderFunctions,
+  );
 
 const isAllowedEffectEventHook = (
   hookName: string,
@@ -1030,11 +1132,30 @@ export const rulesOfHooks = defineRule({
         hostContext.report(descriptor);
       },
     };
+    let formRenderFunctions: ReadonlySet<EsTreeNode> = new Set();
+    let pluginRenderFunctions: ReadonlySet<EsTreeNode> | undefined;
+    const isPluginRenderFunction = (node: EsTreeNode): boolean => {
+      pluginRenderFunctions ??= collectReactStaticPluginRenderFunctions(node, context);
+      return pluginRenderFunctions.has(node);
+    };
     const settings = resolveSettings(context.settings);
     const additionalEffectHooksRegex = buildAdditionalEffectHooksRegex(
       settings.additionalEffectHooks,
     );
+    let pageComponent: EsTreeNode | null = null;
     return {
+      Program(program: EsTreeNodeOfType<"Program">) {
+        pageComponent = findNextPagesDefaultComponent({
+          program,
+          filename: context.filename,
+          getScopes: () => context.scopes,
+        });
+        formRenderFunctions = collectTanstackFormRenderFunctions(
+          program,
+          context.scopes,
+          context.filename,
+        );
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const hookContext = isHookCall(node, context.scopes, settings);
         if (!hookContext) return;
@@ -1055,6 +1176,7 @@ export const rulesOfHooks = defineRule({
         // the ordering rules apply to it.
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
         if (isImportedStaticDataGetter(node.callee, context)) return;
+        if (isImportedSupabaseServerClientFactory(node, context)) return;
 
         if (isProjectOwnedMdxComponentsGetter(node)) return;
 
@@ -1064,7 +1186,13 @@ export const rulesOfHooks = defineRule({
             return;
         }
 
-        const enclosing = findEnclosingFunctionInfo(node, context.scopes);
+        const enclosing = findEnclosingFunctionInfo(
+          node,
+          context.scopes,
+          pageComponent,
+          isPluginRenderFunction,
+          formRenderFunctions,
+        );
 
         if (!enclosing) {
           if (isPackageImportedNonReactHookCallee(node)) return;
@@ -1072,7 +1200,10 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (isInsideClassComponent(node)) {
+        if (
+          isInsideClassComponent(node) &&
+          getPlainClassHookFieldName(enclosing.node, context.scopes) === null
+        ) {
           if (
             isPackageImportedNonReactHookCallee(node) ||
             isDefaultImportedClassApiMemberCallee(node)
@@ -1101,7 +1232,13 @@ export const rulesOfHooks = defineRule({
           !enclosing.isComponentOrHook &&
           enclosing.hasResolvedName &&
           RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
-          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes) === null &&
+          findEnclosingComponentOrHookFunction(
+            enclosing.node,
+            context.scopes,
+            pageComponent,
+            isPluginRenderFunction,
+            formRenderFunctions,
+          ) === null &&
           countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
             MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
@@ -1114,7 +1251,13 @@ export const rulesOfHooks = defineRule({
           let outerWalker: EsTreeNode | null = enclosing.node;
           let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
-            const parentInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+            const parentInfo = findEnclosingFunctionInfo(
+              outerWalker,
+              context.scopes,
+              pageComponent,
+              isPluginRenderFunction,
+              formRenderFunctions,
+            );
             if (!parentInfo) break;
             outerWalker = parentInfo.node;
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
@@ -1147,7 +1290,13 @@ export const rulesOfHooks = defineRule({
             let outerWalker: EsTreeNode | null = enclosing.node;
             let outerIsComponentOrHook = false;
             while (outerWalker) {
-              const outerInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+              const outerInfo = findEnclosingFunctionInfo(
+                outerWalker,
+                context.scopes,
+                pageComponent,
+                isPluginRenderFunction,
+                formRenderFunctions,
+              );
               if (!outerInfo) break;
               if (outerInfo.isComponentOrHook) {
                 outerIsComponentOrHook = true;
@@ -1197,7 +1346,17 @@ export const rulesOfHooks = defineRule({
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
         if (!symbol || !symbolHasReactUseEffectEventOrigin(symbol, context.scopes)) return;
-        if (!isSameComponentOrHookScope(symbol, node, context.scopes)) return;
+        if (
+          !isSameComponentOrHookScope(
+            symbol,
+            node,
+            context.scopes,
+            pageComponent,
+            isPluginRenderFunction,
+            formRenderFunctions,
+          )
+        )
+          return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 
         context.report({

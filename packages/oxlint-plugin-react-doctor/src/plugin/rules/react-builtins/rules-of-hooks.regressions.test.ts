@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import {
+  NON_REACT_UTILITY_WORK_LARGE_CALL_COUNT,
+  NON_REACT_UTILITY_WORK_SMALL_CALL_COUNT,
+} from "../../constants/thresholds.js";
 import { clearRulesOfHooksSuppressionCache } from "./rules-of-hooks-suppression.js";
 import { rulesOfHooks } from "./rules-of-hooks.js";
 
@@ -1523,5 +1527,164 @@ describe("imported static data getters", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("non-React Vidstack layout utility", () => {
+  it.each([
+    { callCount: NON_REACT_UTILITY_WORK_SMALL_CALL_COUNT, mutation: "" },
+    { callCount: NON_REACT_UTILITY_WORK_LARGE_CALL_COUNT, mutation: "" },
+    {
+      callCount: NON_REACT_UTILITY_WORK_SMALL_CALL_COUNT,
+      mutation: "usePlyrLayoutClasses = replacement;",
+    },
+    {
+      callCount: NON_REACT_UTILITY_WORK_LARGE_CALL_COUNT,
+      mutation: "usePlyrLayoutClasses = replacement;",
+    },
+  ])("checks each imported reference once: $callCount $mutation", ({ callCount, mutation }) => {
+    let referenceFlagReads = 0;
+    let importedReferenceCount = 0;
+    const profiledRule: typeof rulesOfHooks = {
+      ...rulesOfHooks,
+      create: (context) => {
+        const symbol = context.scopes.rootScope.symbols.find(
+          (candidate) => candidate.name === "usePlyrLayoutClasses",
+        );
+        if (!symbol) throw new Error("Expected layout utility import binding");
+        importedReferenceCount = symbol.references.length;
+        for (const reference of symbol.references) {
+          const originalFlag = reference.flag;
+          Object.defineProperty(reference, "flag", {
+            configurable: true,
+            get: () => {
+              referenceFlagReads += 1;
+              return originalFlag;
+            },
+          });
+        }
+        return rulesOfHooks.create(context);
+      },
+    };
+    const components = Array.from(
+      { length: callCount },
+      (_, componentIndex) =>
+        `export const Panel${componentIndex} = ({ element, context }) => { useEffect(() => { if (!element) return; return usePlyrLayoutClasses(element, context); }, [element, context]); return <section />; };`,
+    ).join("\n");
+    const result = runRule(
+      profiledRule,
+      `import { useEffect } from "react"; import { usePlyrLayoutClasses } from "vidstack"; ${components} ${mutation}`,
+      { filename: "panels.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(mutation ? callCount : 0);
+    expect(referenceFlagReads).toBeGreaterThan(0);
+    expect(referenceFlagReads).toBeLessThanOrEqual(importedReferenceCount);
+  });
+
+  it.each([
+    ['import { usePlyrLayoutClasses } from "vidstack";', "usePlyrLayoutClasses(element, context)"],
+    [
+      'import { usePlyrLayoutClasses as useLayoutClasses } from "vidstack";',
+      "useLayoutClasses(element, context)",
+    ],
+  ])("accepts the exact imported utility: %s", (declaration, call) => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      ${declaration}
+      export const Panel = ({ element, context }) => {
+        useEffect(() => {
+          if (!element) return;
+          return ${call};
+        }, [element, context]);
+        return <section />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "export const Panel = ({element, context, enabled}) => { if (enabled) usePlyrLayoutClasses(element, context); return <section />; };",
+    "export const Panel = async ({element, context}) => { usePlyrLayoutClasses(element, context); return <section />; };",
+  ])("does not assign React ordering to the utility: %s", (component) => {
+    const result = runTsx(`import {usePlyrLayoutClasses} from "vidstack"; ${component}`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ['import {usePlyrLayoutClasses} from "./layout";', "usePlyrLayoutClasses(element, context)"],
+    [
+      'import {usePlyrLayoutClasses} from "other-runtime";',
+      "usePlyrLayoutClasses(element, context)",
+    ],
+    [
+      'import {usePlyrLayoutClasses} from "maverick.js/react";',
+      "usePlyrLayoutClasses(element, context)",
+    ],
+    ['import usePlyrLayoutClasses from "vidstack";', "usePlyrLayoutClasses(element, context)"],
+    [
+      'import type {usePlyrLayoutClasses} from "vidstack";',
+      "usePlyrLayoutClasses(element, context)",
+    ],
+    ['import {useUnknown} from "vidstack";', "useUnknown(element, context)"],
+    ['import {useState as useCounter} from "react";', "useCounter(0)"],
+    ['import {useQuery} from "@tanstack/react-query";', "useQuery({})"],
+    [
+      'import {usePlyrLayoutClasses as importedUtility} from "vidstack"; const useLayoutClasses = importedUtility;',
+      "useLayoutClasses(element, context)",
+    ],
+    [
+      "const usePlyrLayoutClasses = () => { const [value] = useState(0); return value; };",
+      "usePlyrLayoutClasses(element, context)",
+    ],
+  ])("keeps unproven nested Hook checks: %s", (declaration, call) => {
+    const result = runTsx(`
+      import { useEffect, useState } from "react";
+      ${declaration}
+      export const Panel = ({ element, context }) => {
+        useEffect(() => {
+          if (!element) return;
+          return ${call};
+        }, [element, context]);
+        return <section />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "usePlyrLayoutClasses = replacement;",
+    "({utility: usePlyrLayoutClasses} = replacement);",
+    "for (usePlyrLayoutClasses of replacements) {}",
+  ])("keeps checks after an imported binding is written: %s", (mutation) => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      import { usePlyrLayoutClasses } from "vidstack";
+      ${mutation}
+      export const Panel = ({ element, context }) => {
+        useEffect(() => usePlyrLayoutClasses(element, context), [element, context]);
+        return <section />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not exempt a genuine Hook that shadows the imported utility", () => {
+    const result = runTsx(`
+      import { useEffect, useState } from "react";
+      import { usePlyrLayoutClasses } from "vidstack";
+      export const Panel = () => {
+        const usePlyrLayoutClasses = () => useState(0);
+        useEffect(() => usePlyrLayoutClasses(), []);
+        return <section />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

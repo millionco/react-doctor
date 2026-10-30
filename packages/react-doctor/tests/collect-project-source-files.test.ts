@@ -15,7 +15,7 @@ describe("collectProjectSourceFiles", () => {
 
   afterEach(async () => {
     await activeScanAbortRegistry.abortAll();
-    fs.rmSync(rootDirectory, {
+    await fs.promises.rm(rootDirectory, {
       recursive: true,
       force: true,
       maxRetries: TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES,

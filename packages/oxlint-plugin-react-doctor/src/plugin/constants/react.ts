@@ -46,6 +46,7 @@ export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
+export const UNARY_PAYLOAD_CALLBACK_ARGUMENT_COUNT = 1;
 export const UNARY_LISTENER_ARGUMENT_COUNT = 1;
 export const UNARY_LISTENER_HANDLER_ARGUMENT_INDEX = 0;
 export const EVENT_LISTENER_HANDLER_ARGUMENT_INDEX = 1;
@@ -318,4 +319,126 @@ export const NAVIGATION_RECEIVER_NAMES = new Set([
 
 export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["react_ujs", new Set(["useContext", "useContexts"])],
+]);
+
+export const VALUE_ONLY_STATE_TUPLE_LENGTH = 1;
+export const CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT = 1;
+
+export const GETTER_RESULT_ARGUMENT_COUNT = 1;
+export const GETTER_RESULT_ARGUMENT_INDEX = 0;
+export const MOUNT_GATE_CALLBACK_PARAMETER_COUNT = 0;
+export const MOUNT_GATE_FIRST_ARGUMENT_INDEX = 0;
+export const MOUNT_GATE_INITIAL_STATE_ARGUMENT_COUNT = 1;
+export const MOUNT_GATE_STATE_SETTER_INDEX = 1;
+export const MOUNT_GATE_STATE_TUPLE_LENGTH = 2;
+export const MOUNT_GATE_RETURN_STATEMENT_COUNT = 1;
+
+export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
+  "__defineGetter__",
+  "__defineSetter__",
+  "__proto__",
+  "prototype",
+]);
+
+export const OIDC_CLIENT_MODULE_SOURCE = "oidc-client";
+export const OIDC_GET_USER_ARGUMENT_COUNT = 0;
+export const OIDC_CONSTRUCTOR_ARGUMENT_COUNT = 1;
+export const OIDC_WINDOW_DECODER_ARGUMENT_COUNT = 1;
+export const OIDC_CONSTRUCTOR_ARGUMENT_INDEX = 0;
+export const OIDC_STORE_OPTION_PROPERTY_COUNT = 1;
+export const OIDC_INSTANCE_METHOD_NAMES = new Set(["getUser", "signinRedirect", "signoutRedirect"]);
+export const OIDC_UNSUPPORTED_CAPABILITY_NAMES = new Set([
+  "eval",
+  "Function",
+  "require",
+  "module",
+  "exports",
+  "globalThis",
+  "global",
+  "self",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "document",
+  "parent",
+  "top",
+  "frames",
+  "localStorage",
+  "sessionStorage",
+]);
+export const OIDC_UNSUPPORTED_MEMBER_NAMES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "defineProperty",
+  "defineProperties",
+  "setPrototypeOf",
+]);
+export const OIDC_UNSUPPORTED_RUNTIME_TYPES = new Set([
+  "WithStatement",
+  "ImportExpression",
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);
+
+export const ARRAY_APPLY_ARGUMENT_COUNT = 2;
+export const ARRAY_APPLY_SLOTS_ARGUMENT_INDEX = 1;
+export const ARRAY_CONSTRUCTOR_COUNT_ARGUMENT_COUNT = 1;
+export const ARRAY_MAP_COLLECTION_PARAMETER_INDEX = 2;
+export const ARRAY_MAP_INDEX_PARAMETER_INDEX = 1;
+export const ARRAY_MAP_PARAMETER_COUNT = 3;
+export const ARRAY_MAP_CALLBACK_ARGUMENT_COUNT = 1;
+
+export const FINITE_CHARACTER_MAP_SINGLE_ARGUMENT_COUNT = 1;
+
+export const FINITE_CHARACTER_MAP_REPLACE_ARGUMENT_COUNT = 2;
+
+export const FINITE_CHARACTER_MAP_MINIMUM_PATTERN_LENGTH = 3;
+
+export const FINITE_CHARACTER_MAP_ASCII_CODE_UNIT_LIMIT = 128;
+
+export const FINITE_CHARACTER_MAP_UNSUPPORTED_CLASS_CHARACTERS = new Set([
+  "[",
+  "]",
+  "\\",
+  "-",
+  "^",
+  "\r",
+  "\n",
+  "\u2028",
+  "\u2029",
+]);
+
+export const FINITE_CHARACTER_MAP_CAPABILITY_PROPERTIES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+]);
+
+export const FINITE_CHARACTER_MAP_COERCION_PROPERTIES = new Set(["toString", "valueOf"]);
+
+export const FINITE_CHARACTER_MAP_GLOBAL_NAMES = new Set(["String", "RegExp", "Symbol"]);
+
+export const FINITE_CHARACTER_MAP_RUNTIME_TYPESCRIPT_NODES = new Set([
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);
+
+export const STANDARD_REACT_JSX_MODES: ReadonlySet<string> = new Set([
+  "react",
+  "react-jsx",
+  "react-jsxdev",
+  "preserve",
 ]);

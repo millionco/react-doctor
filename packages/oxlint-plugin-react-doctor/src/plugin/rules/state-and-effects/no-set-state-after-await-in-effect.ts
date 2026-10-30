@@ -1,3 +1,8 @@
+import { collectProvenRefReadSequenceSnapshots } from "../../utils/collect-proven-ref-read-sequence-snapshots.js";
+import { isStableViteEnvironmentDependency } from "./utils/is-stable-vite-environment-dependency.js";
+import { getOwnedCancellationConjunctionPrefix } from "./utils/get-owned-cancellation-conjunction-prefix.js";
+import { isEffectLocalCancellationGuard } from "../../utils/is-effect-local-cancellation-guard.js";
+import { hasClosedCancelledNativeSleepLoop } from "../../utils/has-closed-cancelled-native-sleep-loop.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -6,6 +11,7 @@ import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-
 import { getPromiseChainCallForCallback } from "../../utils/collect-effect-invoked-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { hasUnguardedOwnedAbortContinuation } from "./utils/has-unguarded-owned-abort-continuation.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -133,6 +139,7 @@ const hasOnlyStableIdentityDependencies = ({
       isReactHookResultReference(dependencyElement, STATE_DISPATCHER_HOOKS, 1, context.scopes) ||
       isReactHookResultReference(dependencyElement, REF_HOOKS, null, context.scopes) ||
       isModuleScopeConstBinding(dependencyArray, dependencyElement.name) ||
+      isStableViteEnvironmentDependency(dependencyElement, context) ||
       (isNodeOfType(useCallbackDependencies, "ArrayExpression") &&
         useCallbackDependencies.elements.length === 0)
     );
@@ -378,8 +385,9 @@ const collectCleanupFunctionsAfterInvocations = (
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
     if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const returnsAfterInvocationSet = new Set(returnsAfterInvocation);
     const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      returnsAfterInvocation.includes(returnStatement),
+      returnsAfterInvocationSet.has(returnStatement),
     );
     const cleanupReturnStatements = new Set(
       cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
@@ -676,6 +684,7 @@ const doesBooleanExpressionForceValue = (
   resolveAtomicValue: (candidate: EsTreeNode, expectedAtomicValue: boolean) => boolean,
   context: RuleContext,
   visitedPredicates = new Set<EsTreeNode>(),
+  canShortCircuitLeft?: (candidate: EsTreeNode) => boolean,
 ): boolean => {
   const candidate = stripParenExpression(expression);
   const aliasInitializer = getUninterruptedConstInitializer(candidate, context);
@@ -696,6 +705,7 @@ const doesBooleanExpressionForceValue = (
       resolveAtomicValue,
       context,
       visitedPredicates,
+      undefined,
     );
     visitedPredicates.delete(transparentExpression);
     return doesValueForceGuard;
@@ -707,23 +717,34 @@ const doesBooleanExpressionForceValue = (
       resolveAtomicValue,
       context,
       visitedPredicates,
+      canShortCircuitLeft,
     );
   }
   if (isNodeOfType(candidate, "LogicalExpression")) {
-    if (!isSideEffectFreeGuardExpression(candidate, context)) return false;
     const leftForcesValue = doesBooleanExpressionForceValue(
       candidate.left,
       expectedValue,
       resolveAtomicValue,
       context,
       visitedPredicates,
+      canShortCircuitLeft,
     );
+    if (
+      leftForcesValue &&
+      canShortCircuitLeft?.(candidate.left) &&
+      isSideEffectFreeGuardExpression(candidate.left, context) &&
+      ((candidate.operator === "&&" && !expectedValue) ||
+        (candidate.operator === "||" && expectedValue))
+    )
+      return true;
+    if (!isSideEffectFreeGuardExpression(candidate, context)) return false;
     const rightForcesValue = doesBooleanExpressionForceValue(
       candidate.right,
       expectedValue,
       resolveAtomicValue,
       context,
       visitedPredicates,
+      canShortCircuitLeft,
     );
     if (candidate.operator === "&&") {
       return expectedValue
@@ -745,6 +766,7 @@ const doesBooleanExpressionForceValue = (
       resolveAtomicValue,
       context,
       visitedPredicates,
+      undefined,
     );
     visitedPredicates.delete(localPredicate.predicate);
     return doesPredicateForceValue;
@@ -757,8 +779,28 @@ const doesCleanupForceGuardValue = (
   expectedValue: boolean,
   cleanupWrites: ReadonlyMap<string, boolean>,
   context: RuleContext,
-): boolean =>
-  doesBooleanExpressionForceValue(
+): boolean => {
+  if (!expectedValue) {
+    const containingFunction = findEnclosingFunction(test);
+    const effectCallback =
+      containingFunction && findContainingEffectCallback(containingFunction, context);
+    const prefix =
+      effectCallback && getOwnedCancellationConjunctionPrefix(test, effectCallback, context);
+    if (
+      prefix &&
+      doesBooleanExpressionForceValue(
+        prefix,
+        false,
+        (candidate, expectedAtomicValue) => {
+          const targetKey = serializeReferenceKey({ node: candidate, scopes: context.scopes });
+          return targetKey !== null && cleanupWrites.get(targetKey) === expectedAtomicValue;
+        },
+        context,
+      )
+    )
+      return true;
+  }
+  return doesBooleanExpressionForceValue(
     test,
     expectedValue,
     (candidate, expectedAtomicValue) => {
@@ -767,7 +809,17 @@ const doesCleanupForceGuardValue = (
       return cleanupValue === expectedAtomicValue;
     },
     context,
+    new Set(),
+    (candidate) => {
+      const containingFunction = findEnclosingFunction(test);
+      const effectCallback =
+        containingFunction && findContainingEffectCallback(containingFunction, context);
+      return Boolean(
+        effectCallback && isEffectLocalCancellationGuard(candidate, effectCallback, context),
+      );
+    },
   );
+};
 
 interface SequenceSnapshot {
   counterKey: string;
@@ -1318,6 +1370,17 @@ const hasUnsafePostAwaitSetter = (
     asyncFunction,
     context,
   );
+  if (
+    hasClosedCancelledNativeSleepLoop({
+      asyncFunction,
+      effectCallback,
+      cleanupFunctions,
+      context,
+      isStateDispatcherCall,
+    })
+  ) {
+    return false;
+  }
   const cleanupWrites = collectCleanupGuardWrites(cleanupFunctions, context);
   const postSuspensionWrites = collectPostSuspensionWrittenReferenceKeys(
     asyncFunction,
@@ -1338,10 +1401,28 @@ const hasUnsafePostAwaitSetter = (
     ...collectSequenceSnapshots(effectCallback, firstSuspensionStart, context),
     ...collectSequenceSnapshots(asyncFunction, firstSuspensionStart, context),
   ]);
+  for (const [snapshotKey, counterKey] of collectProvenRefReadSequenceSnapshots({
+    asyncFunction,
+    effectCallback,
+    context,
+  })) {
+    sequenceSnapshots.set(snapshotKey, { counterKey });
+  }
   for (const [snapshotKey, snapshot] of sequenceSnapshots) {
     if (doesPostSuspensionWriteReference(snapshot.counterKey, postSuspensionWrites)) {
       sequenceSnapshots.delete(snapshotKey);
     }
+  }
+  if (
+    hasUnguardedOwnedAbortContinuation({
+      asyncFunction,
+      effectCallback,
+      cleanupFunctions,
+      context,
+      isStateDispatcherCall,
+    })
+  ) {
+    return true;
   }
   const body = asyncFunction.body;
   const statements = isNodeOfType(body, "BlockStatement")

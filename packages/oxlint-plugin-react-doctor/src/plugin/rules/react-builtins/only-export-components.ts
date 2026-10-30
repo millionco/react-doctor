@@ -1,3 +1,4 @@
+import { isProvenObserverComponentCall } from "./utils/is-proven-observer-component-call.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { exportAllAddsRuntimeValues } from "../../utils/export-all-adds-runtime-values.js";
@@ -220,7 +221,11 @@ const canBeReactFunctionComponent = (
       : isNodeOfType(expression, "ArrowFunctionExpression");
   }
   if (isNodeOfType(expression, "CallExpression")) {
-    return isHocCallee(expression.callee as EsTreeNode, state);
+    return (
+      isHocCallee(expression.callee as EsTreeNode, state) ||
+      (state.shouldUseCuratedBehavior &&
+        isProvenObserverComponentCall(expression, state.scopes, state.controlFlow))
+    );
   }
   return false;
 };

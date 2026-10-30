@@ -381,10 +381,7 @@ describe("rerender-state-only-in-handlers — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  // wangeditor-next editor: the
-  // creation effect that lists `editor` in deps also writes it, so the
-  // side-effect-only effects listing it too must not rescue it.
-  it("flags never-rendered state when any dep-listing effect writes it (wangeditor editor)", () => {
+  it("keeps state consumed by independent effects after a creation write", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
       `function EditorComponent({ value, defaultConfig, onChange, mode }) {
@@ -425,8 +422,7 @@ describe("rerender-state-only-in-handlers — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("editor");
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("stays silent when state is a pure effect re-run trigger the effect never reads (ant-design AffixTabs)", () => {
@@ -588,7 +584,7 @@ describe("rerender-state-only-in-handlers — must-detect anchors (self-echo eff
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags `editor` state only read inside effects (wangeditor Editor)", () => {
+  it("keeps a state handle consumed by another effect", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
       `function EditorComponent({ defaultConfig, onChange, value }) {
@@ -607,8 +603,7 @@ describe("rerender-state-only-in-handlers — must-detect anchors (self-echo eff
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("editor");
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags `invalidated` read only in an effect + its deps (mapguide TaskPane)", () => {

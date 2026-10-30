@@ -1,3 +1,4 @@
+import { isImmediatelyGuardedMapGet } from "./utils/is-immediately-guarded-map-get.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -7,6 +8,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
+import { isAlwaysMatchingLiteralStarRegexCall } from "./utils/is-always-matching-literal-star-regex-call.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -1884,6 +1886,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           if (predicate && isEnsureThenFind(node as EsTreeNode, findReceiver, predicate)) return;
         }
         if (methodName === "match") {
+          if (isAlwaysMatchingLiteralStarRegexCall(inner, context)) return;
           const matchReceiver = callee.object as EsTreeNode;
           const pattern = args[0] ? stripParenExpression(args[0]) : null;
           if (
@@ -1935,6 +1938,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           if (!scopeDeclaresEmptyMap(receiver, context)) return;
           if (scopeProvesKeyPresence(node, receiver, key, context)) return;
           if (isEnsureThenMapGet(node, receiver, key, context)) return;
+          if (isImmediatelyGuardedMapGet(node, context)) return;
         }
 
         context.report({ node, message });

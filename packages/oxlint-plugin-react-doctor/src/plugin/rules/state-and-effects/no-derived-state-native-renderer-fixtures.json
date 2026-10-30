@@ -1,0 +1,187 @@
+{
+  "scope": "Independent synthetic finite React renderer ancestor and own onClick-host regression controls; no browser or mounted React execution",
+  "cases": [
+    {
+      "name": "nominal",
+      "tag": null,
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <button onClick={activate}>{String(value)}</button>;\n};",
+      "desired": 0
+    },
+    {
+      "name": "own-textarea",
+      "tag": "textarea",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <textarea onChange={activate}>{String(value)}</textarea>;\n};",
+      "desired": 1,
+      "scope": "Existing unsupported onChange witness; original expectation corrected without changing event support"
+    },
+    {
+      "name": "own-input",
+      "tag": "input",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <input onChange={activate} />;\n};",
+      "desired": 1,
+      "scope": "Existing unsupported onChange witness; original expectation corrected without changing event support"
+    },
+    {
+      "name": "own-img",
+      "tag": "img",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <img onClick={activate} />;\n};",
+      "desired": 0
+    },
+    {
+      "name": "ancestor-title-react19",
+      "tag": "title",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <title><button onClick={activate}>{String(value)}</button></title>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-hoisted-style-react19",
+      "tag": "style",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <style precedence=\"default\" href=\"/synthetic.css\"><button onClick={activate}>{String(value)}</button></style>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-hoisted-script-react19",
+      "tag": "script",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <script async src=\"/synthetic.js\"><button onClick={activate}>{String(value)}</button></script>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-div",
+      "tag": "div",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <div><button onClick={activate}>{String(value)}</button></div>;\n};",
+      "desired": 0
+    },
+    {
+      "name": "ancestor-noscript",
+      "tag": "noscript",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <noscript><button onClick={activate}>{String(value)}</button></noscript>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-textarea",
+      "tag": "textarea",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <textarea><button onClick={activate}>{String(value)}</button></textarea>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-template",
+      "tag": "template",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <template><button onClick={activate}>{String(value)}</button></template>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-iframe",
+      "tag": "iframe",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <iframe><button onClick={activate}>{String(value)}</button></iframe>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-area",
+      "tag": "area",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <area><button onClick={activate}>{String(value)}</button></area>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-base",
+      "tag": "base",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <base><button onClick={activate}>{String(value)}</button></base>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-br",
+      "tag": "br",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <br><button onClick={activate}>{String(value)}</button></br>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-col",
+      "tag": "col",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <col><button onClick={activate}>{String(value)}</button></col>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-embed",
+      "tag": "embed",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <embed><button onClick={activate}>{String(value)}</button></embed>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-hr",
+      "tag": "hr",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <hr><button onClick={activate}>{String(value)}</button></hr>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-img",
+      "tag": "img",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <img><button onClick={activate}>{String(value)}</button></img>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-input",
+      "tag": "input",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <input><button onClick={activate}>{String(value)}</button></input>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-keygen",
+      "tag": "keygen",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <keygen><button onClick={activate}>{String(value)}</button></keygen>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-link",
+      "tag": "link",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <link><button onClick={activate}>{String(value)}</button></link>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-menuitem",
+      "tag": "menuitem",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <menuitem><button onClick={activate}>{String(value)}</button></menuitem>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-meta",
+      "tag": "meta",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <meta><button onClick={activate}>{String(value)}</button></meta>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-param",
+      "tag": "param",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <param><button onClick={activate}>{String(value)}</button></param>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-source",
+      "tag": "source",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <source><button onClick={activate}>{String(value)}</button></source>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-track",
+      "tag": "track",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <track><button onClick={activate}>{String(value)}</button></track>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "ancestor-wbr",
+      "tag": "wbr",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <wbr><button onClick={activate}>{String(value)}</button></wbr>;\n};",
+      "desired": 1
+    },
+    {
+      "name": "own-input-click",
+      "tag": "input",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <input onClick={activate} />;\n};",
+      "desired": 0
+    },
+    {
+      "name": "own-textarea-click",
+      "tag": "textarea",
+      "code": "import { useEffect, useRef, useState } from \"react\";\nexport const Panel = ({ seed }) => {\n  const [value, setValue] = useState(seed);\n  const writeValue = (nextValue) => setValue(nextValue);\n  const latest = useRef({ writeValue });\n  latest.current = { writeValue };\n  const activate = (event) => { event.preventDefault(); writeValue(!value); };\n  useEffect(() => { setValue(seed); }, [seed]);\n  return <textarea onClick={activate}>{String(value)}</textarea>;\n};",
+      "desired": 0
+    }
+  ]
+}

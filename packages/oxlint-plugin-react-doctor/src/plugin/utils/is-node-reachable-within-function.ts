@@ -2,17 +2,29 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import type { RuleContext } from "./rule-context.js";
 
-const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
+export interface NodeReachabilityOptions {
+  readonly evaluatePrimitiveLiteralTruthiness?: boolean;
+}
+
+const isInsideStaticallyUnreachableBranch = (
+  node: EsTreeNode,
+  options: NodeReachabilityOptions,
+): boolean => {
   let child = node;
   let parent = node.parent;
   while (parent) {
-    if (isNodeOfType(parent, "IfStatement") && isNodeOfType(parent.test, "Literal")) {
-      if (parent.test.value === false && parent.consequent === child) return true;
-      if (parent.test.value === true && parent.alternate === child) return true;
-    }
-    if (isNodeOfType(parent, "ConditionalExpression") && isNodeOfType(parent.test, "Literal")) {
-      if (parent.test.value === false && parent.consequent === child) return true;
-      if (parent.test.value === true && parent.alternate === child) return true;
+    if (
+      (isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")) &&
+      isNodeOfType(parent.test, "Literal")
+    ) {
+      const condition =
+        options.evaluatePrimitiveLiteralTruthiness &&
+        !("regex" in parent.test) &&
+        (!("bigint" in parent.test) || typeof parent.test.value === "bigint")
+          ? Boolean(parent.test.value)
+          : parent.test.value;
+      if (condition === false && parent.consequent === child) return true;
+      if (condition === true && parent.alternate === child) return true;
     }
     if (
       (isNodeOfType(parent, "WhileStatement") || isNodeOfType(parent, "ForStatement")) &&
@@ -38,8 +50,12 @@ const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
   return false;
 };
 
-export const isNodeReachableWithinFunction = (node: EsTreeNode, context: RuleContext): boolean => {
-  if (isInsideStaticallyUnreachableBranch(node)) return false;
+export const isNodeReachableWithinFunction = (
+  node: EsTreeNode,
+  context: RuleContext,
+  options: NodeReachabilityOptions = {},
+): boolean => {
+  if (isInsideStaticallyUnreachableBranch(node, options)) return false;
   const owner = context.cfg.enclosingFunction(node);
   if (!owner) return true;
   const functionCfg = context.cfg.cfgFor(owner);

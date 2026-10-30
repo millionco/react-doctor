@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
+import { isPossiblyUndefinedFragmentReturn } from "../../utils/is-possibly-undefined-fragment-return.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const NEEDS_MORE_CHILDREN = "This fragment wraps a single child & does nothing.";
@@ -123,6 +124,14 @@ export const jsxNoUselessFragment = defineRule({
       const meaningful = stripWhitespaceOnlyText(children);
       if (meaningful.length >= 2) return false;
       if (allowExpressions && isFragmentWithSingleExpression(children)) return false;
+      const onlyChild = meaningful[0];
+      if (
+        meaningful.length === 1 &&
+        isNodeOfType(onlyChild, "JSXExpressionContainer") &&
+        isPossiblyUndefinedFragmentReturn(fragmentNode, onlyChild.expression)
+      ) {
+        return false;
+      }
       if (hasCallExpressionChild(meaningful)) return false;
       if (isFragmentWithOnlyTextAndNotJsxChild(fragmentNode, meaningful)) return false;
       context.report({ node: reportNode, message: NEEDS_MORE_CHILDREN });

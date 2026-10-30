@@ -1,5 +1,12 @@
+import { hasGlobalIdentifierWriteBefore } from "../../utils/has-global-identifier-write-before.js";
+import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
+import { hasRuntimeValueBinding } from "../../utils/has-runtime-value-binding.js";
+import { NATIVE_INTERVAL_OBSERVER_CONSTRUCTION_COUNT } from "./utils/native-interval-observer/constants.js";
+import { hasReturnedMotionScrollDisposer } from "./utils/has-returned-motion-scroll-disposer.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
 import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
 import {
@@ -31,7 +38,13 @@ import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
+import {
+  functionReturnsMatchingExpression,
+  functionReturnsMatchingExpressionOnEveryPathAfterNode,
+} from "../../utils/function-returns-matching-expression.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
+import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
+import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
@@ -82,7 +95,7 @@ import {
 } from "../../utils/is-synchronous-iterator-callback.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 const CLEANUP_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
 const IMPORTED_CLEANUP_EFFECT_WRAPPER_NAMES = new Set([
@@ -249,15 +262,25 @@ const resolveExpressionKey = (
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
   parameterSubstitutions: ReadonlyMap<number, EsTreeNode> = new Map(),
+  requireStableLogicalContributors = false,
 ): string | null => {
   if (!expression) return null;
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     const symbol = context.scopes.symbolFor(unwrappedExpression);
     if (!symbol) {
-      return context.scopes.isGlobalReference(unwrappedExpression)
+      return !requireStableLogicalContributors &&
+        context.scopes.isGlobalReference(unwrappedExpression)
         ? `global:${unwrappedExpression.name}`
         : null;
+    }
+    if (
+      requireStableLogicalContributors &&
+      symbol.references.some(
+        (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
+      )
+    ) {
+      return null;
     }
     if (visitedSymbolIds.has(symbol.id)) return `symbol:${symbol.id}`;
     visitedSymbolIds.add(symbol.id);
@@ -268,6 +291,7 @@ const resolveExpressionKey = (
         context,
         visitedSymbolIds,
         parameterSubstitutions,
+        requireStableLogicalContributors,
       );
     }
     const bindingProperty = symbol.bindingIdentifier.parent;
@@ -287,18 +311,29 @@ const resolveExpressionKey = (
         context,
         visitedSymbolIds,
         parameterSubstitutions,
+        requireStableLogicalContributors,
       );
       return objectKey ? `${objectKey}.${bindingPropertyName}` : `symbol:${symbol.id}`;
     }
-    const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+    const stableInitializer = requireStableLogicalContributors
+      ? getDirectUnreassignedInitializer(symbol)
+      : symbol.initializer;
+    const initializer = stableInitializer ? stripParenExpression(stableInitializer) : null;
     if (
       symbol.kind === "const" &&
       initializer &&
-      (isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression"))
+      (isNodeOfType(initializer, "Identifier") ||
+        isNodeOfType(initializer, "MemberExpression") ||
+        isNodeOfType(initializer, "LogicalExpression"))
     ) {
       return (
-        resolveExpressionKey(initializer, context, visitedSymbolIds, parameterSubstitutions) ??
-        `symbol:${symbol.id}`
+        resolveExpressionKey(
+          initializer,
+          context,
+          visitedSymbolIds,
+          parameterSubstitutions,
+          requireStableLogicalContributors,
+        ) ?? `symbol:${symbol.id}`
       );
     }
     return `symbol:${symbol.id}`;
@@ -310,10 +345,32 @@ const resolveExpressionKey = (
       context,
       visitedSymbolIds,
       parameterSubstitutions,
+      requireStableLogicalContributors,
     );
     return objectKey ? `${objectKey}.${unwrappedExpression.property.name}` : null;
   }
-  if (isNodeOfType(unwrappedExpression, "ThisExpression")) return "this";
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    const leftKey = resolveExpressionKey(
+      unwrappedExpression.left,
+      context,
+      visitedSymbolIds,
+      parameterSubstitutions,
+      true,
+    );
+    const rightKey = resolveExpressionKey(
+      unwrappedExpression.right,
+      context,
+      visitedSymbolIds,
+      parameterSubstitutions,
+      true,
+    );
+    return leftKey && rightKey
+      ? `logical:${unwrappedExpression.operator}:${leftKey}:${rightKey}`
+      : null;
+  }
+  if (isNodeOfType(unwrappedExpression, "ThisExpression")) {
+    return requireStableLogicalContributors ? null : "this";
+  }
   if (
     isNodeOfType(unwrappedExpression, "Literal") &&
     (typeof unwrappedExpression.value === "string" ||
@@ -1171,16 +1228,29 @@ const isKnownReactNavigationReceiver = (
   expression: EsTreeNode,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
+  requireStableLogicalContributors = false,
+  provenStableReceiverSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const receiver = stripParenExpression(expression);
   if (isNodeOfType(receiver, "Identifier")) {
     const receiverSymbol = context.scopes.symbolFor(receiver);
     if (!receiverSymbol || visitedSymbolIds.has(receiverSymbol.id)) return false;
-    if (receiver.name === "navigation") return true;
+    if (requireStableLogicalContributors && provenStableReceiverSymbolIds.has(receiverSymbol.id)) {
+      return true;
+    }
+    if (
+      requireStableLogicalContributors &&
+      receiverSymbol.references.some(
+        (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
+      )
+    ) {
+      return false;
+    }
     visitedSymbolIds.add(receiverSymbol.id);
-    const receiverInitializer = receiverSymbol.initializer
-      ? stripParenExpression(receiverSymbol.initializer)
-      : null;
+    const stableInitializer = requireStableLogicalContributors
+      ? getDirectUnreassignedInitializer(receiverSymbol)
+      : receiverSymbol.initializer;
+    const receiverInitializer = stableInitializer ? stripParenExpression(stableInitializer) : null;
     const navigationHook = isNodeOfType(receiverInitializer, "CallExpression")
       ? resolveImportedApiReference(receiverInitializer.callee, context.scopes)
       : null;
@@ -1188,11 +1258,45 @@ const isKnownReactNavigationReceiver = (
       navigationHook?.importedName === "useNavigation" &&
       navigationHook.source.startsWith("@react-navigation/")
     ) {
+      if (requireStableLogicalContributors) provenStableReceiverSymbolIds.add(receiverSymbol.id);
       return true;
     }
-    return Boolean(
+    if (!receiverInitializer && receiver.name === "navigation") {
+      if (requireStableLogicalContributors) provenStableReceiverSymbolIds.add(receiverSymbol.id);
+      return true;
+    }
+    const hasKnownReceiver = Boolean(
       receiverInitializer &&
-      isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds),
+      isKnownReactNavigationReceiver(
+        receiverInitializer,
+        context,
+        visitedSymbolIds,
+        requireStableLogicalContributors,
+        provenStableReceiverSymbolIds,
+      ),
+    );
+    if (requireStableLogicalContributors && hasKnownReceiver) {
+      provenStableReceiverSymbolIds.add(receiverSymbol.id);
+    }
+    return hasKnownReceiver;
+  }
+  if (isNodeOfType(receiver, "LogicalExpression")) {
+    return (
+      (receiver.operator === "&&" ||
+        isKnownReactNavigationReceiver(
+          receiver.left,
+          context,
+          new Set(visitedSymbolIds),
+          true,
+          provenStableReceiverSymbolIds,
+        )) &&
+      isKnownReactNavigationReceiver(
+        receiver.right,
+        context,
+        new Set(visitedSymbolIds),
+        true,
+        provenStableReceiverSymbolIds,
+      )
     );
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
@@ -1202,7 +1306,13 @@ const isKnownReactNavigationReceiver = (
     !receiverCallee.computed &&
     isNodeOfType(receiverCallee.property, "Identifier") &&
     receiverCallee.property.name === "getParent" &&
-    isKnownReactNavigationReceiver(receiverCallee.object, context, visitedSymbolIds),
+    isKnownReactNavigationReceiver(
+      receiverCallee.object,
+      context,
+      visitedSymbolIds,
+      requireStableLogicalContributors,
+      provenStableReceiverSymbolIds,
+    ),
   );
 };
 
@@ -1226,7 +1336,8 @@ const isKnownCallableSubscriptionResult = (
   return (
     callee.property.name === "addListener" &&
     usage.node.arguments.length >= 2 &&
-    isKnownReactNavigationReceiver(callee.object, context)
+    (isKnownReactNavigationReceiver(callee.object, context) ||
+      hasClosedLocalCallableListenerRegistration(usage.node, context))
   );
 };
 
@@ -4241,6 +4352,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4250,7 +4362,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4299,6 +4411,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4314,7 +4427,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -5575,7 +5688,7 @@ const hasGuardedDeferredCleanup = (
   const usageFunction = findEnclosingFunction(usage.node);
   const promiseChainCall = usageFunction ? getPromiseChainCallForCallback(usageFunction) : null;
   if (
-    usage.kind !== "timer" ||
+    (usage.kind !== "subscribe" && usage.kind !== "timer") ||
     usage.handleKey === null ||
     !usageFunction ||
     !isFunctionLike(usageFunction) ||
@@ -5583,8 +5696,9 @@ const hasGuardedDeferredCleanup = (
     usageFunction.async ||
     usageFunction.generator ||
     !isNodeOfType(usage.node, "CallExpression") ||
-    !isNodeOfType(usage.node.callee, "Identifier") ||
-    !context.scopes.isGlobalReference(usage.node.callee) ||
+    (usage.kind === "timer" &&
+      (!isNodeOfType(usage.node.callee, "Identifier") ||
+        !context.scopes.isGlobalReference(usage.node.callee))) ||
     !promiseChainCall ||
     !collectEffectInvokedFunctions(callback, context.scopes).has(usageFunction) ||
     !doMatchingNodesCoverEveryPathAfterUsage(promiseChainCall, cleanupReturns, context)
@@ -5624,13 +5738,60 @@ const hasGuardedDeferredCleanup = (
       if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
       if (
         isNodeOfType(child, "CallExpression") &&
-        isNodeOfType(child.callee, "Identifier") &&
-        context.scopes.isGlobalReference(child.callee) &&
+        (usage.kind === "subscribe" || isNodeOfType(child.callee, "Identifier")) &&
+        (usage.kind === "subscribe" || context.scopes.isGlobalReference(child.callee)) &&
         doesReleaseCallMatchUsage(child, usage, context)
       ) {
+        const releaseCallee = stripParenExpression(child.callee);
+        const releasedHandle = stripParenExpression(
+          isNodeOfType(releaseCallee, "MemberExpression") ? releaseCallee.object : releaseCallee,
+        );
+        if (
+          usage.kind === "subscribe" &&
+          (!isNodeOfType(releasedHandle, "Identifier") ||
+            context.scopes.symbolFor(releasedHandle)?.id !== handleSymbol.id)
+        ) {
+          return;
+        }
         const handleGuard = findDirectHandleGuardForRelease(child, cleanupFunction, usage, context);
+        const releaseExpression = findTransparentExpressionRoot(child);
+        const logicalGuard = releaseExpression.parent;
+        const logicalReleaseGuard =
+          isNodeOfType(logicalGuard, "LogicalExpression") &&
+          logicalGuard.operator === "&&" &&
+          logicalGuard.right === releaseExpression
+            ? logicalGuard
+            : null;
+        const guardTest = handleGuard?.test ?? logicalReleaseGuard?.left;
+        if (usage.kind === "subscribe" && guardTest) {
+          const availabilityTest = stripParenExpression(guardTest);
+          const availabilityOperands = isNodeOfType(availabilityTest, "BinaryExpression")
+            ? [availabilityTest.left, availabilityTest.right]
+            : isNodeOfType(availabilityTest, "UnaryExpression")
+              ? [availabilityTest.argument]
+              : [availabilityTest];
+          const hasDirectHandleOperand = availabilityOperands.some((operand) => {
+            const availabilityOperand = stripParenExpression(operand);
+            return (
+              isNodeOfType(availabilityOperand, "Identifier") &&
+              context.scopes.symbolFor(availabilityOperand)?.id === handleSymbol.id
+            );
+          });
+          if (!hasDirectHandleOperand) return;
+        }
+        let releaseAnchor: EsTreeNode = handleGuard ?? child;
+        if (
+          !handleGuard &&
+          usage.kind === "subscribe" &&
+          usage.handleKey !== null &&
+          logicalReleaseGuard &&
+          doesTestRequireLiveExpressionKey(logicalReleaseGuard.left, usage.handleKey, context)
+        ) {
+          releaseAnchor = logicalReleaseGuard;
+        }
+
         globalReleaseProofs.push({
-          anchor: handleGuard ?? child,
+          anchor: releaseAnchor,
           call: child,
           handleGuard,
         });
@@ -5654,7 +5815,7 @@ const hasGuardedDeferredCleanup = (
     (handleAssignment) =>
       findTransparentExpressionRoot(handleAssignment.identifier).parent === usageAssignment,
   );
-  const timerArguments = usage.node.arguments;
+  const timerArguments = usage.kind === "timer" ? usage.node.arguments : [];
   const hasUnsafeHandleAssignment = handleAssignments.some((handleAssignment) => {
     const assignmentTarget = findTransparentExpressionRoot(handleAssignment.identifier);
     const assignment = assignmentTarget.parent;
@@ -5675,6 +5836,7 @@ const hasGuardedDeferredCleanup = (
     if (!isNullishReset) return true;
     const assignmentFunction = findEnclosingFunction(assignment);
     const isResetInOwnCallback =
+      usage.kind === "timer" &&
       assignmentFunction &&
       isFunctionLike(assignmentFunction) &&
       timerArguments.some((argument) => {
@@ -6511,6 +6673,133 @@ const hasOwnedObserverHelperCleanup = (
   });
 };
 
+interface NativeIntervalObserverProgramFacts {
+  program: EsTreeNode;
+  hasUnsupportedChannel: boolean;
+  constructions: ReadonlySet<EsTreeNode>;
+}
+
+const nativeIntervalObserverProgramFactsByScopes = new WeakMap<
+  ScopeAnalysis,
+  NativeIntervalObserverProgramFacts
+>();
+
+const isNativeCleanupGlobalReference = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (scopes.isGlobalReference(identifier)) return true;
+  const symbol = scopes.symbolFor(identifier);
+  return Boolean(
+    symbol &&
+    (symbol.kind === "ts-interface" || symbol.kind === "ts-type-alias") &&
+    !hasRuntimeValueBinding(symbol),
+  );
+};
+
+const isNativeIntervalObserverConstruction = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isNodeOfType(node, "NewExpression") &&
+  isNodeOfType(node.callee, "Identifier") &&
+  node.callee.name === "ResizeObserver" &&
+  isNativeCleanupGlobalReference(node.callee, scopes);
+
+const getNativeIntervalObserverProgramFacts = (
+  program: EsTreeNode,
+  context: RuleContext,
+): NativeIntervalObserverProgramFacts | null => {
+  if (context.scopes.rootScope.node !== program) return null;
+  const cachedFacts = nativeIntervalObserverProgramFactsByScopes.get(context.scopes);
+  if (cachedFacts?.program === program) return cachedFacts;
+  let hasUnsupportedChannel = false;
+  const constructions = new Set<EsTreeNode>();
+  walkAst(program, (child) => {
+    if (hasUnsupportedChannel || constructions.size > NATIVE_INTERVAL_OBSERVER_CONSTRUCTION_COUNT)
+      return false;
+    if (
+      isNodeOfType(child, "WithStatement") ||
+      isNodeOfType(child, "ImportExpression") ||
+      isNodeOfType(child, "MetaProperty")
+    )
+      hasUnsupportedChannel = true;
+    if (
+      isNodeOfType(child, "MemberExpression") ||
+      (isNodeOfType(child, "Property") && isNodeOfType(child.parent, "ObjectPattern"))
+    ) {
+      const selector = getResolvedStaticPropertyName(child, context.scopes, {
+        stringifyNonStringLiterals: true,
+      });
+      if (selector === "constructor" || (child.computed && selector === null)) {
+        hasUnsupportedChannel = true;
+      }
+    }
+    if (
+      isNodeOfType(child, "ImportDeclaration") &&
+      child.importKind !== "type" &&
+      (child.specifiers.length === 0 ||
+        child.specifiers.some(
+          (specifier) =>
+            !isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind !== "type",
+        ))
+    ) {
+      const provider = child.source.value;
+      if (
+        provider === "module" ||
+        provider === "node:module" ||
+        provider === "process" ||
+        provider === "node:process" ||
+        provider === "vm" ||
+        provider === "node:vm" ||
+        provider === "repl" ||
+        provider === "node:repl" ||
+        provider === "inspector" ||
+        provider === "node:inspector" ||
+        provider === "inspector/promises" ||
+        provider === "node:inspector/promises"
+      )
+        hasUnsupportedChannel = true;
+    }
+    if (!isNodeOfType(child, "Identifier") || !context.scopes.referenceFor(child)) return;
+    if (
+      child.name === "eval" ||
+      child.name === "Function" ||
+      child.name === "require" ||
+      child.name === "module" ||
+      child.name === "process" ||
+      child.name === "globalThis" ||
+      child.name === "window" ||
+      child.name === "self" ||
+      child.name === "Reflect" ||
+      child.name === "Object"
+    )
+      hasUnsupportedChannel = true;
+    if (!isNativeCleanupGlobalReference(child, context.scopes)) return;
+    if (child.name === "ResizeObserver") {
+      const parent = child.parent;
+      if (
+        !(
+          (isNodeOfType(parent, "NewExpression") && parent.callee === child) ||
+          (isNodeOfType(parent, "UnaryExpression") && parent.operator === "typeof")
+        ) ||
+        isWithinAssignmentTarget(child)
+      ) {
+        hasUnsupportedChannel = true;
+      } else if (isNodeOfType(parent, "NewExpression")) {
+        constructions.add(parent);
+      }
+    }
+    if (child.name === "setInterval" || child.name === "clearInterval") {
+      const parent = child.parent;
+      if (
+        !isNodeOfType(parent, "CallExpression") ||
+        parent.callee !== child ||
+        parent.optional ||
+        isWithinAssignmentTarget(child)
+      )
+        hasUnsupportedChannel = true;
+    }
+  });
+  const facts = { program, hasUnsupportedChannel, constructions };
+  nativeIntervalObserverProgramFactsByScopes.set(context.scopes, facts);
+  return facts;
+};
+
 const hasReturnedObserverDisconnect = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6579,6 +6868,200 @@ const hasReturnedObserverDisconnect = (
         isGlobalObserverConstruction(stripParenExpression(receiverSymbol.initializer), context),
       ) &&
       doNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context)
+    );
+  }
+  if (
+    receiverSymbol.kind === "const" &&
+    receiverSymbol.initializer &&
+    (isGlobalObserverConstruction(stripParenExpression(receiverSymbol.initializer), context) ||
+      isNativeIntervalObserverConstruction(
+        stripParenExpression(receiverSymbol.initializer),
+        context.scopes,
+      ))
+  ) {
+    const construction = stripParenExpression(receiverSymbol.initializer);
+    const observerDeclaration = receiverSymbol.declarationNode;
+    const observerStatement = observerDeclaration.parent;
+    const observerCallback = isNodeOfType(construction, "NewExpression")
+      ? construction.arguments[0]
+      : null;
+    const scheduler = usageFunction.parent;
+    const timerDeclaration = scheduler?.parent;
+    const timerStatement = timerDeclaration?.parent;
+    if (
+      callback.async ||
+      callback.generator ||
+      !isNodeOfType(usage.node, "CallExpression") ||
+      !isNodeOfType(usage.node.callee, "MemberExpression") ||
+      !isNodeOfType(construction, "NewExpression") ||
+      !isNodeOfType(construction.callee, "Identifier") ||
+      construction.callee.name !== "ResizeObserver" ||
+      !isNodeOfType(observerDeclaration, "VariableDeclarator") ||
+      !isNodeOfType(observerStatement, "VariableDeclaration") ||
+      observerStatement.kind !== "const" ||
+      !isNodeOfType(observerCallback, "ArrowFunctionExpression") ||
+      observerCallback.async ||
+      !isFunctionLike(usageFunction) ||
+      usageFunction.async ||
+      usageFunction.generator ||
+      usageFunction.params.length !== 0 ||
+      !isNodeOfType(usageFunction.body, "BlockStatement") ||
+      !isNodeOfType(scheduler, "CallExpression") ||
+      scheduler.optional ||
+      !isNodeOfType(scheduler.callee, "Identifier") ||
+      scheduler.callee.name !== "setInterval" ||
+      !isNativeCleanupGlobalReference(scheduler.callee, context.scopes) ||
+      scheduler.arguments[0] !== usageFunction ||
+      findEnclosingFunction(scheduler) !== callback ||
+      !isNodeOfType(timerDeclaration, "VariableDeclarator") ||
+      timerDeclaration.init !== scheduler ||
+      !isNodeOfType(timerDeclaration.id, "Identifier") ||
+      !isNodeOfType(timerStatement, "VariableDeclaration") ||
+      timerStatement.kind !== "const" ||
+      timerStatement.parent !== observerStatement.parent ||
+      !isNodeOfType(observerStatement.parent, "BlockStatement") ||
+      !nodeDominatesNode(construction, scheduler, context)
+    )
+      return false;
+    const [observerEntry, ...otherObserverParameters] = observerCallback.params;
+    const [onlyObserverDeclaration, ...otherObserverDeclarations] = observerStatement.declarations;
+    const [onlyTimerDeclaration, ...otherTimerDeclarations] = timerStatement.declarations;
+    if (
+      (observerEntry && !isNodeOfType(observerEntry, "Identifier")) ||
+      otherObserverParameters.length ||
+      onlyObserverDeclaration !== observerDeclaration ||
+      otherObserverDeclarations.length ||
+      onlyTimerDeclaration !== timerDeclaration ||
+      otherTimerDeclarations.length
+    )
+      return false;
+    let allocationAncestor: EsTreeNode | null = observerStatement.parent;
+    while (allocationAncestor && allocationAncestor !== callback) {
+      if (
+        !isNodeOfType(allocationAncestor, "BlockStatement") &&
+        !isNodeOfType(allocationAncestor, "IfStatement")
+      )
+        return false;
+      allocationAncestor = allocationAncestor.parent ?? null;
+    }
+    if (allocationAncestor !== callback) return false;
+    const timerSymbol = context.scopes.symbolFor(timerDeclaration.id);
+    const [cleanupReturn, ...otherCleanupReturns] = matchingCleanupReturns;
+    const cleanup = isNodeOfType(cleanupReturn, "ReturnStatement") ? cleanupReturn.argument : null;
+    if (
+      !timerSymbol ||
+      timerSymbol.kind !== "const" ||
+      timerSymbol.declarationNode !== timerDeclaration ||
+      otherCleanupReturns.length ||
+      !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+      !isNodeOfType(cleanup, "ArrowFunctionExpression") ||
+      cleanup.async ||
+      cleanup.params.length !== 0 ||
+      !isNodeOfType(cleanup.body, "BlockStatement")
+    )
+      return false;
+    const [cancelStatement, disconnectStatement, ...otherCleanupStatements] = cleanup.body.body;
+    if (
+      otherCleanupStatements.length ||
+      !isNodeOfType(cancelStatement, "ExpressionStatement") ||
+      !isNodeOfType(disconnectStatement, "ExpressionStatement")
+    )
+      return false;
+    const cancel = cancelStatement.expression;
+    const disconnect = disconnectStatement.expression;
+    const observeMember = usage.node.callee;
+    if (
+      !isNodeOfType(cancel, "CallExpression") ||
+      cancel.optional ||
+      !isNodeOfType(cancel.callee, "Identifier") ||
+      cancel.callee.name !== "clearInterval" ||
+      !isNativeCleanupGlobalReference(cancel.callee, context.scopes) ||
+      !isNodeOfType(disconnect, "CallExpression") ||
+      disconnect.optional ||
+      disconnect.arguments.length !== 0 ||
+      !isNodeOfType(disconnect.callee, "MemberExpression") ||
+      disconnect.callee.optional ||
+      disconnect.callee.computed ||
+      !isNodeOfType(disconnect.callee.property, "Identifier") ||
+      disconnect.callee.property.name !== "disconnect" ||
+      !isNodeOfType(disconnect.callee.object, "Identifier") ||
+      context.scopes.symbolFor(disconnect.callee.object) !== receiverSymbol ||
+      observeMember.optional ||
+      observeMember.computed ||
+      !isNodeOfType(observeMember.object, "Identifier") ||
+      !isNodeOfType(observeMember.property, "Identifier") ||
+      observeMember.property.name !== "observe" ||
+      usage.node.optional ||
+      !doNodesCoverEveryPathAfterNode(construction, [scheduler], context) ||
+      !doNodesCoverEveryPathAfterNode(scheduler, [cleanupReturn], context) ||
+      !nodeDominatesNode(cancel, disconnect, context)
+    )
+      return false;
+    const [cancelledTimer, ...otherCancelArguments] = cancel.arguments;
+    if (
+      otherCancelArguments.length ||
+      !isNodeOfType(cancelledTimer, "Identifier") ||
+      context.scopes.symbolFor(cancelledTimer) !== timerSymbol
+    )
+      return false;
+    const observerReceivers = new Set<EsTreeNode>([observeMember.object, disconnect.callee.object]);
+    if (
+      !receiverSymbol.references.every(
+        (reference) =>
+          reference.flag === "read" &&
+          !isWithinAssignmentTarget(reference.identifier) &&
+          observerReceivers.has(reference.identifier),
+      ) ||
+      !timerSymbol.references.every((reference) => {
+        const call = reference.identifier.parent;
+        const owner = findEnclosingFunction(reference.identifier);
+        return (
+          reference.flag === "read" &&
+          !isWithinAssignmentTarget(reference.identifier) &&
+          isNodeOfType(call, "CallExpression") &&
+          !call.optional &&
+          call.arguments[0] === reference.identifier &&
+          call.arguments.every((argument) => argument === reference.identifier) &&
+          isNodeOfType(call.callee, "Identifier") &&
+          call.callee.name === "clearInterval" &&
+          isNativeCleanupGlobalReference(call.callee, context.scopes) &&
+          (owner === usageFunction || owner === cleanup)
+        );
+      })
+    )
+      return false;
+    const allowedFunctions = new Set<EsTreeNode>([
+      callback,
+      observerCallback,
+      usageFunction,
+      cleanup,
+    ]);
+    let hasUnsupportedChannel = false;
+    walkAst(callback, (child) => {
+      if (hasUnsupportedChannel) return false;
+      if (
+        (isFunctionLike(child) && !allowedFunctions.has(child)) ||
+        isNodeOfType(child, "AwaitExpression") ||
+        isNodeOfType(child, "YieldExpression") ||
+        isNodeOfType(child, "ThisExpression") ||
+        (isNodeOfType(child, "Identifier") && child.name === "arguments") ||
+        (isNodeOfType(child, "NewExpression") && child !== construction) ||
+        (isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "Identifier") &&
+          isNativeTimerIdentifier(child.callee, context.scopes) &&
+          child !== scheduler)
+      )
+        hasUnsupportedChannel = true;
+    });
+    if (hasUnsupportedChannel) return false;
+    const program = findProgramRoot(callback);
+    if (!program) return false;
+    const programFacts = getNativeIntervalObserverProgramFacts(program, context);
+    return Boolean(
+      programFacts &&
+      !programFacts.hasUnsupportedChannel &&
+      programFacts.constructions.size === NATIVE_INTERVAL_OBSERVER_CONSTRUCTION_COUNT &&
+      programFacts.constructions.has(construction),
     );
   }
   if (
@@ -6663,6 +7146,470 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
+interface ReturnedEffectAllocatorProof {
+  registrationCalls: ReadonlySet<EsTreeNode>;
+  cleanupFunctions: ReadonlySet<EsTreeNode>;
+}
+
+const RETURNED_EFFECT_ALLOCATOR_PROOFS = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, ReturnedEffectAllocatorProof | null>
+>();
+const RETURNED_EFFECT_ALLOCATOR_RESULTS = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, boolean>
+>();
+const RETURNED_ALLOCATOR_READONLY_HOOKS = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<SymbolDescriptor, boolean>
+>();
+const RETURNED_ALLOCATOR_RUNTIME_TYPESCRIPT_NODES: ReadonlySet<string> = new Set([
+  "TSModuleDeclaration",
+  "TSModuleBlock",
+  "TSEnumDeclaration",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+  "TSParameterProperty",
+]);
+const RETURNED_ALLOCATOR_INITIALIZATION = new WeakMap<
+  SymbolDescriptor,
+  WeakMap<EsTreeNode, boolean>
+>();
+const RETURNED_ALLOCATOR_STABLE_BINDINGS = new WeakMap<SymbolDescriptor, boolean>();
+const RETURNED_EFFECT_ALLOCATOR_PROVIDER_SAFETY = new WeakMap<ScopeAnalysis, boolean>();
+const RETURNED_ALLOCATOR_DYNAMIC_NAMES: ReadonlySet<string> = new Set([
+  "eval",
+  "Function",
+  "require",
+  "Object",
+  "Reflect",
+]);
+const RETURNED_ALLOCATOR_PROVIDER_KEYS: ReadonlySet<string> = new Set([
+  ...RETURNED_ALLOCATOR_DYNAMIC_NAMES,
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "constructor",
+  "getBuiltinModule",
+  "prototype",
+]);
+const RETURNED_ALLOCATOR_MUTABLE_PROVIDER_KEYS: ReadonlySet<string> = new Set([
+  ...CLEANUP_EFFECT_HOOK_NAMES,
+  "addEventListener",
+  "removeEventListener",
+  "document",
+  "window",
+  "globalThis",
+  "React",
+]);
+
+const hasClosedReturnedAllocatorProviders = (context: RuleContext, node: EsTreeNode): boolean => {
+  const cached = RETURNED_EFFECT_ALLOCATOR_PROVIDER_SAFETY.get(context.scopes);
+  if (cached !== undefined) return cached;
+  const program = findProgramRoot(node);
+  let isClosed = program !== null;
+  try {
+    if (program)
+      walkAst(program, (child) => {
+        if (!isClosed) return false;
+        if (RETURNED_ALLOCATOR_RUNTIME_TYPESCRIPT_NODES.has(child.type)) {
+          isClosed = false;
+          return false;
+        }
+        if (isTypeScriptTypePosition(child)) return false;
+        if (
+          isNodeOfType(child, "WithStatement") ||
+          isNodeOfType(child, "ImportExpression") ||
+          (isNodeOfType(child, "Identifier") && RETURNED_ALLOCATOR_DYNAMIC_NAMES.has(child.name))
+        ) {
+          isClosed = false;
+          return false;
+        }
+        if (
+          isNodeOfType(child, "ImportDeclaration") &&
+          child.importKind !== "type" &&
+          (child.source.value === "vm" || child.source.value === "node:vm") &&
+          (child.specifiers.length === 0 ||
+            child.specifiers.some(
+              (specifier) =>
+                !isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind !== "type",
+            ))
+        )
+          isClosed = false;
+        if (
+          isNodeOfType(child, "Identifier") &&
+          isWithinAssignmentTarget(child) &&
+          (RETURNED_ALLOCATOR_MUTABLE_PROVIDER_KEYS.has(child.name) ||
+            context.scopes.symbolFor(child)?.kind === "import")
+        )
+          isClosed = false;
+        if (!isNodeOfType(child, "MemberExpression") && !isNodeOfType(child, "Property")) return;
+        const directKey = getStaticPropertyKeyName(child, { allowComputedString: true });
+        const keyNode = isNodeOfType(child, "MemberExpression") ? child.property : child.key;
+        if (
+          (child.computed &&
+            directKey === null &&
+            !(isNodeOfType(keyNode, "Literal") && typeof keyNode.value === "number")) ||
+          (directKey !== null &&
+            (RETURNED_ALLOCATOR_PROVIDER_KEYS.has(directKey) ||
+              (isWithinAssignmentTarget(child) &&
+                RETURNED_ALLOCATOR_MUTABLE_PROVIDER_KEYS.has(directKey))))
+        )
+          isClosed = false;
+      });
+  } catch {
+    isClosed = false;
+  }
+  RETURNED_EFFECT_ALLOCATOR_PROVIDER_SAFETY.set(context.scopes, isClosed);
+  return isClosed;
+};
+
+const isReadonlyReturnedAllocatorHook = (
+  symbol: SymbolDescriptor | null | undefined,
+  context: RuleContext,
+): boolean => {
+  if (symbol?.kind !== "import") return false;
+  let hooks = RETURNED_ALLOCATOR_READONLY_HOOKS.get(context.scopes);
+  if (!hooks) {
+    hooks = new WeakMap();
+    RETURNED_ALLOCATOR_READONLY_HOOKS.set(context.scopes, hooks);
+  }
+  const cached = hooks.get(symbol);
+  if (cached !== undefined) return cached;
+  const isReadonly = symbol.references.every(
+    (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+  );
+  hooks.set(symbol, isReadonly);
+  return isReadonly;
+};
+
+const isStableReturnedAllocatorBinding = (
+  identifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol) return false;
+  const cached = RETURNED_ALLOCATOR_STABLE_BINDINGS.get(symbol);
+  if (cached !== undefined) return cached;
+  const isStable = resolveStableLoopHandlerSymbolId(identifier, context) !== null;
+  RETURNED_ALLOCATOR_STABLE_BINDINGS.set(symbol, isStable);
+  return isStable;
+};
+
+const isNativeReturnedAllocatorReceiver = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+): boolean => {
+  if (isStableLoopReceiver(expression, context)) return true;
+  if (!expression) return false;
+  const receiver = stripParenExpression(expression);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    (receiver.name !== "document" && receiver.name !== "window")
+  )
+    return false;
+  const binding = context.scopes.symbolFor(receiver);
+  return Boolean(
+    binding &&
+    (binding.kind === "ts-interface" || binding.kind === "ts-type-alias") &&
+    !hasRuntimeValueBinding(binding),
+  );
+};
+
+const isClosedReturnedAllocatorListenerCall = (
+  call: EsTreeNode,
+  method: string,
+  context: RuleContext,
+  initializationAnchor: EsTreeNode,
+  executionAnchor: EsTreeNode = call,
+): boolean => {
+  if (!isNodeOfType(call, "CallExpression") || call.optional) return false;
+  const callee = stripParenExpression(call.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    callee.optional ||
+    getStaticPropertyKeyName(callee) !== method ||
+    call.arguments.length < EVENT_LISTENER_HANDLER_ARGUMENT_INDEX + 1 ||
+    call.arguments.length > EVENT_LISTENER_HANDLER_ARGUMENT_INDEX + 2 ||
+    call.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))
+  )
+    return false;
+  const receiver = stripParenExpression(callee.object);
+  const receiverSymbol = isNodeOfType(receiver, "Identifier")
+    ? context.scopes.symbolFor(receiver)
+    : null;
+  const receiverValue = receiverSymbol?.initializer
+    ? stripParenExpression(receiverSymbol.initializer)
+    : null;
+  const isCapturedRef = Boolean(
+    isPrivatePlainConstIdentifier(receiver, context) &&
+    isStableReturnedAllocatorBinding(receiver, context) &&
+    isNodeOfType(receiverValue, "MemberExpression") &&
+    !receiverValue.computed &&
+    getStaticPropertyKeyName(receiverValue) === "current",
+  );
+  if (
+    isCapturedRef &&
+    !isPresenceProvenBeforeNode(initializationAnchor, (test) =>
+      flattenLogicalAndChain(stripParenExpression(test)).some((operand) => {
+        const candidate = stripParenExpression(operand);
+        const root = findTransparentExpressionRoot(candidate);
+        const parent = root.parent;
+        const isTruthiness = Boolean(
+          (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") ||
+          (isNodeOfType(parent, "LogicalExpression") && parent.operator === "&&") ||
+          ((isNodeOfType(parent, "IfStatement") ||
+            isNodeOfType(parent, "ConditionalExpression") ||
+            isNodeOfType(parent, "WhileStatement") ||
+            isNodeOfType(parent, "ForStatement")) &&
+            parent.test === root),
+        );
+        return (
+          isTruthiness &&
+          isNodeOfType(candidate, "Identifier") &&
+          context.scopes.symbolFor(candidate) === receiverSymbol
+        );
+      }),
+    )
+  )
+    return false;
+  const isCapturedGlobal = Boolean(
+    isPrivatePlainConstIdentifier(receiver, context) &&
+    isStableReturnedAllocatorBinding(receiver, context) &&
+    isNativeReturnedAllocatorReceiver(receiverValue, context),
+  );
+  const event = call.arguments[0];
+  const handler = call.arguments[EVENT_LISTENER_HANDLER_ARGUMENT_INDEX];
+  const handlerSymbol = isNodeOfType(handler, "Identifier")
+    ? context.scopes.symbolFor(handler)
+    : null;
+  const options = call.arguments[EVENT_LISTENER_HANDLER_ARGUMENT_INDEX + 1];
+  const stableOptions = options ? resolveReadOnlyEventListenerOptions(options, context) : null;
+  {
+    for (const reference of [receiver, handler, options]) {
+      if (
+        !isNodeOfType(reference, "Identifier") ||
+        context.scopes.isGlobalReference(reference) ||
+        isNativeReturnedAllocatorReceiver(reference, context)
+      )
+        continue;
+      const symbol = context.scopes.symbolFor(reference);
+      if (!symbol?.initializer || !isNodeOfType(symbol.declarationNode, "VariableDeclarator"))
+        return false;
+      const declaration = symbol.declarationNode;
+      const owner = findEnclosingFunction(executionAnchor);
+      if (isFunctionLike(owner) && declaration.parent?.parent === owner.body) {
+        if (declaration.range[1] > executionAnchor.range[0]) return false;
+        continue;
+      }
+      let anchors = RETURNED_ALLOCATOR_INITIALIZATION.get(symbol);
+      if (!anchors) {
+        anchors = new WeakMap();
+        RETURNED_ALLOCATOR_INITIALIZATION.set(symbol, anchors);
+      }
+      let isInitialized = anchors.get(initializationAnchor);
+      if (isInitialized === undefined) {
+        isInitialized = nodeDominatesNode(declaration, initializationAnchor, context);
+        anchors.set(initializationAnchor, isInitialized);
+      }
+      if (!isInitialized) return false;
+    }
+  }
+  return Boolean(
+    (isNativeReturnedAllocatorReceiver(receiver, context) || isCapturedRef || isCapturedGlobal) &&
+    isNodeOfType(event, "Literal") &&
+    typeof event.value === "string" &&
+    isNodeOfType(handler, "Identifier") &&
+    isPrivatePlainConstIdentifier(handler, context) &&
+    isStableReturnedAllocatorBinding(handler, context) &&
+    isFunctionLike(handlerSymbol?.initializer) &&
+    (!options ||
+      (isNodeOfType(stableOptions, "Literal") &&
+        resolveEventListenerCapture(stableOptions) !== null)),
+  );
+};
+
+const getReturnedEffectAllocatorProof = (
+  callback: EsTreeNode,
+  allocator: EsTreeNode,
+  context: RuleContext,
+): ReturnedEffectAllocatorProof | null => {
+  let proofs = RETURNED_EFFECT_ALLOCATOR_PROOFS.get(context.scopes);
+  if (!proofs) {
+    proofs = new WeakMap();
+    RETURNED_EFFECT_ALLOCATOR_PROOFS.set(context.scopes, proofs);
+  }
+  if (proofs.has(allocator)) return proofs.get(allocator) ?? null;
+  proofs.set(allocator, null);
+  if (
+    !isFunctionLike(allocator) ||
+    allocator.async ||
+    allocator.generator ||
+    allocator.params.length !== 0 ||
+    !isNodeOfType(allocator.body, "BlockStatement")
+  )
+    return null;
+  const binding = getFunctionBindingIdentifier(allocator);
+  const symbol = binding ? context.scopes.symbolFor(binding) : null;
+  const invocation = findSingleDirectInvocation(allocator, callback, context);
+  const effectCall = callback.parent;
+  const hookCallee = isNodeOfType(effectCall, "CallExpression")
+    ? stripParenExpression(effectCall.callee)
+    : null;
+  const hookBinding = isNodeOfType(hookCallee, "MemberExpression")
+    ? stripParenExpression(hookCallee.object)
+    : hookCallee;
+  const hookSymbol = isNodeOfType(hookBinding, "Identifier")
+    ? context.scopes.symbolFor(hookBinding)
+    : null;
+  const hook = hookCallee ? resolveImportedApiReference(hookCallee, context.scopes) : null;
+  if (
+    !binding ||
+    !isPrivatePlainConstIdentifier(binding, context) ||
+    !symbol ||
+    symbol.initializer !== allocator ||
+    findEnclosingFunction(symbol.declarationNode) !== callback ||
+    !symbol.references.every((reference) => reference.flag === "read") ||
+    !isNodeOfType(invocation, "CallExpression") ||
+    invocation.optional ||
+    invocation.arguments.length !== 0 ||
+    !isNodeOfType(invocation.parent, "ReturnStatement") ||
+    invocation.parent.argument !== invocation ||
+    !hook ||
+    hook.source !== "react" ||
+    !hook.importedName ||
+    !CLEANUP_EFFECT_HOOK_NAMES.has(hook.importedName) ||
+    !isReadonlyReturnedAllocatorHook(hookSymbol, context) ||
+    !hasClosedReturnedAllocatorProviders(context, callback)
+  )
+    return null;
+  for (
+    let parent = invocation.parent.parent;
+    parent && parent !== callback;
+    parent = parent.parent
+  ) {
+    if (isNodeOfType(parent, "TryStatement")) return null;
+  }
+  const registrationCalls = new Set<EsTreeNode>();
+  const cleanupFunctions = new Set<EsTreeNode>();
+  const inspectCleanup = (cleanup: EsTreeNode, creation: EsTreeNode): boolean => {
+    if (
+      !isFunctionLike(cleanup) ||
+      cleanup.async ||
+      cleanup.generator ||
+      cleanup.params.length !== 0
+    )
+      return false;
+    if (!isNodeOfType(cleanup.body, "BlockStatement")) {
+      return isClosedReturnedAllocatorListenerCall(
+        cleanup.body,
+        "removeEventListener",
+        context,
+        invocation,
+        creation,
+      );
+    }
+    return cleanup.body.body.every(
+      (statement) =>
+        isNodeOfType(statement, "TSInterfaceDeclaration") ||
+        isNodeOfType(statement, "TSTypeAliasDeclaration") ||
+        (isNodeOfType(statement, "ExpressionStatement") &&
+          isClosedReturnedAllocatorListenerCall(
+            statement.expression,
+            "removeEventListener",
+            context,
+            invocation,
+            creation,
+          )),
+    );
+  };
+  for (const statement of allocator.body.body) {
+    if (
+      isNodeOfType(statement, "TSInterfaceDeclaration") ||
+      isNodeOfType(statement, "TSTypeAliasDeclaration")
+    )
+      continue;
+    if (isNodeOfType(statement, "VariableDeclaration")) {
+      if (statement.kind !== "const" && statement.kind !== "let") return null;
+      for (const declaration of statement.declarations) {
+        if (!isNodeOfType(declaration.id, "Identifier") || !declaration.init) return null;
+        const initializer = declaration.init;
+        const isPrimitive =
+          isNodeOfType(initializer, "Literal") &&
+          !("regex" in initializer) &&
+          !("bigint" in initializer) &&
+          (initializer.value === null ||
+            typeof initializer.value === "boolean" ||
+            typeof initializer.value === "string" ||
+            typeof initializer.value === "number");
+        if (!isPrimitive && !(statement.kind === "const" && isFunctionLike(initializer)))
+          return null;
+      }
+      continue;
+    }
+    if (
+      isNodeOfType(statement, "ExpressionStatement") &&
+      isClosedReturnedAllocatorListenerCall(
+        statement.expression,
+        "addEventListener",
+        context,
+        invocation,
+      )
+    ) {
+      registrationCalls.add(statement.expression);
+      continue;
+    }
+    if (!isNodeOfType(statement, "ReturnStatement")) return null;
+    if (!statement.argument) continue;
+    const returned = stripParenExpression(statement.argument);
+    if (
+      isNodeOfType(returned, "Identifier") &&
+      returned.name === "undefined" &&
+      context.scopes.isGlobalReference(returned)
+    )
+      continue;
+    if (!inspectCleanup(returned, statement)) return null;
+    cleanupFunctions.add(returned);
+  }
+  if (registrationCalls.size === 0 || cleanupFunctions.size === 0) return null;
+  const proof = { registrationCalls, cleanupFunctions };
+  proofs.set(allocator, proof);
+  return proof;
+};
+
+const hasReturnedEffectLocalAllocatorCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  let results = RETURNED_EFFECT_ALLOCATOR_RESULTS.get(context.scopes);
+  if (!results) {
+    results = new WeakMap();
+    RETURNED_EFFECT_ALLOCATOR_RESULTS.set(context.scopes, results);
+  }
+  const cached = results.get(usage.node);
+  if (cached !== undefined) return cached;
+  results.set(usage.node, false);
+  if (usage.kind !== "subscribe" || usage.registrationVerbName !== "addEventListener") return false;
+  const allocator = findEnclosingFunction(usage.node);
+  if (!allocator || allocator === callback) return false;
+  const proof = getReturnedEffectAllocatorProof(callback, allocator, context);
+  if (!proof || !proof.registrationCalls.has(usage.node)) return false;
+  const matches = functionReturnsMatchingExpressionOnEveryPathAfterNode(
+    allocator,
+    usage.node,
+    context.scopes,
+    (returned) =>
+      proof.cleanupFunctions.has(returned) &&
+      doesCleanupFunctionReleaseUsage(returned, usage, context, new Set(), new Map(), true),
+    context.cfg,
+  );
+  results.set(usage.node, matches);
+  return matches;
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6677,6 +7624,7 @@ const effectHasCleanupForUsage = (
   }
   if (callback.async) return false;
   if (
+    hasReturnedEffectLocalAllocatorCleanup(callback, usage, context) ||
     cleanupRegistryReleasesUsage(callback, usage, context) ||
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
     hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||
@@ -6811,7 +7759,8 @@ const findFirstUsageWithoutCleanup = (
   for (const usage of usages) {
     if (
       !effectHasCleanupForUsage(callback, usage, context, usages) &&
-      !hasSplitLifecycleCleanup(callback, usage, context)
+      !hasSplitLifecycleCleanup(callback, usage, context) &&
+      !hasReturnedMotionScrollDisposer(callback, usage.node, context)
     ) {
       return usage;
     }
@@ -7872,7 +8821,11 @@ const doesReleaseCallMatchUsage = (
       !(usage.registrationVerbName === "requestAnimationFrame"
         ? callee.name === "cancelAnimationFrame"
         : TIMER_CLEANUP_CALLEE_NAMES.has(callee.name)) ||
-      !context.scopes.isGlobalReference(callee)
+      !(
+        context.scopes.isGlobalReference(callee) ||
+        (callee.name === "clearInterval" && isNativeCleanupGlobalReference(callee, context.scopes))
+      ) ||
+      hasGlobalIdentifierWriteBefore(callee.name, callee, context.scopes)
     ) {
       return false;
     }
@@ -9164,6 +10117,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9191,7 +10145,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

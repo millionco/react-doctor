@@ -13,6 +13,9 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
+import { isClosedKatamariOptionalChain } from "./utils/is-closed-katamari-optional-chain.js";
+import { OPTIONAL_WRAPPER_METHOD_NAMES } from "./utils/constants.js";
+
 const SMALL_ARRAY_NON_MUTATING_METHODS: ReadonlySet<string> = new Set([
   ...CHAINABLE_ITERATION_METHODS,
   "find",
@@ -393,6 +396,13 @@ export const jsCombineIterations = defineRule({
           return;
         if (isSmallLiteralArrayRootedChain(innerCall.callee.object, context.scopes)) return;
         if (isStringSplitRootedChain(innerCall.callee.object)) return;
+
+        if (
+          OPTIONAL_WRAPPER_METHOD_NAMES.has(innerMethod) &&
+          OPTIONAL_WRAPPER_METHOD_NAMES.has(outerMethod) &&
+          isClosedKatamariOptionalChain(node, context.scopes)
+        )
+          return;
 
         coveredChainCalls.add(innerCall as EsTreeNode);
         context.report({

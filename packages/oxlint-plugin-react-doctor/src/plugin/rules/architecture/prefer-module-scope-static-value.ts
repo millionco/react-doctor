@@ -1,4 +1,6 @@
 import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
+import { containsNativeRefInitializer } from "../../utils/contains-native-ref-initializer.js";
+import { containsImportedValueCall } from "../../utils/contains-imported-value-call.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -343,6 +345,8 @@ export const preferModuleScopeStaticValue = defineRule({
       // to recompute each render; hoisting would freeze them to a single
       // module-load value and change observable behavior.
       if (containsImpureExpression(initializer, context.scopes)) return;
+      if (containsNativeRefInitializer(initializer, context.scopes)) return;
+      if (containsImportedValueCall(initializer, context.scopes)) return;
       // A binding consumed ONLY as the receiver of scalar lookups
       // (`KEYS.includes(k)`) never escapes as a value — identity can't
       // break memoized children, so the hoist advice is pure noise.

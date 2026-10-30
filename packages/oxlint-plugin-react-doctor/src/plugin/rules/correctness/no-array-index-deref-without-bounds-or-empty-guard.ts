@@ -1,4 +1,7 @@
+import { isReadonlyIndexOfDelimiterGuarded } from "./utils/is-readonly-index-of-delimiter-guarded.js";
+import { isNativeLocationQuestionSplitPart } from "./utils/is-native-location-question-split-part.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
+import { isNativeTouchendChangedTouchRead } from "./utils/is-native-touchend-changed-touch-read.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -6,6 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
+import { isAlwaysMatchingLiteralStarRegexCall } from "./utils/is-always-matching-literal-star-regex-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
@@ -310,7 +314,11 @@ const isRegexResultDerefGuarded = (
   return someDominatingTestHasCall(node, (call) => areGuardExpressionsEqual(call, regexResultCall));
 };
 
-const isAlwaysMatchRegexResult = (regexResultCall: EsTreeNode, partIndex: number): boolean => {
+const isAlwaysMatchRegexResult = (
+  regexResultCall: EsTreeNode,
+  partIndex: number,
+  context: RuleContext,
+): boolean => {
   if (partIndex !== 0) return false;
   if (!isNodeOfType(regexResultCall, "CallExpression")) return false;
   if (!isNodeOfType(regexResultCall.callee, "MemberExpression")) return false;
@@ -325,7 +333,10 @@ const isAlwaysMatchRegexResult = (regexResultCall: EsTreeNode, partIndex: number
   if (!regexOperand || !isNodeOfType(regexOperand, "Literal") || !("regex" in regexOperand)) {
     return false;
   }
-  return isAlwaysMatchingRegexPattern(regexOperand.regex?.pattern, regexOperand.regex?.flags);
+  return (
+    isAlwaysMatchingRegexPattern(regexOperand.regex?.pattern, regexOperand.regex?.flags) ||
+    isAlwaysMatchingLiteralStarRegexCall(regexResultCall, context)
+  );
 };
 
 // `"1.2.3".split(".")[1]` — splitting a string literal by a string-literal
@@ -664,7 +675,11 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         if (isRegexResultCall(base)) {
           if (
             isNumericLiteral(index) &&
-            isAlwaysMatchRegexResult(base, Number((index as EsTreeNodeOfType<"Literal">).value))
+            isAlwaysMatchRegexResult(
+              base,
+              Number((index as EsTreeNodeOfType<"Literal">).value),
+              context,
+            )
           ) {
             return;
           }
@@ -685,7 +700,9 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
           const partIndex = Number((index as EsTreeNodeOfType<"Literal">).value);
           if (isStaticallyPresentSplitPart(base, partIndex)) return;
           if (isKnownFormatSplitPart(base, partIndex, context)) return;
+          if (isNativeLocationQuestionSplitPart(base, partIndex, context)) return;
           if (isSplitPartDerefGuarded(node, base)) return;
+          if (isReadonlyIndexOfDelimiterGuarded(node, base, partIndex, context.scopes)) return;
           if (isInsideFilteredIterationCallback(node, base)) return;
           context.report({ node, message: MESSAGE });
           return;
@@ -696,6 +713,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         // (`e.touches.length`, a repeated `e.touches[0]` check), which is the
         // message's own remediation.
         if (isTouchListAccess(base) && isInsideTouchEndHandler(node, context)) {
+          if (isNativeTouchendChangedTouchRead(node, context)) return;
           if (isTouchDerefGuarded(node, base)) return;
           context.report({ node, message: MESSAGE });
         }

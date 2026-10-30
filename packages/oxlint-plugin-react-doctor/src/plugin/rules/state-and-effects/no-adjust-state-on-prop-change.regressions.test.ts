@@ -1047,3 +1047,170 @@ describe("request-map cancellation bookkeeping", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("request-record cancellation bookkeeping", () => {
+  it.each([
+    [
+      "controller.abort()",
+      "requests.current = {};",
+      "setLoading({});",
+      "entryId",
+      "new AbortController()",
+      0,
+    ],
+    [
+      "controller.inspect()",
+      "requests.current = {};",
+      "setLoading({});",
+      "entryId",
+      "new AbortController()",
+      1,
+    ],
+    ["controller.abort()", "", "setLoading({});", "entryId", "new AbortController()", 1],
+    [
+      "controller.abort()",
+      "requests.current = {};",
+      "setDraft({});",
+      "entryId",
+      "new AbortController()",
+      1,
+    ],
+    [
+      "controller.abort()",
+      "requests.current = {};",
+      "setLoading({});",
+      "query",
+      "new AbortController()",
+      1,
+    ],
+    [
+      "controller.abort()",
+      "requests.current = {};",
+      "setLoading({});",
+      "entryId",
+      "{ abort() {} }",
+      1,
+    ],
+  ])("checks record ownership %s %s %s %s %s", (release, clear, reset, key, resource, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useRef, useState } from "react";
+      const Downloads = ({ query }) => {
+        const requests = useRef({});
+        const [loading, setLoading] = useState({});
+        const [draft, setDraft] = useState({});
+        useEffect(() => {
+          Object.values(requests.current).forEach((controller) => { ${release}; });
+          ${clear}
+          ${reset}
+        }, [query]);
+        const start = (entryId) => {
+          const controller = ${resource};
+          requests.current[entryId] = controller;
+          setLoading((previous) => ({ ...previous, [${key}]: true }));
+        };
+        return <button onClick={() => start("file")}>{Object.keys(loading).length + Object.keys(draft).length}</button>;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    [
+      "if (query) Object.values(requests.current).forEach((controller) => controller.abort()); requests.current = {}; setLoading({});",
+      "",
+      1,
+    ],
+    [
+      "setLoading({}); Object.values(requests.current).forEach((controller) => controller.abort()); requests.current = {};",
+      "",
+      1,
+    ],
+    [
+      "Object.values(requests.current).forEach((controller) => controller.abort()); setLoading({}); requests.current = {};",
+      "",
+      1,
+    ],
+    [
+      "Object.values(requests.current).forEach((controller) => { if (query) controller.abort(); }); requests.current = {}; setLoading({});",
+      "",
+      1,
+    ],
+    [
+      "Object.values(requests.current).forEach((controller) => controller.abort()); requests.current = {}; setLoading({});",
+      "const Object = customObject;",
+      1,
+    ],
+    [
+      "Object.values(requests.current).forEach((controller) => controller.abort()); requests.current = {}; setLoading({});",
+      "const AbortController = customController;",
+      1,
+    ],
+    [
+      "Object.values(requests.current).forEach(async (controller) => controller.abort()); requests.current = {}; setLoading({});",
+      "",
+      1,
+    ],
+    [
+      "Object.values(requests.current).forEach((controller) => controller.abort()); requests.current = {}; setLoading({});",
+      "",
+      0,
+    ],
+  ])("requires synchronous dominating cancellation %s %s", (body, shadow, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useRef, useState } from "react";
+      const Downloads = ({ query }) => {
+        ${shadow}
+        const requests = useRef({});
+        const [loading, setLoading] = useState({});
+        useEffect(() => { ${body} }, [query]);
+        const start = (entryId) => {
+          const controller = new AbortController();
+          requests.current[entryId] = controller;
+          setLoading((previous) => ({ ...previous, [entryId]: true }));
+        };
+        return <button onClick={() => start("file")}>{Object.keys(loading).length}</button>;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("request-record stable identity", () => {
+  it.each(["entryId += '-other';", "entryId = query;"])(
+    "retains reset warnings after key reassignment %s",
+    (mutation) => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `
+      import { useEffect, useRef, useState } from "react";
+      const Downloads = ({ query }) => {
+        const requests = useRef({});
+        const [loading, setLoading] = useState({});
+        useEffect(() => {
+          Object.values(requests.current).forEach((controller) => controller.abort());
+          requests.current = {};
+          setLoading({});
+        }, [query]);
+        const start = (entryId) => {
+          const controller = new AbortController();
+          requests.current[entryId] = controller;
+          ${mutation}
+          setLoading((previous) => ({ ...previous, [entryId]: true }));
+        };
+        return <button onClick={() => start("file")}>{Object.keys(loading).length}</button>;
+      };
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+});

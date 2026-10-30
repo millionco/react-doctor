@@ -21,7 +21,7 @@ export const pinnedRuleContracts: Readonly<Record<string, PinnedRuleContract>> =
   },
   "react-doctor/jsx-props-no-spreading": {
     path: "packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-props-no-spreading.ts",
-    sha256: "43ee949e10d93b8ba8ad3bc78ddb6eaa24e9f989fca9429a5335d9591a42cef2",
+    sha256: "5f952bc10e4755ad1c4f1bf1187a17f9bc5a8a8c701e4e1353c4650b264151af",
     contract: {
       requiredEvidence: ["verified-contract"],
       settings: {
@@ -40,6 +40,8 @@ export const pinnedRuleContracts: Readonly<Record<string, PinnedRuleContract>> =
         "html/custom accept enforce or ignore. A tag in exceptions flips that tag class's mode.",
         "explicitSpread: ignore permits object literals only when they contain no nested spread; the default is enforce.",
         "Custom tags start with a component name or contain a dot. Member-expression names are matched in full.",
+        "A closed ordinary React CSF2 template is exempt when its sole readonly parameter is forwarded as the sole spread to the exact imported metadata component, every template use is a direct .bind({}) exported story, and each story has one ordinary args assignment.",
+        "This finite certificate assumes ordinary React, module, and native-bind integrity. Incompatible runtime profiles, custom JSX pragmas, provider mutation, and unsupported value transport decline the exemption; type names, filenames, CSF3 render functions, and direct stories alone are insufficient.",
       ],
     },
   },

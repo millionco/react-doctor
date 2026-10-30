@@ -130,22 +130,13 @@ export const rnNoDimensionsGet = defineRule({
       if (isMemberProperty(node.callee, "get")) {
         // One-shot module-level reads (static style constants) are the doc's
         // FP carve-out; the staleness claim only holds inside code that runs
-        // per render. `addEventListener` below stays unguarded — the removed
-        // API crashes regardless of where it's called.
+        // per render.
         if (!isInsideFunctionScope(node)) return;
         if (isInsideStyleFactoryCallback(node)) return;
         context.report({
           node,
           message:
             "Dimensions.get() reads the size once and never updates, so layouts built from it go stale on rotation or resize.",
-        });
-      }
-
-      if (isMemberProperty(node.callee, "addEventListener")) {
-        context.report({
-          node,
-          message:
-            "Your users hit a crash from Dimensions.addEventListener(), which was removed in React Native 0.72.",
         });
       }
     },

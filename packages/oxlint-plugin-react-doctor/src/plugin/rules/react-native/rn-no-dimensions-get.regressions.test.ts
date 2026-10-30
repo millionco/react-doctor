@@ -39,13 +39,13 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("still flags Dimensions.addEventListener via CJS require", () => {
+  it("preserves supported Dimensions.addEventListener via CJS require", () => {
     const result = runRule(
       rnNoDimensionsGet,
       `const { Dimensions } = require("react-native");\nDimensions.addEventListener("change", () => {});`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("still flags a bare global Dimensions.get", () => {
@@ -190,13 +190,13 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("still flags module-level Dimensions.addEventListener", () => {
+  it("preserves supported module-level Dimensions.addEventListener", () => {
     const result = runRule(
       rnNoDimensionsGet,
       `import { Dimensions } from "react-native";\nDimensions.addEventListener("change", () => {});`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("does not claim users see a stale layout for a fresh read in an event handler", () => {

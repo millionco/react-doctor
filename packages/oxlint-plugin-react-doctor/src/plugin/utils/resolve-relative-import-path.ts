@@ -168,7 +168,12 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
 
+let moduleResolutionCacheGeneration = 0;
+
+export const getModuleResolutionCacheGeneration = (): number => moduleResolutionCacheGeneration;
+
 export const resetModuleResolutionCaches = (): void => {
+  moduleResolutionCacheGeneration++;
   filesystemEntryByPath.clear();
   packageJsonByPath.clear();
 };

@@ -1,0 +1,23 @@
+// rule: no-adjust-state-on-prop-change
+// weakness: alias-guard
+// source: synthetic
+// verdict: fail
+import { useEffect, useRef, useState } from "react";
+
+export const RequestRows = ({ query }) => {
+  AbortController.prototype.abort = () => {};
+  const pending = useRef(new Map());
+  const [loading, setLoading] = useState(new Set());
+  const start = (requestKey) => {
+    const controller = new AbortController();
+    pending.current.set(requestKey, { controller });
+    setLoading((previous) => new Set(previous).add(requestKey));
+    fetch("/items", { signal: controller.signal });
+  };
+  useEffect(() => {
+    pending.current.forEach((entry) => entry.controller.abort());
+    pending.current.clear();
+    setLoading(new Set());
+  }, [query]);
+  return <button onClick={() => start("item")}>{loading.size}</button>;
+};

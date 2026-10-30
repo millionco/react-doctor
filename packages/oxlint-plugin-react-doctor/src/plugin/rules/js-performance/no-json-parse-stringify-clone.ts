@@ -1,3 +1,4 @@
+import { isStructuredCloneSelfDefinition } from "./utils/is-structured-clone-self-definition.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -380,6 +381,7 @@ export const noJsonParseStringifyClone = defineRule({
       if (isAssignedToNormalizationBinding(node)) return;
       if (isCatchParameterRoundTrip(firstArgument)) return;
       if (isUsedToSerializeNextjsPageProps(node, context)) return;
+      if (isStructuredCloneSelfDefinition(node, context.scopes)) return;
       context.report({ node, message: MESSAGE });
     },
   }),

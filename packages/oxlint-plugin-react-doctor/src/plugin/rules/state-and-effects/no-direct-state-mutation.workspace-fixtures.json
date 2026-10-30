@@ -1,0 +1,730 @@
+{
+  "baseFiles": {
+    "package.json": "{\"private\": true}",
+    "pnpm-workspace.yaml": "packages:\n  - packages/**\n",
+    "packages/ui/package.json": "{\"name\": \"@sample/ui\", \"dependencies\": {\"react\": \"^19.0.0\", \"@sample/ref-kit\": \"workspace:*\"}}",
+    "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n",
+    "packages/ref-kit/package.json": "{\"name\": \"@sample/ref-kit\", \"type\": \"module\", \"exports\": {\"./internal\": {\"import\": \"./src/internal.ts\", \"require\": \"./src/internal.ts\"}}}",
+    "packages/ref-kit/src/internal.ts": "export {useMergedRefs} from './relay.js';\n",
+    "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+  },
+  "cases": [
+    {
+      "name": "workspace-star-direct-host-unchanged-relay",
+      "updates": {},
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "typed-conditional-host-function-declaration-provider",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode as any);\n const Host=(modal?'dialog':'div') as unknown as ((props:Record<string,unknown>)=>unknown);\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n",
+        "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport function useMergedRefs<T>(...refs:(((value:T|null)=>void)|{current:T|null}|undefined)[]){\n const merged=useCallback((element:T|null)=>{\n  const updateRef=(ref:((value:T|null)=>void)|{current:T|null}|undefined)=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n}\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "readonly-import-alias",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs as mergeRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=mergeRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "spread-before-final-ref",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal,...props})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host {...props} ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "unrelated-state-write-retained",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node){node.style.visibility='hidden';node.count=1}},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.count=1"
+    },
+    {
+      "name": "relative-entry-unsupported",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '../../ref-kit/src/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "workspace-range-not-star",
+      "updates": {
+        "packages/ui/package.json": "{\"name\": \"@sample/ui\", \"dependencies\": {\"react\": \"^19.0.0\", \"@sample/ref-kit\": \"workspace:^\"}}"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "missing-trusted-root-setting",
+      "updates": {},
+      "settingsRoot": null,
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "broad-root-nested-consumer",
+      "updates": {},
+      "settingsRoot": "WORKSPACE_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "duplicate-package-nested-template",
+      "updates": {
+        "packages/tools/package.json": "{\"name\":\"@sample/tools\"}",
+        "packages/tools/tests/template/package.json": "{\"name\":\"@sample/ref-kit\"}"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "root-manifest-name-collision",
+      "updates": {
+        "package.json": "{\"private\":true,\"name\":\"@sample/ref-kit\"}"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "alternate-manifest-uncertainty",
+      "updates": {
+        "packages/ref-kit/package.yaml": "name: \"@sample/ref-kit\"\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "ambiguous-runtime-export-conditions",
+      "updates": {
+        "packages/ref-kit/package.json": "{\"name\": \"@sample/ref-kit\", \"type\": \"module\", \"exports\": {\"./internal\": {\"import\": \"./src/internal.ts\", \"require\": \"./src/other.ts\"}}}",
+        "packages/ref-kit/src/other.ts": "export const useMergedRefs=()=>()=>{};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "setter-plain-feed",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n setNode({style:{visibility:'x'}});\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "setter-alias-escape",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const escaped=setNode;publish(escaped);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "callback-manual-invocation",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n merged({style:{visibility:'x'}});\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "callback-opaque-escape",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n publish(merged);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "spread-after-ref",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal,...props})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged} {...props}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "later-duplicate-ref",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged} ref={forwarded}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "custom-component-branch",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':Custom);\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "host-alias-runtime-reassignment",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n let Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n Host=Custom;\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "provider-changes-element-value",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref({style:{visibility:element}})}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "provider-returns-wrapper",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return value=>merged(value);\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "provider-effectful-default",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback((element=makeValue())=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "provider-arguments-hidden-access",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;publish(arguments[0]);if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "rest-array-forEach-overwrite",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach=callback=>callback({});\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "visible-array-prototype-write",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "Array.prototype.forEach=function(callback){callback({})};\nimport {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "visible-react-global-alias-write",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nconst runtime=globalThis.React;runtime.useState=()=>[{},()=>{}];\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "namespace-react-capability-escape",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import React,{useCallback} from 'react';const runtime=React;runtime.useCallback=identity;\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "reflective-constructor-escape",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "Reflect.get(()=>{},'constructor')('globalThis.React={}')();\nimport {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "type-erased-selected-setter-shadow",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n type setNode=unknown;publish(setNode);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "computed-catch-setter-reference",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n try{}catch({[publish(setNode)]:ignored}){void ignored}\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "dynamic-import-selected-setter",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n import(setNode);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "runtime-ts-provider-alias",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "import reflection=Reflect;reflection.get(()=>{},'constructor')('globalThis.React={}')();\nimport {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "symlinked-provider-candidate",
+      "updates": {},
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": true,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "executable-barrel-prototype-write",
+      "updates": {
+        "packages/ref-kit/src/internal.ts": "export {useMergedRefs} from './relay.js';\nArray.prototype.forEach=function(callback){callback({})};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "selected-explicit-barrel-with-unrelated-star",
+      "updates": {
+        "packages/ref-kit/src/internal.ts": "export {useMergedRefs} from './relay.js';\nexport * from './unrelated.js';\n",
+        "packages/ref-kit/src/unrelated.ts": "export const unrelated=1;\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "ignored-dot-directory-duplicate",
+      "updates": {
+        "packages/.cache/package.json": "{\"name\":\"@sample/ref-kit\"}"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "duplicate-package-in-generated-template",
+      "updates": {
+        "packages/tools/package.json": "{\"name\":\"@sample/tools\"}",
+        "packages/tools/generated/template/package.json": "{\"name\":\"@sample/ref-kit\"}"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "unsupported-workspace-pattern",
+      "updates": {
+        "pnpm-workspace.yaml": "packages:\n  - packages/{ui,ref-kit}\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "malformed-candidate-manifest",
+      "updates": {
+        "packages/other/package.json": "{bad"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "yaml-only-provider-duplicate",
+      "updates": {
+        "packages/other/package.yaml": "name: \"@sample/ref-kit\"\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "conflicting-other-dependency-section",
+      "updates": {
+        "packages/ui/package.json": "{\"name\": \"@sample/ui\", \"dependencies\": {\"@sample/ref-kit\": \"workspace:*\"}, \"peerDependencies\": {\"@sample/ref-kit\": \"^1\"}}"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "ambiguous-js-ts-provider-files",
+      "updates": {
+        "packages/ref-kit/src/relay.js": "import {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "other-style-property-retained",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.color='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.color='hidden'"
+    },
+    {
+      "name": "compound-visibility-write-retained",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility+='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility+='hidden'"
+    },
+    {
+      "name": "provider-extra-runtime-call",
+      "updates": {
+        "packages/ref-kit/src/relay.ts": "patchArray();\nimport {useCallback} from 'react';\nexport const useMergedRefs=(...refs)=>{\n const merged=useCallback(element=>{\n  const updateRef=ref=>{if(!ref)return;if(typeof ref==='function'){ref(element)}else{ref.current=element}};\n  refs.forEach(updateRef);\n },refs);\n return merged;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "consumer-computed-capability-extraction",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nconst {[dangerousKey]:invoke}=(()=>{});invoke('unsafe');\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "undefined-initializer-unsupported",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(undefined);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "absent-initializer-unsupported",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState();\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "computed-prototype-alias",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const prototypeKey='prototype';Array[prototypeKey].forEach=function(update){for(let index=0;index<this.length;index++)update(value=>this[index]({style:{visibility:'shown'}}))};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "dynamic-comparison-and-deletion",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const options={initialFocus:null};Object.keys(options).forEach(key=>{if(options[key]===undefined)delete options[key]});\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "type-only-exported-namespace",
+      "updates": {
+        "packages/ui/src/panel.tsx": "export namespace Panel {export type Props={modal:boolean};}\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "legacy-reflective-prototype-extraction",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const arrayPrototype=[].__lookupGetter__('__proto__').call([]);arrayPrototype.forEach=function(update){for(let index=0;index<this.length;index++)update(value=>this[index]({style:{visibility:'shown'}}))};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "unknown-computed-intrinsic",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const prototypeName='prototype';const arrayPrototype=Array[prototypeName];\nconst nativeForEach=arrayPrototype.forEach; arrayPrototype.forEach=function(update){nativeForEach.call(this,(reference)=>{if(typeof reference==='function')update((_element)=>reference({style:{visibility:'shown'}}));else update(reference);});};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "legacy-static-getter",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const arrayPrototype=[].__lookupGetter__('__proto__').call([]);\nconst nativeForEach=arrayPrototype.forEach; arrayPrototype.forEach=function(update){nativeForEach.call(this,(reference)=>{if(typeof reference==='function')update((_element)=>reference({style:{visibility:'shown'}}));else update(reference);});};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "static-prototype-destructure",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const {prototype:arrayPrototype}=Array;\nconst nativeForEach=arrayPrototype.forEach; arrayPrototype.forEach=function(update){nativeForEach.call(this,(reference)=>{if(typeof reference==='function')update((_element)=>reference({style:{visibility:'shown'}}));else update(reference);});};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "legacy-getter-destructure",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const {__lookupGetter__:getter}=[];const arrayPrototype=getter.call([], '__proto__').call([]);\nconst nativeForEach=arrayPrototype.forEach; arrayPrototype.forEach=function(update){nativeForEach.call(this,(reference)=>{if(typeof reference==='function')update((_element)=>reference({style:{visibility:'shown'}}));else update(reference);});};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "typed-dom-array-numeric-access",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const measure=(node:HTMLElement[])=>observe(node[0]);\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node){measure([node]);node.style.visibility='hidden'}},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-nominal",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-hook",
+      "updates": {
+        "packages/ui/src/panel.tsx": "interface useState {}\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-capability",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({Function}:{Function:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-inert-object-keys",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const notes={Function:'description',React:'description',constructor:'description'};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-inert-method-keys",
+      "updates": {
+        "packages/ui/src/panel.tsx": "class Notes {static Function(){return 'description'} static React(){return 'description'}}\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-custom-jsx-factory",
+      "updates": {
+        "packages/ui/src/panel.tsx": "/** @jsx jsx */\nconst jsx=(tag,props)=>{props.ref({style:{visibility:'visible'}});return null};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "review-runtime-shorthand-capability",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const notes={Function};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "review-runtime-computed-capability",
+      "updates": {
+        "packages/ui/src/panel.tsx": "const notes={[Function]:'description'};\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "review-runtime-parameter-property-capability",
+      "updates": {
+        "packages/ui/src/panel.tsx": "class Capability {constructor(public value=Function('globalThis.changed=1')()){}}\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "review-cjs-module-react-write",
+      "updates": {
+        "packages/ui/src/panel.tsx": "module['require']('react').useState=()=>[{},()=>{}];\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "review-erased-deep-useState",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({useState}:{useState:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-useEffect",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({useEffect}:{useEffect:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-useMergedRefs",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({useMergedRefs}:{useMergedRefs:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-Panel",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({Panel}:{Panel:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-node",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({node}:{node:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-setNode",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({setNode}:{setNode:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-deep-merged",
+      "updates": {
+        "packages/ui/src/panel.tsx": "type Notes=({merged}:{merged:string})=>void;\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-export-useState",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n\nexport type {useState};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-erased-export-useMergedRefs",
+      "updates": {
+        "packages/ui/src/panel.tsx": "import {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n\nexport type {useMergedRefs};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    },
+    {
+      "name": "review-runtime-parameter-property",
+      "updates": {
+        "packages/ui/src/panel.tsx": "class Capability {constructor(public value=Function('globalThis.changed=1')()){}}\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": "node.style.visibility='hidden'"
+    },
+    {
+      "name": "review-inert-static-method",
+      "updates": {
+        "packages/ui/src/panel.tsx": "class Notes {static Function(){return 'description'} static constructorName(){return 'description'}}\nimport {useState,useEffect} from 'react';\nimport {useMergedRefs} from '@sample/ref-kit/internal';\nexport const Panel=({forwarded,modal})=>{\n const [node,setNode]=useState(null);\n const merged=useMergedRefs(forwarded,setNode);\n const Host=(modal?'dialog':'div');\n useEffect(()=>{if(node)node.style.visibility='hidden'},[node]);\n return <Host ref={merged}/>;\n};\n"
+      },
+      "settingsRoot": "CONSUMER_ROOT",
+      "symlinkProvider": false,
+      "expectedMutation": null
+    }
+  ]
+}

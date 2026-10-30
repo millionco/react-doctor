@@ -1,5 +1,6 @@
 import {
   PUBLIC_CLIENT_KEY_PATTERNS,
+  PUBLIC_PROP_TYPES_VALIDATOR_SENTINEL,
   SECRET_FALSE_POSITIVE_SUFFIXES,
   SECRET_MIN_LENGTH_CHARS,
   SECRET_PLACEHOLDER_CONTEXT_PATTERN,
@@ -123,6 +124,7 @@ export const noSecretsInClientCode = defineRule({
           !isUiConstant &&
           !isPublicUrlValue(literalValue) &&
           !isPlaceholderValueForVariableHeuristic &&
+          literalValue !== PUBLIC_PROP_TYPES_VALIDATOR_SENTINEL &&
           !isSelfReferentialSentinelValue(variableName, literalValue) &&
           !isStructuredParserSentinelValue(variableName, literalValue) &&
           !isIdentifierLikeKeyNameValue(literalValue) &&

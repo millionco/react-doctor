@@ -77,6 +77,10 @@ class SemanticRuleContext implements RuleContext {
     this.programRoot = baseContext.sourceCode?.ast ?? null;
   }
 
+  get sourceCode(): BaseRuleContext["sourceCode"] {
+    return this.baseContext.sourceCode;
+  }
+
   // Resolve from the host's modern `filename` property, falling back to
   // its deprecated `getFilename()` invoked ON the host (so a `this`-bound
   // class method keeps its binding — forwarding a bare reference dropped

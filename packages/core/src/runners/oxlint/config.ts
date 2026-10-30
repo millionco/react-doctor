@@ -294,6 +294,13 @@ export const createOxlintConfig = ({
         portedRuleMode: "curated",
         ...(diagnosticContextDirectory ? { diagnosticContextDirectory } : {}),
         framework: project.framework,
+        reactVersion: project.reactVersion,
+        reactMajorVersion: project.reactMajorVersion,
+        styledComponentsVersion: project.styledComponentsVersion ?? null,
+        preactVersion: project.preactVersion,
+        preactMajorVersion: project.preactMajorVersion,
+        hasReactCompiler: project.hasReactCompiler,
+        hasReactNativeWorkspace: project.hasReactNativeWorkspace,
         rootDirectory: settingsRootDirectory,
         // The framework-capability vocabulary, available to any rule via
         // `hasCapability`. Sorted so equivalent projects hash identically

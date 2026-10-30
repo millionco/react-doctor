@@ -1,3 +1,4 @@
+import { isNodeFileUrlConfigurationModule } from "./utils/is-node-file-url-configuration-module.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -105,68 +106,78 @@ export const noDynamicImportPath = defineRule({
   severity: "warn",
   recommendation:
     "Use a plain string path: `import('./feature/heavy.js')` so the bundler can split this into its own chunk.",
-  create: (context: RuleContext) => ({
-    ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
-      const source = stripParenExpression(node.source);
-      if (source && !isNodeOfType(source, "Literal") && !isNodeOfType(source, "TemplateLiteral")) {
-        if (isDeliberateStaticIndirection(source)) return;
-        if (hasBundlerIgnoreAnnotation(node, context.filename)) return;
-        if (isOutsideBrowserBundle(node, context.filename)) return;
-        context.report({
-          node,
-          message:
-            "This can stay in the main bundle because the bundler cannot code-split a dynamic import path. Use a plain string path instead.",
-        });
-        return;
-      }
-      if (
-        isNodeOfType(source, "TemplateLiteral") &&
-        (source.expressions?.length ?? 0) > 0 &&
-        !hasStaticDirectoryPrefix(source) &&
-        !interpolatesOnlyQueryString(source) &&
-        !targetsPackageManifest(source)
-      ) {
-        if (hasBundlerIgnoreAnnotation(node, context.filename)) return;
-        if (isOutsideBrowserBundle(node, context.filename)) return;
-        context.report({
-          node,
-          message:
-            "This can stay in the main bundle because the bundler cannot code-split a dynamic import path with `${dynamic_path}`. Use a plain string path instead.",
-        });
-      }
-    },
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
-      const argument = node.arguments?.[0];
-      if (!argument) return;
-      const pathExpression = stripParenExpression(argument);
-      if (
-        !isNodeOfType(pathExpression, "Literal") &&
-        !isNodeOfType(pathExpression, "TemplateLiteral")
-      ) {
-        if (isDeliberateStaticIndirection(pathExpression)) return;
-        if (isOutsideBrowserBundle(node, context.filename)) return;
-        context.report({
-          node,
-          message:
-            "This ships in the main bundle & slows page load, since the bundler can't trace a dynamic require() path. Use a plain string path instead.",
-        });
-        return;
-      }
-      if (
-        isNodeOfType(pathExpression, "TemplateLiteral") &&
-        (pathExpression.expressions?.length ?? 0) > 0 &&
-        !hasStaticDirectoryPrefix(pathExpression) &&
-        !interpolatesOnlyQueryString(pathExpression) &&
-        !targetsPackageManifest(pathExpression)
-      ) {
-        if (isOutsideBrowserBundle(node, context.filename)) return;
-        context.report({
-          node,
-          message:
-            "This ships in the main bundle & slows page load, since the bundler can't trace a dynamic require() path. Use a plain string path instead of one with `${...}`.",
-        });
-      }
-    },
-  }),
+  create: (context: RuleContext) => {
+    let isNodeConfigurationLoader = false;
+    return {
+      Program(program: EsTreeNodeOfType<"Program">) {
+        isNodeConfigurationLoader = isNodeFileUrlConfigurationModule(program, context);
+      },
+      ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
+        const source = stripParenExpression(node.source);
+        if (
+          source &&
+          !isNodeOfType(source, "Literal") &&
+          !isNodeOfType(source, "TemplateLiteral")
+        ) {
+          if (isDeliberateStaticIndirection(source)) return;
+          if (hasBundlerIgnoreAnnotation(node, context.filename)) return;
+          if (isOutsideBrowserBundle(node, context.filename) || isNodeConfigurationLoader) return;
+          context.report({
+            node,
+            message:
+              "This can stay in the main bundle because the bundler cannot code-split a dynamic import path. Use a plain string path instead.",
+          });
+          return;
+        }
+        if (
+          isNodeOfType(source, "TemplateLiteral") &&
+          (source.expressions?.length ?? 0) > 0 &&
+          !hasStaticDirectoryPrefix(source) &&
+          !interpolatesOnlyQueryString(source) &&
+          !targetsPackageManifest(source)
+        ) {
+          if (hasBundlerIgnoreAnnotation(node, context.filename)) return;
+          if (isOutsideBrowserBundle(node, context.filename) || isNodeConfigurationLoader) return;
+          context.report({
+            node,
+            message:
+              "This can stay in the main bundle because the bundler cannot code-split a dynamic import path with `${dynamic_path}`. Use a plain string path instead.",
+          });
+        }
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
+        const argument = node.arguments?.[0];
+        if (!argument) return;
+        const pathExpression = stripParenExpression(argument);
+        if (
+          !isNodeOfType(pathExpression, "Literal") &&
+          !isNodeOfType(pathExpression, "TemplateLiteral")
+        ) {
+          if (isDeliberateStaticIndirection(pathExpression)) return;
+          if (isOutsideBrowserBundle(node, context.filename) || isNodeConfigurationLoader) return;
+          context.report({
+            node,
+            message:
+              "This ships in the main bundle & slows page load, since the bundler can't trace a dynamic require() path. Use a plain string path instead.",
+          });
+          return;
+        }
+        if (
+          isNodeOfType(pathExpression, "TemplateLiteral") &&
+          (pathExpression.expressions?.length ?? 0) > 0 &&
+          !hasStaticDirectoryPrefix(pathExpression) &&
+          !interpolatesOnlyQueryString(pathExpression) &&
+          !targetsPackageManifest(pathExpression)
+        ) {
+          if (isOutsideBrowserBundle(node, context.filename) || isNodeConfigurationLoader) return;
+          context.report({
+            node,
+            message:
+              "This ships in the main bundle & slows page load, since the bundler can't trace a dynamic require() path. Use a plain string path instead of one with `${...}`.",
+          });
+        }
+      },
+    };
+  },
 });

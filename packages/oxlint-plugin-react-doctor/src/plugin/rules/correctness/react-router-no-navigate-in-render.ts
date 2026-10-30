@@ -6,6 +6,7 @@ import { isFunctionInvokedDuringRender } from "../../utils/is-function-invoked-d
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
+import { isClosedNativeSubmitNavigation } from "./utils/is-closed-native-submit-navigation.js";
 
 export const reactRouterNoNavigateInRender = wrapReactRouterRule(
   defineRule({
@@ -46,6 +47,7 @@ export const reactRouterNoNavigateInRender = wrapReactRouterRule(
           ) {
             continue;
           }
+          if (isClosedNativeSubmitNavigation(callExpression, node, context)) continue;
           context.report({
             node: callExpression,
             message: `${node.id.name}() runs during render and can cause navigation loops or hydration divergence.`,

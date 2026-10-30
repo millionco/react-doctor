@@ -5,6 +5,7 @@ import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { isCsf2BoundTemplateForwarding } from "./utils/is-csf2-bound-template-forwarding.js";
 
 const MESSAGE = "You can't tell what props reach this element when you spread them.";
 
@@ -92,6 +93,7 @@ export const jsxPropsNoSpreading = defineRule({
             const shouldEnforce = ignoreCustom ? isException : !isException;
             if (!shouldEnforce) continue;
           }
+          if (isCsf2BoundTemplateForwarding(attribute, context)) continue;
           context.report({ node: attribute, message: MESSAGE });
           didReportInFile = true;
           return;

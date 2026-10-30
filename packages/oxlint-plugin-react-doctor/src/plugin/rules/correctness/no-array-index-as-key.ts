@@ -4,6 +4,7 @@ import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getClosedMemoArrayFromSource } from "../../utils/get-closed-memo-array-from-source.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -1924,13 +1925,21 @@ const hasAriaHiddenAncestor = (attributeNode: EsTreeNode): boolean => {
   return false;
 };
 
-const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalIndexUse | null => {
+const getReportableIndexUse = (
+  key: EsTreeNode,
+  node: EsTreeNode,
+  context: RuleContext,
+): PositionalIndexUse | null => {
   const indexUse = findPositionalIndexUse(key, 0);
   if (!indexUse || methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return null;
   if (isNumericPlaceholderLoopCounter(indexUse.binding.loopCounter ?? indexUse.identifier))
     return null;
   if (indexUse.binding.iteratorCall && iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall))
     return null;
+  const memoSource = indexUse.binding.iteratorCall
+    ? getClosedMemoArrayFromSource(indexUse.binding.iteratorCall, context.scopes)
+    : null;
+  if (memoSource && isProvablyStringValued(memoSource, 0)) return null;
   const keyTemplate = resolveKeyTemplateLiteral(key);
   if (keyTemplate && templateHasOuterMemberIdentity(keyTemplate, indexUse.binding.bindingFunction))
     return null;
@@ -1959,7 +1968,7 @@ export const noArrayIndexAsKey = defineRule({
         if (!overrides) return;
         const key = getStaticObjectPropertyValue(overrides, "key");
         if (!key) return;
-        const indexUse = getReportableIndexUse(key, node);
+        const indexUse = getReportableIndexUse(key, node, context);
         if (!indexUse) return;
         reportIndexKey(key, indexUse.identifier.name);
       },
@@ -1967,7 +1976,7 @@ export const noArrayIndexAsKey = defineRule({
         if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-        const indexUse = getReportableIndexUse(node.value.expression, node);
+        const indexUse = getReportableIndexUse(node.value.expression, node, context);
         if (!indexUse) return;
         if (
           indexUse.binding.iteratorCall &&

@@ -1,5 +1,6 @@
 import { FUNCTION_LIKE_TYPES } from "../../constants/js.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { createFrozenImportedCollectionChecker } from "../../utils/create-frozen-imported-collection-checker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -263,6 +264,7 @@ const isStaticallyBoundedCollectionExpression = (
   collectionKind: "array" | "object",
   scopes: ScopeAnalysis,
   growthBySymbolId: Map<number, boolean>,
+  isFrozenImportedCollection: ReturnType<typeof createFrozenImportedCollectionChecker>,
 ): boolean => {
   const pendingExpressions = [stripParenExpression(expression)];
   const pendingVisitedSymbolIds = [new Set<number>()];
@@ -279,6 +281,7 @@ const isStaticallyBoundedCollectionExpression = (
       continue;
     }
     if (isNodeOfType(currentExpression, "Identifier")) {
+      if (isFrozenImportedCollection(currentExpression, collectionKind)) continue;
       const symbol = scopes.symbolFor(currentExpression);
       const binding = findVariableInitializer(currentExpression, currentExpression.name);
       if (
@@ -347,10 +350,19 @@ const isStaticallyBoundedReduceSource = (
   source: EsTreeNode,
   scopes: ScopeAnalysis,
   growthBySymbolId: Map<number, boolean>,
+  isFrozenImportedCollection: ReturnType<typeof createFrozenImportedCollectionChecker>,
 ): boolean => {
   const stripped = stripParenExpression(source);
   if (isSpreadFreeArrayLiteral(stripped, false)) return true;
-  if (isStaticallyBoundedCollectionExpression(stripped, "array", scopes, growthBySymbolId)) {
+  if (
+    isStaticallyBoundedCollectionExpression(
+      stripped,
+      "array",
+      scopes,
+      growthBySymbolId,
+      isFrozenImportedCollection,
+    )
+  ) {
     return true;
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
@@ -366,7 +378,13 @@ const isStaticallyBoundedReduceSource = (
   const enumeratedObject = stripped.arguments[0];
   return (
     isAstNode(enumeratedObject) &&
-    isStaticallyBoundedCollectionExpression(enumeratedObject, "object", scopes, growthBySymbolId)
+    isStaticallyBoundedCollectionExpression(
+      enumeratedObject,
+      "object",
+      scopes,
+      growthBySymbolId,
+      isFrozenImportedCollection,
+    )
   );
 };
 
@@ -570,6 +588,7 @@ export const noSpreadAccumulatorInReduce = defineRule({
     "Mutate the accumulator and return it (`acc[key] = value; return acc`) so the fold stays O(n) instead of copying the whole accumulator every step.",
   create: (context: RuleContext) => {
     const growthBySymbolId = new Map<number, boolean>();
+    const isFrozenImportedCollection = createFrozenImportedCollectionChecker(context);
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callee = stripParenExpression(node.callee);
@@ -578,7 +597,14 @@ export const noSpreadAccumulatorInReduce = defineRule({
         if (reducerMethodName !== "reduce" && reducerMethodName !== "reduceRight") return;
         if (hasOwnReducerMethod(callee.object, reducerMethodName, context.scopes)) return;
         if (!isFreshLiteralSeed(node.arguments[1])) return;
-        if (isStaticallyBoundedReduceSource(callee.object, context.scopes, growthBySymbolId))
+        if (
+          isStaticallyBoundedReduceSource(
+            callee.object,
+            context.scopes,
+            growthBySymbolId,
+            isFrozenImportedCollection,
+          )
+        )
           return;
 
         const callbackArgument = node.arguments[0];

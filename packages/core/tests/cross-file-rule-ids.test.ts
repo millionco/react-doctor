@@ -191,6 +191,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-mutating-reducer-state",
       "no-reset-all-state-on-prop-change",
       "no-side-effect-in-state-updater-function",
+      "no-spread-accumulator-in-reduce",
       "no-unguarded-browser-global-at-module-scope",
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",

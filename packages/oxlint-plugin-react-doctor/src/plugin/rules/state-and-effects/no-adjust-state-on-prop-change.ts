@@ -78,7 +78,7 @@ export const noAdjustStateOnPropChange = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
+    "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. If those options do not fit and state depends on previous renders, adjust this component's state during render. Compare against the stored previous prop and update it inside the guard to prevent a loop. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isReactHookCall(node, "useEffect", context.scopes)) return;

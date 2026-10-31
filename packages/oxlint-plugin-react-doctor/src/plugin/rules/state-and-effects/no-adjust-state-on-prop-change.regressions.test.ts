@@ -3,10 +3,16 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 describe("no-adjust-state-on-prop-change — regressions", () => {
-  it("ships at warn severity, matching the derived-state family", () => {
+  it("ships at warn severity with guarded render adjustment advice", () => {
     expect(noAdjustStateOnPropChange.severity).toBe("warn");
     expect(noAdjustStateOnPropChange.recommendation).toContain(
-      "Avoid tracking the previous prop in more state",
+      "If those options do not fit and state depends on previous renders",
+    );
+    expect(noAdjustStateOnPropChange.recommendation).toContain(
+      "adjust this component's state during render",
+    );
+    expect(noAdjustStateOnPropChange.recommendation).toContain(
+      "update it inside the guard to prevent a loop",
     );
   });
 

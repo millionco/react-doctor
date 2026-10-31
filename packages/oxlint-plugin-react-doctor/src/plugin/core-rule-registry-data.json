@@ -8398,9 +8398,9 @@
     "originallyExternal": false,
     "rule": {
       "id": "prefer-module-scope-pure-function",
-      "title": "Pure function rebuilt every render",
+      "title": "Function with no component-local captures",
       "severity": "warn",
-      "recommendation": "Move the function above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted work.",
+      "recommendation": "Consider moving the function above the component if your build creates it on each render and moving it preserves its framework behavior.",
       "category": "Maintainability",
       "framework": "global",
       "disabledWhen": ["react-compiler"],

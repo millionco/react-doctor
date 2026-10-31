@@ -1,3 +1,4 @@
+import { isLiteralJsonTextKey } from "../../utils/is-literal-json-text-key.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -1972,7 +1973,12 @@ export const noArrayIndexAsKey = defineRule({
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
-            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context) ||
+            isLiteralJsonTextKey({
+              keyAttribute: node,
+              iteratorCall: indexUse.binding.iteratorCall,
+              scopes: context.scopes,
+            }))
         )
           return;
         const indexName = indexUse.identifier.name;

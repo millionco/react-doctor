@@ -10199,9 +10199,9 @@
     "originallyExternal": true,
     "rule": {
       "id": "react-in-jsx-scope",
-      "title": "React not in scope for JSX",
+      "title": "JSX may need a React binding",
       "severity": "warn",
-      "recommendation": "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
+      "recommendation": "Import or provide `React` only when the selected JSX transform requires that binding. Disable this rule for automatic runtimes, build-injected React factories, or custom factories that do not use `React`.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

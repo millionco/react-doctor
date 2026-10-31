@@ -213,6 +213,17 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   });
 };
 
+const collectFrozenLiteralDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  for (const entry of flattenImportEntries(staticImports)) {
+    if (!entry.source.startsWith(".")) continue;
+    const providerPath = resolveRelativeImportPath(absoluteFilePath, entry.source);
+    if (providerPath) parseSourceFile(providerPath);
+  }
+};
+
 const collectImportedValueDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   staticImports,
@@ -603,6 +614,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["no-spread-accumulator-in-reduce", collectFrozenLiteralDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],

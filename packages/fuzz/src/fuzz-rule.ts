@@ -17,6 +17,7 @@ import { buildEquivalentFuzzVariants } from "./equivalent-fuzz-variants.js";
 import { buildVerdictPreservingVariants } from "./verdict-preserving-variants.js";
 import { generateStructuredFuzzProgram } from "./generate-fuzz-program.js";
 import type { FuzzCorpusEntry } from "./load-fuzz-corpus.js";
+import { getFuzzCorpusFilename } from "./utils/get-fuzz-corpus-filename.js";
 import { crossoverFuzzPrograms, mutateFuzzProgram } from "./mutate-fuzz-program.js";
 import { createSeededRandom } from "./seeded-random.js";
 import { FUZZ_FILENAME_POOL } from "./snippet-pools.js";
@@ -223,7 +224,7 @@ export const fuzzRuleWithStats = (
     const priorityRandom = createSeededRandom(baseSeed);
     const priorityOutcome = checkProgram(
       priorityCorpusEntry.code,
-      priorityCorpusEntry.sourcePath ?? priorityCorpusEntry.relativePath,
+      getFuzzCorpusFilename(priorityCorpusEntry, isScanRule),
       baseSeed,
       0,
       "priority corpus seed",
@@ -237,7 +238,7 @@ export const fuzzRuleWithStats = (
         const descendantCode = mutateFuzzProgram(priorityCorpusEntry.code, priorityRandom, 1);
         checkProgram(
           descendantCode,
-          priorityCorpusEntry.sourcePath ?? priorityCorpusEntry.relativePath,
+          getFuzzCorpusFilename(priorityCorpusEntry, isScanRule),
           baseSeed,
           0,
           `priority corpus descendant ${descendant}`,
@@ -250,7 +251,7 @@ export const fuzzRuleWithStats = (
     if (!corpusEntry.verdict || !corpusEntry.ruleIds?.includes(ruleId)) continue;
     const corpusOutcome = checkProgram(
       corpusEntry.code,
-      corpusEntry.sourcePath ?? corpusEntry.relativePath,
+      getFuzzCorpusFilename(corpusEntry, isScanRule),
       baseSeed,
       0,
       "declared corpus verdict",
@@ -282,7 +283,10 @@ export const fuzzRuleWithStats = (
       ? undefined
       : generated.sections;
     if (usesLivenessTarget) {
-      filename = livenessTarget.relativePath;
+      filename =
+        !isScanRule && livenessTarget.fixtureFilename !== undefined
+          ? getFuzzCorpusFilename(livenessTarget, false)
+          : livenessTarget.relativePath;
     } else if (corpus.length > 0 && random.chance(CORPUS_PROGRAM_PROBABILITY)) {
       const corpusEntry = random.pick(corpus);
       if (random.chance(0.4)) {
@@ -292,7 +296,7 @@ export const fuzzRuleWithStats = (
         // the file as it really lives; synthetic/crossover programs keep
         // the rotated pool filename for path-gating coverage.
         code = corpusEntry.code;
-        filename = corpusEntry.sourcePath ?? corpusEntry.relativePath;
+        filename = getFuzzCorpusFilename(corpusEntry, isScanRule);
       }
       sections = undefined;
     }

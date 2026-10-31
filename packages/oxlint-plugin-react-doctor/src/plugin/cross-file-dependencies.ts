@@ -1,3 +1,8 @@
+import type { RuleContext } from "./utils/rule-context.js";
+import { analyzeControlFlow } from "./semantic/control-flow-graph.js";
+import { getImportedRequestActionEvidence } from "./utils/get-imported-request-action-evidence.js";
+import { isRejectableOidcUserManagerCall } from "./utils/is-rejectable-oidc-user-manager-call.js";
+import { isProvenRcUtilControlledStateCall } from "./utils/is-proven-rc-util-controlled-state-call.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -210,6 +215,20 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);
+  });
+};
+
+const collectImportedControlledStateDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression")) {
+      isProvenRcUtilControlledStateCall(node, scopes, absoluteFilePath);
+    }
   });
 };
 
@@ -528,6 +547,25 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+const collectTailwindMergerDependencies: CrossFileDependencyCollector = (input) => {
+  collectImportedValueDependencies(input);
+  collectNearestManifestDependencies(input);
+  const filenames = new Set([input.absoluteFilePath]);
+  for (const entry of flattenImportEntries(input.staticImports)) {
+    const resolved = resolveCrossFileValueExportWithFilePath(
+      input.absoluteFilePath,
+      entry.source,
+      entry.exportedName,
+    );
+    if (resolved) filenames.add(resolved.filePath);
+  }
+  for (const filename of filenames) {
+    readNearestPackageManifest(filename);
+    resolveModulePath(filename, "tailwind-merge");
+    resolveModulePath(filename, "clsx");
+  }
+};
+
 const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
   collectBrowserGuardDependencies(input);
@@ -573,6 +611,58 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectOidcUserManagerDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression")) {
+      isRejectableOidcUserManagerCall(node, { filename: absoluteFilePath, scopes });
+    }
+  });
+};
+
+const collectLabelControlDependencies: CrossFileDependencyCollector = (input) => {
+  for (const staticImport of input.staticImports) {
+    if (staticImport.moduleRequest.value.startsWith("."))
+      resolveModulePath(input.absoluteFilePath, staticImport.moduleRequest.value);
+  }
+  collectImportedJsxComponentDependencies({
+    absoluteFilePath: input.absoluteFilePath,
+    staticImports: input.staticImports,
+    program: input.getProgram(),
+  });
+};
+
+const collectImportedRequestActionDependencies: CrossFileDependencyCollector = (input) => {
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  const context: RuleContext = {
+    filename: input.absoluteFilePath,
+    sourceCode: { ast: program, getText: () => input.sourceText },
+    scopes,
+    get cfg() {
+      return analyzeControlFlow(program);
+    },
+    report: () => {},
+  };
+  walkAst(program, (node) => {
+    if (isFunctionLike(node) && node.async) getImportedRequestActionEvidence(node, context);
+  });
+};
+
+const collectConstructorPropCallbackDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  if (staticImports.some((entry) => entry.moduleRequest.value === "react"))
+    resolveModulePath(absoluteFilePath, "react");
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -584,11 +674,19 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
+    ["iframe-missing-sandbox", collectEffectValueHelperDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["no-promise-then-side-effect-in-effect-without-catch", collectOidcUserManagerDependencies],
+    ["no-ref-current-in-render", collectImportedHookDependencies],
+
+    ["jsx-numeric-and-leaked-render", collectImportedHookDependencies],
+    ["html-label-has-single-control", collectLabelControlDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["no-async-event-handler-without-reentry-guard", collectImportedRequestActionDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
+    ["no-deprecated-tailwind-class", collectTailwindMergerDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
@@ -603,7 +701,9 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["no-prop-callback-in-render", collectConstructorPropCallbackDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
+    ["no-impure-state-updater", collectImportedControlledStateDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],

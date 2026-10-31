@@ -115,7 +115,7 @@ const hasMergedTransitionAll = (
 };
 
 const TAILWIND_MESSAGE =
-  "Your users see janky animation because `transition-all` animates every property that changes, including expensive layout ones and instant ones like focus rings. Name the properties: `transition-colors`, `transition-opacity`, or `transition-transform`.";
+  "`transition-all` applies to every property that can transition, which can include layout properties and focus rings. Name the properties: `transition-colors`, `transition-opacity`, or `transition-transform`.";
 
 export const noTransitionAll = defineRule({
   id: "no-transition-all",

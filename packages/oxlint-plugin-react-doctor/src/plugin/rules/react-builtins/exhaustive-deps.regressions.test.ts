@@ -7,6 +7,87 @@ import { exhaustiveDeps } from "./exhaustive-deps.js";
 import { clearExhaustiveDepsSuppressionCache } from "./exhaustive-deps-suppression.js";
 
 describe("react-builtins/exhaustive-deps — regressions", () => {
+  it.each(["() => {}", "function () {}", "() => undefined"])(
+    "requires a callback prop despite its %s default",
+    (fallback) => {
+      const result = runRule(
+        exhaustiveDeps,
+        `
+        function Panel({ onChange = ${fallback} }) {
+          useEffect(() => onChange(), []);
+          return null;
+        }
+      `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+        "onChange",
+      );
+    },
+  );
+
+  it.each(["const { onChange = () => {} } = props;", "const [onChange = () => {}] = props;"])(
+    "requires a destructured callback with a fallback: %s",
+    (declaration) => {
+      const result = runRule(
+        exhaustiveDeps,
+        `function Panel(props) {
+          ${declaration}
+          useEffect(() => onChange(), []);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+        "onChange",
+      );
+    },
+  );
+
+  it("requires a defaulted callback parameter in a custom hook", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      const useNotify = (notify = () => {}) => {
+        useEffect(() => notify(), []);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+      "notify",
+    );
+  });
+
+  it("accepts a declared defaulted callback dependency", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      function Panel({ onChange = () => {} }) {
+        useEffect(() => onChange(), [onChange]);
+        return null;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves stable local functions with no reactive captures", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      function Panel() {
+        const notify = () => {};
+        useEffect(() => notify(), []);
+        return null;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("accepts a member dependency when the bare object read is only its null guard", () => {
     const result = runRule(
       exhaustiveDeps,

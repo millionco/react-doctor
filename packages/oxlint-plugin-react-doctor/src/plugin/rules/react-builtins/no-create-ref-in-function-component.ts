@@ -10,6 +10,8 @@ import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isCreateRefResultWriteOnly } from "./is-create-ref-result-write-only.js";
 import { isCreateRefPersistedInGuardedUseRef } from "./is-create-ref-persisted-in-guarded-use-ref.js";
 import { isProvenOneShotTestingLibraryComponent } from "./is-proven-one-shot-testing-library-component.js";
+import { findLocalHelperRenderOwner } from "./find-local-helper-render-owner.js";
+import { findInlineMapRenderFunction } from "./utils/find-inline-map-render-function.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -119,7 +121,20 @@ export const noCreateRefInFunctionComponent = defineRule({
         return;
       }
 
-      const enclosingFunction = findEnclosingRenderFunction(node, context.scopes);
+      const directOwner = findEnclosingRenderFunction(node, context.scopes);
+      const enclosingFunction =
+        findInlineMapRenderFunction({
+          allocation: node,
+          filename: context.filename,
+          scopes: context.scopes,
+        }) ??
+        (directOwner && componentOrHookDisplayNameForFunction(directOwner)
+          ? directOwner
+          : findLocalHelperRenderOwner(node, context, {
+              isExcludedInvocation: (call, renderOwner) =>
+                isReactUseStateInitialState(call, context.scopes) ||
+                isCreateRefPersistedInGuardedUseRef(call, renderOwner, context.scopes, context.cfg),
+            }));
       if (!enclosingFunction) return;
       const displayName = componentOrHookDisplayNameForFunction(enclosingFunction);
       if (!displayName) return;

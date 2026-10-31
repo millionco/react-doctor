@@ -2,21 +2,39 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isEarlyExitStatement } from "./is-early-exit-statement.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 import { unwrapNegativeGuardForm } from "./unwrap-negative-guard-form.js";
 
-const positiveFormForFalsyBranch = (test: EsTreeNode): EsTreeNode | null =>
-  unwrapNegativeGuardForm(test);
-
-const blockGuardIndexes = new WeakMap<
-  EsTreeNode,
-  {
-    earlyExitGuards: Array<{
-      index: number;
-      positiveTest: EsTreeNode;
-    }>;
-    statementIndexes: Map<EsTreeNode, number>;
+const positiveFormsForFalsyBranch = (test: EsTreeNode): EsTreeNode[] => {
+  const pendingTests = [test];
+  const positiveForms: EsTreeNode[] = [];
+  while (pendingTests.length > 0) {
+    const candidate = pendingTests.pop();
+    if (!candidate) continue;
+    const expression = stripParenExpression(candidate);
+    if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "||") {
+      pendingTests.push(expression.right, expression.left);
+      continue;
+    }
+    const positiveForm = unwrapNegativeGuardForm(expression);
+    if (positiveForm) positiveForms.push(positiveForm);
   }
->();
+  return positiveForms;
+};
+
+interface EarlyExitPresenceGuard {
+  index: number;
+  positiveTest: EsTreeNode;
+  exitStatement: EsTreeNode;
+  hasStructuralExit: boolean;
+}
+
+interface BlockPresenceGuardIndex {
+  earlyExitGuards: EarlyExitPresenceGuard[];
+  statementIndexes: Map<EsTreeNode, number>;
+}
+
+const blockGuardIndexes = new WeakMap<EsTreeNode, BlockPresenceGuardIndex>();
 
 const indexBlockGuards = (block: EsTreeNode) => {
   const existing = blockGuardIndexes.get(block);
@@ -26,17 +44,27 @@ const indexBlockGuards = (block: EsTreeNode) => {
       ? block.body
       : [];
   const statementIndexes = new Map<EsTreeNode, number>();
-  const earlyExitGuards: Array<{ index: number; positiveTest: EsTreeNode }> = [];
+  const earlyExitGuards: EarlyExitPresenceGuard[] = [];
   body.forEach((statement, index) => {
     const statementNode = statement as EsTreeNode;
     statementIndexes.set(statementNode, index);
     if (!isNodeOfType(statementNode, "IfStatement")) return;
-    if (isEarlyExitStatement(statementNode.consequent)) {
-      const positiveTest = positiveFormForFalsyBranch(statementNode.test as EsTreeNode);
-      if (positiveTest) earlyExitGuards.push({ index, positiveTest });
+    const consequentHasStructuralExit = isEarlyExitStatement(statementNode.consequent);
+    for (const positiveTest of positiveFormsForFalsyBranch(statementNode.test as EsTreeNode)) {
+      earlyExitGuards.push({
+        index,
+        positiveTest,
+        exitStatement: statementNode.consequent,
+        hasStructuralExit: consequentHasStructuralExit,
+      });
     }
-    if (statementNode.alternate && isEarlyExitStatement(statementNode.alternate)) {
-      earlyExitGuards.push({ index, positiveTest: statementNode.test as EsTreeNode });
+    if (statementNode.alternate) {
+      earlyExitGuards.push({
+        index,
+        positiveTest: statementNode.test as EsTreeNode,
+        exitStatement: statementNode.alternate,
+        hasStructuralExit: isEarlyExitStatement(statementNode.alternate),
+      });
     }
   });
   const indexed = { earlyExitGuards, statementIndexes };
@@ -48,6 +76,7 @@ export const isPresenceProvenBeforeNode = (
   node: EsTreeNode,
   testProvesPresence: (test: EsTreeNode) => boolean,
   nodeInvalidatesPresence?: (node: EsTreeNode) => boolean,
+  additionalEarlyExit?: (statement: EsTreeNode) => boolean,
 ): boolean => {
   let child = node;
   let ancestor = node.parent ?? null;
@@ -62,8 +91,10 @@ export const isPresenceProvenBeforeNode = (
       if (ancestor.operator === "&&" && testProvesPresence(ancestor.left as EsTreeNode)) {
         return !hasEnclosingInvalidation();
       }
-      const positiveForm = positiveFormForFalsyBranch(ancestor.left as EsTreeNode);
-      if (ancestor.operator === "||" && positiveForm && testProvesPresence(positiveForm)) {
+      if (
+        ancestor.operator === "||" &&
+        positiveFormsForFalsyBranch(ancestor.left as EsTreeNode).some(testProvesPresence)
+      ) {
         return !hasEnclosingInvalidation();
       }
     }
@@ -72,8 +103,7 @@ export const isPresenceProvenBeforeNode = (
         return !hasEnclosingInvalidation();
       }
       if (ancestor.alternate === child) {
-        const positiveForm = positiveFormForFalsyBranch(ancestor.test as EsTreeNode);
-        if (positiveForm && testProvesPresence(positiveForm)) {
+        if (positiveFormsForFalsyBranch(ancestor.test as EsTreeNode).some(testProvesPresence)) {
           return !hasEnclosingInvalidation();
         }
       }
@@ -91,6 +121,7 @@ export const isPresenceProvenBeforeNode = (
       const childIndex = indexed.statementIndexes.get(child) ?? -1;
       for (const guard of indexed.earlyExitGuards) {
         if (guard.index >= childIndex) break;
+        if (!guard.hasStructuralExit && !additionalEarlyExit?.(guard.exitStatement)) continue;
         const hasInvalidatingStatement = nodeInvalidatesPresence
           ? ancestor.body
               .slice(guard.index + 1, childIndex)

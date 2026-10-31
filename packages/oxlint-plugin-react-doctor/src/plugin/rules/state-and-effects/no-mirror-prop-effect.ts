@@ -1,17 +1,23 @@
+import { isClosedRenamedMirror } from "./utils/is-closed-renamed-mirror.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getBodyArrayPropMirror } from "./utils/get-body-array-prop-mirror.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { hasClosedReactHookProvider } from "../../utils/has-closed-react-hook-provider.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
 // local state with a useEffect that re-syncs it. The combined shape
@@ -25,8 +31,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 //
 // Both `noDerivedStateEffect` and `noDerivedUseState` independently
 // nudge at parts of this. This rule produces a single, more
-// actionable diagnostic that names the prop and recommends deleting
-// both the useState and the effect.
+// actionable diagnostic that names the prop and accounts for local edits
+// when recommending how to remove the synchronization effect.
 //
 // Detector pre-conditions:
 //   (1) `[X, setX] = useState(<propExpr>)` where <propExpr> is a
@@ -53,6 +59,10 @@ interface MirrorBinding {
   setterName: string;
   initializer: EsTreeNode;
   propRootName: string;
+  stateCall: EsTreeNodeOfType<"CallExpression">;
+  setterIdentifier: EsTreeNodeOfType<"Identifier">;
+  isConstDeclaration: boolean;
+  bodyEffectCall?: EsTreeNode;
 }
 
 // Docs-validation r2 FP (EditorialCheckCard):
@@ -68,7 +78,15 @@ interface MirrorBinding {
 const hasOnlyMirrorDeps = (
   depIdentifierNames: ReadonlySet<string>,
   binding: MirrorBinding,
+  memberDependencies: ReadonlyArray<EsTreeNode>,
 ): boolean => {
+  if (
+    memberDependencies.some(
+      (dependency) => !areExpressionsStructurallyEqual(dependency, binding.initializer),
+    )
+  ) {
+    return false;
+  }
   for (const depName of depIdentifierNames) {
     if (depName !== binding.propRootName && depName !== binding.setterName) return false;
   }
@@ -81,7 +99,7 @@ export const noMirrorPropEffect = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Delete both the `useState` and the `useEffect` and read the prop directly while rendering. Copying a prop into state shows the old value on the first render before the effect catches up.",
+    "For a pure mirror, read the prop directly without local state or an effect. If this state also has local updates, preserve them and choose an explicit reset strategy, such as a component key when the record changes.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -100,8 +118,7 @@ export const noMirrorPropEffect = defineRule({
           const setterElement = elements[1];
           if (
             !isNodeOfType(valueElement, "Identifier") ||
-            !isNodeOfType(setterElement, "Identifier") ||
-            !isSetterIdentifier(setterElement.name)
+            !isNodeOfType(setterElement, "Identifier")
           ) {
             continue;
           }
@@ -109,13 +126,21 @@ export const noMirrorPropEffect = defineRule({
           if (!isReactHookCall(declarator.init, "useState", context.scopes)) continue;
           const initializer = declarator.init.arguments?.[0];
           if (!initializer) continue;
-          const propRootName = getPropRootName(initializer, propNames);
+          const legacyPropRootName = getPropRootName(initializer, propNames);
+          const bodyPropMirror = legacyPropRootName
+            ? null
+            : getBodyArrayPropMirror({ initializer, componentBody, scopes: context.scopes });
+          const propRootName = legacyPropRootName ?? bodyPropMirror?.propRootName;
           if (!propRootName) continue;
           mirrorBindings.push({
             valueName: valueElement.name,
             setterName: setterElement.name,
             initializer,
             propRootName,
+            stateCall: declarator.init,
+            setterIdentifier: setterElement,
+            isConstDeclaration: statement.kind === "const",
+            bodyEffectCall: bodyPropMirror?.effectCall,
           });
         }
       }
@@ -137,10 +162,15 @@ export const noMirrorPropEffect = defineRule({
         const depsNode = effectCall.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression")) continue;
         const depIdentifierNames = new Set<string>();
+        const memberDependencies: EsTreeNode[] = [];
+        let hasUnsupportedDependencies = false;
         for (const element of depsNode.elements ?? []) {
           if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
+          const dependency = element ? stripParenExpression(element) : null;
+          if (isNodeOfType(dependency, "MemberExpression")) memberDependencies.push(dependency);
+          else if (!isNodeOfType(element, "Identifier")) hasUnsupportedDependencies = true;
         }
-        if (depIdentifierNames.size === 0) continue;
+        if (depIdentifierNames.size === 0 && memberDependencies.length === 0) continue;
 
         const callback = getEffectCallback(effectCall);
         if (!callback) continue;
@@ -154,16 +184,55 @@ export const noMirrorPropEffect = defineRule({
         const expression = unwrapDiscardedExpression(expressionNode);
         if (!isNodeOfType(expression, "CallExpression")) continue;
         if (!isNodeOfType(expression.callee, "Identifier")) continue;
-        if (!isSetterIdentifier(expression.callee.name)) continue;
         if (!expression.arguments?.length) continue;
         const setterArgument = expression.arguments[0];
 
         const calleeName = expression.callee.name;
         const matchedBinding = mirrorBindings.find(
           (binding) =>
+            (!binding.bodyEffectCall || binding.bodyEffectCall === effectCall) &&
             binding.setterName === calleeName &&
-            depIdentifierNames.has(binding.propRootName) &&
-            hasOnlyMirrorDeps(depIdentifierNames, binding) &&
+            (isSetterIdentifier(calleeName) ||
+              isClosedRenamedMirror({
+                initializer: binding.initializer,
+                setterIdentifier: binding.setterIdentifier,
+                stateCall: binding.stateCall,
+                setterCall: expression,
+                effectCall,
+                callback,
+                dependencies: depsNode,
+                isConstDeclaration: binding.isConstDeclaration,
+                scopes: context.scopes,
+              })) &&
+            (depIdentifierNames.has(binding.propRootName) ||
+              (!hasUnsupportedDependencies &&
+                binding.isConstDeclaration &&
+                isNodeOfType(binding.initializer, "MemberExpression") &&
+                !binding.initializer.computed &&
+                !binding.initializer.optional &&
+                isNodeOfType(binding.initializer.object, "Identifier") &&
+                isNodeOfType(binding.initializer.property, "Identifier") &&
+                (isNodeOfType(callback, "ArrowFunctionExpression") ||
+                  (isNodeOfType(callback, "FunctionExpression") &&
+                    !callback.id &&
+                    !callback.generator)) &&
+                !callback.async &&
+                callback.params.length === 0 &&
+                [
+                  context.scopes.symbolFor(binding.setterIdentifier),
+                  context.scopes.symbolFor(binding.initializer.object),
+                ].every((symbol) =>
+                  symbol?.references.every(
+                    (reference) =>
+                      reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+                  ),
+                ) &&
+                memberDependencies.some((dependency) =>
+                  areExpressionsStructurallyEqual(dependency, binding.initializer),
+                ) &&
+                hasClosedReactHookProvider(binding.stateCall, "useState", context.scopes) &&
+                hasClosedReactHookProvider(effectCall, EFFECT_HOOK_NAMES, context.scopes))) &&
+            hasOnlyMirrorDeps(depIdentifierNames, binding, memberDependencies) &&
             areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );
         if (!matchedBinding) continue;

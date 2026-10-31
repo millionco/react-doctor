@@ -1,3 +1,7 @@
+import { getNativeIntervalEffectCallback } from "./utils/get-native-interval-effect-callback.js";
+import { getNativeTransitionActionCallback } from "./utils/get-native-transition-action-callback.js";
+import { STATE_SETTER_INDEX } from "../../constants/native-state-setter.js";
+import { createProvenEffectCallResolver } from "../../utils/create-proven-effect-call-resolver.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -6,6 +10,7 @@ import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-
 import { getPromiseChainCallForCallback } from "../../utils/collect-effect-invoked-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { hasUnguardedOwnedAbortContinuation } from "./utils/has-unguarded-owned-abort-continuation.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -30,6 +35,10 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+
+interface EffectFunctionResolver {
+  (call: EsTreeNodeOfType<"CallExpression">, context: RuleContext): EsTreeNode[];
+}
 
 const MESSAGE =
   "This setter runs after `await`, so overlapping re-runs of the effect can resolve out of order and write stale state; gate it behind a cancellation/ignore flag or return a cleanup that cancels the work.";
@@ -130,7 +139,12 @@ const hasOnlyStableIdentityDependencies = ({
     const useCallbackCall = getReactUseCallbackCall(dependencyElement, context.scopes);
     const useCallbackDependencies = useCallbackCall?.arguments?.[1];
     return (
-      isReactHookResultReference(dependencyElement, STATE_DISPATCHER_HOOKS, 1, context.scopes) ||
+      isReactHookResultReference(
+        dependencyElement,
+        STATE_DISPATCHER_HOOKS,
+        STATE_SETTER_INDEX,
+        context.scopes,
+      ) ||
       isReactHookResultReference(dependencyElement, REF_HOOKS, null, context.scopes) ||
       isModuleScopeConstBinding(dependencyArray, dependencyElement.name) ||
       (isNodeOfType(useCallbackDependencies, "ArrayExpression") &&
@@ -146,7 +160,7 @@ const isStateDispatcherCall = (
   return isReactHookResultReference(
     callExpression.callee,
     STATE_DISPATCHER_HOOKS,
-    1,
+    STATE_SETTER_INDEX,
     context.scopes,
   );
 };
@@ -253,12 +267,15 @@ const collectDirectlyInvokedFunctions = (
       functions.add(callback);
     }
   }
+  const transitionCallback = getNativeTransitionActionCallback(call, context);
+  if (transitionCallback) functions.add(transitionCallback);
   return [...functions];
 };
 
 const collectTransitivelyInvokedFunctions = (
   rootFunction: EsTreeNode,
   context: RuleContext,
+  resolveInvokedFunctions: EffectFunctionResolver = collectDirectlyInvokedFunctions,
 ): Set<EsTreeNode> => {
   const invokedFunctions = new Set([rootFunction]);
   const pendingFunctions = [rootFunction];
@@ -267,7 +284,7 @@ const collectTransitivelyInvokedFunctions = (
     if (!currentFunction) break;
     walkOwnFunctionScope(currentFunction, (candidate: EsTreeNode) => {
       if (!isNodeOfType(candidate, "CallExpression")) return;
-      for (const invokedFunction of collectDirectlyInvokedFunctions(candidate, context)) {
+      for (const invokedFunction of resolveInvokedFunctions(candidate, context)) {
         if (invokedFunctions.has(invokedFunction)) continue;
         invokedFunctions.add(invokedFunction);
         pendingFunctions.push(invokedFunction);
@@ -282,12 +299,15 @@ const doesFunctionTransitivelyInvokeTarget = (
   targetFunction: EsTreeNode,
   context: RuleContext,
   memoizedResults: Map<EsTreeNode, boolean>,
+  resolveInvokedFunctions: EffectFunctionResolver = collectDirectlyInvokedFunctions,
 ): boolean => {
   const memoizedResult = memoizedResults.get(rootFunction);
   if (memoizedResult !== undefined) return memoizedResult;
-  const doesInvokeTarget = collectTransitivelyInvokedFunctions(rootFunction, context).has(
-    targetFunction,
-  );
+  const doesInvokeTarget = collectTransitivelyInvokedFunctions(
+    rootFunction,
+    context,
+    resolveInvokedFunctions,
+  ).has(targetFunction);
   memoizedResults.set(rootFunction, doesInvokeTarget);
   return doesInvokeTarget;
 };
@@ -297,6 +317,7 @@ const doFunctionsHaveUnguardedTargetInvocationPath = (
   targetFunction: EsTreeNode,
   noCleanupReturn: EsTreeNode,
   context: RuleContext,
+  resolveInvokedFunctions: EffectFunctionResolver = collectDirectlyInvokedFunctions,
 ): boolean => {
   const visitedFunctions = new Set<EsTreeNode>();
   const pendingFunctions = [...rootFunctions];
@@ -313,7 +334,7 @@ const doFunctionsHaveUnguardedTargetInvocationPath = (
       ) {
         return;
       }
-      pendingFunctions.push(...collectDirectlyInvokedFunctions(candidate, context));
+      pendingFunctions.push(...resolveInvokedFunctions(candidate, context));
     });
   }
   return false;
@@ -328,18 +349,20 @@ const collectEffectInvocationAnchors = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
+  resolveInvokedFunctions: EffectFunctionResolver = collectDirectlyInvokedFunctions,
 ): EffectInvocationAnchor[] => {
   const invocationAnchors: EffectInvocationAnchor[] = [];
   const targetReachability = new Map<EsTreeNode, boolean>();
   walkOwnFunctionScope(effectCallback, (candidate: EsTreeNode) => {
     if (!isNodeOfType(candidate, "CallExpression")) return;
-    const targetReachableFunctions = collectDirectlyInvokedFunctions(candidate, context).filter(
+    const targetReachableFunctions = resolveInvokedFunctions(candidate, context).filter(
       (directlyInvokedFunction) =>
         doesFunctionTransitivelyInvokeTarget(
           directlyInvokedFunction,
           invokedFunction,
           context,
           targetReachability,
+          resolveInvokedFunctions,
         ),
     );
     if (targetReachableFunctions.length === 0) return;
@@ -352,6 +375,7 @@ const collectCleanupFunctionsAfterInvocations = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
+  resolveInvokedFunctions: EffectFunctionResolver = collectDirectlyInvokedFunctions,
 ): EsTreeNode[] => {
   if (!isFunctionLike(effectCallback)) return [];
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
@@ -371,6 +395,7 @@ const collectCleanupFunctionsAfterInvocations = (
     effectCallback,
     invokedFunction,
     context,
+    resolveInvokedFunctions,
   );
   const reachableCleanupReturns = new Set<(typeof cleanupReturns)[number]>();
   for (const { anchor, targetReachableFunctions } of invocationAnchors) {
@@ -378,8 +403,9 @@ const collectCleanupFunctionsAfterInvocations = (
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
     if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const returnsAfterInvocationSet = new Set(returnsAfterInvocation);
     const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      returnsAfterInvocation.includes(returnStatement),
+      returnsAfterInvocationSet.has(returnStatement),
     );
     const cleanupReturnStatements = new Set(
       cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
@@ -397,6 +423,7 @@ const collectCleanupFunctionsAfterInvocations = (
           invokedFunction,
           returnStatement,
           context,
+          resolveInvokedFunctions,
         );
       },
     );
@@ -828,6 +855,7 @@ const collectPostSuspensionWrittenReferenceKeys = (
   asyncFunction: EsTreeNode,
   firstSuspensionStart: number,
   context: RuleContext,
+  resolveInvokedFunctions?: EffectFunctionResolver,
 ): PostSuspensionWrites => {
   const mutatedObjectKeys = new Set<string>();
   const writtenReferenceKeys = new Set<string>();
@@ -909,6 +937,7 @@ const collectPostSuspensionWrittenReferenceKeys = (
         }
       }
       const invokedFunctions = [
+        ...(resolveInvokedFunctions?.(child, context) ?? []),
         resolveExactLocalFunction(child.callee, context.scopes),
         ...child.arguments.map((argument) =>
           isNodeOfType(argument, "SpreadElement")
@@ -1309,20 +1338,26 @@ const hasUnsafePostAwaitSetter = (
   asyncFunction: EsTreeNode,
   effectCallback: EsTreeNode,
   context: RuleContext,
+  resolveInvokedFunctions?: EffectFunctionResolver,
+  registrationCleanup?: EsTreeNode[],
 ): boolean => {
   if (!isFunctionLike(asyncFunction) || !asyncFunction.async) return false;
   const firstSuspensionStart = findFirstSuspensionStart(asyncFunction);
   if (firstSuspensionStart === null) return false;
-  const cleanupFunctions = collectCleanupFunctionsAfterInvocations(
-    effectCallback,
-    asyncFunction,
-    context,
-  );
+  const cleanupFunctions =
+    registrationCleanup ??
+    collectCleanupFunctionsAfterInvocations(
+      effectCallback,
+      asyncFunction,
+      context,
+      resolveInvokedFunctions,
+    );
   const cleanupWrites = collectCleanupGuardWrites(cleanupFunctions, context);
   const postSuspensionWrites = collectPostSuspensionWrittenReferenceKeys(
     asyncFunction,
     firstSuspensionStart,
     context,
+    resolveInvokedFunctions,
   );
   for (const targetKey of cleanupWrites.keys()) {
     if (doesPostSuspensionWriteReference(targetKey, postSuspensionWrites)) {
@@ -1342,6 +1377,17 @@ const hasUnsafePostAwaitSetter = (
     if (doesPostSuspensionWriteReference(snapshot.counterKey, postSuspensionWrites)) {
       sequenceSnapshots.delete(snapshotKey);
     }
+  }
+  if (
+    hasUnguardedOwnedAbortContinuation({
+      asyncFunction,
+      effectCallback,
+      cleanupFunctions,
+      context,
+      isStateDispatcherCall,
+    })
+  ) {
+    return true;
   }
   const body = asyncFunction.body;
   const statements = isNodeOfType(body, "BlockStatement")
@@ -1388,7 +1434,8 @@ export const noSetStateAfterAwaitInEffect = defineRule({
       if (dependencyArray && hasOnlyStableIdentityDependencies({ dependencyArray, context })) {
         return;
       }
-      for (const asyncFunction of collectTransitivelyInvokedFunctions(callback, context)) {
+      const invokedFunctions = collectTransitivelyInvokedFunctions(callback, context);
+      for (const asyncFunction of invokedFunctions) {
         if (
           asyncFunction !== callback &&
           hasUnsafePostAwaitSetter(asyncFunction, callback, context)
@@ -1396,6 +1443,32 @@ export const noSetStateAfterAwaitInEffect = defineRule({
           context.report({ node, message: MESSAGE });
           return;
         }
+      }
+      const interval = getNativeIntervalEffectCallback(node, callback, context);
+      if (
+        interval &&
+        hasUnsafePostAwaitSetter(interval.callback, callback, context, undefined, [
+          interval.cleanup,
+        ])
+      ) {
+        context.report({ node, message: MESSAGE });
+        return;
+      }
+      const resolver = createProvenEffectCallResolver(node, context);
+      if (!resolver) return;
+      for (const asyncFunction of collectTransitivelyInvokedFunctions(
+        callback,
+        context,
+        resolver.resolve,
+      )) {
+        if (
+          invokedFunctions.has(asyncFunction) ||
+          !resolver.hasProvenStateDispatchers(asyncFunction) ||
+          !hasUnsafePostAwaitSetter(asyncFunction, callback, context, resolver.resolve)
+        )
+          continue;
+        context.report({ node, message: MESSAGE });
+        return;
       }
     },
   }),

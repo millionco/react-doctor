@@ -1,3 +1,4 @@
+import { isRenderedAntdLoadingSetter } from "../../utils/is-rendered-antd-loading-setter.js";
 import { collectLoadingLifecycleResets } from "../../utils/collect-loading-lifecycle-resets.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
@@ -3141,7 +3142,11 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       if (!isNodeOfType(child, "CallExpression")) return;
       const helperSetter = getSetterBooleanValue(child, context);
       if (!helperSetter || helperSetter.value) return;
-      if (!LOADING_FLAG_SETTER_PATTERN.test(helperSetter.setterName)) return;
+      if (
+        !LOADING_FLAG_SETTER_PATTERN.test(helperSetter.setterName) &&
+        !isRenderedAntdLoadingSetter(child.callee, context)
+      )
+        return;
       const list = settersByKey.get(helperSetter.setterKey) ?? [];
       const protection = getExceptionalResetProtection(callNode, functionNode, context);
       list.push({
@@ -3170,7 +3175,11 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       registerHelperResets(node);
       return;
     }
-    if (!LOADING_FLAG_SETTER_PATTERN.test(setter.setterName)) return;
+    if (
+      !LOADING_FLAG_SETTER_PATTERN.test(setter.setterName) &&
+      !isRenderedAntdLoadingSetter(node.callee, context)
+    )
+      return;
     const start = getNodeStart(node);
     if (start === null) return;
     const list = settersByKey.get(setter.setterKey) ?? [];

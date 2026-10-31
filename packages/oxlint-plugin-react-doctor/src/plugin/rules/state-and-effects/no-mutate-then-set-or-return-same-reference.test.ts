@@ -1,8 +1,40 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noMutateThenSetOrReturnSameReference } from "./no-mutate-then-set-or-return-same-reference.js";
 
-const MEASUREMENT_SAMPLE_COUNT = 3;
+interface PairingStressFixture {
+  readonly source: string;
+  readonly pairingSiteBudget: number;
+}
+
+interface PairingWorkMeasurement {
+  readonly coexistenceCalls: number;
+  readonly reachabilityCalls: number;
+}
+
+const AMORTIZATION_PAIR_COUNTS = [800, 4_000];
+const RESULT_ROOT_CHECK_COUNT = 1;
+
+const coexistenceCounter = vi.hoisted(() => vi.fn());
+const reachabilityCounter = vi.hoisted(() => vi.fn());
+
+vi.mock("../../utils/nodes-can-co-execute.js", async (importOriginal) => {
+  const originalModule =
+    await importOriginal<typeof import("../../utils/nodes-can-co-execute.js")>();
+  return {
+    ...originalModule,
+    nodesCanCoExecute: coexistenceCounter.mockImplementation(originalModule.nodesCanCoExecute),
+  };
+});
+
+vi.mock("../../utils/can-node-reach-node.js", async (importOriginal) => {
+  const originalModule =
+    await importOriginal<typeof import("../../utils/can-node-reach-node.js")>();
+  return {
+    ...originalModule,
+    canNodeReachNode: reachabilityCounter.mockImplementation(originalModule.canNodeReachNode),
+  };
+});
 
 describe("no-mutate-then-set-or-return-same-reference", () => {
   it("flags setX(state.add(index)) on a state Set", () => {
@@ -561,7 +593,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
   });
 
   it("amortizes mutation and same-reference pairing by control-flow block", () => {
-    const buildSource = (pairCount: number): string => {
+    const buildSource = (pairCount: number): PairingStressFixture => {
       const mutations = "items.push(1);".repeat(pairCount);
       const conditions = Array.from(
         { length: pairCount },
@@ -579,21 +611,79 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         return `(${buildBalancedResultExpression(startIndex, middleIndex)}||${buildBalancedResultExpression(middleIndex, endIndex)})`;
       };
       const sameReferenceResults = buildBalancedResultExpression(0, resultExpressions.length);
-      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){return ${sameReferenceResults}}return [...items]})}`;
+      const mutationRegions = [`if(flag){${mutations}}`];
+      const returnSites = [`if(!flag){return ${sameReferenceResults}}`, "return [...items]"];
+      return {
+        source: `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{${mutationRegions.join("")}${returnSites.join("")}})}`,
+        pairingSiteBudget: mutationRegions.length * returnSites.length,
+      };
     };
-    runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
-    const measureFastestDuration = (pairCount: number): number => {
-      let fastestDuration = Number.POSITIVE_INFINITY;
-      for (let repetition = 0; repetition < MEASUREMENT_SAMPLE_COUNT; repetition += 1) {
-        const startedAt = performance.now();
-        const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(pairCount));
-        fastestDuration = Math.min(fastestDuration, performance.now() - startedAt);
-        expect(result.diagnostics).toHaveLength(0);
-      }
-      return fastestDuration;
+    const measurePairingWork = (
+      source: string,
+      expectedDiagnosticCount: number,
+    ): PairingWorkMeasurement => {
+      coexistenceCounter.mockClear();
+      reachabilityCounter.mockClear();
+      const result = runRule(noMutateThenSetOrReturnSameReference, source);
+      expect(result.parseErrors).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(expectedDiagnosticCount);
+      return {
+        coexistenceCalls: coexistenceCounter.mock.calls.length,
+        reachabilityCalls: reachabilityCounter.mock.calls.length,
+      };
     };
-    const smallDuration = measureFastestDuration(800);
-    const largeDuration = measureFastestDuration(4_000);
-    expect(largeDuration).toBeLessThan(smallDuration * 18);
+    const positive = measurePairingWork(
+      "const C=()=>{const[,setItems]=useState<number[]>([]);setItems(items=>{items.push(1);return items})}",
+      1,
+    );
+    expect(positive.coexistenceCalls).toBeGreaterThan(0);
+    expect(positive.reachabilityCalls).toBeGreaterThan(0);
+
+    const smallFixture = buildSource(800);
+    const small = measurePairingWork(smallFixture.source, 0);
+    expect(small.coexistenceCalls).toBeGreaterThan(0);
+    expect(small.coexistenceCalls).toBeLessThanOrEqual(smallFixture.pairingSiteBudget);
+    expect(small.reachabilityCalls).toBeGreaterThan(0);
+    expect(small.reachabilityCalls).toBeLessThanOrEqual(smallFixture.pairingSiteBudget);
+
+    const largeFixture = buildSource(4_000);
+    const large = measurePairingWork(largeFixture.source, 0);
+    expect(large.coexistenceCalls).toBeGreaterThan(0);
+    expect(large.coexistenceCalls).toBeLessThanOrEqual(largeFixture.pairingSiteBudget);
+    expect(large.reachabilityCalls).toBeGreaterThan(0);
+    expect(large.reachabilityCalls).toBeLessThanOrEqual(largeFixture.pairingSiteBudget);
+    expect(large.coexistenceCalls).toBe(small.coexistenceCalls);
+    expect(large.reachabilityCalls).toBe(small.reachabilityCalls);
   });
+
+  it.each(AMORTIZATION_PAIR_COUNTS)(
+    "bounds real pairing checks by block for %i results",
+    (pairCount) => {
+      const buildSource = (pairCount: number): string => {
+        const mutations = "items.push(1);".repeat(pairCount);
+        const conditions = Array.from(
+          { length: pairCount },
+          (_, conditionIndex) => `condition${conditionIndex}`,
+        );
+        const resultExpressions = [
+          ...conditions.map((condition) => `(${condition}&&items)`),
+          "[...items]",
+        ];
+        const buildBalancedResultExpression = (startIndex: number, endIndex: number): string => {
+          if (endIndex - startIndex === 1) {
+            return resultExpressions[startIndex] ?? "[...items]";
+          }
+          const middleIndex = startIndex + Math.floor((endIndex - startIndex) / 2);
+          return `(${buildBalancedResultExpression(startIndex, middleIndex)}||${buildBalancedResultExpression(middleIndex, endIndex)})`;
+        };
+        const sameReferenceResults = buildBalancedResultExpression(0, resultExpressions.length);
+        return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}return flag?[...items]:${sameReferenceResults}})}`;
+      };
+      coexistenceCounter.mockClear();
+      const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(pairCount));
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+      expect(coexistenceCounter).toHaveBeenCalledTimes(pairCount + RESULT_ROOT_CHECK_COUNT);
+    },
+  );
 });

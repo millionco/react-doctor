@@ -1,5 +1,6 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
+import { TIMER_CLEANUP_CALLEE_NAMES } from "../../constants/dom.js";
 import {
   MUTATING_ARRAY_METHODS,
   MUTATING_COLLECTION_METHODS,
@@ -16,6 +17,8 @@ import {
   STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK,
 } from "../../constants/react.js";
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
+import { callHasImportedCookieWrite } from "../../utils/call-has-imported-cookie-write.js";
+import { callHasImportedReturnedNativeScheduler } from "../../utils/call-has-imported-returned-native-scheduler.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { collectSynchronouslyInvokedLocalFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -28,6 +31,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getGlobalObjectUrlOperation } from "../../utils/get-global-object-url-operation.js";
 import { getFiniteStaticStringValues } from "../../utils/get-finite-static-string-values.js";
 import { getPropertyDescriptorValue } from "../../utils/get-property-descriptor-value.js";
 import { getRuntimeStaticDependencySource } from "../../utils/get-runtime-static-dependency-source.js";
@@ -44,6 +48,7 @@ import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-exp
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isUnmodifiedArrayFromResult } from "../../utils/is-unmodified-array-from-result.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { parseSourceFile } from "../../utils/parse-source-file.js";
@@ -1939,6 +1944,7 @@ const receiverIsKnownSynchronousCollection = (
 ): boolean => {
   const receiver = stripParenExpression(expression);
   if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (isUnmodifiedArrayFromResult(receiver, context.scopes)) return true;
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(receiver);
   if (!symbol) return false;
@@ -1970,12 +1976,30 @@ const callHasSideEffectName = (
   invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  if (isGlobalHistoryMutationCall(call, context)) {
+  if (
+    isGlobalHistoryMutationCall(call, context) ||
+    getGlobalObjectUrlOperation(call, context.scopes) !== null
+  ) {
     return true;
   }
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
+  if (TIMER_CLEANUP_CALLEE_NAMES.has(callName)) {
+    if (isNodeOfType(callee, "Identifier") && context.scopes.isGlobalReference(callee)) {
+      return true;
+    }
+    if (isNodeOfType(callee, "MemberExpression")) {
+      const receiver = stripParenExpression(callee.object);
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        GLOBAL_OBJECT_RECEIVER_NAMES.has(receiver.name) &&
+        context.scopes.isGlobalReference(receiver)
+      ) {
+        return true;
+      }
+    }
+  }
   if (
     callUsesProvenImmutableLibraryValueMethod(
       call,
@@ -2321,7 +2345,11 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
               }
               return;
             }
-            if (!callHasSideEffectName(child, updaterFunction, executedFunctions, node, context)) {
+            if (
+              !callHasSideEffectName(child, updaterFunction, executedFunctions, node, context) &&
+              !callHasImportedCookieWrite(child, context) &&
+              !callHasImportedReturnedNativeScheduler(child, context)
+            ) {
               return;
             }
             if (reportedSideEffectNodes.has(child)) return;

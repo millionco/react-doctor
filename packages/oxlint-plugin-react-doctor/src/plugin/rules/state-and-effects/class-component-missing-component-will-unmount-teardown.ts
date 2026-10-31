@@ -1,3 +1,4 @@
+import { findUndisposedFlickityCreation } from "./utils/find-undisposed-flickity-creation.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -1934,6 +1935,14 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
           context.report({ node: undisposedHazard.node, message: MESSAGE });
           return;
         }
+      }
+      const flickityCreation = findUndisposedFlickityCreation(node, context);
+      if (flickityCreation) {
+        context.report({
+          node: flickityCreation,
+          message:
+            "This class creates a Flickity instance that can remain registered after unmount. Add an owned destroy() disposal path; asynchronous setup also needs to avoid acquiring after unmount.",
+        });
       }
     },
   }),

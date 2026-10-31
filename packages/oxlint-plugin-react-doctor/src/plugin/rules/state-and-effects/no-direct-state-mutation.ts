@@ -9,6 +9,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { isLocalLiteralStateInitializer } from "./utils/is-local-literal-state-initializer.js";
+import { collectShallowCopyStateRecordWrites } from "./utils/collect-shallow-copy-state-record-writes.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -106,7 +108,7 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
 //     render data by convention
 //   - lazy initializers whose top-level return produces any of the above — a
 //     return nested inside another function belongs to that inner scope
-// Everything else (`new TrackQueue()`, `createEditor(el)`, another binding)
+// Everything else (`new TrackQueue()`, `createEditor(el)`, an unresolved binding)
 // is treated as an opaque instance whose fields and methods are its
 // imperative API, not render state. That exemption also skips plain data
 // flowing in from helper calls (`useState(getDefaultFilters())`) — a
@@ -213,7 +215,7 @@ export const noDirectStateMutation = defineRule({
   title: "State mutated in place",
   severity: "warn",
   recommendation:
-    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. React only redraws when the value is new, so changing it in place does nothing.",
+    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. When changing a nested record, copy that record and every containing object or array. Passing the same state value back can make React skip that update.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -227,11 +229,16 @@ export const noDirectStateMutation = defineRule({
       // boundary between plain data and opaque third-party instances.
       const setterValueObservations = collectSetterValueObservations(bindings, scopes);
       const plainStateValueNames = new Set<string>();
+      const localLiteralStateValueNames = new Set<string>();
       for (const binding of bindings) {
         if (setterValueObservations.callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
         const initializerArgument = binding.declarator.init.arguments?.[0];
-        if (!initializerMarksPlainState(initializerArgument)) continue;
+        if (!initializerMarksPlainState(initializerArgument)) {
+          if (!isLocalLiteralStateInitializer(initializerArgument, componentBody, bindings, scopes))
+            continue;
+          localLiteralStateValueNames.add(binding.valueName);
+        }
         const isNullishInitializer =
           !initializerArgument ||
           isNullOrUndefinedExpression(stripParenExpression(initializerArgument));
@@ -247,6 +254,12 @@ export const noDirectStateMutation = defineRule({
 
       for (const binding of bindings) {
         if (!plainStateValueNames.has(binding.valueName)) continue;
+        for (const assignment of collectShallowCopyStateRecordWrites(binding, context)) {
+          context.report({
+            node: assignment,
+            message: `Copying the array still shares its records with "${binding.valueName}". Replace the changed record instead of changing it in place.`,
+          });
+        }
         if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
         const stateIdentifier = binding.declarator.id.elements?.[0];
         if (!isNodeOfType(stateIdentifier, "Identifier")) continue;
@@ -272,6 +285,7 @@ export const noDirectStateMutation = defineRule({
             });
             continue;
           }
+          if (localLiteralStateValueNames.has(binding.valueName)) continue;
           if (
             !isNodeOfType(parent, "CallExpression") ||
             parent.callee !== expressionRoot ||

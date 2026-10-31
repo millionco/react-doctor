@@ -1,3 +1,14 @@
+import { isRejectableOidcUserManagerCall } from "../../utils/is-rejectable-oidc-user-manager-call.js";
+import type { ImmediateIifeFetchProviderCheck } from "./utils/create-immediate-iife-fetch-provider-check.js";
+import { createImmediateIifeFetchProviderCheck } from "./utils/create-immediate-iife-fetch-provider-check.js";
+import { isImmediateIifeNativeGlobalReference } from "./utils/is-immediate-iife-native-global-reference.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
+import { SECOND_ARGUMENT_INDEX } from "./utils/effect/constants.js";
+import { someAst } from "../../utils/some-ast.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -354,6 +365,7 @@ const isProvablyRejectableExpression = (
     return isProvablyRejectableExpression(stripped.argument, remainingDepth, context);
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
+  if (isRejectableOidcUserManagerCall(stripped, context)) return true;
   const callee = stripParenExpression(stripped.callee);
   if (isNodeOfType(callee, "Identifier")) {
     if (callee.name === "fetch" && context.scopes.isGlobalReference(callee)) {
@@ -599,6 +611,205 @@ const collectFloatingChains = (callback: EsTreeNode, context: RuleContext): EsTr
   });
   return chains;
 };
+const IMMEDIATE_IIFE_MESSAGE =
+  "This promise chain runs inside an immediately invoked function in an effect and sets state or mutates a ref without handling rejection. Add a rejection handler to this chain; an outer try/catch or promise catch does not handle a discarded inner chain.";
+const immediateIifeReactImportNameBySymbol = new WeakMap<SymbolDescriptor, string | null>();
+const unsupportedImmediateIifeHookResultBySymbol = new WeakMap<SymbolDescriptor, boolean>();
+const getImmediateIifeReactImportName = (symbol: SymbolDescriptor): string | null => {
+  const cachedName = immediateIifeReactImportNameBySymbol.get(symbol);
+  if (cachedName !== undefined) return cachedName;
+  const importedName = getImportedName(symbol.declarationNode);
+  const name =
+    getValueImportSource(symbol) === "react" &&
+    importedName &&
+    symbol.references.every((reference) => reference.flag === "read")
+      ? importedName
+      : null;
+  immediateIifeReactImportNameBySymbol.set(symbol, name);
+  return name;
+};
+const hasUnsupportedImmediateIifeHookResult = (
+  identifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol) return false;
+  const cachedResult = unsupportedImmediateIifeHookResultBySymbol.get(symbol);
+  if (cachedResult !== undefined) return cachedResult;
+  const isStateResult = isReactHookResultReference(
+    identifier,
+    STATE_DISPATCHER_HOOK_NAMES,
+    SECOND_ARGUMENT_INDEX,
+    context.scopes,
+  );
+  const isRefResult =
+    !isStateResult && isReactHookResultReference(identifier, REF_HOOK_NAMES, null, context.scopes);
+  let isUnsupported = false;
+  if (isStateResult || isRefResult) {
+    const declaration = symbol.declarationNode;
+    const initializer =
+      isNodeOfType(declaration, "VariableDeclarator") && declaration.init
+        ? stripParenExpression(declaration.init)
+        : null;
+    const hookCallee = isNodeOfType(initializer, "CallExpression")
+      ? stripParenExpression(initializer.callee)
+      : null;
+    const hookSymbol = isNodeOfType(hookCallee, "Identifier")
+      ? context.scopes.symbolFor(hookCallee)
+      : null;
+    const hookName = hookSymbol ? getImmediateIifeReactImportName(hookSymbol) : null;
+    const hasDirectBinding =
+      isNodeOfType(declaration, "VariableDeclarator") &&
+      (isStateResult
+        ? isNodeOfType(declaration.id, "ArrayPattern") &&
+          declaration.id.elements[SECOND_ARGUMENT_INDEX] === symbol.bindingIdentifier
+        : declaration.id === symbol.bindingIdentifier);
+    isUnsupported =
+      symbol.kind !== "const" ||
+      symbol.references.some((reference) => reference.flag !== "read") ||
+      !hasDirectBinding ||
+      !hookName ||
+      !(isStateResult ? STATE_DISPATCHER_HOOK_NAMES : REF_HOOK_NAMES).has(hookName);
+  }
+  unsupportedImmediateIifeHookResultBySymbol.set(symbol, isUnsupported);
+  return isUnsupported;
+};
+const hasSupportedImmediateIifeFetchChain = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  hasUnmodifiedFetchProvider: ImmediateIifeFetchProviderCheck,
+): boolean => {
+  let cursor = stripParenExpression(expression);
+  while (
+    isNodeOfType(cursor, "CallExpression") &&
+    isNodeOfType(cursor.callee, "MemberExpression")
+  ) {
+    const methodName = getStaticPropertyName(cursor.callee);
+    if ((methodName !== "then" && methodName !== "finally") || cursor.arguments.length !== 1) {
+      return false;
+    }
+    const handlerArgument = cursor.arguments[0];
+    if (!handlerArgument) return false;
+    const handler = stripParenExpression(handlerArgument);
+    if (isNodeOfType(handler, "Identifier")) {
+      if (
+        methodName !== "then" ||
+        !isReactHookResultReference(
+          handler,
+          STATE_DISPATCHER_HOOK_NAMES,
+          SECOND_ARGUMENT_INDEX,
+          context.scopes,
+        ) ||
+        hasUnsupportedImmediateIifeHookResult(handler, context)
+      ) {
+        return false;
+      }
+    } else if (
+      (!isNodeOfType(handler, "ArrowFunctionExpression") &&
+        !isNodeOfType(handler, "FunctionExpression")) ||
+      handler.async ||
+      handler.generator ||
+      handler.params.length > 1 ||
+      handler.params.some((parameter) => !isNodeOfType(parameter, "Identifier"))
+    ) {
+      return false;
+    }
+    cursor = stripParenExpression(cursor.callee.object);
+  }
+  if (!isNodeOfType(cursor, "CallExpression") || cursor.arguments.length !== 1) return false;
+  const callee = stripParenExpression(cursor.callee);
+  const urlArgument = cursor.arguments[0];
+  if (!urlArgument) return false;
+  const url = stripParenExpression(urlArgument);
+  return (
+    isNodeOfType(callee, "Identifier") &&
+    callee.name === "fetch" &&
+    isImmediateIifeNativeGlobalReference(callee, "fetch", context.scopes) &&
+    hasUnmodifiedFetchProvider(cursor, expression) &&
+    isNodeOfType(url, "Literal") &&
+    typeof url.value === "string"
+  );
+};
+const collectImmediateIifeFloatingChains = (
+  effectCall: EsTreeNodeOfType<"CallExpression">,
+  callback: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode[] => {
+  const effectCallee = stripParenExpression(effectCall.callee);
+  const dependencies = effectCall.arguments[SECOND_ARGUMENT_INDEX];
+  if (
+    !isNodeOfType(effectCallee, "Identifier") ||
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 0 ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    effectCall.arguments.length !== 2 ||
+    !dependencies ||
+    !isNodeOfType(stripParenExpression(dependencies), "ArrayExpression")
+  ) {
+    return [];
+  }
+  const effectSymbol = context.scopes.symbolFor(effectCallee);
+  if (!effectSymbol) return [];
+  const effectName = getImmediateIifeReactImportName(effectSymbol);
+  if (effectName !== "useEffect" && effectName !== "useLayoutEffect") return [];
+  const chains: EsTreeNode[] = [];
+  walkOwnFunctionScope(callback, (child) => {
+    if (isNodeOfType(child, "ClassDeclaration") || isNodeOfType(child, "ClassExpression")) {
+      return false;
+    }
+    if (!isNodeOfType(child, "CallExpression") || child.arguments.length !== 0) return;
+    const invokedFunction = stripParenExpression(child.callee);
+    if (
+      (!isNodeOfType(invokedFunction, "ArrowFunctionExpression") &&
+        !isNodeOfType(invokedFunction, "FunctionExpression")) ||
+      invokedFunction.generator ||
+      invokedFunction.params.length !== 0 ||
+      !isNodeOfType(invokedFunction.body, "BlockStatement") ||
+      !isNodeReachableWithinFunction(child, context)
+    ) {
+      return;
+    }
+    if (
+      someAst(invokedFunction, (candidate) =>
+        hasUnsupportedImmediateIifeHookResult(candidate, context),
+      )
+    ) {
+      return;
+    }
+    const invokedChains: EsTreeNode[] = [];
+    let hasSuspension = false;
+    walkOwnFunctionScope(invokedFunction, (descendant) => {
+      if (
+        isNodeOfType(descendant, "ClassDeclaration") ||
+        isNodeOfType(descendant, "ClassExpression")
+      ) {
+        return false;
+      }
+      if (
+        isNodeOfType(descendant, "AwaitExpression") ||
+        isNodeOfType(descendant, "YieldExpression") ||
+        (isNodeOfType(descendant, "ForOfStatement") && descendant.await)
+      ) {
+        hasSuspension = true;
+      }
+      if (
+        !isNodeOfType(descendant, "ExpressionStatement") ||
+        !isNodeReachableWithinFunction(descendant, context)
+      ) {
+        return;
+      }
+      let expression = stripParenExpression(descendant.expression);
+      if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
+        expression = stripParenExpression(expression.argument);
+      }
+      if (isNodeOfType(expression, "CallExpression")) invokedChains.push(expression);
+    });
+    if (!hasSuspension) chains.push(...invokedChains);
+  });
+  return chains;
+};
 export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
   id: "no-promise-then-side-effect-in-effect-without-catch",
   title: "Effect promise .then sets state with no catch",
@@ -607,45 +818,75 @@ export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
   tags: ["test-noise"],
   recommendation:
     "An async init in an effect that sets state in `.then` but has no `.catch` leaves the component stuck and raises an unhandled rejection when it fails. Add a `.catch` on the chain (`.finally` does not handle the rejection).",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const isReactEffect = isReactApiCall(
-        node as EsTreeNode,
-        new Set(["useEffect", "useLayoutEffect"]),
-        context.scopes,
-        { allowGlobalReactNamespace: true, allowUnboundBareCalls: true },
-      );
-      const isImportedUseMount =
-        isNodeOfType(node.callee, "Identifier") &&
-        node.callee.name === "useMount" &&
-        getImportSourceForName(node.callee, node.callee.name) === "react-use";
-      if (!isReactEffect && !isImportedUseMount) return;
-      const callback = getEffectCallback(node as EsTreeNode);
-      if (!isFunctionLike(callback)) return;
+  create: (context: RuleContext) => {
+    const hasUnmodifiedFetchProvider = createImmediateIifeFetchProviderCheck(context);
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const isReactEffect = isReactApiCall(
+          node as EsTreeNode,
+          new Set(["useEffect", "useLayoutEffect"]),
+          context.scopes,
+          { allowGlobalReactNamespace: true, allowUnboundBareCalls: true },
+        );
+        const isImportedUseMount =
+          isNodeOfType(node.callee, "Identifier") &&
+          node.callee.name === "useMount" &&
+          getImportSourceForName(node.callee, node.callee.name) === "react-use";
+        if (!isReactEffect && !isImportedUseMount) return;
+        const callback = getEffectCallback(node as EsTreeNode);
+        if (!isFunctionLike(callback)) return;
 
-      for (const chainExpression of collectFloatingChains(callback, context)) {
-        const chainWalk = walkPromiseChain(chainExpression, context);
-        if (!chainWalk.sawThen) continue;
-        if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) continue;
-        const hasUnguardedStateSideEffect =
-          chainWalk.hasDirectSetterThenCallback ||
-          chainWalk.thenCallbacks.some((thenCallback) => {
-            return collectStateSideEffectNodes(thenCallback, context).length > 0;
+        const immediateChains = new Set(
+          collectImmediateIifeFloatingChains(node, callback, context),
+        );
+        for (const chainExpression of [
+          ...collectFloatingChains(callback, context),
+          ...immediateChains,
+        ]) {
+          if (
+            immediateChains.has(chainExpression) &&
+            !hasSupportedImmediateIifeFetchChain(
+              chainExpression,
+              context,
+              hasUnmodifiedFetchProvider,
+            )
+          ) {
+            continue;
+          }
+          const chainWalk = walkPromiseChain(chainExpression, context);
+          if (!chainWalk.sawThen) continue;
+          if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) continue;
+          const hasUnguardedStateSideEffect =
+            chainWalk.hasDirectSetterThenCallback ||
+            chainWalk.thenCallbacks.some((thenCallback) => {
+              const sideEffectNodes = collectStateSideEffectNodes(thenCallback, context);
+              if (!immediateChains.has(chainExpression)) return sideEffectNodes.length > 0;
+              const thenCallbackClass = findEnclosingClass(thenCallback);
+              return sideEffectNodes.some(
+                (sideEffectNode) =>
+                  findEnclosingClass(sideEffectNode) === thenCallbackClass &&
+                  isNodeReachableWithinFunction(sideEffectNode, context),
+              );
+            });
+          if (!hasUnguardedStateSideEffect) continue;
+          const resolved = resolveRootInitiator(chainWalk.root, context);
+          if (resolved.hasUpstreamRejectionHandling) continue;
+          if (
+            !immediateChains.has(chainExpression) &&
+            !isProvablyRejectableExpression(
+              resolved.initiator,
+              MAX_INITIATOR_RESOLUTION_DEPTH,
+              context,
+            )
+          ) {
+            continue;
+          }
+          context.report({
+            node: chainExpression,
+            message: immediateChains.has(chainExpression) ? IMMEDIATE_IIFE_MESSAGE : MESSAGE,
           });
-        if (!hasUnguardedStateSideEffect) continue;
-        const resolved = resolveRootInitiator(chainWalk.root, context);
-        if (resolved.hasUpstreamRejectionHandling) continue;
-        if (
-          !isProvablyRejectableExpression(
-            resolved.initiator,
-            MAX_INITIATOR_RESOLUTION_DEPTH,
-            context,
-          )
-        ) {
-          continue;
         }
-        context.report({ node: chainExpression, message: MESSAGE });
-      }
-    },
-  }),
+      },
+    };
+  },
 });

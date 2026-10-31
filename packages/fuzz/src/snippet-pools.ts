@@ -10,6 +10,58 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `{ function createFuzzNavigationDisposer() { return () => {}; } createFuzzNavigationDisposer = () => ({ remove() {} }); const navigation = { addListener: () => createFuzzNavigationDisposer() }; useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return () => unsubscribe(); }, [navigation]); }`,
+  `{ const navigation = { addListener: (_event, _callback) => () => {} }; useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return () => unsubscribe(); }, [navigation]); }`,
+  `{ const navigation = { addListener: (_event, _callback) => () => {} }; useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return unsubscribe; }, [navigation]); }`,
+  `{ const navigation = { addListener: (_event, _callback) => () => {} }; try { throw {}; } catch ({ ignored = Object.assign(navigation, { addListener: () => ({ remove() {} }) }) }) {} useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return () => unsubscribe(); }, [navigation]); }`,
+  'interface require {} require("react-markdown").default = () => null;',
+
+  `const FuzzConsumedStatusGetter = ({ getLabel }) => { const [selection, setSelection] = useState("start"); const [status, setStatus] = useState(""); const readLabel = useCallback((option) => getLabel(option), [getLabel]); useEffect(() => { setStatus(\`\${readLabel(selection)} selected\`); getLabel(selection); }, [getLabel, readLabel, selection]); return <button onClick={() => setSelection("next")}>{status}</button>; }; const fuzzConsumedStatusGetterNode = <FuzzConsumedStatusGetter getLabel={handle} />;`,
+  `const FuzzRefNotice = () => {
+ interface useCallback {}
+ const [phase,setPhase]=useState("idle");
+ const latest=useRef("idle");
+ useLayoutEffect(()=>{if(latest.current!==phase)setPhase(latest.current);},[phase]);
+ const activate=useCallback(()=>{latest.current="busy";setPhase("busy");},[]);
+ return <button onClick={activate}>{latest.current}</button>;
+};`,
+  `const FuzzPassiveRefNotice = () => {
+ interface Object {}
+ Object.keys({});
+ const [phase,setPhase]=useState("idle");
+ const latest=useRef("idle");
+ useLayoutEffect(()=>{if(latest.current!==phase)setPhase(latest.current);},[phase]);
+ const activate=useCallback(()=>{latest.current="busy";setPhase("busy");},[]);
+ return <button onClick={activate}>{latest.current}</button>;
+};`,
+  'interface require {} require("react").useState = () => [0, () => {}];',
+  `const FuzzMemberResetDraft = ({ value, reset }) => { const [draft, setDraft] = useState(value); useEffect(() => { setDraft(value); }, [value, reset.version]); return <button onClick={() => setDraft((previous) => previous + 1)}>{draft}</button>; }; const fuzzMemberResetDraftNode = <FuzzMemberResetDraft value={value} reset={{ version: state }} />;`,
+  `const FuzzCanonicalMirrorDraft = ({ value }) => { const [draft, setDraft] = useState(value); useEffect(() => { setDraft(value); }, [value]); return <output>{draft}</output>; }; const fuzzCanonicalMirrorDraftNode = <FuzzCanonicalMirrorDraft value={value} />;`,
+  'interface require {} require("react").useRef = () => ({current:0});',
+  `const useFuzzDeclaredWindowSpan = () => { const [span, setSpan] = useState(window.innerWidth); useEffect(() => { function refreshSpan() { setSpan(window.innerWidth); } window.addEventListener("resize", refreshSpan); return () => window.removeEventListener("resize", refreshSpan); }, []); return span; }; const fuzzDeclaredWindowSpan = useFuzzDeclaredWindowSpan();`,
+
+  'interface require {} require("react").useState = () => [0, () => {}];',
+  `const FuzzRenamedMirrorDraft = ({ value }) => { const [draft, replaceDraft] = useState(value); useEffect(() => { replaceDraft(value); }, [value]); return <button onClick={() => replaceDraft("edited")}>{draft}</button>; }; const fuzzRenamedMirrorDraft = <FuzzRenamedMirrorDraft value={value} />;`,
+
+  'interface require {} require("react").useTransition = () => [false, () => {}];',
+  `const FuzzTransitionEffect = ({ selected }) => { const [result, writeResult] = useState(null); const [pending, begin] = useTransition(); useEffect(() => { begin(async () => { const next = await Promise.resolve(selected); writeResult(next); }); }, [selected]); return <output>{pending ? "waiting" : result}</output>; }; const fuzzTransitionNode = <FuzzTransitionEffect selected={value} />;`,
+  'interface require {} require("react").useRef = () => ({current:0});',
+
+  `const FuzzFindAliasLabel = ({ choices, selected }) => { const found = choices.find((choice) => choice.id === selected); return <span>{found.label}</span>; }; const fuzzFindAliasNode = <FuzzFindAliasLabel choices={items} selected={value} />;`,
+
+  'interface require {} require("react").useRef = () => ({current:0});',
+
+  `const FuzzLiteralStateOwner = () => { const initialSnapshot = { count: 0 }; const [snapshot, setSnapshot] = useState(initialSnapshot); snapshot.count = 1; return <output>{snapshot.count}</output>; };`,
+  `const FuzzImmutableLiteralStateOwner = () => { const initialSnapshot = { count: 0 }; const [snapshot, setSnapshot] = useState(initialSnapshot); setSnapshot(previous => ({ ...previous, count: 1 })); return <output>{snapshot.count}</output>; };`,
+
+  `const FuzzMergedObservedRefs = () => { const refs = [1,2].map(() => createRef()); useEffect(() => { interface refs {} void refs[0].current; }, [refs]); return <div ref={refs[0]}/>; }; const fuzzMergedObservedRefsNode = <FuzzMergedObservedRefs />;`,
+  `const FuzzReplacedObservedRefs = () => { const refs = [1,2].map(() => createRef()); refs.fill({current:null}); useEffect(() => { void refs[0].current; }, [refs]); return <div ref={refs[0]}/>; }; const fuzzReplacedObservedRefsNode = <FuzzReplacedObservedRefs />;`,
+  `const FuzzNativeFocusInput = ({ query, readValue }) => { const [result, setResult] = useState(""); const run = useCallback(async () => { const received = await readValue(query); if (!received) setResult("empty"); }, [query]); useEffect(() => { if (document.hasFocus()) run(); }, [query, run]); return <output>{result}</output>; };`,
+
+  `const [fuzzCallbackValue, setFuzzCallbackValue] = useState(null); const fuzzUpdateValue = useCallback(async () => { const fuzzCallbackResult = await fetch(value); setFuzzCallbackValue(fuzzCallbackResult); }, [value]); const fuzzUpdateRef = useRef(fuzzUpdateValue); useEffect(() => { fuzzUpdateRef.current(); }, [value]);`,
+
+  `const FuzzDiscardedIifeChain = () => { const [remoteValue, setRemoteValue] = useState(null); useEffect(() => { (async () => { fetch("/value").then((response) => response.json()).then(setRemoteValue); })().catch(() => {}); }, []); return remoteValue; }; const fuzzDiscardedIifeChainNode = <FuzzDiscardedIifeChain />;`,
+
   `const useFuzzEscapedDraftSetter = (selectedValue) => { const [draft, setDraft] = useState(selectedValue); useEffect(() => setDraft(selectedValue), [selectedValue]); const edit = setDraft; const update = edit; return { draft, update }; }; const { draft: fuzzEscapedDraft, update: updateFuzzEscapedDraft } = useFuzzEscapedDraftSetter(value); const fuzzEscapedDraftInput = <input value={fuzzEscapedDraft} onChange={(event) => updateFuzzEscapedDraft(event.target.value)} />;`,
   `const FuzzPostSuspensionLocationRemoval = () => { const [revision, setRevision] = useState(0); const onPopState = () => setRevision((previous) => previous + 1); const unregister = () => window.removeEventListener("popstate", onPopState); const registerTemporarily = async () => { window.addEventListener("popstate", onPopState); await Promise.resolve(); unregister(); }; useEffect(() => { void registerTemporarily(); }, []); return <output>{location.pathname}</output>; }; const fuzzPostSuspensionLocationRemovalNode = <FuzzPostSuspensionLocationRemoval />;`,
   `const FuzzIndeterminateLocationListener = ({ shouldCapture }) => { const [revision, setRevision] = useState(0); useEffect(() => { const onPopState = () => setRevision((previous) => previous + 1); window.addEventListener("popstate", onPopState, { capture: true }); window.removeEventListener("popstate", onPopState, { capture: shouldCapture }); }, [shouldCapture]); return <output>{location.pathname}</output>; }; const fuzzIndeterminateLocationListenerNode = <FuzzIndeterminateLocationListener shouldCapture={condition} />;`,
@@ -153,6 +205,9 @@ export const EFFECT_SNIPPET_POOL = [
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `{ const [fuzzRetainedMarker] = useState(value); const [fuzzRetainedReader] = useState(() => () => fuzzRetainedMarker); const fuzzRetainedReaderResult = fuzzRetainedReader(); }`,
+  `const FuzzForwardedCleanupHost = () => { const createFuzzNodeCleanup = useCallback((node) => { if (!node) return; return () => node.removeAttribute("data-active"); }, []); const bindFuzzCleanupNode = useCallback((node) => { const cleanup = createFuzzNodeCleanup(node); return cleanup; }, [createFuzzNodeCleanup]); return <div ref={bindFuzzCleanupNode} />; };`,
+
   `const fuzzValtioState = fuzzValtioProxy({ count: 0 }); const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const handleFuzzValtioRead = () => console.log(fuzzValtioSnapshot.count); const fuzzValtioButton = <button onClick={handleFuzzValtioRead}>Read</button>;`,
   `const FuzzArrayConsumer = memo(() => null); const FuzzArrayHost = () => <FuzzArrayConsumer payload={[value]} />;`,
   `const FuzzEffectEventHost = ({ delay, onSearch }) => { useEffect(() => { const timeoutId = setTimeout(() => onSearch("done"), delay); return () => clearTimeout(timeoutId); }, [delay, onSearch]); return null; }; function FuzzTransitionHost() { const [isLoading, setIsLoading] = useState(false); const toggleLoading = () => setIsLoading(true); return <button onClick={toggleLoading}>{isLoading ? "Loading" : "Go"}</button>; } function FuzzMemoEarlyReturnHost({ loading }) { const content = useMemo(() => <Heavy />, []); if (loading) return null; return <div>{content}</div>; }`,
@@ -164,6 +219,8 @@ export const STATE_SNIPPET_POOL = [
   `const fuzzReadOnlyColumns = [["first"], ["second"]]; const fuzzReadOnlyColumnsNode = <Grid columns={fuzzReadOnlyColumns} />;`,
   `const FuzzNestedPanel = () => <div>nested</div>; const fuzzNestedPanelNode = <FuzzNestedPanel />;`,
   `const [state, setState] = useState(0);`,
+  `const FuzzEffectDependencyRefPanel = (props) => { const refs = useRef([]); const makeItemRef = () => { const observedRef = createRef(); refs.current.push(observedRef); return observedRef; }; if (props.active) makeItemRef(); useEffect(() => handle(refs.current), [props.active]); return <div />; }; const fuzzEffectDependencyRefNode = <FuzzEffectDependencyRefPanel active={condition} />;`,
+  `const fuzzRenderHelperRefs = useRef([]); const makeFuzzRenderHelperRef = () => { const observedRef = createRef(); fuzzRenderHelperRefs.current.push(observedRef); return observedRef; }; const renderFuzzRefItem = () => <div ref={makeFuzzRenderHelperRef()}>Item</div>; const fuzzRefItemNode = renderFuzzRefItem(); useEffect(() => handle(fuzzRenderHelperRefs.current), []);`,
   `const [fuzzStableStateRef] = useState(createRef()); const fuzzStableStateRefNode = <button ref={fuzzStableStateRef}>Open</button>;`,
   `const useFuzzInitialRef = () => createRef(); const [fuzzStableLazyStateRef] = useState(useFuzzInitialRef); const fuzzStableLazyStateRefNode = <button ref={fuzzStableLazyStateRef}>Open</button>;`,
   `const [state, setState] = useState(() => Number(localStorage.getItem("count") ?? 0));`,
@@ -185,6 +242,7 @@ export const STATE_SNIPPET_POOL = [
   `const lazyMapRef = useRef<Map<string, string> | undefined>(undefined); if (!lazyMapRef.current) lazyMapRef.current = new Map(); const lazyMapSize = lazyMapRef.current.size;`,
   `const fuzzWriteOnlyFocusControl = { refs: { toggle: createRef(), close: createRef(), slider: createRef() }, setFocus: () => {}, loseFocus: () => {} }; const fuzzWriteOnlyFocusNode = <button ref={fuzzWriteOnlyFocusControl.refs.toggle}>Open</button>;`,
   `const fuzzObservedTarget = createRef(); useEffect(() => handle(fuzzObservedTarget), [fuzzObservedTarget]);`,
+  `const fuzzMappedRefs = [1, 2].map(() => createRef()); useEffect(() => { void fuzzMappedRefs[0].current; }, [fuzzMappedRefs]); const fuzzMappedRefNode = <div ref={fuzzMappedRefs[0]} />;`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,
   `const [copied, setCopied] = useState(false);`,
   `const [cache] = useState(new Map());`,
@@ -204,6 +262,9 @@ export const STATE_SNIPPET_POOL = [
 // Handlers — async submits with loading flags, keyboard commit paths,
 // numeric input parsing, window.open, clipboard, toggles.
 export const HANDLER_SNIPPET_POOL = [
+  `const FuzzLocalCopyControl = ({ value }) => { const handleFuzzCopy = () => navigator.clipboard?.writeText(value).then(() => console.log("Copied")); return <button onClick={handleFuzzCopy}>Copy</button>; }; const fuzzLocalCopyControl = <FuzzLocalCopyControl value={String(value)} />;`,
+
+  `const FuzzAntdLoadingPanel = () => { const [phase, changePhase] = useState(false); const submit = async () => { changePhase(true); try { await api.save(); changePhase(false); } catch { reportError(); } }; return <Button loading={phase} onClick={submit}>Save</Button>; }; const fuzzLoadingPanel = <FuzzAntdLoadingPanel />;`,
   `const latestRequest = { current: 0 }; const latestReview = { current: 0 }; const handleFreshRequest = async () => { const requestId = latestRequest.current; const reviewVersion = latestReview.current; const response = await fetch(url); if (requestId !== latestRequest.current || reviewVersion !== latestReview.current) return; setState(await response.json()); };`,
   `const handleSyncRequest = () => { const request = new XMLHttpRequest(); request.open("GET", String(url), false); request.send(); };`,
   `const handleSubmit = async () => { setLoading(true); try { await fetch(url, { method: "POST", body: JSON.stringify(values) }); setState(true); } catch (submitError) { setError(submitError); } finally { setLoading(false); } };`,
@@ -256,6 +317,11 @@ export const HANDLER_SNIPPET_POOL = [
 // Guards / nullability — find/match/get derefs, optional chains, splits,
 // alias-then-guard, canUseDOM aliases, JSON.parse.
 export const GUARD_SNIPPET_POOL = [
+  `{ const readSplitLabel = (splitText) => { const splitPieces = String(splitText).split("~"); return splitPieces[1].trim(); }; readSplitLabel(value); }`,
+
+  `globalThis.eval("JSON.parse = () => ({ settings: 1 })"); const readFuzzRewrittenSettings = (raw) => { const parsed = JSON.parse(raw); return parsed.settings; }; readFuzzRewrittenSettings(String(value));`,
+  `const evaluateFuzzProvider = globalThis.eval; evaluateFuzzProvider("JSON.parse = () => ({ settings: 1 })"); const readFuzzRewrittenSettings = (raw) => { const parsed = JSON.parse(raw); return parsed.settings; }; readFuzzRewrittenSettings(String(value));`,
+  `const readFuzzLocalSettings = (raw) => { const parsed = JSON.parse(raw); return parsed.settings; }; readFuzzLocalSettings(String(value));`,
   `if (!useState || !useRef || !useEffect) return null;`,
   `const found = items.find((item) => item.id === value); if (!found) return null;`,
   `const label = items.find((item) => item.active)?.name ?? "none";`,
@@ -277,6 +343,8 @@ export const GUARD_SNIPPET_POOL = [
   `const cached = cache.get(value); if (cached !== undefined) return cached;`,
   `const decoded = decodeURIComponent(String(params.slug));`,
   `const parsedUrl = new URL(String(value));`,
+  `const fuzzNodePath = require("node:path"); const fuzzAssetDirectory = fuzzNodePath.resolve("assets"); const fuzzAssetMatcher = new RegExp(\`\${fuzzAssetDirectory}/bundle/.*\`);`,
+  `const fuzzPathProvider = require("node:path"); const fuzzPathValue = fuzzPathProvider.resolve("assets"); ({ fuzzPathValue } = { fuzzPathValue: "updated" }); const fuzzPathMatcher = new RegExp(\`\${fuzzPathValue}/bundle/.*\`);`,
   `const matcher = new RegExp(searchTerm, "i");`,
   `const escaped = searchTerm.replace(/[.*+?^\${}()|[\\]\\\\]/g, "\\\\$&"); const safeMatcher = new RegExp(escaped, "i");`,
   `const width = canUseDOM ? window.innerWidth : 0;`,
@@ -292,6 +360,7 @@ export const GUARD_SNIPPET_POOL = [
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.
 export const LIBRARY_SNIPPET_POOL = [
+  `import FuzzCountMarkdown from "react-markdown"; import { useState as useFuzzCountState } from "react"; export const FuzzCountPreview = () => <FuzzCountMarkdown components={{ "count-item": () => { const [count] = useFuzzCountState(0); return <span>{count}</span>; } }}>{"count"}</FuzzCountMarkdown>;`,
   `const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const fuzzValtioCount = fuzzValtioState.count;`,
   `const zodSchema = z.object({ value: z.string() }).strict();`,
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,
@@ -314,6 +383,150 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { redirect as fuzzNextRedirect } from "next/navigation"; export const FuzzNextRedirectGuard = ({rows, selected}) => { const found = rows.find((row) => row.id === selected); if (!found) fuzzNextRedirect("/missing"); return <span>{found.label}</span>; };`,
+  `import { permanentRedirect as fuzzNextPermanentRedirect } from "next/navigation"; export const FuzzNextPermanentRedirectGuard = ({rows, selected}) => { const found = rows.find((row) => row.id === selected); if (!found) fuzzNextPermanentRedirect("/missing"); return <span>{found.label}</span>; };`,
+  `import { createFileRoute as createFuzzPrototypeRoute } from "@tanstack/react-router"; import { useState as useFuzzPrototypeState } from "react"; export const FuzzPrototypeFileRoute = createFuzzPrototypeRoute("/prototype-counter")({ __proto__: { get id() { this.component(); return undefined; } }, component: () => { const [fuzzPrototypeCount] = useFuzzPrototypeState(0); return <output>{fuzzPrototypeCount}</output>; } });`,
+  `import { createFileRoute as createFuzzFileRoute } from "@tanstack/react-router"; import { useState as useFuzzRouteState } from "react"; export const FuzzFileRoute = createFuzzFileRoute("/counter")({ component: () => { const [fuzzRouteCount] = useFuzzRouteState(0); return <output>{fuzzRouteCount}</output>; } }); export const FuzzNestedFileRoute = createFuzzFileRoute("/nested-counter")({ component: () => [0].map(() => { const [fuzzNestedRouteCount] = useFuzzRouteState(0); return <output>{fuzzNestedRouteCount}</output>; }) });`,
+  `import { useEffect as useOwnedAbortEffect, useState as useOwnedAbortState } from "react";
+const FuzzOwnedAbortContinuation = ({ load, resourceId }) => {
+  const [resource, setResource] = useOwnedAbortState(null);
+  useOwnedAbortEffect(() => {
+    const controller = new AbortController();
+    const run = async () => {
+      const result = await load(resourceId, { signal: controller.signal });
+      setResource(result);
+    };
+    void run();
+    return () => controller.abort();
+  }, [load, resourceId]);
+  return <output>{String(resource)}</output>;
+};
+const fuzzOwnedAbortContinuationNode = <FuzzOwnedAbortContinuation load={loadOwnedAbortResource} resourceId="entry" />;`,
+  `import {useEffect as useAccountEffect,useState as useAccountState} from "react"; import {UserManager,WebStorageStateStore} from "oidc-client"; const accountSettings={userStore:new WebStorageStateStore({store:window.localStorage})}; const accountManager=new UserManager(accountSettings); export const FuzzAccountUser=()=>{const [user,setUser]=useAccountState(null);useAccountEffect(()=>{accountManager.getUser().then(setUser)},[]);return <output>{user?.name}</output>};`,
+
+  'import React from "react";\nReact.__defineGetter__("useEffect", () => (() => {}));\nexport const Panel = ({revision, load}) => {\n  const [value, setValue] = React.useState("");\n  React.useEffect(() => {\n    \n    const interval = setInterval(async () => { const first = await load(revision); setValue(first); }, 5000);\n    return () => clearInterval(interval);\n  }, [revision]);\n  return <output data-value={value} />;\n};\n',
+  'import React from "react";\nReact.__defineSetter__("useState", () => {});\nexport const Panel = ({revision, load}) => {\n  const [value, setValue] = React.useState("");\n  React.useEffect(() => {\n    \n    const interval = setInterval(async () => { const first = await load(revision); setValue(first); }, 5000);\n    return () => clearInterval(interval);\n  }, [revision]);\n  return <output data-value={value} />;\n};\n',
+  `import { useState as useTimerState, useEffect as useTimerEffect } from "react"; export const useFuzzTimer = (revision, load) => { const [value, setValue] = useTimerState(""); useTimerEffect(() => { const timer = setInterval(async () => { const next = await load(revision); setValue(next); }, 1000); return () => clearInterval(timer); }, [revision, load]); return value; };`,
+  `import { useState as useTimerState, useEffect as useTimerEffect } from "react"; export const useFuzzCancelledTimer = (revision, load) => { const [value, setValue] = useTimerState(""); useTimerEffect(() => { let cancelled = false; const timer = setInterval(async () => { const next = await load(revision); if (cancelled) return; setValue(next); }, 1000); return () => { cancelled = true; clearInterval(timer); }; }, [revision, load]); return value; };`,
+
+  `import { useEffect as useBodyArrayMirrorEffect, useState as useBodyArrayMirrorState } from "react";
+interface useBodyArrayMirrorEffect {}
+interface useBodyArrayMirrorState {}
+interface FuzzBodyArrayProps { items: string[]; resetNonce: number }
+export const FuzzBodyArrayMirror = (props: FuzzBodyArrayProps) => {
+  interface props {}
+  const { items, resetNonce } = props;
+  interface items {}
+  const [draft, setDraft] = useBodyArrayMirrorState(items);
+  interface setDraft {}
+  useBodyArrayMirrorEffect(() => { setDraft(items); }, [items]);
+  void resetNonce;
+  return <button onClick={() => setDraft([...draft].reverse())}>{draft.join(",")}</button>;
+};`,
+
+  'export class FuzzOwnSearchSlot { filter = ""; setFilter(value) { this.filter = value; this.filter = "fixed"; } matches(value) { return new RegExp(this.filter, "i").test(value); } }',
+
+  `import React, { Component } from 'react';
+import Flickity from 'flickity';
+
+interface Function {}
+Function("return 1")();
+interface GalleryProps { options?: object; onAcquire?: (widget: unknown) => void; }
+
+class Gallery extends Component<GalleryProps> {
+  container: HTMLDivElement | null = null;
+  widget: any = null;
+  componentDidMount() {
+    if (!this.container) return;
+    this.widget = new Flickity(this.container, {});
+  }
+
+  render() { return <div ref={element => { this.container = element; }} />; }
+}
+export default Gallery;
+`,
+  `/** @jsx customFactory */
+import React, { Component } from 'react';
+import Flickity from 'flickity';
+
+const customFactory = () => null;
+interface GalleryProps { options?: object; onAcquire?: (widget: unknown) => void; }
+
+class Gallery extends Component<GalleryProps> {
+  container: HTMLDivElement | null = null;
+  widget: any = null;
+  componentDidMount() {
+    if (!this.container) return;
+    this.widget = new Flickity(this.container, {});
+  }
+
+  render() { return <div ref={element => { this.container = element; }} />; }
+}
+export default Gallery;
+`,
+  `export const FuzzCommentLiteral = () => <div>{/* retain literal context */ 'hello'}</div>;
+`,
+
+  `import { useEffect, useState, useRef } from "react"; class Setup { constructor(public value = (globalThis.fetch = () => Promise.resolve("ok"))) {} } new Setup(); export const Example = () => { const [value, setValue] = useState<unknown>(null); useEffect(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect0, useState as useFuzzIifeState0, useRef as useFuzzIifeRef0 } from "react"; interface fetch {} export const FuzzIifeRuntimeBinding0 = () => { const [value, setValue] = useFuzzIifeState0<unknown>(null); useFuzzIifeEffect0(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect1, useState as useFuzzIifeState1, useRef as useFuzzIifeRef1 } from "react"; globalThis.fetch = async () => new Response("{}"); export const FuzzIifeRuntimeBinding1 = () => { const [value, setValue] = useFuzzIifeState1<unknown>(null); useFuzzIifeEffect1(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect2, useState as useFuzzIifeState2, useRef as useFuzzIifeRef2 } from "react"; fetch = async () => new Response("{}"); export const FuzzIifeRuntimeBinding2 = () => { const [value, setValue] = useFuzzIifeState2<unknown>(null); useFuzzIifeEffect2(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect3, useState as useFuzzIifeState3, useRef as useFuzzIifeRef3 } from "react"; Promise.prototype.then = () => Promise.resolve(null); export const FuzzIifeRuntimeBinding3 = () => { const [value, setValue] = useFuzzIifeState3<unknown>(null); useFuzzIifeEffect3(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect4, useState as useFuzzIifeState4, useRef as useFuzzIifeRef4 } from "react"; export const FuzzIifeRuntimeBinding4 = () => { const [value, setValue] = useFuzzIifeState4<unknown>(null); interface setValue {} useFuzzIifeEffect4(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect5, useState as useFuzzIifeState5, useRef as useFuzzIifeRef5 } from "react"; export const FuzzIifeRuntimeBinding5 = () => { const valueRef = useFuzzIifeRef5<unknown>(null); interface valueRef {} useFuzzIifeEffect5(() => { (async () => { fetch("/value").then((response) => { valueRef.current = response; }); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect6, useState as useFuzzIifeState6, useRef as useFuzzIifeRef6 } from "react"; interface globalThis {} const nativeGlobal = globalThis; nativeGlobal.fetch = async () => new Response("{}"); export const FuzzIifeRuntimeBinding6 = () => { const [value, setValue] = useFuzzIifeState6<unknown>(null); useFuzzIifeEffect6(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect7, useState as useFuzzIifeState7, useRef as useFuzzIifeRef7 } from "react"; interface Promise {} const NativePromise = Promise; NativePromise.prototype.then = () => null; export const FuzzIifeRuntimeBinding7 = () => { const [value, setValue] = useFuzzIifeState7<unknown>(null); useFuzzIifeEffect7(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect8, useState as useFuzzIifeState8, useRef as useFuzzIifeRef8 } from "react"; const fetchKey = "fetch"; globalThis[fetchKey] = async () => new Response("{}"); export const FuzzIifeRuntimeBinding8 = () => { const [value, setValue] = useFuzzIifeState8<unknown>(null); useFuzzIifeEffect8(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+  `import { useEffect as useFuzzIifeEffect9, useState as useFuzzIifeState9, useRef as useFuzzIifeRef9 } from "react"; const prototypeKey = "prototype"; Promise[prototypeKey].then = () => null; export const FuzzIifeRuntimeBinding9 = () => { const [value, setValue] = useFuzzIifeState9<unknown>(null); useFuzzIifeEffect9(() => { (async () => { fetch("/value").then(setValue); })(); }, []); return null; };`,
+
+  `import { useState } from "react"; class Setup { constructor(public value = Function("Object.defineProperty(Object.prototype, 'extra', { set() {}, configurable: true })")()) {} } new Setup(); export const RecordPicker = () => {   const [records, setRecords] = useState([{ label: "one" }]);   const write = (index: number) => {     const copy = [...records];     copy[index].extra = "new";     setRecords(copy);   };   return <div>{records.map((record, index) => <button key={index} onClick={() => write(index)}>{record.label}</button>)}</div>; };`,
+  `import { useState } from "react"; type ReflectionNote = ({ nested: { constructor } }: { nested: { constructor: string } }) => void; export const RecordPicker = () => {   const [records, setRecords] = useState([{ label: "one" }]);   const write = (index: number) => {     const copy = [...records];     copy[index].extra = "new";     setRecords(copy);   };   return <div>{records.map((record, index) => <button key={index} onClick={() => write(index)}>{record.label}</button>)}</div>; };`,
+  `import { useState } from "react"; interface globalThis {} globalThis.eval('Object.defineProperty(Object.prototype,"extra",{set(value){void value;},configurable:true})'); export const RecordPicker = () => {   const [records, setRecords] = useState([{ label: "one" }]);   const write = (index: number) => {     const copy = [...records];     copy[index].extra = "new";     setRecords(copy);   };   return <div>{records.map((record, index) => <button key={index} onClick={() => write(index)}>{record.label}</button>)}</div>; };`,
+
+  'declare const Function: FunctionConstructor;\nFunction("Array.prototype.find = () => ({label: \'safe\'})")();\nexport const read = () => { const rows = [{label:"only"}]; let calls=0; if(rows.some(() => ++calls === 1)) return rows.find(() => ++calls === 1).label; return "none"; };',
+  'class Setup { constructor(public value = Function("Array.prototype.find = () => ({ name: \'custom\' })")()) {} }\nnew Setup();\nconst ITEMS = [{ name: "first", enabled: false }];\nexport const read = () => ITEMS.find((item) => item.enabled).name;\n',
+  'interface Function {}\nFunction("Array.prototype.find = () => ({ name: \'custom\' })")();\nconst ITEMS = [{ name: "first", enabled: false }];\nexport const read = () => ITEMS.find((item) => item.enabled).name;\n',
+
+  `import { useState as useFuzzCookieState } from "react"; import { setCookie as applyFuzzCookie } from "../corpus/regressions/cookie-write-provider/persist"; const FuzzCookieProviderPreference = () => { const [value, setValue] = useFuzzCookieState(0); return <button onClick={() => setValue(previous => { applyFuzzCookie("view=compact"); return previous + 1; })}>{value}</button>; };`,
+  `import { useState as useFuzzCommonjsCookieState } from "react"; import { setCookie as applyFuzzCommonjsCookie } from "../corpus/regressions/cookie-write-commonjs-provider/persist.cts"; const FuzzCommonjsCookiePreference = () => { const [value, setValue] = useFuzzCommonjsCookieState(0); return <button onClick={() => setValue(previous => { applyFuzzCommonjsCookie("view", "compact"); return previous + 1; })}>{value}</button>; };`,
+
+  'const fuzzWrappedMethodRegistrar = (_event, callback) => callback();\n(window.addEventListener as any) = fuzzWrappedMethodRegistrar;\n const FuzzProviderWrapperWrappedMethodWrite = ({mode}) => { const [open,setOpen] = useState(false); useEffect(()=>{ let listener; if(mode){listener=()=>{}}else{listener=()=>setOpen(!open)} window.addEventListener("change",listener); return()=>window.removeEventListener("change",listener); },[mode]); return <output>{String(open)}</output>; };',
+  'const fuzzAliasedObjectRegistrar = (_event, callback) => callback();\nconst fuzzAliasedObjectPatch = Object.assign; fuzzAliasedObjectPatch(window, {addEventListener: fuzzAliasedObjectRegistrar});\n const FuzzProviderWrapperAliasedObjectAssign = ({mode}) => { const [open,setOpen] = useState(false); useEffect(()=>{ let listener; if(mode){listener=()=>{}}else{listener=()=>setOpen(!open)} window.addEventListener("change",listener); return()=>window.removeEventListener("change",listener); },[mode]); return <output>{String(open)}</output>; };',
+  'const fuzzLegacyGetterRegistrar = (_event, callback) => callback(); Object.prototype.__defineGetter__.call(window,"addEventListener",()=>fuzzLegacyGetterRegistrar);\n const FuzzProviderFinalExtraLegacyWindowMethodGetterCapability = ({mode}) => { const [open,setOpen] = useState(false); useEffect(()=>{ let listener; if(mode){listener=()=>{}}else{listener=()=>setOpen(!open)} window.addEventListener("change",listener); return()=>window.removeEventListener("change",listener); },[mode]); return <output>{String(open)}</output>; };',
+  '\nconst FuzzNativeTransparentSeedNativeStateInitializerAs = () => {\n  const [open, setOpen] = useState(false);\n  const [mode, setMode] = useState(false);\n  const [target, setTarget] = useState(null);\n  const changeMode = () => setMode(!mode);\n  useEffect(() => {\n    const nativeTarget = (new EventTarget() as EventTarget);\n    setTarget(nativeTarget);\n  }, []);\n  useEffect(() => {\n    if (target) {\n      let listener;\n      if (mode) { listener = () => {}; } else { listener = () => setOpen(!open); }\n      target.addEventListener("change", listener);\n      return () => target.removeEventListener("change", listener);\n    }\n  }, [mode, target]);\n  return <button onClick={changeMode}>{String(open)}</button>;\n};\n',
+  `const FuzzBranchWrappedListener = ({mode}) => { const [open,setOpen] = useState(false); useEffect(()=>{ let listener; if(mode){listener=()=>{}}else{listener=()=>setOpen(!open)} window.addEventListener("change",(listener as any)); return()=>window.removeEventListener("change",listener!); },[mode]); return <output>{String(open)}</output>; };`,
+  `const FuzzBranchNativeStateProvider = () => {   const [open, setOpen] = useState(false);   const [mode, setMode] = useState(false);   const [target, setTarget] = useState(null);   const changeMode = () => setMode(!mode);   useEffect(() => {     const nativeTarget = new EventTarget();     setTarget(nativeTarget);   }, []);   useEffect(() => {     if (target) {       let listener;       if (mode) { listener = () => {}; } else { listener = () => setOpen(!open); }       target.addEventListener("change", listener);       return () => target.removeEventListener("change", listener);     }   }, [mode, target]);   return <button onClick={changeMode}>{String(open)}</button>; }; `,
+  `try { throw {}; } catch ({ ignored = Function("globalThis.EventTarget = class { addEventListener(_event, callback) { callback(); } removeEventListener() {} }")() }) {} const FuzzCatchDefaultBranchListener = ({ mode }) => { const [open, setOpen] = useState(false); useEffect(() => { const target = new EventTarget(); let listener; if (mode) { listener = () => {}; } else { listener = () => setOpen(!open); } target.addEventListener("change", listener); return () => target.removeEventListener("change", listener); }, [mode]); return <output>{String(open)}</output>; };`,
+  `const FuzzBranchNativeListener = ({ mode }) => { const [open, setOpen] = useState(false); useEffect(() => { let listener; if (mode) { listener = () => {}; } else { listener = () => setOpen(!open); } window.addEventListener("change", listener); return () => window.removeEventListener("change", listener); }, [mode]); return <output>{String(open)}</output>; };`,
+  `const FuzzBranchOpaqueListener = ({ mode, target }) => { const [open, setOpen] = useState(false); useEffect(() => { let listener; if (mode) { listener = () => {}; } else { listener = () => setOpen(!open); } target.addEventListener("change", listener); return () => target.removeEventListener("change", listener); }, [mode, target]); return <output>{String(open)}</output>; }; const fuzzImmediateTarget = { addEventListener(_event, callback) { callback(); }, removeEventListener() {} }; const fuzzBranchImmediateNode = <FuzzBranchOpaqueListener mode={false} target={fuzzImmediateTarget} />;`,
+
+  `const fakeReact = { useState: initial => [initial, callback => callback(initial)] }; Object.assign(globalThis, { React: fakeReact });
+
+
+let fuzzGlobalFactoryObserved = 0;
+const createFuzzGlobalFactoryHandlers = (applyState, configuration) => ({
+  onClick: () => applyState((previous) => {
+    fuzzGlobalFactoryObserved = previous;
+    return previous;
+  }),
+});
+const FuzzGlobalFactoryCounter = (props) => {
+  const [count, setCount] = React.useState(0);
+  return <button {...createFuzzGlobalFactoryHandlers(setCount, props.config)}>{count}</button>;
+};`,
+  `import FuzzFactoryReact from "react"; FuzzFactoryReact.useState = initial => [initial, callback => callback(initial)]; let fuzzFactoryObserved = 0; const createFuzzFactoryHandler = applyState => ({ onClick: () => applyState(previous => { fuzzFactoryObserved = previous; return previous; }) }); const FuzzFactoryProviderCounter = () => { const [value, setValue] = FuzzFactoryReact.useState(0); return <button {...createFuzzFactoryHandler(setValue)}>{value}</button>; };`,
+
+  `interface window { fuzzErasedWindowNote: string } const fuzzErasedReceive = (event) => consume(event.data); window.addEventListener("message", fuzzErasedReceive);`,
+  `const receiveFuzzWindowMessage = (incomingMessage) => console.log(incomingMessage.data); window.addEventListener("message", receiveFuzzWindowMessage);`,
+
+  `import { useState as useFuzzSchedulerState } from "react"; import { useQueue as useFuzzErasedQueue } from "../corpus/true-positives/returned-scheduler-erased-window/queue"; const FuzzErasedWindowScheduler = () => { const [value, setValue] = useFuzzSchedulerState(0); const queue = useFuzzErasedQueue(() => {}); return <button onClick={() => setValue(previous => { queue(); return previous + 1; })}>{value}</button>; };`,
+
+  `module["require"]("axios").post = async () => ({ data: null });`,
+  `type FuzzErasedCapability = ({ Function: nestedFunction }: { Function: string }) => void; const fuzzInertCapabilityLabels = { Function: "description", constructor: "description", React: "description" };`,
+
+  `import * as FuzzCallbackReactProvider from "react"; export const FuzzReactNamespaceStateNotification = ({ onChange }) => { const [selection, setSelection] = FuzzCallbackReactProvider.useState("start"); const notify = FuzzCallbackReactProvider.useCallback(value => onChange(value), [onChange]); FuzzCallbackReactProvider.useEffect(() => { notify(selection); }, [notify, selection]); return <button onClick={() => setSelection("next")}>{selection}</button>; };`,
+
+  `import ReactForConstructorNotice from "react"; export class FuzzConstructorPropNotice extends ReactForConstructorNotice.Component { constructor(props) { super(props); const {notifyReady} = props; if (true) notifyReady(); } render() { return <output/>; } }`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,
@@ -599,6 +812,7 @@ export const JSX_ATTRIBUTE_POOL = [
 // JSX leaves — conditional renders (incl. the leaked-0 shape), controlled
 // inputs, radios, providers, portals, list keys.
 export const JSX_LEAF_POOL = [
+  '<span className={`inline-flex flex-shrink-0 ${condition ? "rotate-180" : ""}`} />',
   `{state}`,
   `{items.map((item, index) => <li key={index}>{item}</li>)}`,
   `{items.map((item, index) => <Row key={item.id ?? index} item={item} />)}`,
@@ -672,6 +886,7 @@ export const JSX_LEAF_POOL = [
   `<FuzzMarkdown rehypePlugins={[fuzzRehypeRaw]}>{String(value)}</FuzzMarkdown>`,
   `<form><form /></form>`,
   `<div role="status" aria-live="assertive" />`,
+  `<section role="region"><h2>Overview</h2></section>`,
   `<><main className="scroll-smooth" /><header className="sticky" /><img src="/avatar.jpg" alt="Ada" /></>`,
   `<><input className="text-sm" /><button aria-label="Close" className="size-4 p-0"><CloseIcon /></button><button className="hover:px-6">Save</button></>`,
   `<button className="text-[var(--muted)] hover:text-[var(--foreground)]">Save</button>`,
@@ -734,6 +949,18 @@ export const JSX_LEAF_POOL = [
 // Rare-but-parseable weirdness kept from the original generator, plus
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
+  `class FuzzMarkedCounterPanel { useCounter = () => useState(0); render = this.useCounter; } FuzzMarkedCounterPanel.prototype.isReactComponent = {};`,
+  `class FuzzCounterModel { useCounter = () => useState(0); useConditionalCounter = (enabled) => { if (enabled) return useState(0); return null; }; } const fuzzCounterModel = new FuzzCounterModel(); const { useCounter: useFuzzCounter } = fuzzCounterModel; const fuzzCounter = useFuzzCounter();`,
+
+  `const FuzzGroupBadge = () => { const model = useRef(new FuzzNativeGroup()); model.current.position.set(4, 5, 6); return <div />; };`,
+
+  `const useFuzzCount = (items) => { const count = Array.isArray(items) ? items.length : undefined; return { count }; }; const FuzzCountView = ({ items }) => { const { count } = useFuzzCount(items); return <section>{count && <output>Ready</output>}</section>; }; const fuzzCountElement = <FuzzCountView items={items} />;`,
+  `const useFuzzSafeCount = (items) => { const count = Array.isArray(items) ? items.length : undefined; return { count }; }; const FuzzSafeCountView = ({ items }) => { const { count } = useFuzzSafeCount(items); const hasEntries = count > 0; return <section>{hasEntries && count && <output>Ready</output>}</section>; }; const fuzzSafeCountElement = <FuzzSafeCountView items={items} />;`,
+
+  `const Upload = () => <label><input type="file" /><button>Pick</button></label>;`,
+  `const Entry = () => <label><span><input type="text" /></span></label>;`,
+
+  `const FuzzNativeWrite = () => {const [,setSaved]=useState(false);const submit=async()=>{await api.post("/records.commit",{});setSaved(true)};return <button onClick={submit}/>};`,
   `const contextCallback = config.onSelect; const effectiveCallback = onSelect ?? contextCallback; const derivedHandler = useCallback(() => effectiveCallback?.(), [effectiveCallback]);`,
   `const membershipCandidates = [1, 2, 3, 4, 5, 6, 7, 8, 9]; const membershipValues = [1, 2, 3, 4, 5, 6, 7, 8, 9]; for (const membershipCandidate of membershipCandidates) { membershipValues.includes(membershipCandidate); }`,
   `const numericMembershipValues: number[] = []; const numericMembershipAllowed: number[] = []; numericMembershipValues.reduce((count, value) => numericMembershipAllowed.indexOf(value) !== -1 ? count + 1 : count, 0);`,
@@ -778,6 +1005,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import { Group as FuzzNativeGroup } from "three";`,
   `import { compile as compileFuzzMdx } from "@mdx-js/mdx"; const fuzzCompiledMdx = await compileFuzzMdx(tenantContent);`,
   `import { proxy as createFuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio"; const fuzzValtioState = createFuzzValtioProxy({ count: 0 });`,
   `import fetch from "node-fetch";`,

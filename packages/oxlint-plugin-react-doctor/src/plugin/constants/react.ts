@@ -44,6 +44,9 @@ export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
 
 export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
+export const EFFECT_HOOK_DEPENDENCY_ARGUMENT_INDEX = 1;
+export const EFFECT_HOOK_DEPENDENCY_ARGUMENT_COUNT = 2;
+
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
 export const UNARY_LISTENER_ARGUMENT_COUNT = 1;
@@ -318,4 +321,104 @@ export const NAVIGATION_RECEIVER_NAMES = new Set([
 
 export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["react_ujs", new Set(["useContext", "useContexts"])],
+]);
+
+export const VALUE_ONLY_STATE_TUPLE_LENGTH = 1;
+export const CANONICAL_REACT_REQUIRE_ARGUMENT_COUNT = 1;
+
+export const GETTER_RESULT_ARGUMENT_COUNT = 1;
+export const GETTER_RESULT_ARGUMENT_INDEX = 0;
+
+export const REACT_PROVIDER_MUTATION_CAPABILITY_NAMES = new Set([
+  "__defineGetter__",
+  "__defineSetter__",
+  "__proto__",
+  "prototype",
+]);
+
+export const OIDC_CLIENT_MODULE_SOURCE = "oidc-client";
+export const OIDC_GET_USER_ARGUMENT_COUNT = 0;
+export const OIDC_CONSTRUCTOR_ARGUMENT_COUNT = 1;
+export const OIDC_WINDOW_DECODER_ARGUMENT_COUNT = 1;
+export const OIDC_CONSTRUCTOR_ARGUMENT_INDEX = 0;
+export const OIDC_STORE_OPTION_PROPERTY_COUNT = 1;
+export const OIDC_INSTANCE_METHOD_NAMES = new Set(["getUser", "signinRedirect", "signoutRedirect"]);
+export const OIDC_UNSUPPORTED_CAPABILITY_NAMES = new Set([
+  "eval",
+  "Function",
+  "require",
+  "module",
+  "exports",
+  "globalThis",
+  "global",
+  "self",
+  "Object",
+  "Reflect",
+  "Proxy",
+  "document",
+  "parent",
+  "top",
+  "frames",
+  "localStorage",
+  "sessionStorage",
+]);
+export const OIDC_UNSUPPORTED_MEMBER_NAMES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "defineProperty",
+  "defineProperties",
+  "setPrototypeOf",
+]);
+export const OIDC_UNSUPPORTED_RUNTIME_TYPES = new Set([
+  "WithStatement",
+  "ImportExpression",
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
+]);
+export const REF_CLEANUP_NODE_PARAMETER_COUNT = 1;
+export const REF_CLEANUP_HOOK_ARGUMENT_COUNT = 2;
+export const REF_CLEANUP_CONTEXT_ARGUMENT_COUNT = 1;
+
+export const REACT_CALLBACK_FORWARDER_ARGUMENT_COUNT = 1;
+
+export const CONSTRUCTOR_PROP_CALLBACK_ARGUMENT_COUNT = 1;
+
+export const CONSTRUCTOR_PROP_CALLBACK_PARAMETER_COUNT = 1;
+
+export const CONSTRUCTOR_PROP_CALLBACK_BINDING_COUNT = 1;
+
+export const CONSTRUCTOR_PROP_CALLBACK_CLASS_NAMES: ReadonlySet<string> = new Set([
+  "Component",
+  "PureComponent",
+]);
+
+export const CONSTRUCTOR_PROP_CALLBACK_UNSUPPORTED_NAMES: ReadonlySet<string> = new Set([
+  "eval",
+  "Function",
+  "require",
+  "module",
+  "process",
+  "Object",
+  "Reflect",
+  "globalThis",
+  "global",
+  "window",
+  "self",
+  "arguments",
+]);
+
+export const CONSTRUCTOR_PROP_CALLBACK_RUNTIME_TYPESCRIPT_TYPES: ReadonlySet<string> = new Set([
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSParameterProperty",
+  "TSImportEqualsDeclaration",
+  "TSExportAssignment",
 ]);

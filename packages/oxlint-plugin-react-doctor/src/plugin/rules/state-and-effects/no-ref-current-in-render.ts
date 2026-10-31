@@ -1,3 +1,8 @@
+import { isImportedRenderCallback } from "../../utils/is-imported-render-callback.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
+import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
+import { isKnownThreeRefRenderMutation } from "./utils/is-known-three-ref-render-mutation.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -6,16 +11,25 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { findRenderInvokedUseCallbackOwner } from "../../utils/find-render-invoked-usecallback-owner.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getEquivalentSymbols } from "../../utils/get-equivalent-symbols.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProtectedRefValueAliasWrite } from "../../utils/is-protected-ref-value-alias-write.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import { isProvenUnmodifiedReactApiCall } from "../../utils/is-proven-unmodified-react-api-call.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const REPEATED_ANCESTOR_TYPES = new Set([
@@ -387,10 +401,19 @@ const isPredictableInitializationValue = (
   );
 };
 
-const hasRepeatedExecutionAncestor = (node: EsTreeNode, stop: EsTreeNode): boolean => {
+const hasRepeatedExecutionAncestor = (
+  node: EsTreeNode,
+  stop: EsTreeNode,
+  provenCallbacks: ReadonlySet<EsTreeNode> = new Set(),
+): boolean => {
   let ancestor = node.parent;
   while (ancestor && ancestor !== stop) {
-    if (isFunctionLike(ancestor) || REPEATED_ANCESTOR_TYPES.has(ancestor.type)) return true;
+    if (
+      (isFunctionLike(ancestor) && !provenCallbacks.has(ancestor)) ||
+      REPEATED_ANCESTOR_TYPES.has(ancestor.type)
+    ) {
+      return true;
+    }
     ancestor = ancestor.parent;
   }
   return ancestor !== stop;
@@ -430,6 +453,7 @@ const hasNoCoExecutableCompetingWrite = (
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
   const assignmentConstraints = getBranchConstraints(assignmentExpression, renderOwner);
   const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
@@ -461,6 +485,8 @@ const hasNoCoExecutableCompetingWrite = (
       deferredExecutionBoundary !== renderOwner &&
       !synchronouslyInvokedFunctions.has(deferredExecutionBoundary) &&
       !executesDuringRender(deferredExecutionBoundary, scopes) &&
+      !findRenderInvokedUseCallbackOwner(child, context) &&
+      !isImportedRenderCallback(deferredExecutionBoundary, context) &&
       deferredWriteValue !== null &&
       !isNodeOfType(deferredWriteValue, "CallExpression") &&
       isProvablyTruthyInitializationValue(deferredWriteValue, scopes);
@@ -516,6 +542,8 @@ const isPredictableGuardedInitialization = (
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
+  context: RuleContext,
+  provenCallbacks: ReadonlySet<EsTreeNode>,
 ): boolean =>
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
   isPredictableInitializationValue(
@@ -525,19 +553,88 @@ const isPredictableGuardedInitialization = (
     scopes,
     requiresClosedTruthyDomain,
   ) &&
-  !hasRepeatedExecutionAncestor(assignmentExpression, guardedBranch) &&
-  (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
+  !hasRepeatedExecutionAncestor(assignmentExpression, guardedBranch, provenCallbacks) &&
+  (guardedBranch === renderOwner ||
+    !hasRepeatedExecutionAncestor(guardedBranch, renderOwner, provenCallbacks)) &&
   hasNoPriorCoExecutableWrite(assignmentExpression, renderOwner, refSymbol, scopes) &&
-  hasNoCoExecutableCompetingWrite(assignmentExpression, renderOwner, refSymbol, scopes) &&
+  hasNoCoExecutableCompetingWrite(assignmentExpression, renderOwner, refSymbol, scopes, context) &&
   refDoesNotEscape(renderOwner, refSymbol, scopes);
+
+const findRefWriteRenderOwner = (
+  node: EsTreeNode,
+  refSymbol: SymbolDescriptor,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const existingOwner = findRenderPhaseComponentOrHook(node, context.scopes);
+  if (existingOwner) return existingOwner;
+  const renderInvokedCallbackOwner = findRenderInvokedUseCallbackOwner(node, context);
+  if (
+    renderInvokedCallbackOwner &&
+    refSymbol.initializer &&
+    findEnclosingFunction(refSymbol.initializer) === renderInvokedCallbackOwner &&
+    !getEquivalentSymbols(refSymbol.bindingIdentifier, context.scopes).some((binding) =>
+      binding.references.some(
+        (reference) => reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+      ),
+    ) &&
+    isProvenUnmodifiedReactApiCall(refSymbol.initializer, "useRef", context.scopes)
+  ) {
+    return renderInvokedCallbackOwner;
+  }
+  const callback = findEnclosingFunction(node);
+  if (!callback || !isImportedRenderCallback(callback, context)) return null;
+  const callExpression = findTransparentExpressionRoot(callback).parent;
+  const renderOwner = findEnclosingFunction(callback);
+  if (
+    !callExpression ||
+    !isNodeOfType(callExpression, "CallExpression") ||
+    !renderOwner ||
+    !isFunctionLike(renderOwner) ||
+    renderOwner.async ||
+    renderOwner.generator ||
+    !componentOrHookDisplayNameForFunction(renderOwner) ||
+    !refSymbol.initializer ||
+    getEquivalentSymbols(refSymbol.bindingIdentifier, context.scopes).some((binding) =>
+      binding.references.some(
+        (reference) => reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+      ),
+    ) ||
+    findEnclosingFunction(refSymbol.initializer) !== renderOwner ||
+    !isProvenUnmodifiedReactApiCall(refSymbol.initializer, "useRef", context.scopes) ||
+    !isNodeOnUnconditionalPath(node, callback) ||
+    !isNodeOnUnconditionalPath(callExpression, renderOwner)
+  ) {
+    return null;
+  }
+  const reachabilityOptions = { evaluatePrimitiveLiteralTruthiness: true };
+  return isNodeReachableWithinFunction(node, context, reachabilityOptions) &&
+    isNodeReachableWithinFunction(callExpression, context, reachabilityOptions)
+    ? renderOwner
+    : null;
+};
 
 const isDocumentedLazyInitialization = (
   assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,
   refSymbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
-  const renderOwner = findRenderPhaseComponentOrHook(assignmentExpression, scopes);
+  const scopes = context.scopes;
+  const directRenderOwner = findRenderPhaseComponentOrHook(assignmentExpression, scopes);
+  const renderInvokedCallbackOwner = directRenderOwner
+    ? null
+    : findRenderInvokedUseCallbackOwner(assignmentExpression, context);
+  const renderOwner =
+    directRenderOwner ??
+    renderInvokedCallbackOwner ??
+    findRefWriteRenderOwner(assignmentExpression, refSymbol, context);
   if (!renderOwner) return false;
+  const provenCallbacks = new Set<EsTreeNode>();
+  let callback = findEnclosingFunction(assignmentExpression);
+  if (renderInvokedCallbackOwner && callback) provenCallbacks.add(callback);
+  while (callback && callback !== renderOwner) {
+    if (isImportedRenderCallback(callback, context)) provenCallbacks.add(callback);
+    callback = findEnclosingFunction(callback);
+  }
   if (assignmentExpression.operator === "??=" || assignmentExpression.operator === "||=") {
     return isPredictableGuardedInitialization(
       assignmentExpression,
@@ -546,6 +643,8 @@ const isDocumentedLazyInitialization = (
       refSymbol,
       scopes,
       assignmentExpression.operator === "||=",
+      context,
+      provenCallbacks,
     );
   }
   if (assignmentExpression.operator !== "=") return false;
@@ -567,6 +666,8 @@ const isDocumentedLazyInitialization = (
         refSymbol,
         scopes,
         true,
+        context,
+        provenCallbacks,
       )
     ) {
       return true;
@@ -593,6 +694,8 @@ const isDocumentedLazyInitialization = (
           refSymbol,
           scopes,
           false,
+          context,
+          provenCallbacks,
         )
       )
         return true;
@@ -610,9 +713,58 @@ export const noRefCurrentInRender = defineRule({
   recommendation:
     "Move ref writes into an event handler or effect. Render must stay pure because React can replay or discard it. The predictable null-guarded lazy initialization pattern remains supported.",
   create: (context) => {
-    const report = (memberExpression: EsTreeNode) => {
-      if (!resolveReactRefSymbol(memberExpression, context.scopes)) return;
-      if (!findRenderPhaseComponentOrHook(memberExpression, context.scopes)) return;
+    const report = (memberExpression: EsTreeNode, hasProtectedAliasTarget = false) => {
+      const target = stripParenExpression(memberExpression);
+      const directRefSymbol = resolveReactRefSymbol(target, context.scopes);
+      const refSymbol =
+        directRefSymbol ??
+        (isNodeOfType(target, "MemberExpression")
+          ? resolveReactRefSymbol(stripParenExpression(target.object), context.scopes)
+          : null);
+      if (!refSymbol && !hasProtectedAliasTarget) return;
+      if (!directRefSymbol && refSymbol && !hasProtectedAliasTarget) {
+        if (
+          refSymbol.references.some(
+            (reference) =>
+              reference.flag !== "read" ||
+              (isWithinAssignmentTarget(reference.identifier) &&
+                !isNodeOfType(
+                  findTransparentExpressionRoot(reference.identifier).parent,
+                  "MemberExpression",
+                )),
+          )
+        )
+          return;
+        const initializer = refSymbol.initializer
+          ? stripParenExpression(refSymbol.initializer)
+          : null;
+        const initialValue = isNodeOfType(initializer, "CallExpression")
+          ? initializer.arguments[0]
+          : null;
+        if (!initialValue || isNodeOfType(initialValue, "SpreadElement")) return;
+        const initialContainer = stripParenExpression(initialValue);
+        if (
+          !isNodeOfType(initialContainer, "ObjectExpression") &&
+          !isNodeOfType(initialContainer, "ArrayExpression")
+        )
+          return;
+        if (
+          isNodeOfType(initialContainer, "ObjectExpression") &&
+          initialContainer.properties.some(
+            (property) =>
+              isNodeOfType(property, "Property") &&
+              (property.kind !== "init" ||
+                getStaticPropertyKeyName(property, { allowComputedString: true }) === "__proto__"),
+          )
+        )
+          return;
+      }
+      if (
+        !findRenderPhaseComponentOrHook(memberExpression, context.scopes) &&
+        (!refSymbol || !findRefWriteRenderOwner(memberExpression, refSymbol, context))
+      ) {
+        return;
+      }
       context.report({
         node: memberExpression,
         message:
@@ -621,11 +773,18 @@ export const noRefCurrentInRender = defineRule({
     };
 
     return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isKnownThreeRefRenderMutation(node, context)) return;
+        context.report({
+          node,
+          message:
+            "This ref is mutated during render. React can replay or discard render work, so the mutation can leak from UI that never commits.",
+        });
+      },
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         const refSymbol = resolveReactRefSymbol(node.left, context.scopes);
-        if (!refSymbol) return;
-        if (isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
-        report(node.left);
+        if (refSymbol && isDocumentedLazyInitialization(node, refSymbol, context)) return;
+        report(node.left, !refSymbol && isProtectedRefValueAliasWrite(node, context));
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
         report(node.argument);

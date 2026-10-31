@@ -1,3 +1,4 @@
+import { isForwardedRefHelperCleanup } from "./utils/is-forwarded-ref-helper-cleanup.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -116,7 +117,11 @@ export const noRefCallbackCleanupBeforeReact19 = defineRule({
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
       const callback = node.value.expression;
       if (!callback || isNodeOfType(callback, "JSXEmptyExpression")) return;
-      if (!callbackReturnsCleanupFunction(callback, context.scopes)) return;
+      if (
+        !callbackReturnsCleanupFunction(callback, context.scopes) &&
+        !isForwardedRefHelperCleanup(node, context.scopes)
+      )
+        return;
       context.report({
         node,
         message:

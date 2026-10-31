@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { defineRule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/define-rule.js";
 import { noSpreadAccumulatorInReduce } from "../../oxlint-plugin-react-doctor/src/plugin/rules/js-performance/no-spread-accumulator-in-reduce.js";
@@ -53,9 +53,34 @@ const loadNewFixture = () => {
 };
 
 describe("physical fuzz fixture filenames", () => {
-  it.each([repositoryRoot, packageRoot])(
-    "resolves the new fixture provider through normal verdict dispatch from %s",
-    (workingDirectory) => {
+  it.each([
+    {
+      scenario: "repository cwd",
+      workingDirectory: repositoryRoot,
+      corpusDirectoryName: "",
+      boundaryData: null,
+    },
+    {
+      scenario: "package cwd",
+      workingDirectory: packageRoot,
+      corpusDirectoryName: "",
+      boundaryData: null,
+    },
+    {
+      scenario: "argv path/data boundary",
+      workingDirectory: repositoryRoot,
+      corpusDirectoryName: "backtick` corpus",
+      boundaryData: 'quote" backtick` line\nbreak',
+    },
+  ])(
+    "resolves the new fixture provider through normal verdict dispatch: $scenario",
+    ({ workingDirectory, corpusDirectoryName, boundaryData }) => {
+      const corpusDirectory = path.join(temporaryDirectory, corpusDirectoryName);
+      if (corpusDirectoryName) {
+        fs.mkdirSync(path.join(corpusDirectory, "regressions/providers"), { recursive: true });
+        fs.writeFileSync(path.join(corpusDirectory, fixtureRelativePath), fixtureSource);
+        fs.writeFileSync(path.join(corpusDirectory, providerRelativePath), providerSource);
+      }
       const loaderPath = path.join(packageRoot, "src/load-fuzz-corpus.ts");
       const filenameHelperPath = path.join(packageRoot, "src/utils/get-fuzz-corpus-filename.ts");
       const rulePath = path.join(
@@ -67,24 +92,36 @@ describe("physical fuzz fixture filenames", () => {
         "packages/oxlint-plugin-react-doctor/src/test-utils/run-rule.ts",
       );
       const childSource = `
-      import { loadFuzzCorpus } from ${JSON.stringify(loaderPath)};
-      import { getFuzzCorpusFilename } from ${JSON.stringify(filenameHelperPath)};
-      import { noSpreadAccumulatorInReduce } from ${JSON.stringify(rulePath)};
-      import { runRule } from ${JSON.stringify(runnerPath)};
-      const entry = loadFuzzCorpus(${JSON.stringify(path.relative(workingDirectory, temporaryDirectory))}).find((candidate) => candidate.relativePath === ${JSON.stringify(fixtureRelativePath)});
+      import { pathToFileURL } from "node:url";
+      const configuration = JSON.parse(process.argv[1]);
+      const { loadFuzzCorpus } = await import(pathToFileURL(configuration.loaderPath).href);
+      const { getFuzzCorpusFilename } = await import(pathToFileURL(configuration.filenameHelperPath).href);
+      const { noSpreadAccumulatorInReduce } = await import(pathToFileURL(configuration.rulePath).href);
+      const { runRule } = await import(pathToFileURL(configuration.runnerPath).href);
+      const entry = loadFuzzCorpus(configuration.corpusDirectory).find((candidate) => candidate.relativePath === configuration.fixtureRelativePath);
       if (!entry) throw new Error("Expected new fixture");
       const before = runRule(noSpreadAccumulatorInReduce, entry.code, { filename: entry.sourcePath ?? entry.relativePath, forceJsx: true });
       const after = runRule(noSpreadAccumulatorInReduce, entry.code, { filename: getFuzzCorpusFilename(entry, false), forceJsx: true });
-      console.log(JSON.stringify({ relativePath: entry.relativePath, fixtureFilename: entry.fixtureFilename, sourcePath: entry.sourcePath ?? null, before: before.diagnostics.length, after: after.diagnostics.length, parseErrors: after.parseErrors }));
+      console.log(JSON.stringify({ relativePath: entry.relativePath, fixtureFilename: entry.fixtureFilename, sourcePath: entry.sourcePath ?? null, before: before.diagnostics.length, after: after.diagnostics.length, parseErrors: after.parseErrors, boundaryData: configuration.boundaryData }));
     `;
+      const childConfiguration = {
+        loaderPath,
+        filenameHelperPath,
+        rulePath,
+        runnerPath,
+        corpusDirectory: path.relative(workingDirectory, corpusDirectory),
+        fixtureRelativePath,
+        boundaryData,
+      };
       const child = spawnSync(
         process.execPath,
         [
           "--import",
-          createRequire(import.meta.url).resolve("tsx"),
+          pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
           "--input-type=module",
           "--eval",
           childSource,
+          JSON.stringify(childConfiguration),
         ],
         {
           cwd: workingDirectory,
@@ -95,35 +132,46 @@ describe("physical fuzz fixture filenames", () => {
       expect(child.status, child.stderr).toBe(0);
       expect(JSON.parse(child.stdout)).toEqual({
         relativePath: fixtureRelativePath,
-        fixtureFilename: path.join(temporaryDirectory, fixtureRelativePath),
+        fixtureFilename: path.join(corpusDirectory, fixtureRelativePath),
         sourcePath: null,
         before: 1,
         after: 0,
         parseErrors: [],
+        boundaryData,
       });
     },
   );
 
-  it("preserves legacy relative dispatch for files without the physical context directive", () => {
-    fs.writeFileSync(
-      path.join(temporaryDirectory, fixtureRelativePath),
-      fixtureSource.replace("// fixture-context: physical\n", ""),
-    );
-    const entry = loadNewFixture();
-    expect(entry).not.toHaveProperty("fixtureFilename");
-    expect(getFuzzCorpusFilename(entry, false)).toBe(fixtureRelativePath);
-    const result = fuzzRuleWithStats(noSpreadAccumulatorInReduce.id, noSpreadAccumulatorInReduce, {
-      iterations: 0,
-      corpus: [entry],
-    });
-    expect(result.stats.firedProgramCount).toBe(1);
-    expect(result.findings).toMatchObject([
-      {
-        kind: "verdict-mismatch",
-        detail: `${fixtureRelativePath} declared pass but produced 1 diagnostics`,
-      },
-    ]);
-  });
+  it.each([
+    { lineEndingName: "LF", lineEnding: "\n" },
+    { lineEndingName: "CRLF", lineEnding: "\r\n" },
+  ])(
+    "preserves legacy relative dispatch without the directive: $lineEndingName",
+    ({ lineEnding }) => {
+      const legacyFixtureSource = fixtureSource
+        .replace(/\r?\n/g, lineEnding)
+        .replace(/^\/\/ fixture-context: physical\r?\n/m, "");
+      fs.writeFileSync(path.join(temporaryDirectory, fixtureRelativePath), legacyFixtureSource);
+      const entry = loadNewFixture();
+      expect(entry).not.toHaveProperty("fixtureFilename");
+      expect(getFuzzCorpusFilename(entry, false)).toBe(fixtureRelativePath);
+      const result = fuzzRuleWithStats(
+        noSpreadAccumulatorInReduce.id,
+        noSpreadAccumulatorInReduce,
+        {
+          iterations: 0,
+          corpus: [entry],
+        },
+      );
+      expect(result.stats.firedProgramCount).toBe(1);
+      expect(result.findings).toMatchObject([
+        {
+          kind: "verdict-mismatch",
+          detail: `${fixtureRelativePath} declared pass but produced 1 diagnostics`,
+        },
+      ]);
+    },
+  );
 
   it("preserves default liveness filenames even when an explicit source path is present", () => {
     const filenames: Array<string | undefined> = [];

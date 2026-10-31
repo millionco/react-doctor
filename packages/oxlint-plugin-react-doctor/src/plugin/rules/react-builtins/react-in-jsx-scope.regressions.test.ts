@@ -66,3 +66,67 @@ describe("react-builtins/react-in-jsx-scope — regressions: scope-aware lookup"
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("react-builtins/react-in-jsx-scope — JSX runtime advice", () => {
+  it("keeps the rule opt-in and qualifies its runtime-dependent advice", () => {
+    expect(reactInJsxScope.defaultEnabled).toBe(false);
+    expect(reactInJsxScope.severity).toBe("warn");
+    expect(reactInJsxScope.title).toBe("JSX may need a React binding");
+    expect(reactInJsxScope.recommendation).toBe(
+      "Import or provide `React` only when the selected JSX transform requires that binding. Disable this rule for automatic runtimes, build-injected React factories, or custom factories that do not use `React`.",
+    );
+  });
+
+  it.each([
+    ["unspecified transform", "const App = () => <main />;"],
+    ["classic runtime", "/** @jsxRuntime classic */\nconst App = () => <main />;"],
+    ["automatic runtime", "/** @jsxRuntime automatic */\nconst App = () => <main />;"],
+    [
+      "custom factory",
+      "/** @jsx h */\nimport { h } from 'custom-jsx';\nconst App = () => <main />;",
+    ],
+  ])("keeps source-only membership with qualified advice for %s", (_runtime, code) => {
+    const result = runJsx(code);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      {
+        message:
+          "`React` may be needed for classic JSX output; automatic runtimes and build-injected factories can make an application import unnecessary.",
+        nodeType: "JSXIdentifier",
+      },
+    ]);
+  });
+
+  it("preserves each fragment and element location with the same conditional message", () => {
+    const result = runRule(reactInJsxScope, "const App = () => <><main /><aside /></>;", {
+      filename: "fixture.jsx",
+      includeLocations: true,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      {
+        message:
+          "`React` may be needed for classic JSX output; automatic runtimes and build-injected factories can make an application import unnecessary.",
+        nodeType: "JSXOpeningFragment",
+        line: 1,
+        column: 18,
+      },
+      {
+        message:
+          "`React` may be needed for classic JSX output; automatic runtimes and build-injected factories can make an application import unnecessary.",
+        nodeType: "JSXIdentifier",
+        line: 1,
+        column: 21,
+      },
+      {
+        message:
+          "`React` may be needed for classic JSX output; automatic runtimes and build-injected factories can make an application import unnecessary.",
+        nodeType: "JSXIdentifier",
+        line: 1,
+        column: 29,
+      },
+    ]);
+  });
+});

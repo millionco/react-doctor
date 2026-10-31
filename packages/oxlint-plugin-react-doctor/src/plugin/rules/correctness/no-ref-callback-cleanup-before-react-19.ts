@@ -10,7 +10,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { hasEquivalentNullDetachAction } from "./utils/has-equivalent-null-detach-action.js";
-import { hasOwnedGuardedCallbackMapReturn } from "./utils/has-owned-guarded-callback-map-return.js";
 import { hasOwnedCallbackMapSnapshot } from "./utils/has-owned-callback-map-snapshot.js";
 
 const resolveFunctionExpressions = (
@@ -122,7 +121,6 @@ export const noRefCallbackCleanupBeforeReact19 = defineRule({
       if (!callbackReturnsCleanupFunction(callback, context.scopes)) return;
       if (hasEquivalentNullDetachAction({ attribute: node, scopes: context.scopes })) return;
       if (hasOwnedCallbackMapSnapshot({ attribute: node, scopes: context.scopes })) return;
-      if (hasOwnedGuardedCallbackMapReturn({ attribute: node, scopes: context.scopes })) return;
       context.report({
         node,
         message:

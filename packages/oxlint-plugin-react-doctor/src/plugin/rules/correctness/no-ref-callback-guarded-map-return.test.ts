@@ -25,7 +25,7 @@ const cases: readonly GuardedReturnCase[] = [
         },
       },
     },
-    expected: 0,
+    expected: 1,
   },
   {
     name: "stable-external-property-key",
@@ -41,7 +41,7 @@ const cases: readonly GuardedReturnCase[] = [
         },
       },
     },
-    expected: 0,
+    expected: 1,
   },
   {
     name: "discarded-focus-observer",
@@ -57,7 +57,7 @@ const cases: readonly GuardedReturnCase[] = [
         },
       },
     },
-    expected: 0,
+    expected: 1,
   },
   {
     name: "exact-readonly-native-effect-selector",
@@ -73,7 +73,7 @@ const cases: readonly GuardedReturnCase[] = [
         },
       },
     },
-    expected: 0,
+    expected: 1,
   },
   {
     name: "missing-null-delete",
@@ -345,7 +345,7 @@ const cases: readonly GuardedReturnCase[] = [
         },
       },
     },
-    expected: 0,
+    expected: 1,
   },
   {
     name: "custom-host-component",
@@ -685,7 +685,7 @@ const cases: readonly GuardedReturnCase[] = [
   },
 ];
 
-describe("owned guarded callback Map return", () => {
+describe("guarded callback Map cleanup ownership", () => {
   it.each(cases)("$name", ({ code, effectiveOptions, expected }) => {
     const result = runRule(noRefCallbackCleanupBeforeReact19, code, effectiveOptions);
     expect(result.parseErrors).toEqual([]);

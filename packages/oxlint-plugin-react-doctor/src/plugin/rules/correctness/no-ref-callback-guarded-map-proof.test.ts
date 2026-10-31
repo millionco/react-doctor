@@ -11,17 +11,17 @@ interface GuardedMapProofCase {
 const cases: ReadonlyArray<GuardedMapProofCase> = [
   {
     name: "baseline-closed-effect-selector",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\nconst useBrowserEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;\nexport const EntryPanel = () => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  const entryKey = "entry";\n  useBrowserEffect(() => { entries.current.get(entryKey)?.focus(); }, [entryKey]);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(entryKey, element);\n      return () => {\n        if (entries.current.get(entryKey) === element) entries.current.delete(entryKey);\n      };\n    } else {\n      entries.current.delete(entryKey);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
     name: "erased-window-interface",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\ninterface window {}\nconst useBrowserEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;\nexport const EntryPanel = () => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  const entryKey = "entry";\n  useBrowserEffect(() => { entries.current.get(entryKey)?.focus(); }, [entryKey]);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(entryKey, element);\n      return () => {\n        if (entries.current.get(entryKey) === element) entries.current.delete(entryKey);\n      };\n    } else {\n      entries.current.delete(entryKey);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
     name: "erased-window-type-alias",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\ntype window = unknown;\nconst useBrowserEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;\nexport const EntryPanel = () => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  const entryKey = "entry";\n  useBrowserEffect(() => { entries.current.get(entryKey)?.focus(); }, [entryKey]);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(entryKey, element);\n      return () => {\n        if (entries.current.get(entryKey) === element) entries.current.delete(entryKey);\n      };\n    } else {\n      entries.current.delete(entryKey);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
@@ -36,12 +36,12 @@ const cases: ReadonlyArray<GuardedMapProofCase> = [
   },
   {
     name: "merged-react-namespace-interface",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\ninterface React {}\nconst useBrowserEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;\nexport const EntryPanel = () => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  const entryKey = "entry";\n  useBrowserEffect(() => { entries.current.get(entryKey)?.focus(); }, [entryKey]);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(entryKey, element);\n      return () => {\n        if (entries.current.get(entryKey) === element) entries.current.delete(entryKey);\n      };\n    } else {\n      entries.current.delete(entryKey);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
     name: "merged-selector-const-interface",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\ninterface useBrowserEffect {}\nconst useBrowserEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;\nexport const EntryPanel = () => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  const entryKey = "entry";\n  useBrowserEffect(() => { entries.current.get(entryKey)?.focus(); }, [entryKey]);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(entryKey, element);\n      return () => {\n        if (entries.current.get(entryKey) === element) entries.current.delete(entryKey);\n      };\n    } else {\n      entries.current.delete(entryKey);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
@@ -51,18 +51,18 @@ const cases: ReadonlyArray<GuardedMapProofCase> = [
   },
   {
     name: "guarded-selected-leaf-readonly-observation",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\n\nexport const EntryPanel = ({ record }: { record: { id: string } }) => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  \n  \n  React.useEffect(() => { inspect(record.id); }, []);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(record.id, element);\n      return () => {\n        if (entries.current.get(record.id) === element) entries.current.delete(record.id);\n      };\n    } else {\n      entries.current.delete(record.id);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
     name: "guarded-unrelated-branch-readonly-observation",
-    expected: 0,
+    expected: 1,
     code: 'import * as React from "react";\n\nexport const EntryPanel = ({ record }: { record: { id: string } }) => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  \n  \n  React.useEffect(() => { inspect(record.other); }, []);\n  return <li ref={(element) => {\n    if (element) {\n      entries.current.set(record.id, element);\n      return () => {\n        if (entries.current.get(record.id) === element) entries.current.delete(record.id);\n      };\n    } else {\n      entries.current.delete(record.id);\n    }\n  }}>Entry</li>;\n};\n',
   },
   {
     name: "optional-selected-leaf-observation",
     code: 'import * as React from "react";\ninterface Entry { id: string; }\ninterface PanelProps { item: Entry; onSelect?: (id: string) => void; }\nexport const EntryPanel = ({ item, onSelect }: PanelProps) => {\n  const entries = React.useRef<Map<string, HTMLLIElement>>(new Map());\n  const renderEntry = (record: Entry) => <li ref={(element) => {\n    if (element) {\n      entries.current.set(record.id, element);\n      return () => { if (entries.current.get(record.id) === element) entries.current.delete(record.id); };\n    } else entries.current.delete(record.id);\n  }} onClick={() => onSelect?.(record.id)}>Entry</li>;\n  return <ul>{renderEntry(item)}</ul>;\n};\n',
-    expected: 0,
+    expected: 1,
   },
 ];
 

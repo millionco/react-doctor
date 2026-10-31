@@ -1,5 +1,5 @@
 // rule: no-ref-callback-cleanup-before-react-19
-// verdict: pass
+// verdict: fail
 // weakness: alias-guard
 // source: synthetic guarded ref selector with an erased window binding
 import * as React from "react";

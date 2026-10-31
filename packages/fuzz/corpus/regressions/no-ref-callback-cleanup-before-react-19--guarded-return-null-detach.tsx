@@ -1,7 +1,7 @@
 // rule: no-ref-callback-cleanup-before-react-19
 // weakness: guarded-return-null-detach
 // source: independently-synthetic
-// verdict: pass
+// verdict: fail
 import * as React from "react";
 const useBrowserEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
 export const EntryPanel = () => {

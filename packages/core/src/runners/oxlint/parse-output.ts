@@ -50,13 +50,11 @@ const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
 const REACT_ERROR_BOUNDARY_TITLE = "JSX render errors need an Error Boundary";
 const REACT_ERROR_BOUNDARY_MESSAGE =
   "This try/catch cannot catch errors thrown while the JSX child renders. Use an Error Boundary instead.";
-const REACT_COMPILER_IMPACT =
-  "This component misses React Compiler's automatic memoization & re-renders more than it should";
-const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can optimize it.";
+const REACT_COMPILER_IMPACT = "React Compiler flagged this code during analysis";
+const REACT_COMPILER_ACTION = "Review the compiler's reason before changing the code.";
 // `incompatible-library` fires on a third-party hook the compiler can't memoize
 // through (e.g. @tanstack/react-virtual's `useVirtualizer`) — code the user
-// can't and shouldn't rewrite. The generic "rewrite it" action wrongly steers
-// users off mature libraries (#950), so this rule names the real fix instead.
+// can't and shouldn't rewrite.
 const REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION =
   "It's how the library works, not a bug in your code. Memoize values you pass from it into other memoized components, or suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.";
 const SET_STATE_IN_EFFECT_ACTION =

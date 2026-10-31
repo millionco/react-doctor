@@ -21,7 +21,7 @@ const compilerAdviceCases: CompilerAdviceCase[] = [
     message:
       "Warning: Synthetic analysis reason.\nSynthetic analysis detail.\n/synthetic/compiler-advice.tsx:9:5\nSynthetic source excerpt",
     expectedMessage:
-      "React Compiler flagged this code during analysis: Synthetic analysis reason. Review the compiler's reason before changing the code.",
+      "React Compiler flagged this code during analysis: Synthetic analysis reason. Check whether evaluating the flagged expression reads or writes `ref.current` during render. React Compiler's refs analysis can conservatively flag ref forwarding through aggregate objects.",
     expectedHelp: "Synthetic analysis detail.",
     expectedTitle: "React Compiler can't optimize this",
     expectedCategory: "Performance",
@@ -32,7 +32,7 @@ const compilerAdviceCases: CompilerAdviceCase[] = [
     rule: "refs",
     message: "",
     expectedMessage:
-      "React Compiler flagged this code during analysis. Review the compiler's reason before changing the code.",
+      "React Compiler flagged this code during analysis. Check whether evaluating the flagged expression reads or writes `ref.current` during render. React Compiler's refs analysis can conservatively flag ref forwarding through aggregate objects.",
     expectedHelp: "Synthetic fallback guidance.",
     expectedTitle: "React Compiler can't optimize this",
     expectedCategory: "Performance",
@@ -43,7 +43,7 @@ const compilerAdviceCases: CompilerAdviceCase[] = [
     rule: "refs",
     message: null,
     expectedMessage:
-      "React Compiler flagged this code during analysis. Review the compiler's reason before changing the code.",
+      "React Compiler flagged this code during analysis. Check whether evaluating the flagged expression reads or writes `ref.current` during render. React Compiler's refs analysis can conservatively flag ref forwarding through aggregate objects.",
     expectedHelp: "Synthetic fallback guidance.",
     expectedTitle: "React Compiler can't optimize this",
     expectedCategory: "Performance",

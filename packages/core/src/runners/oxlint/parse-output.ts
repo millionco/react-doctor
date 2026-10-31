@@ -52,6 +52,8 @@ const REACT_ERROR_BOUNDARY_MESSAGE =
   "This try/catch cannot catch errors thrown while the JSX child renders. Use an Error Boundary instead.";
 const REACT_COMPILER_IMPACT = "React Compiler flagged this code during analysis";
 const REACT_COMPILER_ACTION = "Review the compiler's reason before changing the code.";
+const REACT_COMPILER_REFS_ACTION =
+  "Check whether evaluating the flagged expression reads or writes `ref.current` during render. React Compiler's refs analysis can conservatively flag ref forwarding through aggregate objects.";
 // `incompatible-library` fires on a third-party hook the compiler can't memoize
 // through (e.g. @tanstack/react-virtual's `useVirtualizer`) — code the user
 // can't and shouldn't rewrite.
@@ -219,13 +221,14 @@ const resolveCleanedDiagnostic = (
         help: reasonDetail || help,
       };
     }
+    let action = REACT_COMPILER_ACTION;
+    if (rule === "refs") {
+      action = REACT_COMPILER_REFS_ACTION;
+    } else if (rule === "incompatible-library") {
+      action = REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION;
+    }
     return {
-      message: buildReactCompilerMessage(
-        reasonSummary.trim(),
-        rule === "incompatible-library"
-          ? REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION
-          : REACT_COMPILER_ACTION,
-      ),
+      message: buildReactCompilerMessage(reasonSummary.trim(), action),
       help: appendReanimatedSharedValueHint(reasonDetail || help, rule, project),
     };
   }

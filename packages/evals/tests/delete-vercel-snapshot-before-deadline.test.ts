@@ -1,8 +1,14 @@
 import { Snapshot } from "@vercel/sandbox";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { deleteVercelSnapshotBeforeDeadline } from "../src/utils/delete-vercel-snapshot-before-deadline.js";
 const CONTROL_PLANE_TEST_TIMEOUT_MS = 5;
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["performance", "setTimeout", "clearTimeout"] });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("deleteVercelSnapshotBeforeDeadline", () => {
   it("recovers snapshots when the create response was lost", async () => {
@@ -32,7 +38,7 @@ describe("deleteVercelSnapshotBeforeDeadline", () => {
       snapshotId: { value: "snapshot-name" },
       delete: { value: () => new Promise<never>(() => undefined) },
     });
-    await expect(
+    const deletionAssertion = expect(
       deleteVercelSnapshotBeforeDeadline({
         credentials: {},
         snapshotName: "builder",
@@ -40,5 +46,7 @@ describe("deleteVercelSnapshotBeforeDeadline", () => {
         deadlineMilliseconds: globalThis.performance.now() + CONTROL_PLANE_TEST_TIMEOUT_MS,
       }),
     ).rejects.toThrow("Timed out deleting Vercel snapshot snapshot-name");
+    await vi.advanceTimersByTimeAsync(CONTROL_PLANE_TEST_TIMEOUT_MS);
+    await deletionAssertion;
   });
 });

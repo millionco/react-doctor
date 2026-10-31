@@ -5256,7 +5256,7 @@
     "originallyExternal": false,
     "rule": {
       "id": "no-img-without-dimensions",
-      "title": "Image has no reserved layout space",
+      "title": "Image may lack a complete size reservation",
       "severity": "warn",
       "recommendation": "Add width and height attributes, or reserve the image's aspect ratio with an explicit CSS box before it loads.",
       "category": "Performance",

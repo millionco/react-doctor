@@ -1,8 +1,11 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
+import { hasPossibleStaticPropertyWrite } from "./has-static-property-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const PROMISE_FACTORY_METHOD_NAMES = new Set([
@@ -15,9 +18,14 @@ const PROMISE_FACTORY_METHOD_NAMES = new Set([
 ]);
 const PROMISE_DEFERRED_METHOD_NAMES = new Set(["catch", "finally", "then"]);
 
+interface ProvenPromiseExpressionOptions {
+  allowAsyncFunctions?: boolean;
+}
+
 export const isProvenPromiseExpression = (
   rawExpression: EsTreeNode,
   scopes: ScopeAnalysis,
+  options: ProvenPromiseExpressionOptions = {},
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const isAsyncFunctionReference = (
@@ -25,11 +33,23 @@ export const isProvenPromiseExpression = (
     functionVisitedSymbolIds: Set<number>,
   ): boolean => {
     const functionExpression = stripParenExpression(rawFunctionExpression);
-    if (isFunctionLike(functionExpression)) return functionExpression.async;
+    if (isFunctionLike(functionExpression)) {
+      return functionExpression.async && !functionExpression.generator;
+    }
     if (!isNodeOfType(functionExpression, "Identifier")) return false;
     const functionSymbol = scopes.symbolFor(functionExpression);
-    if (!functionSymbol || functionVisitedSymbolIds.has(functionSymbol.id)) return false;
-    const candidate = functionSymbol.initializer ?? functionSymbol.declarationNode;
+    if (
+      !functionSymbol ||
+      functionVisitedSymbolIds.has(functionSymbol.id) ||
+      !functionSymbol.references.every((reference) => reference.flag === "read")
+    ) {
+      return false;
+    }
+    const candidate =
+      functionSymbol.kind === "function"
+        ? functionSymbol.declarationNode
+        : getDirectConstInitializer(functionSymbol);
+    if (!candidate) return false;
     const nextVisitedSymbolIds = new Set(functionVisitedSymbolIds);
     nextVisitedSymbolIds.add(functionSymbol.id);
     return isAsyncFunctionReference(candidate, nextVisitedSymbolIds);
@@ -38,10 +58,18 @@ export const isProvenPromiseExpression = (
   const expression = stripParenExpression(rawExpression);
   if (isNodeOfType(expression, "Identifier")) {
     const symbol = scopes.symbolFor(expression);
-    if (!symbol || !symbol.initializer || visitedSymbolIds.has(symbol.id)) return false;
+    const initializer = symbol ? getDirectConstInitializer(symbol) : null;
+    if (
+      !symbol ||
+      !initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      !symbol.references.every((reference) => reference.flag === "read")
+    ) {
+      return false;
+    }
     const nextVisitedSymbolIds = new Set(visitedSymbolIds);
     nextVisitedSymbolIds.add(symbol.id);
-    return isProvenPromiseExpression(symbol.initializer, scopes, nextVisitedSymbolIds);
+    return isProvenPromiseExpression(initializer, scopes, options, nextVisitedSymbolIds);
   }
   if (isNodeOfType(expression, "NewExpression")) {
     const callee = stripParenExpression(expression.callee);
@@ -54,17 +82,29 @@ export const isProvenPromiseExpression = (
   if (!isNodeOfType(expression, "CallExpression")) return false;
   const callee = stripParenExpression(expression.callee);
   if (isNodeOfType(callee, "Identifier")) {
-    return isAsyncFunctionReference(callee, visitedSymbolIds);
+    return (
+      options.allowAsyncFunctions !== false && isAsyncFunctionReference(callee, visitedSymbolIds)
+    );
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const calleeObject = stripParenExpression(callee.object);
-  if (PROMISE_DEFERRED_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")) {
-    return isProvenPromiseExpression(callee.object, scopes, visitedSymbolIds);
+  const methodName = getStaticPropertyName(callee);
+  if (PROMISE_DEFERRED_METHOD_NAMES.has(methodName ?? "")) {
+    if (methodName && hasPossibleStaticPropertyWrite(calleeObject, methodName, scopes)) {
+      return false;
+    }
+    return isProvenPromiseExpression(callee.object, scopes, options, visitedSymbolIds);
   }
   return Boolean(
-    PROMISE_FACTORY_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+    PROMISE_FACTORY_METHOD_NAMES.has(methodName ?? "") &&
     isNodeOfType(calleeObject, "Identifier") &&
     calleeObject.name === "Promise" &&
-    scopes.isGlobalReference(calleeObject),
+    scopes.isGlobalReference(calleeObject) &&
+    isProvenUnmodifiedGlobalNamespaceReference(
+      calleeObject,
+      "Promise",
+      scopes,
+      methodName ?? undefined,
+    ),
   );
 };

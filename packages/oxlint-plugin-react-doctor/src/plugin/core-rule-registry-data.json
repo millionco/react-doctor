@@ -7175,9 +7175,9 @@
     "originallyExternal": false,
     "rule": {
       "id": "no-set-state-after-await-in-effect",
-      "title": "State update after await in an effect",
+      "title": "Unguarded asynchronous state update in an effect",
       "severity": "warn",
-      "recommendation": "In a `useEffect` whose dependencies can change, guard any setter call that runs after an `await` behind a cancellation/ignore flag, or return a cleanup that cancels the async work.",
+      "recommendation": "In an effect whose dependencies can change, guard setters after `await` or inside deferred microtask and Promise callbacks with a cancellation/ignore flag checked after deferral, or return a cleanup that cancels the async work.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

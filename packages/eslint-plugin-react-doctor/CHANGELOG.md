@@ -1,5 +1,16 @@
 # eslint-plugin-react-doctor
 
+## 0.9.21
+
+### Patch Changes
+
+- [#2320](https://github.com/millionco/react-doctor/pull/2320) [`5a2c6f5`](https://github.com/millionco/react-doctor/commit/5a2c6f541f9ee031e99fc1704637265d4367b55b) Thanks [@aidenybai](https://github.com/aidenybai)! - Report an unguarded `useReducer` dispatch after `await` or inside a microtask or Promise callback when it goes through a transparent local setter helper, such as `queueMicrotask(() => assign(dispatch, action))`, exactly where the direct dispatch is reported. Only `no-set-state-after-await-in-effect` accepts the forwarded dispatch, because it already counts a direct dispatch. The prop-change rules, which compare writes against `useState` initializers, stay unchanged. Imported, reassigned, asynchronous, deferred and conditional helpers, and reassigned dispatch bindings, stay outside the proof.
+
+- [#2319](https://github.com/millionco/react-doctor/pull/2319) [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823) Thanks [@aidenybai](https://github.com/aidenybai)! - Report `react-hooks-js/set-state-in-effect` when an effect updates state synchronously through a transparent local setter helper, such as `useEffect(() => assign(setValue, next))`, which React Compiler does not follow. A new `forwarded-set-state-in-effect` rule finds the write with the forwarded setter proof, runs only when the compiler rule is enabled, and React Doctor reports its finding under the compiler's rule key, message and docs link, so `react-hooks/set-state-in-effect` disable comments, ignores and scoring treat it like the compiler finding. Compiler-visible synchronous setter calls retain duplicate suppression. Ref-derived measurements and guarded ref writes remain allowed. Imported, reassigned, asynchronous, deferred, conditional and multi-statement forwarding helpers stay outside the proof.
+
+- Updated dependencies [[`5a2c6f5`](https://github.com/millionco/react-doctor/commit/5a2c6f541f9ee031e99fc1704637265d4367b55b), [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823)]:
+  - oxlint-plugin-react-doctor@0.9.21
+
 ## 0.9.20
 
 ### Patch Changes

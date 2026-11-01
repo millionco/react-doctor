@@ -6029,7 +6029,50 @@ const cleanupRegistryReleasesUsage = (
       ? returnedCleanupValue
       : resolveStableValue(child.argument, context);
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
-    walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+    let replayFunction = cleanupFunction;
+    const visitedReplayFunctions = new Set<EsTreeNode>();
+    while (
+      !replayFunction.async &&
+      !replayFunction.generator &&
+      replayFunction.params.length === 0 &&
+      !visitedReplayFunctions.has(replayFunction)
+    ) {
+      visitedReplayFunctions.add(replayFunction);
+      const forwardedExpression = getSingleReturnExpression(replayFunction);
+      const forwardedCall = forwardedExpression ? stripParenExpression(forwardedExpression) : null;
+      if (
+        !isNodeOfType(forwardedCall, "CallExpression") ||
+        forwardedCall.optional ||
+        forwardedCall.arguments.length !== 0
+      )
+        break;
+      const forwardedCallee = stripParenExpression(forwardedCall.callee);
+      if (!isNodeOfType(forwardedCallee, "Identifier")) break;
+      const helperSymbol = context.scopes.symbolFor(forwardedCallee);
+      const helperInitializer = helperSymbol?.initializer
+        ? stripParenExpression(helperSymbol.initializer)
+        : null;
+      const helperDeclaration = helperSymbol?.declarationNode;
+      const helperResult = helperInitializer ? getSingleReturnExpression(helperInitializer) : null;
+      if (
+        helperSymbol?.kind !== "const" ||
+        !isNodeOfType(helperDeclaration, "VariableDeclarator") ||
+        helperDeclaration.id !== helperSymbol.bindingIdentifier ||
+        helperDeclaration.parent?.parent !== callback.body ||
+        helperDeclaration.range[0] >= child.range[0] ||
+        helperSymbol.references.some((reference) => reference.flag !== "read") ||
+        !isFunctionLike(helperInitializer) ||
+        helperInitializer.async ||
+        helperInitializer.generator ||
+        helperInitializer.params.length !== 0 ||
+        !helperResult ||
+        !isNodeOfType(stripParenExpression(helperResult), "CallExpression") ||
+        visitedReplayFunctions.has(helperInitializer)
+      )
+        break;
+      replayFunction = helperInitializer;
+    }
+    walkAst(replayFunction.body, (cleanupChild: EsTreeNode) => {
       if (hasExhaustiveReplay) return false;
       if (!isNodeOfType(cleanupChild, "CallExpression")) return;
       const callee = stripParenExpression(cleanupChild.callee);

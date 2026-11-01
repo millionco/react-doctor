@@ -1173,6 +1173,23 @@
     }
   },
   {
+    "key": "react-doctor/forwarded-set-state-in-effect",
+    "id": "forwarded-set-state-in-effect",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "forwarded-set-state-in-effect",
+      "title": "setState in effect through a helper",
+      "severity": "warn",
+      "recommendation": "Derive the value during render, initialize the state directly, or set it from the event that caused the change. This reports a synchronous state update made through a local setter helper wherever React Compiler's `set-state-in-effect` reports the direct call, and React Doctor reports it under `react-hooks-js/set-state-in-effect`.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/git-provider-url-injection-risk",
     "id": "git-provider-url-injection-risk",
     "source": "react-doctor",

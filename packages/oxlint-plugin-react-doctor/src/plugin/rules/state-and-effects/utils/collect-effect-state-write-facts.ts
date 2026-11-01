@@ -1689,11 +1689,16 @@ const findStateSetterReference = (
       options.acceptsReducerDispatch &&
       isReactHookResultReference(argument, REDUCER_HOOK_NAMES, 1, context.scopes)
     ) {
-      return argumentReference.resolved?.references.some(
-        (candidate) => candidate.isWrite() && !candidate.init,
+      const dispatchSymbol = resolveConstIdentifierAlias(argument, context.scopes, true);
+      if (
+        !dispatchSymbol ||
+        dispatchSymbol.references.some((candidate) => candidate.flag !== "read") ||
+        argumentReference.resolved?.references.some(
+          (candidate) => candidate.isWrite() && !candidate.init,
+        )
       )
-        ? null
-        : argumentReference;
+        return null;
+      return argumentReference;
     }
     const setterReference = resolveStateSetterReference(analysis, argumentReference);
     if (!setterReference) return null;

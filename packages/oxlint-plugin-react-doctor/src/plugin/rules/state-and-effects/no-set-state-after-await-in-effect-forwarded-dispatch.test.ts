@@ -102,3 +102,35 @@ describe("no-set-state-after-await-in-effect forwarded reducer dispatch", () => 
     expect(forwardedResult.diagnostics).toEqual([]);
   });
 });
+
+describe("forwarded reducer dispatch alias provenance", () => {
+  it("does not treat an alias captured after dispatch replacement as React dispatch", () => {
+    expect(
+      countDiagnostics(
+        ASSIGN_HELPER,
+        'queueMicrotask(() => assign(writer, {type: "reset"}));',
+        "let [count, dispatch] = useReducer(reducer, 0); dispatch = () => {}; const writer = dispatch;",
+      ),
+    ).toBe(0);
+  });
+
+  it("reports through an immutable alias chain of an unmodified dispatch", () => {
+    expect(
+      countDiagnostics(
+        ASSIGN_HELPER,
+        'queueMicrotask(() => assign(writer, {type: "reset"}));',
+        "const [count, dispatch] = useReducer(reducer, 0); const first = dispatch; const writer = first;",
+      ),
+    ).toBe(1);
+  });
+
+  it("does not accept a useReducer name shadowed by a custom factory", () => {
+    expect(
+      countDiagnostics(
+        ASSIGN_HELPER,
+        'queueMicrotask(() => assign(dispatch, {type: "reset"}));',
+        "const useReducer = () => [0, () => {}]; const [count, dispatch] = useReducer();",
+      ),
+    ).toBe(0);
+  });
+});

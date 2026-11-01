@@ -242,3 +242,6 @@ export const FLICKITY_POSSIBLE_JSX_DIRECTIVE_PATTERN = /@jsx(?:ImportSource|Runt
 
 export const FLICKITY_JSX_DIRECTIVE_PATTERN =
   /(?:^|\s)@(jsx|jsxImportSource|jsxRuntime)\s+([^\s*]+)/g;
+
+export const MAX_EFFECT_SETTER_ALIAS_COUNT = 64;
+export const MAX_EFFECT_SETTER_ALIAS_REFERENCE_COUNT = 256;

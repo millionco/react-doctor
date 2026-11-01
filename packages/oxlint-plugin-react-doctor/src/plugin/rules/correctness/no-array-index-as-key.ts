@@ -1,4 +1,4 @@
-import { isClosedJsonSnapshotOrdinalMap } from "../../utils/is-closed-json-snapshot-ordinal-map.js";
+import { createClosedJsonSnapshotOrdinalMap } from "../../utils/is-closed-json-snapshot-ordinal-map.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -1946,6 +1946,7 @@ export const noArrayIndexAsKey = defineRule({
   recommendation:
     "Use a stable id from the item, like `key={item.id}` or `key={item.slug}`. Index keys break when the list reorders or filters.",
   create: (context: RuleContext) => {
+    let isClosedJsonSnapshotOrdinalMap = createClosedJsonSnapshotOrdinalMap(context);
     const reportIndexKey = (node: EsTreeNode, indexName: string): void => {
       context.report({
         node,
@@ -1953,6 +1954,9 @@ export const noArrayIndexAsKey = defineRule({
       });
     };
     return {
+      Program() {
+        isClosedJsonSnapshotOrdinalMap = createClosedJsonSnapshotOrdinalMap(context);
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isReactApiCall(node, "cloneElement", context.scopes, { resolveNamedAliases: true }))
           return;
@@ -1972,7 +1976,7 @@ export const noArrayIndexAsKey = defineRule({
         if (!indexUse) return;
         if (
           indexUse.binding.iteratorCall &&
-          (isClosedJsonSnapshotOrdinalMap(indexUse.binding.iteratorCall, context) ||
+          (isClosedJsonSnapshotOrdinalMap(indexUse.binding.iteratorCall) ||
             isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
             isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
         )

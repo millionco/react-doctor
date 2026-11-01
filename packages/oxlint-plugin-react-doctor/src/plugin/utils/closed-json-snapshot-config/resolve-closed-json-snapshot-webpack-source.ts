@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceProjectModule } from "../build-source-project-index.js";
 import type { ClosedJsonSnapshotSourceResolutionPolicy } from "./interfaces.js";
+import { normalizeFilename } from "../normalize-filename.js";
 import { SNAPSHOT_CONFIG_MAX_BYTES } from "./constants.js";
 
 export interface ResolveClosedJsonSnapshotWebpackSourceInput {
@@ -53,23 +54,25 @@ export const resolveClosedJsonSnapshotWebpackSource = ({
       directory = parent;
     }
     if (fs.statSync(requested, { throwIfNoEntry: false })?.isFile())
-      return modules.has(requested) ? requested : null;
+      return modules.has(normalizeFilename(requested)) ? normalizeFilename(requested) : null;
     const candidates = resolutionPolicy.extensions
       .map((extension) => `${requested}${extension}`)
       .filter(
         (filename) =>
-          modules.has(filename) ||
+          modules.has(normalizeFilename(filename)) ||
           (filename.startsWith(`${resolutionPolicy.rootDirectory}${path.sep}`) &&
             fs.statSync(filename, { throwIfNoEntry: false })?.isFile()),
       );
     if (candidates.length > 0)
-      return candidates.length === 1 && modules.has(candidates[0]) ? candidates[0] : null;
+      return candidates.length === 1 && modules.has(normalizeFilename(candidates[0]))
+        ? normalizeFilename(candidates[0])
+        : null;
     if (fs.existsSync(path.join(requested, "package.json"))) return null;
     const indexCandidates = resolutionPolicy.extensions
       .map((extension) => path.join(requested, `index${extension}`))
       .filter((filename) => fs.statSync(filename, { throwIfNoEntry: false })?.isFile());
-    return indexCandidates.length === 1 && modules.has(indexCandidates[0])
-      ? indexCandidates[0]
+    return indexCandidates.length === 1 && modules.has(normalizeFilename(indexCandidates[0]))
+      ? normalizeFilename(indexCandidates[0])
       : null;
   } catch {
     return null;

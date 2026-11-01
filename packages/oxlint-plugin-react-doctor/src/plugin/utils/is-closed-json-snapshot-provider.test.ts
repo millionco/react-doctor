@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { isClosedJsonSnapshotProvider } from "./is-closed-json-snapshot-provider.js";
 
 const directories: string[] = [];
@@ -40,7 +41,7 @@ const checkProvider = (
       aliases: [],
     },
   });
-  const module = project?.modules.get(filename);
+  const module = project?.modules.get(normalizeFilename(filename));
   const helperFunction = module?.scopes.rootScope.symbols.find(
     (symbol) => symbol.name === "load",
   )?.initializer;

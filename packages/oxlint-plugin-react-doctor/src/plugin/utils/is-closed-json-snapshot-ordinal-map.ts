@@ -15,9 +15,11 @@ import type {
 } from "./get-closed-json-snapshot-project.js";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 import { getClosedJsonSnapshotSourceRole } from "./get-closed-json-snapshot-source-role.js";
+import type { ClosedJsonSnapshotSourceRole } from "./get-closed-json-snapshot-source-role.js";
 import { getClosedJsonSnapshotLeaf } from "./get-closed-json-snapshot-leaf.js";
 import { hasClosedJsonSnapshotNativeAttributes } from "./has-closed-json-snapshot-native-attributes.js";
 import { isClosedJsonSnapshotProvider } from "./is-closed-json-snapshot-provider.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getFunctionExportNames } from "./get-function-export-names.js";
@@ -830,51 +832,53 @@ const certifyRouteConsumer = (
   return true;
 };
 
-export const isClosedJsonSnapshotOrdinalMap = (
-  iteratorCall: EsTreeNode,
-  context: RuleContext,
-): boolean => {
-  if (!context.filename || !isNodeOfType(iteratorCall, "CallExpression")) return false;
-  const role = getClosedJsonSnapshotSourceRole(context.filename);
-  if (!role) return false;
-  const leaf = getClosedJsonSnapshotLeaf({
-    iteratorCall,
-    scopes: context.scopes,
-    hasAntdComponentRole: role.hasAntdLocaleProvider,
-  });
-  if (!leaf) return false;
-  const program = context.scopes.rootScope.node;
-  if (!isNodeOfType(program, "Program")) return false;
-  const project = getClosedJsonSnapshotProject({
-    rootDirectory: role.projectDirectory,
-    allowJsxInJs: role.allowsJavaScriptJsx,
-    currentFilePath: context.filename,
-    currentProgramNode: program,
-    currentScopes: context.scopes,
-    currentSourceText: context.sourceCode?.getText?.(),
-    sourceResolutionPolicy: role.sourceResolutionPolicy,
-    knownPublicEntryTargets: role.knownPublicEntryTargets,
-  });
-  if (!project) return false;
-  const module = project.modules.get(context.filename);
-  if (!module) return false;
-  if (
-    getClosedJsonSnapshotComponentExportNames(module, leaf.componentFunction).length > 0 &&
-    isClosedJsonSnapshotPublicEntry({ project, filePath: module.filePath })
-  )
-    return false;
-  const consumers = getConsumers(project, module, leaf.componentFunction);
-  if (!consumers) return false;
-  const openings = consumers.filter((consumer) => !isClosingElementReference(consumer.reference));
-  return (
-    openings.length === 1 &&
-    certifyRouteConsumer(
-      openings[0],
-      leaf.targetPath,
-      project,
-      role.decoderRole,
-      role.hasLodashEmptiness,
-      role.hasAntdLocaleProvider,
+export const createClosedJsonSnapshotOrdinalMap = (context: RuleContext) => {
+  let role: ClosedJsonSnapshotSourceRole | null | undefined;
+  let project: ClosedJsonSnapshotProject | null | undefined;
+  return (iteratorCall: EsTreeNode): boolean => {
+    if (!context.filename || !isNodeOfType(iteratorCall, "CallExpression")) return false;
+    if (role === undefined) role = getClosedJsonSnapshotSourceRole(context.filename);
+    if (!role) return false;
+    const leaf = getClosedJsonSnapshotLeaf({
+      iteratorCall,
+      scopes: context.scopes,
+      hasAntdComponentRole: role.hasAntdLocaleProvider,
+    });
+    if (!leaf) return false;
+    const program = context.scopes.rootScope.node;
+    if (!isNodeOfType(program, "Program")) return false;
+    if (project === undefined)
+      project = getClosedJsonSnapshotProject({
+        rootDirectory: role.projectDirectory,
+        allowJsxInJs: role.allowsJavaScriptJsx,
+        currentFilePath: context.filename,
+        currentProgramNode: program,
+        currentScopes: context.scopes,
+        currentSourceText: context.sourceCode?.getText?.(),
+        sourceResolutionPolicy: role.sourceResolutionPolicy,
+        knownPublicEntryTargets: role.knownPublicEntryTargets,
+      });
+    if (!project) return false;
+    const module = project.modules.get(normalizeFilename(context.filename));
+    if (!module) return false;
+    if (
+      getClosedJsonSnapshotComponentExportNames(module, leaf.componentFunction).length > 0 &&
+      isClosedJsonSnapshotPublicEntry({ project, filePath: module.filePath })
     )
-  );
+      return false;
+    const consumers = getConsumers(project, module, leaf.componentFunction);
+    if (!consumers) return false;
+    const openings = consumers.filter((consumer) => !isClosingElementReference(consumer.reference));
+    return (
+      openings.length === 1 &&
+      certifyRouteConsumer(
+        openings[0],
+        leaf.targetPath,
+        project,
+        role.decoderRole,
+        role.hasLodashEmptiness,
+        role.hasAntdLocaleProvider,
+      )
+    );
+  };
 };

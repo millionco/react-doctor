@@ -1,11 +1,19 @@
 import * as fs from "node:fs";
+import filesystem from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import {
+  runRule,
+  runRuleOnParsedFixture,
+} from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import { discoverProject } from "../src/project-info/discover-project.js";
 import { runOxlint } from "../src/run-oxlint.js";
 import { parseSourceText } from "../../oxlint-plugin-react-doctor/src/plugin/utils/parse-source-file.js";
+import type { RuleContext } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule-context.js";
+import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
+import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
 import { noArrayIndexAsKey } from "../../oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-array-index-as-key.js";
 
 interface SnapshotFixtureMutation {
@@ -644,6 +652,105 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 };
 
 describe("closed imported JSON snapshot ordinal keys", () => {
+  it("reads the project once for multiple eligible maps in one file", () => {
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({ ...SNAPSHOT_MANIFEST, main: "src/leaf.js" }),
+    );
+    const sourceText = `import React from "react";
+      export const First = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;
+      export const Second = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;`;
+    const filename = path.join(temporaryDirectory, "src/leaf.js");
+    const incomingFilename = path.join(temporaryDirectory, "src/index.js");
+    writeSnapshotFile("src/leaf.js", sourceText);
+    const readFile = vi.spyOn(filesystem, "readFileSync");
+    syncBuiltinESMExports();
+    try {
+      const result = runRule(noArrayIndexAsKey, sourceText, { filename, forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(2);
+      expect(
+        readFile.mock.calls.filter(([filePath]) => filePath === incomingFilename),
+      ).toHaveLength(1);
+    } finally {
+      readFile.mockRestore();
+      syncBuiltinESMExports();
+    }
+  });
+
+  it("reuses a refused project only within the current file analysis", () => {
+    const sourceText = `import React from "react";
+      export const First = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;
+      export const Second = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;`;
+    const filename = path.join(temporaryDirectory, "src/leaf.js");
+    const incomingFilename = path.join(temporaryDirectory, "src/index.js");
+    writeSnapshotFile("src/leaf.js", sourceText);
+    writeSnapshotFile(
+      "src/unresolved.js",
+      'import missing from "./missing"; export default missing;',
+    );
+    const readFile = vi.spyOn(filesystem, "readFileSync");
+    syncBuiltinESMExports();
+    try {
+      const result = runRule(noArrayIndexAsKey, sourceText, { filename, forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(2);
+      expect(
+        readFile.mock.calls.filter(([filePath]) => filePath === incomingFilename),
+      ).toHaveLength(1);
+    } finally {
+      readFile.mockRestore();
+      syncBuiltinESMExports();
+    }
+  });
+
+  it("refreshes the project when the same visitors enter the same Program again", () => {
+    const filename = path.join(temporaryDirectory, "src/leaf.js");
+    const sourceText = SNAPSHOT_FILES["src/leaf.js"];
+    const repeatedProgramRule = {
+      ...noArrayIndexAsKey,
+      create: (context: RuleContext) => {
+        const visitors = noArrayIndexAsKey.create(context);
+        let keyAttribute: EsTreeNode | undefined;
+        return {
+          ...visitors,
+          JSXAttribute(node: EsTreeNode) {
+            keyAttribute = node;
+            visitors.JSXAttribute?.(node);
+          },
+          "Program:exit"(node: EsTreeNode) {
+            writeSnapshotFile(
+              "src/new-consumer.js",
+              'import Leaf from "./leaf"; export const extra = <Leaf paragraphs={["new"]} />;',
+            );
+            visitors.Program?.(node);
+            expect(keyAttribute).toBeDefined();
+            if (keyAttribute) visitors.JSXAttribute?.(keyAttribute);
+          },
+        };
+      },
+    };
+    const result = runRule(repeatedProgramRule, sourceText, { filename, forceJsx: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("refreshes incoming consumers on a new scan of the identical parsed AST", () => {
+    const filename = path.join(temporaryDirectory, "src/leaf.js");
+    const sourceText = SNAPSHOT_FILES["src/leaf.js"];
+    const parsed = parseFixture(sourceText, { filename, forceJsx: true });
+    expect(
+      runRuleOnParsedFixture(noArrayIndexAsKey, sourceText, parsed, { filename }).diagnostics,
+    ).toEqual([]);
+    writeSnapshotFile(
+      "src/new-consumer.js",
+      'import Leaf from "./leaf"; export const extra = <Leaf paragraphs={["new"]} />;',
+    );
+    const result = runRuleOnParsedFixture(noArrayIndexAsKey, sourceText, parsed, { filename });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("certifies a complete imported provider, gated owner, route callback and native leaf", () => {
     expect(runSnapshotLeaf()).toEqual([]);
   });

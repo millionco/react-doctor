@@ -65,6 +65,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-side-effect-in-state-updater-function",
   "no-adjust-state-on-prop-change",
   "no-set-state-after-await-in-effect",
+  "forwarded-set-state-in-effect",
   "no-derived-state",
   "no-derived-state-effect",
   "no-event-handler",

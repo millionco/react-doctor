@@ -6,6 +6,7 @@ import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project
 import { isClosedJsonSnapshotLocaleCarrier } from "./is-closed-json-snapshot-locale-carrier.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { walkAst } from "./walk-ast.js";
 import {
   CLOSED_JSON_SNAPSHOT_LOCALE_MAX_NODES,
@@ -37,7 +38,7 @@ const checkDirectory = (directory: string, hasAntdLocaleProvider = true): boolea
     },
   });
   if (!project) return false;
-  const module = project.modules.get(path.join(directory, "shell.js"));
+  const module = project.modules.get(normalizeFilename(path.join(directory, "shell.js")));
   let opening: EsTreeNodeOfType<"JSXOpeningElement"> | null = null;
   if (module)
     walkAst(module.program, (node) => {

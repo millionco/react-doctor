@@ -12,6 +12,7 @@ import {
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import type { SourceProjectIndex, SourceProjectModule } from "./build-source-project-index.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { parseSourceText } from "./parse-source-file.js";
 import type { ClosedJsonSnapshotSourceResolutionPolicy } from "./closed-json-snapshot-config/interfaces.js";
@@ -79,7 +80,7 @@ export const getClosedJsonSnapshotProject = ({
   try {
     index = buildSourceProjectIndex({
       rootDirectory: absoluteRootDirectory,
-      currentFilePath: currentFilePath ? path.resolve(currentFilePath) : "",
+      currentFilePath: currentFilePath ? normalizeFilename(path.resolve(currentFilePath)) : "",
       currentProgramNode: programNode,
       currentScopes: currentScopes ?? analyzeScopes(programNode),
       currentSourceText,
@@ -98,8 +99,13 @@ export const getClosedJsonSnapshotProject = ({
     return null;
   }
   if (!index || index.hasOpaqueMdxConsumerSurface) return null;
-  const excludedConfigPaths = new Set(sourceResolutionPolicy.configFilePaths ?? []);
-  if (currentFilePath && excludedConfigPaths.has(path.resolve(currentFilePath))) return null;
+  const excludedConfigPaths = new Set(
+    (sourceResolutionPolicy.configFilePaths ?? []).map((filename) =>
+      normalizeFilename(path.resolve(filename)),
+    ),
+  );
+  if (currentFilePath && excludedConfigPaths.has(normalizeFilename(path.resolve(currentFilePath))))
+    return null;
   const unresolvedRuntimeSourcesByFilePath = new Map(
     [...index.unresolvedRuntimeSourcesByFilePath].filter(
       ([filename]) => !excludedConfigPaths.has(filename),
@@ -160,7 +166,7 @@ export const getClosedJsonSnapshotProject = ({
   }
   const resolveImport = (fromFilePath: string, source: string): ClosedJsonSnapshotModule | null => {
     const resolvedPath = resolveSource(fromFilePath, source, index.modulesByFilePath);
-    return resolvedPath ? (modules.get(resolvedPath) ?? null) : null;
+    return resolvedPath ? (modules.get(normalizeFilename(resolvedPath)) ?? null) : null;
   };
   return {
     rootDirectory: absoluteRootDirectory,

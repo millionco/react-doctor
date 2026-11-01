@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { normalizeFilename } from "./normalize-filename.js";
 import type { ClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 
 export interface ClosedJsonSnapshotPublicEntryInput {
@@ -9,23 +10,26 @@ export interface ClosedJsonSnapshotPublicEntryInput {
 export const isClosedJsonSnapshotPublicEntry = ({
   project,
   filePath,
-}: ClosedJsonSnapshotPublicEntryInput): boolean =>
-  project.knownPublicEntryTargets.some((target) => {
-    const entryPath = path.resolve(project.rootDirectory, target);
+}: ClosedJsonSnapshotPublicEntryInput): boolean => {
+  const normalizedFilePath = normalizeFilename(filePath);
+  return project.knownPublicEntryTargets.some((target) => {
+    const entryPath = normalizeFilename(path.resolve(project.rootDirectory, target));
     const extension = path.extname(filePath);
     const wildcardIndex = entryPath.indexOf("*");
     if (wildcardIndex !== -1)
       return (
-        filePath.startsWith(entryPath.slice(0, wildcardIndex)) &&
-        filePath.endsWith(entryPath.slice(entryPath.lastIndexOf("*") + 1))
+        normalizedFilePath.startsWith(entryPath.slice(0, wildcardIndex)) &&
+        normalizedFilePath.endsWith(entryPath.slice(entryPath.lastIndexOf("*") + 1))
       );
     return (
-      entryPath === filePath ||
-      entryPath === filePath.slice(0, -extension.length) ||
-      (path.basename(filePath, extension) === "index" && path.dirname(filePath) === entryPath) ||
+      entryPath === normalizedFilePath ||
+      entryPath === normalizedFilePath.slice(0, -extension.length) ||
+      (path.basename(normalizedFilePath, extension) === "index" &&
+        normalizeFilename(path.dirname(normalizedFilePath)) === entryPath) ||
       project.resolveImport(
         path.join(project.rootDirectory, "package.json"),
         target.startsWith(".") || path.isAbsolute(target) ? target : `./${target}`,
-      )?.filePath === filePath
+      )?.filePath === normalizedFilePath
     );
   });
+};

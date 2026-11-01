@@ -3,6 +3,7 @@ import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../../constants/dom-property-tags.js";
 import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
@@ -198,9 +199,11 @@ const isWrittenByResourceSyncEffect = (
   }
   const effectFunction = effectCall.arguments?.[0];
   if (!effectFunction || !isFunctionLike(effectFunction)) return false;
+  const invokedFunctions = collectEffectInvokedFunctions(effectFunction, context.scopes);
   let didFindResourceSync = false;
   walkAst(effectFunction.body, (child) => {
     if (didFindResourceSync) return false;
+    if (isFunctionLike(child) && !invokedFunctions.has(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;

@@ -66,3 +66,34 @@ describe("layout media ref ownership", () => {
     }
   });
 });
+
+describe.each([noAdjustStateOnPropChange, noResetAllStateOnPropChange])(
+  "$id playback execution ownership",
+  (rule) => {
+    it.each([
+      ["unused", "", 1],
+      ["invoked", "play();", 0],
+    ])("handles an %s playback helper", (_name, invocation, expectedCount) => {
+      const result = runRule(
+        rule,
+        `import { useLayoutEffect, useRef, useState } from "react";
+          const Example = ({ source }) => {
+            const mediaRef = useRef(null);
+            const [failed, setFailed] = useState(false);
+            useLayoutEffect(() => setFailed(false), [source]);
+            useLayoutEffect(() => {
+              const play = () => {
+                const player = mediaRef.current;
+                if (player) player.play().catch(() => setFailed(true));
+              };
+              ${invocation}
+            }, [source]);
+            return <video ref={mediaRef} src={source} hidden={failed} />;
+          };`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expectedCount);
+    });
+  },
+);

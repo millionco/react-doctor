@@ -9,6 +9,7 @@ import { hasSymbolWriteBefore } from "../../../../utils/has-symbol-write-before.
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
+import { isNoOpFunction } from "../../../../utils/is-no-op-function.js";
 import { resolveFirstArgumentBinding } from "../../../../utils/resolve-first-argument-binding.js";
 import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -787,16 +788,23 @@ export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTr
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
-  if (isFunctionLike(node)) return true;
+  // An empty `() => {}` releases nothing, so it must not exempt the effect.
+  if (isFunctionLike(node)) return !isNoOpFunction(node);
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
     const ref = getRef(analysis, node);
-    if (ref && (hasParameterDefinition(ref) || resolveToFunction(ref))) return true;
+    if (!ref) return false;
+    if (hasParameterDefinition(ref)) return true;
+    const resolvedFunction = resolveToFunction(ref);
+    return resolvedFunction !== null && isCleanupReturnArgument(analysis, resolvedFunction);
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
+    const branches = [node.consequent as EsTreeNode, node.alternate as EsTreeNode];
+    if (branches.some((branch) => isCleanupReturnArgument(analysis, branch))) return true;
+    // `enabled ? subscribe() : () => {}` returns a function on both paths, so the call is the disposer.
     return (
-      isCleanupReturnArgument(analysis, node.consequent as EsTreeNode) ||
-      isCleanupReturnArgument(analysis, node.alternate as EsTreeNode)
+      branches.some(isFunctionLike) &&
+      branches.some((branch) => isNodeOfType(branch, "CallExpression"))
     );
   }
   return false;

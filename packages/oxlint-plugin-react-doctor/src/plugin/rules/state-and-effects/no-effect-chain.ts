@@ -51,6 +51,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+import { isNoOpFunction } from "../../utils/is-no-op-function.js";
 
 const COMMITTED_DOM_MEMBER_METHOD_NAMES = new Set([
   ...EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
@@ -1615,7 +1616,7 @@ const isFunctionShapedReturn = (
     isNodeOfType(unwrappedReturnedValue, "ArrowFunctionExpression") ||
     isNodeOfType(unwrappedReturnedValue, "FunctionExpression")
   ) {
-    return true;
+    return !isNoOpFunction(unwrappedReturnedValue);
   }
   // Returning a CallExpression result — most cleanup-returning
   // primitives (subscribe, addEventListener helpers) return a

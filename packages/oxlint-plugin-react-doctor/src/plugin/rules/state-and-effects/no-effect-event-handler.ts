@@ -11,6 +11,7 @@ import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-e
 import { hasDocumentClassListMutation } from "./utils/has-document-class-list-mutation.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { hasCleanup } from "./utils/effect/react.js";
+import { getEffectStatementsWithoutEmptyCleanup } from "./utils/get-effect-statements-without-empty-cleanup.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -356,7 +357,7 @@ export const noEffectEventHandler = defineRule({
 
         const dependencyExpressions = depsNode.elements ?? [];
 
-        const statements = getCallbackStatements(callback);
+        const statements = getEffectStatementsWithoutEmptyCleanup(node, callback);
         if (statements.length === 0) return;
 
         const soleStatement = statements[0];

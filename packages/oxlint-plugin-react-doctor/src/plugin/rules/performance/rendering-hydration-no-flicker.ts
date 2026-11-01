@@ -21,6 +21,7 @@ import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expressi
 import { unwrapReturnExpression } from "../../utils/unwrap-return-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isExternalDomSyncCall } from "../state-and-effects/utils/has-deferred-or-external-effect-work.js";
+import { getEffectStatementsWithoutEmptyCleanup } from "../state-and-effects/utils/get-effect-statements-without-empty-cleanup.js";
 
 const USE_EFFECT_ONLY = new Set(["useEffect"]);
 const USE_CALLBACK_ONLY = new Set(["useCallback"]);
@@ -747,7 +748,7 @@ export const renderingHydrationNoFlicker = defineRule({
         return;
       }
 
-      const bodyStatements = getCallbackStatements(callback);
+      const bodyStatements = getEffectStatementsWithoutEmptyCleanup(node, callback);
       if (bodyStatements.length !== 1) return;
 
       const soleStatement = bodyStatements[0];

@@ -38,3 +38,17 @@ export const EXTERNAL_RULES = [
 export const REACT_COMPILER_RULES: Record<string, OxlintRuleSeverity> = Object.fromEntries(
   EXTERNAL_RULES.map((rule) => [rule.key, rule.severity]),
 );
+
+interface ReactCompilerBridgeRule {
+  readonly key: string;
+  readonly compilerKey: string;
+  readonly compilerUrl: string;
+}
+
+export const REACT_COMPILER_BRIDGE_RULES = [
+  {
+    key: "react-doctor/forwarded-set-state-in-effect",
+    compilerKey: "react-hooks-js/set-state-in-effect",
+    compilerUrl: "https://react.dev/reference/eslint-plugin-react-hooks/lints/set-state-in-effect",
+  },
+] as const satisfies ReadonlyArray<ReactCompilerBridgeRule>;

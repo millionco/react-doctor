@@ -16,7 +16,8 @@ export const getClosedJsonSnapshotProviderBody = (
   if (!expression) return null;
   const declarations: EsTreeNode[] = [];
   for (const statement of body.body.slice(0, -1)) {
-    if (statement.type !== "VariableDeclaration" || statement.kind !== "const") return null;
+    if (statement.type !== "VariableDeclaration" || !["const", "let"].includes(statement.kind))
+      return null;
     const declaration = statement.declarations[0];
     if (
       statement.declarations.length !== 1 ||

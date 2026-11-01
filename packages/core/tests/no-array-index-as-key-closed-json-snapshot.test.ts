@@ -672,6 +672,142 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 
 describe("closed imported JSON snapshot ordinal keys", () => {
   it.each([
+    ["let unused = '/catalog';", "const requestOptions = { responseType: 'json' };"],
+    ["let timeout = 100;", "let requestOptions = { timeout, responseType: 'json' };"],
+    ["let baseOptions = { responseType: 'json' };", "const requestOptions = { ...baseOptions };"],
+    ["const baseOptions = { responseType: 'json' };", "let requestOptions = { ...baseOptions };"],
+    [
+      "let count = 100; let timeout = +count;",
+      "let requestOptions = { timeout, responseType: 'json' };",
+    ],
+  ])(
+    "certifies ordered read-only local let prefixes through the ordinal rule: %s / %s",
+    (helperPrelude, executorPrelude) => {
+      for (const kind of ["let", "const"]) {
+        writeSnapshotFile(
+          "src/request.js",
+          `import axios from 'axios'; export const load = () => {
+        ${helperPrelude.replaceAll("let ", `${kind} `)}
+        return new Promise((resolve, reject) => {
+          ${executorPrelude.replaceAll("let ", `${kind} `)}
+          const onFailure = error => reject(error);
+          axios(requestOptions).then(response => resolve(response.data)).catch(onFailure);
+        });
+      };`,
+        );
+        expect(runSnapshotLeaf()).toEqual([]);
+      }
+    },
+  );
+
+  it("retains private-argument and exact default-response boundaries with let prefixes", () => {
+    const manifest = {
+      ...SNAPSHOT_MANIFEST,
+      dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+    };
+    writeSnapshotFile("package.json", JSON.stringify(manifest));
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = options => {
+      let timeout = options.timeout;
+      let requestOptions = { ...options, timeout };
+      return new Promise((resolve, reject) => {
+        let unused = null;
+        axios(requestOptions).then(response => { if (response.status === 200) resolve(response.data); else reject(); }).catch(reject);
+      });
+    };`,
+    );
+    replaceSnapshotSource({
+      name: "readonly let caller",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ timeout: 100, responseType: 'text' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile("package.json", JSON.stringify(SNAPSHOT_MANIFEST));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile("package.json", JSON.stringify({ ...manifest, main: "src/request.js" }));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "var requestOptions = { responseType: 'json' };",
+    "let requestOptions;",
+    "let requestOptions = { responseType: 'json' }, other = null;",
+    "let unused = /(?i:a)/; let requestOptions = { responseType: 'json' };",
+    "let requestOptions = unknown;",
+    "let requestOptions = makeOptions();",
+    "let requestOptions = { get responseType() { return 'json'; } };",
+    "let requestOptions = { ...later }; let later = { responseType: 'json' };",
+    "let count = +count; let requestOptions = { responseType: 'json' };",
+    "let baseOptions = { responseType: 'json' }; let requestOptions = baseOptions;",
+    "let mode = 'json'; let requestOptions = { responseType: mode };",
+    "let requestOptions = { responseType: 'json' }; const capture = () => requestOptions;",
+    "let requestOptions = { responseType: 'json' }; requestOptions.responseType = 'text';",
+    "let requestOptions = { responseType: 'json' }; observe(requestOptions);",
+    "let requestOptions = { responseType: 'json' }; const unused = arguments;",
+    "if (true) { let requestOptions = { responseType: 'json' }; }",
+  ])("retains ordinal warnings for unproved let initialization or escape: %s", (prelude) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${prelude} axios(requestOptions).then(response => resolve(response.data)).catch(reject);
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it("does not publish let capabilities to other modules or let forwarding functions", () => {
+    const source = `import axios from 'axios'; export const load = () => {
+      let requestOptions = { responseType: 'json' };
+      return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    writeSnapshotFile("src/request.js", source);
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "src/other.js",
+      "import axios from 'axios'; let requestOptions = { responseType: 'json' }; axios(requestOptions);",
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile(
+      "src/other.js",
+      "import axios from 'axios'; const requestOptions = { responseType: 'json' }; axios(requestOptions);",
+    );
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "src/request.js",
+      source
+        .replace(
+          "return new Promise((resolve, reject) => {",
+          "return new Promise((resolve, reject) => { let onFailure = error => reject(error);",
+        )
+        .replace(".catch(reject)", ".catch(onFailure)"),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it("counts let cells and the selected const handler in the combined prelude limit", () => {
+    const declarations = Array.from(
+      { length: CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT - 1 },
+      (_, index) => `let unused${index} = null;`,
+    ).join(" ");
+    const source = `import axios from 'axios'; export const load = () => {
+      ${declarations}
+      return new Promise((resolve, reject) => {
+        const onFailure = error => reject(error);
+        axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+      });
+    };`;
+    writeSnapshotFile("src/request.js", source);
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "src/request.js",
+      source.replace("const onFailure", "let extra = null; const onFailure"),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
     "error => reject(error)",
     "error => { reject(error); }",
     "error => { return reject(error); }",
@@ -1329,7 +1465,7 @@ describe("closed imported JSON snapshot ordinal keys", () => {
     "const unused = () => foreign;",
     "const unused = { headers: {} };",
     "const unused = true ? { url: '/catalog' } : { url: '/other' };",
-    "let unused = '/catalog';",
+    "let unused = '/catalog'; unused = '/other';",
     "const unused = '/catalog'; publish(unused);",
     "const unused = { url: '/catalog' }; unused.url = '/other';",
     "if (true) { const unused = '/catalog'; }",

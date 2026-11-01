@@ -417,6 +417,7 @@ const isInertRequestValue = (
   depth: number,
   allowContainers = true,
   argument?: SnapshotRequestArgument,
+  preludeLetSymbols?: ReadonlySet<SymbolDescriptor>,
 ): boolean => {
   if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return false;
   const node = stripParenExpression(expression);
@@ -426,12 +427,13 @@ const isInertRequestValue = (
   if (node.type === "Literal") return isSnapshotPrimitiveLiteral(node);
   if (node.type === "TemplateLiteral") return node.expressions.length === 0;
   if (node.type === "UnaryExpression" && ["-", "+", "!"].includes(node.operator)) {
-    return isInertRequestValue(node.argument, module, depth + 1, true, argument);
+    return isInertRequestValue(node.argument, module, depth + 1, true, argument, preludeLetSymbols);
   }
   if (node.type === "Identifier") {
     const symbol = module.scopes.symbolFor(node);
     return Boolean(
-      symbol?.kind === "const" &&
+      symbol &&
+      (symbol.kind === "const" || preludeLetSymbols?.has(symbol)) &&
       symbol.declarationNode.type === "VariableDeclarator" &&
       symbol.declarationNode.id === symbol.bindingIdentifier &&
       symbol.initializer &&
@@ -447,14 +449,29 @@ const isInertRequestValue = (
             "LogicalExpression",
           ].includes(reference.identifier.parent?.type ?? ""),
       ) &&
-      isInertRequestValue(symbol.initializer, module, depth + 1, false, argument),
+      isInertRequestValue(
+        symbol.initializer,
+        module,
+        depth + 1,
+        false,
+        argument,
+        preludeLetSymbols,
+      ),
     );
   }
   if (node.type === "ArrayExpression") {
     if (!allowContainers) return false;
     return node.elements.every(
       (element) =>
-        element && isInertRequestValue(element, module, depth + 1, allowContainers, argument),
+        element &&
+        isInertRequestValue(
+          element,
+          module,
+          depth + 1,
+          allowContainers,
+          argument,
+          preludeLetSymbols,
+        ),
     );
   }
   if (node.type === "ObjectExpression") {
@@ -466,7 +483,14 @@ const isInertRequestValue = (
         !property.method &&
         getStaticPropertyKeyName(property) !== null &&
         getStaticPropertyKeyName(property) !== "__proto__" &&
-        isInertRequestValue(property.value, module, depth + 1, allowContainers, argument),
+        isInertRequestValue(
+          property.value,
+          module,
+          depth + 1,
+          allowContainers,
+          argument,
+          preludeLetSymbols,
+        ),
     );
   }
   return false;
@@ -485,36 +509,42 @@ const isInertTransportCondition = (
   node: EsTreeNode,
   module: ClosedJsonSnapshotModule,
   depth: number,
+  preludeLetSymbols?: ReadonlySet<SymbolDescriptor>,
 ): boolean => {
   if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return false;
-  if (isInertRequestValue(node, module, depth) || isNodeEnvironmentRead(node, module)) return true;
+  if (
+    isInertRequestValue(node, module, depth, true, undefined, preludeLetSymbols) ||
+    isNodeEnvironmentRead(node, module)
+  )
+    return true;
   if (node.type === "Identifier") {
     const symbol = module.scopes.symbolFor(node);
     return Boolean(
-      symbol?.kind === "const" &&
+      symbol &&
+      (symbol.kind === "const" || preludeLetSymbols?.has(symbol)) &&
       symbol.initializer &&
       symbol.declarationNode.type === "VariableDeclarator" &&
       symbol.declarationNode.id === symbol.bindingIdentifier &&
       getActiveSnapshotReferences(symbol).every((reference) => reference.flag === "read") &&
-      isInertTransportCondition(symbol.initializer, module, depth + 1),
+      isInertTransportCondition(symbol.initializer, module, depth + 1, preludeLetSymbols),
     );
   }
   if (node.type === "BinaryExpression" && ["===", "!=="].includes(node.operator)) {
     return (
-      isInertTransportCondition(node.left, module, depth + 1) &&
-      isInertTransportCondition(node.right, module, depth + 1)
+      isInertTransportCondition(node.left, module, depth + 1, preludeLetSymbols) &&
+      isInertTransportCondition(node.right, module, depth + 1, preludeLetSymbols)
     );
   }
   if (node.type === "LogicalExpression") {
     return (
-      isInertTransportCondition(node.left, module, depth + 1) &&
-      isInertTransportCondition(node.right, module, depth + 1)
+      isInertTransportCondition(node.left, module, depth + 1, preludeLetSymbols) &&
+      isInertTransportCondition(node.right, module, depth + 1, preludeLetSymbols)
     );
   }
   return (
     node.type === "UnaryExpression" &&
     node.operator === "!" &&
-    isInertTransportCondition(node.argument, module, depth + 1)
+    isInertTransportCondition(node.argument, module, depth + 1, preludeLetSymbols)
   );
 };
 
@@ -525,6 +555,7 @@ const readRequestOptions = (
   allowContainers = true,
   argument?: SnapshotRequestArgument,
   boundAlternatives = false,
+  preludeLetSymbols?: ReadonlySet<SymbolDescriptor>,
 ): Map<string, EsTreeNode>[] | null => {
   if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return null;
   const node = stripParenExpression(expression);
@@ -535,7 +566,8 @@ const readRequestOptions = (
       return [new Map(argument.properties)];
     }
     if (
-      symbol?.kind !== "const" ||
+      !symbol ||
+      (symbol.kind !== "const" && !preludeLetSymbols?.has(symbol)) ||
       symbol.declarationNode.type !== "VariableDeclarator" ||
       symbol.declarationNode.id !== symbol.bindingIdentifier ||
       symbol.declarationNode.parent?.parent?.type === "ExportNamedDeclaration" ||
@@ -569,10 +601,11 @@ const readRequestOptions = (
       false,
       argument,
       boundAlternatives,
+      preludeLetSymbols,
     );
   }
   if (node.type === "ConditionalExpression") {
-    if (!isInertTransportCondition(node.test, module, depth + 1)) return null;
+    if (!isInertTransportCondition(node.test, module, depth + 1, preludeLetSymbols)) return null;
     const consequent = readRequestOptions(
       node.consequent,
       module,
@@ -580,6 +613,7 @@ const readRequestOptions = (
       allowContainers,
       argument,
       boundAlternatives,
+      preludeLetSymbols,
     );
     const alternate = readRequestOptions(
       node.alternate,
@@ -588,6 +622,7 @@ const readRequestOptions = (
       allowContainers,
       argument,
       boundAlternatives,
+      preludeLetSymbols,
     );
     return consequent &&
       alternate &&
@@ -607,6 +642,7 @@ const readRequestOptions = (
         allowContainers,
         argument,
         boundAlternatives,
+        preludeLetSymbols,
       );
       if (!spreadRecords) return null;
       const expandedRecords: Map<string, EsTreeNode>[] = [];
@@ -622,7 +658,16 @@ const readRequestOptions = (
     if (property.type !== "Property" || property.kind !== "init" || property.method) return null;
     const propertyName = getStaticPropertyKeyName(property);
     if (!propertyName || !REQUEST_OPTION_NAMES.has(propertyName)) return null;
-    if (!isInertRequestValue(property.value, module, depth + 1, allowContainers, argument))
+    if (
+      !isInertRequestValue(
+        property.value,
+        module,
+        depth + 1,
+        allowContainers,
+        argument,
+        preludeLetSymbols,
+      )
+    )
       return null;
     const value =
       getSnapshotRequestArgumentValue(property.value, module, argument) ?? property.value;
@@ -638,8 +683,17 @@ const hasClosedSnapshotRequestOptions = (
   argument?: SnapshotRequestArgument,
   boundAlternatives = false,
   allowsDefaultResponse = false,
+  preludeLetSymbols?: ReadonlySet<SymbolDescriptor>,
 ): boolean => {
-  const records = readRequestOptions(expression, module, 0, true, argument, boundAlternatives);
+  const records = readRequestOptions(
+    expression,
+    module,
+    0,
+    true,
+    argument,
+    boundAlternatives,
+    preludeLetSymbols,
+  );
   return Boolean(
     records &&
     records.every((record) => {
@@ -656,15 +710,17 @@ const hasClosedSnapshotRequestOptions = (
   );
 };
 
-const hasClosedSnapshotProviderPrelude = (
+const getClosedSnapshotProviderPreludeLetSymbols = (
   declarations: ReadonlyArray<EsTreeNode>,
   request: EsTreeNode,
   module: ClosedJsonSnapshotModule,
+  owners: ReadonlyArray<EsTreeNode>,
   argument?: SnapshotRequestArgument,
-): boolean => {
-  if (declarations.length === 0) return true;
+): ReadonlySet<SymbolDescriptor> | null => {
+  const preludeLetSymbols = new Set<SymbolDescriptor>();
+  if (declarations.length === 0) return preludeLetSymbols;
   if (declarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT)
-    return false;
+    return null;
   const recordBySymbol = new Map<SymbolDescriptor, boolean>();
   const approvedReferences = new Set<EsTreeNode>();
   const isPrimitive = (expression: EsTreeNode, depth = 0): boolean => {
@@ -682,16 +738,48 @@ const hasClosedSnapshotProviderPrelude = (
       !getSnapshotRequestArgumentValue(node, module, argument)
     )
       return false;
-    return isInertRequestValue(node, module, depth, false, argument);
+    return isInertRequestValue(node, module, depth, false, argument, preludeLetSymbols);
   };
   for (const declaration of declarations) {
     if (declaration.type !== "VariableDeclarator" || declaration.id.type !== "Identifier")
-      return false;
+      return null;
     const symbol = module.scopes.symbolFor(declaration.id);
-    if (!symbol || symbol.kind !== "const" || symbol.bindingIdentifier !== declaration.id)
-      return false;
+    if (!symbol || symbol.bindingIdentifier !== declaration.id) return null;
+    const statement = declaration.parent;
+    if (statement?.type === "VariableDeclaration" && statement.kind === "let") {
+      const body = statement.parent;
+      const owner = body?.parent;
+      const scope = owner && module.scopes.ownScopeFor(owner);
+      const sameNameSymbols = scope?.symbols.filter((candidate) => candidate.name === symbol.name);
+      if (
+        symbol.kind !== "let" ||
+        symbol.declarationNode !== declaration ||
+        symbol.name !== declaration.id.name ||
+        symbol.initializer !== declaration.init ||
+        statement.declarations.length !== 1 ||
+        statement.declarations[0] !== declaration ||
+        body?.type !== "BlockStatement" ||
+        !owner ||
+        !owners.includes(owner) ||
+        !isFunctionLike(owner) ||
+        owner.body !== body ||
+        owners.some(
+          (candidate) =>
+            !isFunctionLike(candidate) ||
+            candidate.params.some((parameter) => parameter.type !== "Identifier"),
+        ) ||
+        !scope ||
+        !["function", "arrow-function"].includes(scope.kind) ||
+        symbol.scope !== scope ||
+        scope.symbolsByName.get(symbol.name) !== symbol ||
+        sameNameSymbols?.length !== 1 ||
+        sameNameSymbols[0] !== symbol ||
+        ["arguments", "eval"].includes(symbol.name)
+      )
+        return null;
+    } else if (symbol.kind !== "const") return null;
     const initializer = declaration.init && stripParenExpression(declaration.init);
-    if (!initializer || initializer.type === "Identifier") return false;
+    if (!initializer || initializer.type === "Identifier") return null;
     const isRecord = initializer.type === "ObjectExpression";
     if (isRecord) {
       for (const property of initializer.properties) {
@@ -703,7 +791,7 @@ const hasClosedSnapshotProviderPrelude = (
             !spreadSymbol ||
             (recordBySymbol.get(spreadSymbol) !== true && spreadSymbol !== argument?.parameter)
           )
-            return false;
+            return null;
           approvedReferences.add(spread);
           continue;
         }
@@ -714,7 +802,7 @@ const hasClosedSnapshotProviderPrelude = (
           !REQUEST_OPTION_NAMES.has(getStaticPropertyKeyName(property) ?? "") ||
           !isPrimitive(property.value)
         )
-          return false;
+          return null;
         if (
           property.shorthand &&
           property.key.type === "Identifier" &&
@@ -723,9 +811,11 @@ const hasClosedSnapshotProviderPrelude = (
         )
           approvedReferences.add(property.key);
       }
-      if (!readRequestOptions(initializer, module, 0, true, argument, true)) return false;
-    } else if (!isPrimitive(initializer)) return false;
+      if (!readRequestOptions(initializer, module, 0, true, argument, true, preludeLetSymbols))
+        return null;
+    } else if (!isPrimitive(initializer)) return null;
     recordBySymbol.set(symbol, isRecord);
+    if (symbol.kind === "let") preludeLetSymbols.add(symbol);
   }
   walkAst(request, (node) => {
     approvedReferences.add(node);
@@ -734,7 +824,9 @@ const hasClosedSnapshotProviderPrelude = (
     getActiveSnapshotReferences(symbol).every(
       (reference) => reference.flag === "read" && approvedReferences.has(reference.identifier),
     ),
-  );
+  )
+    ? preludeLetSymbols
+    : null;
 };
 
 const getImportSource = (symbol: SymbolDescriptor): string | null => {
@@ -845,6 +937,7 @@ const isClientRequest = (
   argument?: SnapshotRequestArgument,
   boundAlternatives = false,
   allowsDefaultResponse = false,
+  preludeLetSymbols?: ReadonlySet<SymbolDescriptor>,
 ): boolean => {
   if (call.type !== "CallExpression" || call.optional) return false;
   const callee = call.callee;
@@ -862,6 +955,7 @@ const isClientRequest = (
         argument,
         boundAlternatives,
         allowsDefaultResponse,
+        preludeLetSymbols,
       ),
     );
   }
@@ -880,6 +974,7 @@ const isClientRequest = (
         argument,
         boundAlternatives,
         allowsDefaultResponse,
+        preludeLetSymbols,
       )
     );
   }
@@ -887,7 +982,7 @@ const isClientRequest = (
     method === "get" &&
     call.arguments.length === 2 &&
     Boolean(call.arguments[0] && call.arguments[1]) &&
-    isInertRequestValue(call.arguments[0], module, 0, true, argument) &&
+    isInertRequestValue(call.arguments[0], module, 0, true, argument, preludeLetSymbols) &&
     hasClosedSnapshotRequestOptions(
       call.arguments[1],
       module,
@@ -895,6 +990,7 @@ const isClientRequest = (
       argument,
       boundAlternatives,
       allowsDefaultResponse,
+      preludeLetSymbols,
     )
   );
 };
@@ -1580,13 +1676,18 @@ export const isClosedJsonSnapshotProvider = ({
     chain.callee.type !== "MemberExpression" ||
     getStaticPropertyName(chain.callee) !== "then" ||
     chain.arguments.length !== 1 ||
-    preludeDeclarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT ||
-    !hasClosedSnapshotProviderPrelude(
-      preludeDeclarations.filter((declaration) => declaration !== forwardingDeclaration),
-      chain.callee.object,
-      module,
-      argument,
-    ) ||
+    preludeDeclarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT
+  )
+    return false;
+  const preludeLetSymbols = getClosedSnapshotProviderPreludeLetSymbols(
+    preludeDeclarations.filter((declaration) => declaration !== forwardingDeclaration),
+    chain.callee.object,
+    module,
+    [helperFunction, executor],
+    argument,
+  );
+  if (
+    !preludeLetSymbols ||
     !isClientRequest(
       chain.callee.object,
       module,
@@ -1594,6 +1695,7 @@ export const isClosedJsonSnapshotProvider = ({
       argument,
       Boolean(helperBody?.declarations.length || executorBody?.declarations.length),
       allowsAxiosDefaultResponseSnapshot,
+      preludeLetSymbols,
     )
   )
     return false;

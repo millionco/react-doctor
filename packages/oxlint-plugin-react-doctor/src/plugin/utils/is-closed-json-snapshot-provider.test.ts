@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { walkAst } from "./walk-ast.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { normalizeFilename } from "./normalize-filename.js";
+import type { ClosedJsonSnapshotModule } from "./get-closed-json-snapshot-project.js";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 import { isClosedJsonSnapshotProvider } from "./is-closed-json-snapshot-provider.js";
 import {
@@ -32,6 +33,7 @@ const checkProvider = (
   invocationSource?: string,
   simulateRegExpNull = false,
   allowsAxiosDefaultResponseSnapshot = false,
+  mutateScope?: (module: ClosedJsonSnapshotModule, helperFunction: EsTreeNode) => void,
 ): boolean => {
   const rootDirectory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "json-provider-")));
   directories.push(rootDirectory);
@@ -70,6 +72,7 @@ const checkProvider = (
     expect(didFindRegExp).toBe(true);
   }
   expect(helperFunction).toBeDefined();
+  if (mutateScope && module && helperFunction) mutateScope(module, helperFunction);
   const consumer = project.modules.get(normalizeFilename(path.join(rootDirectory, "consumer.js")));
   let invocationCall: EsTreeNode | undefined;
   if (consumer)
@@ -103,6 +106,213 @@ afterEach(() => {
 });
 
 describe("isClosedJsonSnapshotProvider", () => {
+  it.each([
+    [
+      "let timeout = 100;",
+      "let requestOptions = { timeout, responseType: 'json' };",
+      "axios(requestOptions)",
+    ],
+    [
+      "let baseOptions = { responseType: 'json' };",
+      "const requestOptions = { ...baseOptions };",
+      "axios(requestOptions)",
+    ],
+    [
+      "const baseOptions = { responseType: 'json' };",
+      "let requestOptions = { ...baseOptions };",
+      "axios.request(requestOptions)",
+    ],
+    [
+      "let count = 100; let timeout = +count;",
+      "let requestOptions = { timeout, responseType: 'json' };",
+      "axios(requestOptions)",
+    ],
+    [
+      "",
+      "let unused = '/catalog'; let requestOptions = { responseType: 'json' };",
+      "axios.get('/catalog', requestOptions)",
+    ],
+    [
+      "let choose = true;",
+      "let requestOptions = { responseType: 'json' };",
+      "axios(choose ? requestOptions : { responseType: 'json' })",
+    ],
+  ])(
+    "certifies only ordered local inert let declarations: %s / %s",
+    (helperPrelude, executorPrelude, request) => {
+      for (const kind of ["let", "const"]) {
+        const source = `import axios from 'axios'; export const load = () => {
+        ${helperPrelude.replaceAll("let ", `${kind} `)}
+        return new Promise((resolve, reject) => {
+          ${executorPrelude.replaceAll("let ", `${kind} `)}
+          const onFailure = error => reject(error);
+          ${request}.then(response => resolve(response.data)).catch(onFailure);
+        });
+      };`;
+        expect(checkProvider(source)).toBe(true);
+      }
+    },
+  );
+
+  it("certifies unused inert let cells while refusing special literal syntax", () => {
+    const source = `import axios from 'axios'; export const load = () => {
+      let unused = null;
+      return new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(checkProvider(source)).toBe(true);
+    expect(checkProvider(source.replace("null", "/(?i:a)/"), {}, [], undefined, true)).toBe(false);
+    expect(checkProvider(source.replace("null", "1n"))).toBe(false);
+    expect(
+      checkProvider(
+        source
+          .replace("let unused = null;", "let unused = outside;")
+          .replace("export const load", "const outside = null; export const load"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps exact private caller provenance and default response roles with let records", () => {
+    const source = `import axios from 'axios'; export const load = options => {
+      let timeout = options.timeout;
+      let requestOptions = { ...options, timeout };
+      return new Promise((resolve, reject) => {
+        let unused = null;
+        axios(requestOptions).then(response => { if (response.status === 200) resolve(response.data); else reject(); }).catch(reject);
+      });
+    };`;
+    const caller =
+      "import { load } from './provider'; load({ timeout: 100, responseType: 'text' });";
+    expect(checkProvider(source, {}, [], caller, false, true)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"], caller, false, true)).toBe(false);
+    expect(checkProvider(source, {}, [], caller)).toBe(false);
+    expect(
+      checkProvider(source, {}, [], caller.replace("'text'", "'arraybuffer'"), false, true),
+    ).toBe(false);
+  });
+
+  it.each([
+    "var requestOptions = { responseType: 'json' };",
+    "let requestOptions;",
+    "let requestOptions = { responseType: 'json' }, other = null;",
+    "let requestOptions = unknown;",
+    "let requestOptions = makeOptions();",
+    "let requestOptions = { get responseType() { return 'json'; } };",
+    "let requestOptions = true ? { responseType: 'json' } : { responseType: 'json' };",
+    "let requestOptions = { ...later }; let later = { responseType: 'json' };",
+    "let count = +count; let requestOptions = { responseType: 'json' };",
+    "let baseOptions = { responseType: 'json' }; let requestOptions = baseOptions;",
+    "let mode = 'json'; let requestOptions = { responseType: mode };",
+    "let requestOptions = { responseType: 'json' }; const alias = requestOptions;",
+    "let requestOptions = { responseType: 'json' }; const capture = () => requestOptions;",
+    "let requestOptions = { responseType: 'json' }; requestOptions.responseType = 'text';",
+    "let requestOptions = { responseType: 'json' }; delete requestOptions.responseType;",
+    "let requestOptions = { responseType: 'json' }; Object.defineProperty(requestOptions, 'responseType', { value: 'json' });",
+    "let requestOptions = { responseType: 'json' }; observe(requestOptions);",
+    "let requestOptions = { responseType: 'json' }; requestOptions = { responseType: 'json' };",
+    "if (true) { let requestOptions = { responseType: 'json' }; }",
+    "let requestOptions = { responseType: 'json' }; const unused = eval('other');",
+  ])("refuses let forms outside exact initialization and read closure: %s", (prelude) => {
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${prelude} axios(requestOptions).then(response => resolve(response.data)).catch(reject);
+    });`;
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it("does not make let capabilities available to module bindings, other client calls or defaults", () => {
+    const source = `import axios from 'axios'; export const load = () => {
+      let requestOptions = { responseType: 'json' };
+      return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(checkProvider(source)).toBe(true);
+    for (const kind of ["const", "let"]) {
+      const other = `import axios from 'axios'; ${kind} requestOptions = { responseType: 'json' }; axios(requestOptions);`;
+      expect(checkProvider(source, { "other.js": other })).toBe(kind === "const");
+      const defaults = `import axios from 'axios'; ${kind} timeout = 100; axios.defaults.timeout = timeout;`;
+      expect(checkProvider(source, { "other.js": defaults })).toBe(false);
+    }
+    expect(
+      checkProvider(source, {
+        "other.js": "import axios from 'axios'; axios.defaults.timeout = 100;",
+      }),
+    ).toBe(true);
+    expect(
+      checkProvider(
+        "import axios from 'axios'; let requestOptions = { responseType: 'json' }; export const load = () => new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); });",
+      ),
+    ).toBe(false);
+    expect(
+      checkProvider(
+        source
+          .replace(
+            "let requestOptions = { responseType: 'json' };",
+            "let url = '/catalog'; let requestOptions = { responseType: 'json' };",
+          )
+          .replace("axios(requestOptions)", "axios.get(url, requestOptions)"),
+      ),
+    ).toBe(false);
+  });
+
+  it.each(["duplicate", "wrong-index", "missing-list"])(
+    "requires authoritative unique let scope evidence: %s",
+    (mutation) => {
+      const source = `import axios from 'axios'; export const load = () => {
+      let requestOptions = { responseType: 'json' };
+      return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); });
+    };`;
+      expect(checkProvider(source)).toBe(true);
+      expect(
+        checkProvider(source, {}, [], undefined, false, false, (module, helperFunction) => {
+          const scope = module.scopes.ownScopeFor(helperFunction);
+          const symbol = scope?.symbols.find((candidate) => candidate.name === "requestOptions");
+          expect(scope).toBeDefined();
+          expect(symbol).toBeDefined();
+          if (!scope || !symbol) return;
+          if (mutation === "duplicate") scope.symbols.push({ ...symbol, kind: "parameter" });
+          if (mutation === "wrong-index")
+            scope.symbolsByName.set(symbol.name, { ...symbol, kind: "parameter" });
+          if (mutation === "missing-list") scope.symbols.splice(scope.symbols.indexOf(symbol), 1);
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it("holds non-simple containing parameters and leaves let catch functions unsupported", () => {
+    for (const parameter of ["unused = null", "...unused", "{} = {}"]) {
+      const source = `import axios from 'axios'; export const load = (${parameter}) => {
+        const requestOptions = { responseType: 'json' };
+        return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); });
+      };`;
+      expect(checkProvider(source)).toBe(true);
+      expect(checkProvider(source.replace("const requestOptions", "let requestOptions"))).toBe(
+        false,
+      );
+    }
+    const callback = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      let onFailure = error => reject(error);
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`;
+    expect(checkProvider(callback)).toBe(false);
+    expect(checkProvider(callback.replace("let onFailure", "const onFailure"))).toBe(true);
+  });
+
+  it("counts let declarations and the const forwarding handler in the existing combined cap", () => {
+    const declarations = Array.from(
+      { length: CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT - 1 },
+      (_, index) => `let unused${index} = null;`,
+    ).join(" ");
+    const source = `import axios from 'axios'; export const load = () => {
+      ${declarations}
+      return new Promise((resolve, reject) => {
+        const onFailure = error => reject(error);
+        axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+      });
+    };`;
+    expect(checkProvider(source)).toBe(true);
+    expect(
+      checkProvider(source.replace("const onFailure", "let extra = null; const onFailure")),
+    ).toBe(false);
+  });
+
   it.each([
     "error => reject(error)",
     "error => { reject(error); }",
@@ -801,7 +1011,7 @@ describe("isClosedJsonSnapshotProvider", () => {
     "const unused = new Promise(() => {});",
     "const { url } = options;",
     "const first = '/catalog', second = '/other';",
-    "let unused = '/catalog';",
+    "let unused = '/catalog'; unused = '/other';",
     "var unused = '/catalog';",
     "const unused = '/catalog'; unused = '/other';",
     "const unused = { url: '/catalog' }; unused.url = '/other';",
@@ -924,7 +1134,7 @@ describe("isClosedJsonSnapshotProvider", () => {
     "const unused = () => options;",
     "const unused = options;",
     "const before = after; const after = '/other';",
-    "let transport = { responseType: 'json' };",
+    "var transport = { responseType: 'json' };",
     "options.url = '/other';",
     "publish(options);",
   ])("refuses an unproved local prelude: %s", (prelude) => {

@@ -68,6 +68,30 @@ describe("effect-needs-cleanup function bindings", () => {
       "async function start() { const timer = setInterval(tick, 1000); await pending; clearInterval(timer); } start();",
     ],
     ["arrow helper", "const start = () => { setInterval(tick, 1000); }; start();"],
+    [
+      "opaque setup continuation",
+      "const start = () => { const timer = setInterval(tick, 1000); opaque(); return () => clearInterval(timer); }; return start();",
+    ],
+    [
+      "throwing setup getter",
+      "const start = () => { const timer = setInterval(tick, 1000); state.throwingGetter; return () => clearInterval(timer); }; return start();",
+    ],
+    [
+      "setup temporal dead zone",
+      "const start = () => { const timer = setInterval(tick, 1000); pending; const pending = 1; return () => clearInterval(timer); }; return start();",
+    ],
+    [
+      "opaque cleanup prefix",
+      "const start = () => { const timer = setInterval(tick, 1000); return () => { opaque(); clearInterval(timer); }; }; return start();",
+    ],
+    [
+      "overridden factory cleanup",
+      "const start = () => { const timer = setInterval(tick, 1000); try { return () => clearInterval(timer); } finally { return () => {}; } }; return start();",
+    ],
+    [
+      "overridden outer cleanup",
+      "const start = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; try { return start(); } finally { return () => {}; }",
+    ],
   ])("reports a leaked timer through a %s", (_label, body) => {
     const result = runRule(
       effectNeedsCleanup,
@@ -103,6 +127,18 @@ export const Clock = () => {
     [
       "returned disposer",
       "function start() { const timer = setInterval(tick, 1000); return () => clearInterval(timer); } return start();",
+    ],
+    [
+      "factory-prefix cleanup binding",
+      "const start = () => { const cleanup = () => clearInterval(timer); const timer = setInterval(tick, 1000); return cleanup; }; return start();",
+    ],
+    [
+      "returned block disposer",
+      "const start = () => { const timer = setInterval(tick, 1000); return () => { clearInterval(timer); }; }; return start();",
+    ],
+    [
+      "returned release expression",
+      "const start = () => { const timer = setInterval(tick, 1000); return () => { return clearInterval(timer); }; }; return start();",
     ],
     [
       "cleared arrow helper",
@@ -154,4 +190,76 @@ export const Clock = () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+});
+
+describe("returned listener factory cleanup bindings", () => {
+  it.each([
+    ["const cleanup = () => document.removeEventListener('change', handler);", "", 0],
+    ["", "const cleanup = () => document.removeEventListener('change', handler);", 1],
+  ])("requires cleanup initialization before acquisition: %s %s", (before, after, count) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      function Screen() { useEffect(() => {
+        ${before}
+        const setup = () => { document.addEventListener('change', handler); return cleanup; };
+        return setup();
+        ${after}
+      }, []); return null; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+});
+
+it("preserves helper-local handler and event declarations before registration", () => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `import { useEffect } from "react";
+    function Screen() { useEffect(() => {
+      const setup = () => {
+        const handler = () => {};
+        const event = 'resize';
+        window.addEventListener(event, handler);
+        return () => window.removeEventListener(event, handler);
+      };
+      return setup();
+    }, []); return null; }`,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toEqual([]);
+});
+
+it("does not trust a factory that replaces the release provider", () => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `import { useEffect } from "react";
+    function Screen() { useEffect(() => {
+      const setup = () => {
+        window.removeEventListener = () => {};
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+      };
+      return setup();
+    }, []); return null; }`,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
+});
+
+it("does not trust an outer factory callback that replaces the release provider", () => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `import { useEffect } from "react";
+    function Screen() { useEffect(() => {
+      const setup = () => {
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+      };
+      window.removeEventListener = () => {};
+      return setup();
+    }, []); return null; }`,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
 });

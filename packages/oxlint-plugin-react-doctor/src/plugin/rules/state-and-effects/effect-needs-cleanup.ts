@@ -6966,6 +6966,109 @@ const effectHasCleanupForUsage = (
         findEnclosingFunction(usage.node) === factory &&
         callbackReturnsCleanupForUsage(factory, usage, context)
       ) {
+        if (
+          !isNodeOfType(callback.body, "BlockStatement") ||
+          child.parent !== callback.body ||
+          !isNodeOfType(factory.body, "BlockStatement")
+        ) {
+          return;
+        }
+        const cleanupStatement = factory.body.body.at(-1);
+        const allocationStatement = factory.body.body.at(-2);
+        const prefixStatements = [
+          ...factory.body.body.slice(0, -2),
+          ...callback.body.body.filter((statement) => statement !== child),
+        ].filter((statement) => !isNodeOfType(statement, "FunctionDeclaration"));
+        if (
+          !prefixStatements.every(
+            (statement) =>
+              isNodeOfType(statement, "VariableDeclaration") &&
+              statement.kind === "const" &&
+              statement.declarations.every(
+                (declaration) =>
+                  isNodeOfType(declaration.id, "Identifier") &&
+                  Boolean(
+                    declaration.init &&
+                    (isFunctionLike(stripParenExpression(declaration.init)) ||
+                      isNodeOfType(stripParenExpression(declaration.init), "Literal")),
+                  ),
+              ),
+          )
+        ) {
+          return;
+        }
+        const allocationDeclaration = isNodeOfType(allocationStatement, "VariableDeclaration")
+          ? allocationStatement.declarations[0]
+          : null;
+        const isDirectAllocation =
+          (isNodeOfType(allocationStatement, "ExpressionStatement") &&
+            allocationStatement.expression === usage.node) ||
+          (isNodeOfType(allocationStatement, "VariableDeclaration") &&
+            allocationStatement.declarations.length === 1 &&
+            isNodeOfType(allocationDeclaration?.id, "Identifier") &&
+            allocationDeclaration.init === usage.node);
+        if (
+          !isDirectAllocation ||
+          !isNodeOfType(cleanupStatement, "ReturnStatement") ||
+          !cleanupStatement.argument
+        ) {
+          return;
+        }
+        const returnedCleanup = stripParenExpression(cleanupStatement.argument);
+        const cleanupFunction = resolveMemoizedLocalFunction(returnedCleanup, context);
+        if (isNodeOfType(returnedCleanup, "Identifier")) {
+          const cleanupSymbol = context.scopes.symbolFor(returnedCleanup);
+          const cleanupDeclaration = cleanupSymbol?.declarationNode;
+          const cleanupDeclarationStart = cleanupDeclaration && getRangeStart(cleanupDeclaration);
+          if (
+            cleanupSymbol?.kind !== "const" ||
+            !isNodeOfType(cleanupDeclaration, "VariableDeclarator") ||
+            cleanupDeclaration.id !== cleanupSymbol.bindingIdentifier ||
+            !isNodeOfType(cleanupDeclaration.id, "Identifier") ||
+            cleanupDeclaration.init !== cleanupFunction ||
+            cleanupDeclarationStart === null ||
+            cleanupDeclarationStart === undefined ||
+            !(
+              (cleanupDeclaration.parent?.parent === callback.body &&
+                returnStart !== null &&
+                cleanupDeclarationStart < returnStart) ||
+              (cleanupDeclaration.parent?.parent === factory.body &&
+                usageStart !== null &&
+                cleanupDeclarationStart < usageStart)
+            )
+          ) {
+            return;
+          }
+        } else if (returnedCleanup !== cleanupFunction) {
+          return;
+        }
+        if (
+          !isFunctionLike(cleanupFunction) ||
+          cleanupFunction.async ||
+          cleanupFunction.generator ||
+          cleanupFunction.params.length > 0
+        ) {
+          return;
+        }
+        const cleanupBody = stripParenExpression(cleanupFunction.body);
+        const releaseStatement = isNodeOfType(cleanupBody, "BlockStatement")
+          ? cleanupBody.body[0]
+          : null;
+        const releaseExpression = isNodeOfType(cleanupBody, "BlockStatement")
+          ? cleanupBody.body.length === 1 &&
+            (isNodeOfType(releaseStatement, "ExpressionStatement") ||
+              isNodeOfType(releaseStatement, "ReturnStatement"))
+            ? isNodeOfType(releaseStatement, "ExpressionStatement")
+              ? releaseStatement.expression
+              : releaseStatement.argument
+            : null
+          : cleanupBody;
+        if (
+          !releaseExpression ||
+          !doesReleaseCallMatchUsage(stripParenExpression(releaseExpression), usage, context)
+        ) {
+          return;
+        }
         const factoryReferences: EsTreeNode[] = [];
         walkAst(callback, (candidate) => {
           const reference = context.scopes.referenceFor(candidate);

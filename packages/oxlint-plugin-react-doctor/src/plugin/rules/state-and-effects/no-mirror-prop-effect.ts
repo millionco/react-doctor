@@ -12,6 +12,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { hasCleanup } from "./utils/effect/react.js";
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
 // local state with a useEffect that re-syncs it. The combined shape
@@ -145,6 +147,15 @@ export const noMirrorPropEffect = defineRule({
         const callback = getEffectCallback(effectCall);
         if (!callback) continue;
         const bodyStatements = getCallbackStatements(callback);
+        const analysis = getProgramAnalysis(effectCall);
+        if (
+          bodyStatements.length === 2 &&
+          isNodeOfType(bodyStatements[1], "ReturnStatement") &&
+          analysis &&
+          !hasCleanup(analysis, effectCall)
+        ) {
+          bodyStatements.pop();
+        }
         if (bodyStatements.length !== 1) continue;
         const onlyStatement = bodyStatements[0];
         const expressionNode =

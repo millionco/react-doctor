@@ -2,4 +2,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Treat an effect cleanup that only reads a binding as empty. `return () => { value; }`, `return () => value` and `return () => void value` no longer silence `no-adjust-state-on-prop-change` and the other effect rules that skip effects with a cleanup. A cleanup that reads a member still counts, since the read can run a getter.
+Treat an effect cleanup that only reads a binding as empty. `return () => { value; }`, `return () => value` and `return () => void value` no longer silence `no-adjust-state-on-prop-change` and the other effect rules that skip effects with a cleanup. A cleanup that reads a member still counts, since the read can run a getter. `no-mirror-prop-effect` now also ignores an empty or read-only cleanup when it checks that the effect only mirrors the prop.

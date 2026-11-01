@@ -1,4 +1,3 @@
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { areExpressionsStructurallyEqual } from "../../../utils/are-expressions-structurally-equal.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getStaticObjectPropertyValue } from "../../../utils/get-static-object-property-value.js";
@@ -12,10 +11,13 @@ import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
 
-export const isOwnedRequestMapReset = (write: EsTreeNode, context: RuleContext): boolean => {
-  if (!isNodeOfType(write, "CallExpression")) return false;
-  const emptyState = write.arguments[0];
+export const isOwnedRequestMapReset = (
+  write: EffectStateWriteSite,
+  context: RuleContext,
+): boolean => {
+  const emptyState = write.value;
   if (
     !isNodeOfType(emptyState, "NewExpression") ||
     emptyState.arguments.length !== 0 ||
@@ -24,8 +26,8 @@ export const isOwnedRequestMapReset = (write: EsTreeNode, context: RuleContext):
     !context.scopes.isGlobalReference(emptyState.callee)
   )
     return false;
-  const pair = resolveReactUseStatePair(write.callee, context.scopes);
-  const owner = findEnclosingFunction(write);
+  const pair = resolveReactUseStatePair(write.setter, context.scopes);
+  const owner = findEnclosingFunction(write.node);
   const component = pair ? findEnclosingFunction(pair.declarator) : null;
   if (!pair || !owner || !component) return false;
   let isOwnedReset = false;
@@ -35,7 +37,7 @@ export const isOwnedRequestMapReset = (write: EsTreeNode, context: RuleContext):
       !isNodeOfType(node, "CallExpression") ||
       !isNodeOfType(node.callee, "MemberExpression") ||
       getStaticPropertyName(node.callee) !== "forEach" ||
-      !nodeDominatesNode(node, write, context)
+      !nodeDominatesNode(node, write.node, context)
     )
       return;
     const collection = resolveReactRefCurrentOriginSymbol(node.callee.object, context.scopes);
@@ -85,7 +87,7 @@ export const isOwnedRequestMapReset = (write: EsTreeNode, context: RuleContext):
       if (
         method === "clear" &&
         nodeDominatesNode(node, candidate, context) &&
-        nodeDominatesNode(candidate, write, context)
+        nodeDominatesNode(candidate, write.node, context)
       ) {
         didClear = true;
       }

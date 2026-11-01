@@ -36,8 +36,7 @@ const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWrit
   ) {
     return true;
   }
-  if (!isNodeOfType(fact.callExpression, "CallExpression")) return false;
-  const writtenValue = fact.callExpression.arguments?.[0];
+  const writtenValue = fact.writeSite.value;
   if (!writtenValue) return false;
   let currentExpression = stripParenExpression(writtenValue as EsTreeNode);
   if (isFunctionLike(currentExpression) && "body" in currentExpression) {
@@ -99,15 +98,15 @@ export const noAdjustStateOnPropChange = defineRule({
               isProp(analysis, reference) && !isOnlyCalledInEffect(reference, node, analysis),
           );
         if (!hasPropDependency) return;
-        const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename);
+        const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename, true);
         if (hasCleanup(analysis, node)) return;
         for (const fact of facts) {
           if (
             fact.isDeferred ||
-            isOwnedRequestMapReset(fact.callExpression, context) ||
-            isPortalMountStateWrite(fact.callExpression, context) ||
-            isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
-            hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
+            isOwnedRequestMapReset(fact.writeSite, context) ||
+            isPortalMountStateWrite(fact.writeSite, context) ||
+            isReleasedObjectUrlStateWrite(fact.writeSite, context) ||
+            hasDeferredOrExternalEffectWork(analysis, node, context, fact.writeSite)
           ) {
             continue;
           }
@@ -120,6 +119,7 @@ export const noAdjustStateOnPropChange = defineRule({
               dependencyReferences,
               fact.matchesStateInitializer,
               mediaReceiverCache,
+              fact.isForwardedWrite ? fact.writeSite : undefined,
             )
           ) {
             continue;
@@ -141,7 +141,7 @@ export const noAdjustStateOnPropChange = defineRule({
             continue;
           }
           context.report({
-            node: fact.callExpression,
+            node: fact.writeSite.node,
             message: "Adjusting state in an effect after a prop changes costs an extra render.",
           });
         }

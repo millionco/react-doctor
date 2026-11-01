@@ -1,3 +1,4 @@
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
@@ -81,7 +82,7 @@ export const noAdjustStateOnPropChange = defineRule({
     "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
+      if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const dependencyReferences = getEffectDepsRefs(analysis, node);
@@ -137,8 +138,7 @@ export const noAdjustStateOnPropChange = defineRule({
         }
         context.report({
           node: fact.callExpression,
-          message:
-            "This effect adjusts state after a prop changes, so users briefly see the stale value.",
+          message: "Adjusting state in an effect after a prop changes costs an extra render.",
         });
       }
     },

@@ -1,4 +1,5 @@
 import type { Reference } from "eslint-scope";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
@@ -1317,10 +1318,10 @@ export const noResetAllStateOnPropChange = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
+    "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in an effect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
+      if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const effectFnRefs = getEffectFnRefs(analysis, node);
@@ -1342,7 +1343,7 @@ export const noResetAllStateOnPropChange = defineRule({
       if (!propUsedToReset) return;
       context.report({
         node,
-        message: `Your users briefly see stale state when a prop changes because this useEffect clears all state.`,
+        message: "This effect clears all state after a prop changes, which costs an extra render.",
       });
     },
   }),

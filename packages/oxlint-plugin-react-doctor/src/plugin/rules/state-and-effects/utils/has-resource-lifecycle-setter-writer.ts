@@ -1,5 +1,6 @@
 import type { Reference } from "eslint-scope";
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../../constants/dom-property-tags.js";
+import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
@@ -17,6 +18,7 @@ import { walkAst } from "../../../utils/walk-ast.js";
 import { getCallExpr, getRef, getUpstreamRefs } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { hasDeferredOrExternalEffectWork } from "./has-deferred-or-external-effect-work.js";
+import { isMediaElementRefReceiver } from "./is-media-element-ref-receiver.js";
 import {
   isSetterWiredToJsxHandler,
   referencesIdentifierNamed,
@@ -180,7 +182,7 @@ const isWrittenByResourceSyncEffect = (
       isFunctionLike(cursor) &&
       isNodeOfType(cursor.parent, "CallExpression") &&
       cursor.parent.arguments?.[0] === cursor &&
-      isReactHookCall(cursor.parent, "useEffect", context.scopes)
+      isReactHookCall(cursor.parent, EFFECT_HOOK_NAMES, context.scopes)
     ) {
       effectCall = cursor.parent;
       break;
@@ -204,7 +206,8 @@ const isWrittenByResourceSyncEffect = (
     if (
       methodName &&
       RESOURCE_SYNC_METHOD_NAMES.has(methodName) &&
-      isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes)
+      (isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes) ||
+        isMediaElementRefReceiver(callee.object, context.scopes))
     ) {
       didFindResourceSync = true;
       return false;

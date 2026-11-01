@@ -306,3 +306,90 @@ describe("effect-needs-cleanup focus callback binding precision", () => {
     expect(result.diagnostics).toHaveLength(diagnosticCount);
   });
 });
+
+describe("focus forwarding proof boundaries", () => {
+  it.each([
+    [
+      "useFocusEffect",
+      "const timer = setInterval(tick, 1000); afterAllocation(); return () => clearInterval(timer);",
+    ],
+    [
+      "useEffect",
+      'window.addEventListener("resize", onResize); afterAllocation(); return () => window.removeEventListener("resize", onResize);',
+    ],
+    [
+      "useFocusEffect",
+      'window.addEventListener("resize", onResize); afterAllocation(); return () => window.removeEventListener("resize", onResize);',
+    ],
+  ])("does not bypass allocator safety for %s", (hook, setupBody) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useCallback } from "react";
+       import { useFocusEffect } from "expo-router";
+       function Screen() {
+         const callback = useCallback(() => { const setup = () => { ${setupBody} }; return setup(); }, []);
+         ${hook === "useEffect" ? `useEffect(() => { const setup = () => { ${setupBody} }; return setup(); }, []);` : "useFocusEffect(callback);"}
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves directly owned inline focus timer forwarding", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+       import { useFocusEffect } from "expo-router";
+       function Screen() {
+         useFocusEffect(useCallback(() => {
+           const setup = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); };
+           return setup();
+         }, []));
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});
+
+describe("focus timer forwarding unsafe continuations", () => {
+  it.each([
+    "const setup = () => { const timer = setInterval(tick, 1000); return (opaqueThrowingCall(), () => clearInterval(timer)); }; return setup();",
+    "const setup = () => { const timer = setInterval(tick, 1000); return () => { opaqueThrowingCall(); clearInterval(timer); }; }; return setup();",
+    "const setup = () => { const timer = setInterval(tick, 1000); opaqueThrowingCall(); return () => clearInterval(timer); }; return setup();",
+    "const setup = () => { const timer = setInterval(tick, 1000); state.throwingGetter; return () => clearInterval(timer); }; return setup();",
+    "const setup = () => { const timer = setInterval(tick, 1000); beforeInitialization; const beforeInitialization = 1; return () => clearInterval(timer); }; return setup();",
+    "const setup = async () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; return setup();",
+    "const setup = () => { const timer = setInterval(tick, 1000); try { return () => clearInterval(timer); } finally { return () => {}; } }; return setup();",
+    "const setup = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; const cleanup = setup(); opaqueThrowingCall(); return cleanup;",
+    "const setup = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; const cleanup = setup(); state.throwingGetter; return cleanup;",
+    "const setup = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; const cleanup = setup(); beforeInitialization; const beforeInitialization = 1; return cleanup;",
+    "const setup = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; const cleanup = setup(); return (opaqueThrowingCall(), cleanup);",
+    "const setup = () => { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }; try { return setup(); } finally { return () => {}; }",
+  ])("does not grant forwarded cleanup across unsupported code: %s", (body) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+      import { useFocusEffect } from "@react-navigation/native";
+      function Screen() { const focus = useCallback(() => { ${body} }, []); useFocusEffect(focus); return null; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+it("does not execute an unadvanced focus setup generator", () => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `import { useCallback } from "react";
+      import { useFocusEffect } from "@react-navigation/native";
+      function Screen() { const focus = useCallback(() => {
+        function* setup() { const timer = setInterval(tick, 1000); return () => clearInterval(timer); }
+        return setup();
+      }, []); useFocusEffect(focus); return null; }`,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toEqual([]);
+});

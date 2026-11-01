@@ -6760,11 +6760,35 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
-const doesEffectForwardNestedCleanup = (
+const doesFocusEffectForwardNestedTimerCleanup = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
   context: RuleContext,
 ): boolean => {
+  if (usage.kind !== "timer") return false;
+  const isOwningFocusCall = (call: EsTreeNodeOfType<"CallExpression">): boolean =>
+    isFocusEffectHookCall(call, context.scopes) &&
+    getCleanupEffectCallback(call, context) === callback;
+  let callbackRoot = findTransparentExpressionRoot(callback);
+  const memoCall = callbackRoot.parent;
+  if (
+    isNodeOfType(memoCall, "CallExpression") &&
+    memoCall.arguments[0] === callbackRoot &&
+    isReactApiCall(memoCall, "useCallback", context.scopes)
+  ) {
+    callbackRoot = findTransparentExpressionRoot(memoCall);
+  }
+  const callbackCall = callbackRoot.parent;
+  if (
+    !(
+      isNodeOfType(callbackCall, "CallExpression") &&
+      callbackCall.arguments[0] === callbackRoot &&
+      isOwningFocusCall(callbackCall)
+    ) &&
+    !isFunctionExclusivelyPassedToHook(callback, context, isOwningFocusCall)
+  ) {
+    return false;
+  }
   const setupFunction = findEnclosingFunction(usage.node);
   if (
     !isFunctionLike(setupFunction) ||
@@ -6775,6 +6799,87 @@ const doesEffectForwardNestedCleanup = (
     !callbackReturnsCleanupForUsage(setupFunction, usage, context)
   ) {
     return false;
+  }
+  if (!isNodeOfType(setupFunction.body, "BlockStatement")) return false;
+  const [allocationStatement, cleanupStatement, ...remainingStatements] = setupFunction.body.body;
+  if (
+    remainingStatements.length > 0 ||
+    !isNodeOfType(allocationStatement, "VariableDeclaration") ||
+    !isNodeOfType(cleanupStatement, "ReturnStatement")
+  ) {
+    return false;
+  }
+  const returnedCleanup =
+    cleanupStatement.argument && stripParenExpression(cleanupStatement.argument);
+  if (
+    !isFunctionLike(returnedCleanup) ||
+    returnedCleanup.async ||
+    returnedCleanup.generator ||
+    returnedCleanup.params.length > 0
+  )
+    return false;
+  const cleanupBody = stripParenExpression(returnedCleanup.body);
+  if (!isNodeOfType(cleanupBody, "CallExpression")) {
+    if (!isNodeOfType(cleanupBody, "BlockStatement")) return false;
+    const [releaseStatement, ...otherCleanupStatements] = cleanupBody.body;
+    if (
+      otherCleanupStatements.length > 0 ||
+      !isNodeOfType(releaseStatement, "ExpressionStatement") ||
+      !isNodeOfType(stripParenExpression(releaseStatement.expression), "CallExpression")
+    )
+      return false;
+  }
+  const [timerDeclaration, ...remainingDeclarations] = allocationStatement.declarations;
+  if (
+    remainingDeclarations.length > 0 ||
+    !isNodeOfType(timerDeclaration?.id, "Identifier") ||
+    timerDeclaration.init !== usage.node
+  ) {
+    return false;
+  }
+  if (!isFunctionLike(callback)) return false;
+  if (!isNodeOfType(callback.body, "BlockStatement") || setupFunction.params.length > 0)
+    return false;
+  const setupDeclaration = setupFunction.parent;
+  const setupStatement = isNodeOfType(setupFunction, "FunctionDeclaration")
+    ? setupFunction
+    : setupDeclaration?.parent;
+  const [firstStatement, forwardingStatement, ...remainingCallbackStatements] = callback.body.body;
+  if (firstStatement !== setupStatement) return false;
+  if (isNodeOfType(forwardingStatement, "ReturnStatement")) {
+    const invocation =
+      forwardingStatement.argument && stripParenExpression(forwardingStatement.argument);
+    if (
+      remainingCallbackStatements.length > 0 ||
+      !isNodeOfType(invocation, "CallExpression") ||
+      invocation.arguments.length > 0 ||
+      resolveExactLocalFunction(invocation.callee, context.scopes) !== setupFunction
+    )
+      return false;
+  } else {
+    if (
+      !isNodeOfType(forwardingStatement, "VariableDeclaration") ||
+      forwardingStatement.kind !== "const"
+    )
+      return false;
+    const [cleanupDeclaration, ...otherCleanupDeclarations] = forwardingStatement.declarations;
+    const [cleanupReturn, ...otherCallbackStatements] = remainingCallbackStatements;
+    const invocation = cleanupDeclaration?.init && stripParenExpression(cleanupDeclaration.init);
+    const returnedValue =
+      isNodeOfType(cleanupReturn, "ReturnStatement") && cleanupReturn.argument
+        ? stripParenExpression(cleanupReturn.argument)
+        : null;
+    if (
+      otherCleanupDeclarations.length > 0 ||
+      otherCallbackStatements.length > 0 ||
+      !isNodeOfType(cleanupDeclaration?.id, "Identifier") ||
+      !isNodeOfType(returnedValue, "Identifier") ||
+      context.scopes.symbolFor(returnedValue) !== context.scopes.symbolFor(cleanupDeclaration.id) ||
+      !isNodeOfType(invocation, "CallExpression") ||
+      invocation.arguments.length > 0 ||
+      resolveExactLocalFunction(invocation.callee, context.scopes) !== setupFunction
+    )
+      return false;
   }
   const setupBinding = getFunctionBindingIdentifier(setupFunction);
   const setupSymbol = setupBinding ? context.scopes.symbolFor(setupBinding) : null;
@@ -6803,7 +6908,7 @@ const effectHasCleanupForUsage = (
   }
   if (callback.async) return false;
   if (
-    doesEffectForwardNestedCleanup(callback, usage, context) ||
+    doesFocusEffectForwardNestedTimerCleanup(callback, usage, context) ||
     cleanupRegistryReleasesUsage(callback, usage, context) ||
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
     hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||

@@ -1,7 +1,7 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
-import { getStaticPropertyName } from "./get-static-property-name.js";
+import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import {
   isProvenGlobalObjectReference,
@@ -36,10 +36,17 @@ const namespaceHasMemberMutation = (
   const mutationByNamespace = namespaceMutationByAnalysis.get(scopes) ?? new Map<string, boolean>();
   namespaceMutationByAnalysis.set(scopes, mutationByNamespace);
   const mutations = getSymbolMutationInspector(scopes);
-  const matchesNamespace = (expression: EsTreeNode): boolean =>
-    namespaceName === null
-      ? isProvenGlobalObjectReference(expression, scopes)
-      : isProvenGlobalNamespaceReference(expression, namespaceName, scopes);
+  const matchesNamespace = (expression: EsTreeNode): boolean => {
+    if (namespaceName === null) return isProvenGlobalObjectReference(expression, scopes);
+    if (isProvenGlobalNamespaceReference(expression, namespaceName, scopes)) return true;
+    const unwrapped = stripParenExpression(expression);
+    if (!considerEscapes || !isNodeOfType(unwrapped, "MemberExpression")) return false;
+    const propertyName = getResolvedStaticPropertyName(unwrapped, scopes);
+    return (
+      isProvenGlobalObjectReference(unwrapped.object, scopes) &&
+      (propertyName === null || propertyName === namespaceName)
+    );
+  };
   const pendingScopes = [scopes.rootScope];
   while (pendingScopes.length > 0) {
     const currentScope = pendingScopes.pop();
@@ -47,7 +54,11 @@ const namespaceHasMemberMutation = (
     for (const childScope of currentScope.children) pendingScopes.push(childScope);
     for (const reference of currentScope.references) {
       let candidate = findTransparentExpressionRoot(reference.identifier);
+      let referencesNamespace = false;
       while (true) {
+        referencesNamespace =
+          matchesNamespace(candidate) ||
+          (considerEscapes && namespaceName !== null && referencesNamespace);
         const target = mutations.getOutermostTarget(candidate);
         const consumer = target.parent;
         const properties = mutations.getMutationPropertyNames(candidate);
@@ -55,11 +66,15 @@ const namespaceHasMemberMutation = (
           isNodeOfType(consumer, "CallExpression") && consumer.arguments[0] === target;
         const isBindingWrite =
           considerEscapes &&
-          isNodeOfType(target, "Identifier") &&
+          candidate === target &&
           ((isNodeOfType(consumer, "AssignmentExpression") && consumer.left === target) ||
-            (isNodeOfType(consumer, "UpdateExpression") && consumer.argument === target));
+            (isNodeOfType(consumer, "UpdateExpression") && consumer.argument === target) ||
+            (isNodeOfType(consumer, "UnaryExpression") &&
+              consumer.operator === "delete" &&
+              consumer.argument === target));
         const isArgumentEscape =
           considerEscapes &&
+          (properties === undefined || candidate !== target) &&
           isNodeOfType(consumer, "CallExpression") &&
           consumer.arguments.some(
             (argument) =>
@@ -73,7 +88,20 @@ const namespaceHasMemberMutation = (
               candidate === target &&
               properties !== undefined &&
               (!memberName || properties === null || properties.has(memberName)))) &&
-          matchesNamespace(candidate)
+          referencesNamespace
+        ) {
+          mutationByNamespace.set(cacheKey, true);
+          return true;
+        }
+        if (
+          considerEscapes &&
+          namespaceName !== null &&
+          candidate === target &&
+          isProvenGlobalObjectReference(candidate, scopes) &&
+          (isArgumentEscape ||
+            (isMutationCallTarget &&
+              properties !== undefined &&
+              (properties === null || properties.has(namespaceName))))
         ) {
           mutationByNamespace.set(cacheKey, true);
           return true;
@@ -84,11 +112,11 @@ const namespaceHasMemberMutation = (
           stripParenExpression(member.object) !== stripParenExpression(candidate)
         )
           break;
-        const propertyName = getStaticPropertyName(member);
+        const propertyName = getResolvedStaticPropertyName(member, scopes);
         if (
           memberIsMutated(member) &&
           (!memberName || propertyName === null || propertyName === memberName) &&
-          matchesNamespace(candidate)
+          referencesNamespace
         ) {
           mutationByNamespace.set(cacheKey, true);
           return true;

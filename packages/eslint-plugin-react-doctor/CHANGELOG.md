@@ -1,5 +1,16 @@
 # eslint-plugin-react-doctor
 
+## 0.9.19
+
+### Patch Changes
+
+- [#2311](https://github.com/millionco/react-doctor/pull/2311) [`813bd63`](https://github.com/millionco/react-doctor/commit/813bd634f30eaf611f7b2c54425df85a259fa923) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize synchronous derived-state writes through transparent local helpers that receive a React state setter. Preserve external, deferred, mutable, and independently editable state, including event writes through readonly setter aliases for direct and forwarded effect writes. Compare forwarded values with their existing state initializer. Withhold the forwarding proof for reassigned helpers and parameters whose defaults or destructuring can perform additional work.
+
+- [#2310](https://github.com/millionco/react-doctor/pull/2310) [`3fd747e`](https://github.com/millionco/react-doctor/commit/3fd747e2393613ec914cc565944f43ca84885db8) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect render-time ref.current writes made through Object.assign while preserving predictable guarded initialization and deferred effect or event writes. Keep semantic analysis lazy for unrelated calls. Exclude calls to an overridden Object.assign.
+
+- Updated dependencies [[`9a79847`](https://github.com/millionco/react-doctor/commit/9a79847f0e4086ac06edb552afe9ed754e4b0000), [`813bd63`](https://github.com/millionco/react-doctor/commit/813bd634f30eaf611f7b2c54425df85a259fa923), [`be55f78`](https://github.com/millionco/react-doctor/commit/be55f78c9f32a1bdd0e6d79c18819f45e54f2254), [`e5c7c99`](https://github.com/millionco/react-doctor/commit/e5c7c99b1623e951e724b22338947c6cfa74e40e), [`a4bcd7f`](https://github.com/millionco/react-doctor/commit/a4bcd7f896d454c3e69becc8671786d0e5608819), [`84ad0c8`](https://github.com/millionco/react-doctor/commit/84ad0c8d0df7a3ab7d26946367fae3bc39c100d0), [`95cd1d4`](https://github.com/millionco/react-doctor/commit/95cd1d426118821fc4f0259595d4b71e39bde5eb), [`3fd747e`](https://github.com/millionco/react-doctor/commit/3fd747e2393613ec914cc565944f43ca84885db8), [`a1df4e5`](https://github.com/millionco/react-doctor/commit/a1df4e54f13073acaa1fe72f945f226bb4a75451)]:
+  - oxlint-plugin-react-doctor@0.9.19
+
 ## 0.9.18
 
 ### Patch Changes

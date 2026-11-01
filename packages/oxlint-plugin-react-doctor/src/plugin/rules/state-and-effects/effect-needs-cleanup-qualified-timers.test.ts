@@ -216,6 +216,9 @@ describe("qualified native timers", () => {
   );
   it.each([
     ["globalThis.setInterval = () => 0;", "globalThis"],
+    ["Object.assign(globalThis, {setInterval: () => 0});", "globalThis"],
+    ["Object.defineProperty(globalThis, 'setInterval', {value: () => 0});", "globalThis"],
+    ["const method = 'setInterval'; globalThis[method] = () => 0;", "globalThis"],
     ["const scheduler = globalThis; scheduler.setInterval = () => 0;", "scheduler"],
     ["const scheduler = window; scheduler.setInterval = () => 0;", "globalThis"],
     ["delete globalThis.setInterval;", "globalThis"],
@@ -233,6 +236,9 @@ describe("qualified native timers", () => {
 
   it.each([
     "globalThis.clearInterval = () => {};",
+    "Object.assign(globalThis, {clearInterval: () => {}});",
+    "Object.defineProperty(globalThis, 'clearInterval', {value: () => {}});",
+    "const method = 'clearInterval'; globalThis[method] = () => {};",
     "const scheduler = globalThis; scheduler.clearInterval = () => {};",
     "delete globalThis.clearInterval;",
     "globalThis.clearInterval++;",
@@ -252,6 +258,8 @@ describe("qualified native timers", () => {
 
   it.each([
     "const scheduler = globalThis; scheduler.unrelated = () => 0;",
+    "Object.assign(globalThis, {unrelated: () => 0});",
+    "const Object = {assign: () => {}}; Object.assign(globalThis, {setInterval: () => 0});",
     "function custom(globalThis) { globalThis.setInterval = () => 0; }",
   ])("preserves native allocation despite unrelated or shadowed writes: %s", (setup) => {
     const result = runRule(

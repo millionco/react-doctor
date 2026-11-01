@@ -330,3 +330,10 @@ export const INTENTIONAL_SEQUENCING_CALLEE_NAMES: ReadonlySet<string> = new Set(
   "waitForFunction",
   "waitForEvent",
 ]);
+
+export const CLOSED_LITERAL_FREEZE_ARGUMENT_COUNT = 1;
+export const CLOSED_LITERAL_FREEZE_RESERVED_KEYS: ReadonlySet<string> = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);

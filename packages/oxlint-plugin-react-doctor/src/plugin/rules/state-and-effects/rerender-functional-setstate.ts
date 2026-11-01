@@ -1,6 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isReadonlyRenderInput } from "../../utils/is-readonly-render-input.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
+import { hasOnlyExclusiveConstantSetterSiblings } from "../../utils/has-only-exclusive-constant-setter-siblings.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -170,6 +174,21 @@ export const rerenderFunctionalSetstate = defineRule({
       const calleeName = node.callee.name;
       const argument = node.arguments[0];
       const expectedStateName = deriveStateVariableName(calleeName);
+      const statePair = resolveReactUseStatePair(node.callee, context.scopes);
+      const stateSymbol = statePair?.stateSymbol;
+      const renderFunction = statePair ? findEnclosingFunction(statePair.declarator) : null;
+      const matchesExpectedStateBinding = (operand: EsTreeNode | null | undefined): boolean => {
+        if (!isNodeOfType(operand, "Identifier") || operand.name !== expectedStateName)
+          return false;
+        const operandSymbol = context.scopes.symbolFor(operand);
+        return (
+          !stateSymbol ||
+          !operandSymbol ||
+          operandSymbol.id === stateSymbol.id ||
+          !renderFunction ||
+          !isReadonlyRenderInput(operandSymbol, renderFunction, context.scopes)
+        );
+      };
 
       // The arithmetic / update shapes are hazardous when the closure runs
       // past later renders (deferred execution) or when one stale value can
@@ -179,7 +198,8 @@ export const rerenderFunctionalSetstate = defineRule({
       // an update.
       const canSyncArithmeticGoStale = (): boolean =>
         isInsideDeferredCallback(node) ||
-        hasMultipleSetterCallsInEnclosingFunction(node, calleeName);
+        (hasMultipleSetterCallsInEnclosingFunction(node, calleeName) &&
+          !hasOnlyExclusiveConstantSetterSiblings(node, context.scopes));
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&
@@ -187,12 +207,9 @@ export const rerenderFunctionalSetstate = defineRule({
         expectedStateName &&
         canSyncArithmeticGoStale()
       ) {
-        const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
-          isNodeOfType(operand, "Identifier") && operand.name === expectedStateName;
-
-        const stateIdentifier = matchesExpected(argument.left)
+        const stateIdentifier = matchesExpectedStateBinding(argument.left)
           ? argument.left
-          : matchesExpected(argument.right)
+          : matchesExpectedStateBinding(argument.right)
             ? argument.right
             : null;
 
@@ -209,7 +226,7 @@ export const rerenderFunctionalSetstate = defineRule({
         isNodeOfType(argument, "UpdateExpression") &&
         (argument.operator === "++" || argument.operator === "--") &&
         isNodeOfType(argument.argument, "Identifier") &&
-        argument.argument.name === expectedStateName &&
+        matchesExpectedStateBinding(argument.argument) &&
         canSyncArithmeticGoStale()
       ) {
         const display = argument.prefix
@@ -247,9 +264,7 @@ export const rerenderFunctionalSetstate = defineRule({
       if (expectedStateName && isNodeOfType(argument, "ArrayExpression")) {
         const spreadsState = (argument.elements ?? []).some(
           (element: EsTreeNode | null) =>
-            isNodeOfType(element, "SpreadElement") &&
-            isNodeOfType(element.argument, "Identifier") &&
-            element.argument.name === expectedStateName,
+            isNodeOfType(element, "SpreadElement") && matchesExpectedStateBinding(element.argument),
         );
         if (spreadsState) {
           context.report({
@@ -264,8 +279,7 @@ export const rerenderFunctionalSetstate = defineRule({
         const spreadsState = (argument.properties ?? []).some(
           (property: EsTreeNode | null) =>
             isNodeOfType(property, "SpreadElement") &&
-            isNodeOfType(property.argument, "Identifier") &&
-            property.argument.name === expectedStateName,
+            matchesExpectedStateBinding(property.argument),
         );
         if (spreadsState) {
           context.report({

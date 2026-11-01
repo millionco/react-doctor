@@ -1,8 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 
 const UNNECESSARY_BRACES_MESSAGE =
@@ -110,9 +112,50 @@ const checkExpressionContainer = (
   settings: Required<JsxCurlyBracePresenceSettings>,
 ): void => {
   const containerSource = context.sourceCode?.getText?.(container) ?? "";
-  if (containerSource.includes("/*") || containerSource.includes("//")) return;
   const expression = container.expression as EsTreeNode;
   if (expression.type === "JSXEmptyExpression") return;
+  if (containerSource.includes("/*") || containerSource.includes("//")) {
+    const containerStart = getRangeStart(container);
+    let commentSource = containerSource;
+    if (containerStart !== null) {
+      const literalNodes: EsTreeNode[] = [];
+      walkAst(expression, (node) => {
+        if (
+          isNodeOfType(node, "Literal") ||
+          isNodeOfType(node, "TemplateElement") ||
+          isNodeOfType(node, "JSXText")
+        ) {
+          literalNodes.push(node);
+        }
+      });
+      literalNodes.sort(
+        (leftNode, rightNode) =>
+          (getRangeStart(leftNode) ?? Number.MAX_SAFE_INTEGER) -
+          (getRangeStart(rightNode) ?? Number.MAX_SAFE_INTEGER),
+      );
+      const sourceParts: string[] = [];
+      let previousEnd = 0;
+      for (const literalNode of literalNodes) {
+        const literalStart = getRangeStart(literalNode);
+        const literalEnd = literalNode.range?.[1];
+        if (
+          literalStart === null ||
+          typeof literalEnd !== "number" ||
+          literalStart < containerStart + previousEnd ||
+          literalEnd < literalStart ||
+          literalEnd - containerStart > containerSource.length
+        ) {
+          continue;
+        }
+        sourceParts.push(containerSource.slice(previousEnd, literalStart - containerStart));
+        sourceParts.push(" ");
+        previousEnd = literalEnd - containerStart;
+      }
+      sourceParts.push(containerSource.slice(previousEnd));
+      commentSource = sourceParts.join("");
+    }
+    if (commentSource.includes("/*") || commentSource.includes("//")) return;
+  }
   const allowed = parentIsAttribute ? settings.props : settings.children;
 
   if (isNodeOfType(expression, "JSXFragment")) {

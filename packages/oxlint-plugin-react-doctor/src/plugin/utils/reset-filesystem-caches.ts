@@ -1,3 +1,4 @@
+import { resetParseSourceFileCache } from "./parse-source-file.js";
 import { resetStaticProjectDomIdCache } from "./get-static-project-dom-ids.js";
 import { resetRealDirectoryCache } from "./is-package-within-project-root.js";
 import { resetBundlerIgnoreAnnotatedFileTextCache } from "./read-bundler-ignore-annotated-file-text.js";
@@ -7,6 +8,7 @@ import { resetModuleResolutionCaches } from "./resolve-relative-import-path.js";
 import { resetTsconfigAliasCaches } from "./resolve-tsconfig-alias.js";
 
 export const resetFilesystemCaches = (): void => {
+  resetParseSourceFileCache();
   resetBundlerIgnoreAnnotatedFileTextCache();
   resetCrossFileExportCaches();
   resetManifestCaches();

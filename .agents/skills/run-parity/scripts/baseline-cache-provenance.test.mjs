@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -184,4 +185,77 @@ test("rejects provenance and corpus tampering independently", async () => {
 
     await assert.rejects(verifyBaselineCacheProvenance(input), /Corpus provenance does not match/);
   });
+});
+
+test("hashes long UTF-8 records across chunks with CRLF and an unterminated last record", async () => {
+  const records = [
+    buildRecord({ report: { text: "é😀".repeat(100_000) } }),
+    buildRecord({ repository: buildRepository({ name: "second" }) }),
+  ];
+  await withFixture(async ({ input }) => {
+    const contents = Buffer.from(
+      ` \r\n${JSON.stringify(records[0])}\r\n\t\n${JSON.stringify(records[1])}`,
+    );
+    await writeFile(input.baselinePath, contents);
+    const created = await createBaselineCacheProvenance(input);
+    assert.deepEqual(created.artifact, {
+      byteLength: contents.length,
+      recordCount: 2,
+      sha256: createHash("sha256").update(contents).digest("hex"),
+    });
+    assert.deepEqual(await verifyBaselineCacheProvenance(input), created);
+  }, records);
+});
+
+test("keeps carriage returns inside records as JSON whitespace without treating them as separators", async () => {
+  await withFixture(async ({ input }) => {
+    const record = JSON.stringify(buildRecord()).replace('{"schemaVersion"', '{\r"schemaVersion"');
+    await writeFile(input.baselinePath, record);
+    await assert.doesNotReject(createBaselineCacheProvenance(input));
+  });
+  const records = [buildRecord(), buildRecord({ repository: buildRepository({ name: "second" }) })];
+  await withFixture(async ({ input }) => {
+    await writeFile(input.baselinePath, records.map((record) => JSON.stringify(record)).join("\r"));
+    await assert.rejects(
+      createBaselineCacheProvenance(input),
+      /Baseline record 1 is not valid JSON/,
+    );
+  }, records);
+});
+
+test("retains UTF-8 replacement decoding and invalid final-record numbering", async () => {
+  await withFixture(async ({ input }) => {
+    const prefix = JSON.stringify(buildRecord({ report: { text: "MARKER" } })).split("MARKER");
+    const contents = Buffer.concat([
+      Buffer.from(prefix[0]),
+      Buffer.from([0xf0, 0x9f]),
+      Buffer.from(prefix[1]),
+    ]);
+    await writeFile(input.baselinePath, contents);
+    const created = await createBaselineCacheProvenance(input);
+    assert.equal(created.artifact.sha256, createHash("sha256").update(contents).digest("hex"));
+    assert.deepEqual(await verifyBaselineCacheProvenance(input), created);
+  });
+  await withFixture(async ({ input }) => {
+    await writeFile(input.baselinePath, `${JSON.stringify(buildRecord())}\n \n{`);
+    await assert.rejects(
+      createBaselineCacheProvenance(input),
+      /Baseline record 2 is not valid JSON/,
+    );
+  });
+});
+
+test("rejects an incomplete UTF-8 sequence after an otherwise valid final record", async () => {
+  const records = [buildRecord(), buildRecord({ repository: buildRepository({ name: "second" }) })];
+  await withFixture(async ({ input }) => {
+    const contents = Buffer.concat([
+      Buffer.from(records.map((record) => JSON.stringify(record)).join("\n")),
+      Buffer.from([0xf0, 0x9f]),
+    ]);
+    await writeFile(input.baselinePath, contents);
+    await assert.rejects(
+      createBaselineCacheProvenance(input),
+      /Baseline record 2 is not valid JSON/,
+    );
+  }, records);
 });

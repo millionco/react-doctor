@@ -1,7 +1,18 @@
-import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { isCallReceiverOrCalleeRead } from "../../utils/is-call-receiver-or-callee-read.js";
+import { createReachableNodeChecker } from "../../utils/create-reachable-node-checker.js";
+import {
+  BUILTIN_HOOK_NAMES,
+  EFFECT_HOOK_NAMES,
+  UNARY_PAYLOAD_CALLBACK_ARGUMENT_COUNT,
+} from "../../constants/react.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { collectSynchronouslyInvokedLocalFunctions } from "../../utils/collect-effect-invoked-functions.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -10,6 +21,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectLocalPayloadSourceSymbol } from "./utils/get-effect-local-payload-source-symbol.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { collectRenderReachableExpressions } from "./utils/collect-render-reachable-expressions.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
@@ -17,11 +29,15 @@ import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-rend
 import { createExternalLocationInvalidationChecker } from "./utils/create-external-location-invalidation-checker.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { hasPairedRenderRefNotification } from "./utils/has-paired-render-ref-notification.js";
 import { getComponentRenderDependencyAnalysis } from "./utils/get-component-render-dependency-analysis.js";
 
 interface EffectDependencyInfo {
   dependencyNames: Set<string>;
+  dependencySymbols: Set<SymbolDescriptor>;
+  payloadReadSymbols: Set<SymbolDescriptor>;
   synchronouslyCalledFunctionNames: Set<string>;
+  synchronouslyCalledFunctionSymbols: Set<SymbolDescriptor>;
   payloadReadNames: Set<string>;
   nestedCallbackCalledFunctionNames: Set<string>;
 }
@@ -67,8 +83,38 @@ const isInsideConditionTest = (identifier: EsTreeNode, stopAt: EsTreeNode): bool
 const collectComponentStateUsageInfo = (
   componentBody: EsTreeNode,
   setterNames: ReadonlySet<string>,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
+  isReachableNode: (node: EsTreeNode) => boolean,
 ): ComponentStateUsageInfo => {
+  const { scopes } = context;
+  const componentFunction = context.cfg.enclosingFunction(componentBody);
+  const callbackParameterSymbols = new Set<SymbolDescriptor>();
+  if (isFunctionLike(componentFunction)) {
+    const [componentParameter] = componentFunction.params;
+    if (isNodeOfType(componentParameter, "ObjectPattern")) {
+      for (const property of componentParameter.properties) {
+        if (
+          !isNodeOfType(property, "Property") ||
+          property.computed ||
+          !isNodeOfType(property.value, "Identifier")
+        )
+          continue;
+        const parameterSymbol = scopes.symbolFor(property.value);
+        if (
+          parameterSymbol?.kind === "parameter" &&
+          parameterSymbol.scope.node === componentFunction &&
+          parameterSymbol.declarationNode === componentParameter &&
+          parameterSymbol.bindingIdentifier === property.value &&
+          parameterSymbol.references.every(
+            (reference) =>
+              reference.flag === "read" && !isBindingAssignmentTarget(reference.identifier),
+          )
+        ) {
+          callbackParameterSymbols.add(parameterSymbol);
+        }
+      }
+    }
+  }
   const calledSetterNames = new Set<string>();
   const customHookArgumentNames = new Set<string>();
   const effectInfos: EffectDependencyInfo[] = [];
@@ -103,15 +149,22 @@ const collectComponentStateUsageInfo = (
     }
     if (!isReactHookCall(child, EFFECT_HOOK_NAMES, scopes)) return;
     const dependencyNames = new Set<string>();
+    const dependencySymbols = new Set<SymbolDescriptor>();
+    const payloadReadSymbols = new Set<SymbolDescriptor>();
+    const sourceSymbolsByPayloadAlias = new Map<SymbolDescriptor, SymbolDescriptor | null>();
     for (const argument of child.arguments ?? []) {
       if (!isNodeOfType(argument, "ArrayExpression")) continue;
       for (const element of argument.elements ?? []) {
         if (!element) continue;
-        const rootName = getRootIdentifierName(element);
-        if (rootName) dependencyNames.add(rootName);
+        const rootIdentifier = getRootIdentifier(element);
+        if (!rootIdentifier) continue;
+        dependencyNames.add(rootIdentifier.name);
+        const dependencySymbol = scopes.symbolFor(rootIdentifier);
+        if (dependencySymbol) dependencySymbols.add(dependencySymbol);
       }
     }
     const synchronouslyCalledFunctionNames = new Set<string>();
+    const synchronouslyCalledFunctionSymbols = new Set<SymbolDescriptor>();
     const payloadReadNames = new Set<string>();
     const nestedCallbackCalledFunctionNames = new Set<string>();
     const effectCallback = child.arguments?.[0];
@@ -119,7 +172,20 @@ const collectComponentStateUsageInfo = (
       isNodeOfType(effectCallback, "ArrowFunctionExpression") ||
       isNodeOfType(effectCallback, "FunctionExpression")
     ) {
+      const hasSupportedPayloadConsumer =
+        !effectCallback.async &&
+        !effectCallback.generator &&
+        effectCallback.params.length === 0 &&
+        context.cfg.enclosingFunction(child) === componentFunction &&
+        isNodeReachableWithinFunction(child, context, { evaluatePrimitiveLiteralTruthiness: true });
+      let hasOpaqueCallbackInputs = false;
       walkAst(effectCallback.body, (bodyNode: EsTreeNode): void => {
+        if (
+          isNodeOfType(bodyNode, "ThisExpression") ||
+          (isNodeOfType(bodyNode, "Identifier") && bodyNode.name === "arguments")
+        ) {
+          hasOpaqueCallbackInputs = true;
+        }
         if (
           isNodeOfType(bodyNode, "CallExpression") &&
           isNodeOfType(bodyNode.callee, "Identifier")
@@ -135,6 +201,10 @@ const collectComponentStateUsageInfo = (
           }
           if (bodyNode === effectCallback.body || !isNestedCallbackCall) {
             synchronouslyCalledFunctionNames.add(bodyNode.callee.name);
+            const calleeSymbol = scopes.symbolFor(bodyNode.callee);
+            if (calleeSymbol && isReachableNode(bodyNode)) {
+              synchronouslyCalledFunctionSymbols.add(calleeSymbol);
+            }
           }
           if (isNestedCallbackCall) {
             nestedCallbackCalledFunctionNames.add(bodyNode.callee.name);
@@ -144,11 +214,9 @@ const collectComponentStateUsageInfo = (
         const parent = bodyNode.parent;
         if (!parent) return;
         if (isNodeOfType(parent, "MemberExpression") && parent.object === bodyNode) {
-          if (isInsideConditionTest(bodyNode, effectCallback.body as EsTreeNode)) return;
+          if (isInsideConditionTest(bodyNode, effectCallback.body)) return;
           payloadReadNames.add(bodyNode.name);
-          return;
-        }
-        if (
+        } else if (
           isNodeOfType(parent, "CallExpression") &&
           (parent.arguments ?? []).some((argument) => argument === bodyNode)
         ) {
@@ -157,12 +225,56 @@ const collectComponentStateUsageInfo = (
           const calleeName = isNodeOfType(parent.callee, "Identifier") ? parent.callee.name : null;
           if (calleeName !== null && setterNames.has(calleeName)) return;
           payloadReadNames.add(bodyNode.name);
+        } else {
+          return;
         }
+        if (
+          !hasSupportedPayloadConsumer ||
+          isInsideConditionTest(bodyNode, effectCallback.body) ||
+          context.cfg.enclosingFunction(bodyNode) !== effectCallback ||
+          !isNodeReachableWithinFunction(bodyNode, context, {
+            evaluatePrimitiveLiteralTruthiness: true,
+          })
+        ) {
+          return;
+        }
+        const payloadSymbol = scopes.symbolFor(bodyNode);
+        if (!payloadSymbol) return;
+        payloadReadSymbols.add(payloadSymbol);
+        if (
+          !isNodeOfType(parent, "CallExpression") ||
+          parent.optional ||
+          parent.arguments.length !== UNARY_PAYLOAD_CALLBACK_ARGUMENT_COUNT ||
+          !isNodeOfType(parent.callee, "Identifier")
+        )
+          return;
+        const callbackSymbol = scopes.symbolFor(parent.callee);
+        const statement = parent.parent;
+        if (
+          !callbackSymbol ||
+          !callbackParameterSymbols.has(callbackSymbol) ||
+          !isNodeOfType(statement, "ExpressionStatement") ||
+          statement.expression !== parent ||
+          statement.parent !== effectCallback.body
+        )
+          return;
+        if (!sourceSymbolsByPayloadAlias.has(payloadSymbol)) {
+          sourceSymbolsByPayloadAlias.set(
+            payloadSymbol,
+            getEffectLocalPayloadSourceSymbol({ payloadSymbol, effectCallback, context }),
+          );
+        }
+        const sourceSymbol = sourceSymbolsByPayloadAlias.get(payloadSymbol);
+        if (sourceSymbol) payloadReadSymbols.add(sourceSymbol);
       });
+      if (hasOpaqueCallbackInputs) payloadReadSymbols.clear();
     }
     effectInfos.push({
       dependencyNames,
+      dependencySymbols,
+      payloadReadSymbols,
       synchronouslyCalledFunctionNames,
+      synchronouslyCalledFunctionSymbols,
       payloadReadNames,
       nestedCallbackCalledFunctionNames,
     });
@@ -217,7 +329,15 @@ export const rerenderStateOnlyInHandlers = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const bindings = collectUseStateBindings(componentBody, context.scopes);
+      const firstRenderExit = componentBody.body.find(
+        (statement) =>
+          isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement"),
+      );
+      const bindings = collectUseStateBindings(componentBody, context.scopes).filter(
+        (binding) =>
+          !firstRenderExit ||
+          getNodeStartIndex(binding.declarator) < getNodeStartIndex(firstRenderExit),
+      );
       if (bindings.length === 0) return;
       const {
         dependencyGraph,
@@ -263,7 +383,12 @@ export const rerenderStateOnlyInHandlers = defineRule({
       // all) would work. An effect that consumes the PAYLOAD (member reads,
       // call arguments) before clearing is a handoff, not an echo.
       const { calledSetterNames, customHookArgumentNames, effectInfos } =
-        collectComponentStateUsageInfo(componentBody, setterNames, context.scopes);
+        collectComponentStateUsageInfo(
+          componentBody,
+          setterNames,
+          context,
+          createReachableNodeChecker(context.cfg),
+        );
       const selfEchoValueNames = new Set<string>();
       for (const binding of bindings) {
         // A setter also invoked from a NESTED callback of the same effect
@@ -280,10 +405,74 @@ export const rerenderStateOnlyInHandlers = defineRule({
         );
         if (hasGuardOnlySynchronousSelfWrite) selfEchoValueNames.add(binding.valueName);
       }
+      const renderedStateSetterSymbols = new Set<SymbolDescriptor>();
+      const stateValueSymbolsByName = new Map<string, SymbolDescriptor>();
+      for (const binding of bindings) {
+        const valueIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements[0]
+          : null;
+        const valueSymbol = valueIdentifier ? context.scopes.symbolFor(valueIdentifier) : null;
+        if (valueSymbol) stateValueSymbolsByName.set(binding.valueName, valueSymbol);
+        if (!renderReachableNames.has(binding.valueName)) continue;
+        const setterIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements[1]
+          : null;
+        const setterSymbol = setterIdentifier ? context.scopes.symbolFor(setterIdentifier) : null;
+        if (
+          setterSymbol &&
+          !setterSymbol.references.some(
+            (reference) =>
+              reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+          )
+        ) {
+          renderedStateSetterSymbols.add(setterSymbol);
+        }
+      }
+      const payloadStateValueSymbolsByName = new Map<string, SymbolDescriptor>();
+      for (const binding of bindings) {
+        if (!selfEchoValueNames.has(binding.valueName)) continue;
+        if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
+        const [valueIdentifier, setterIdentifier] = binding.declarator.id.elements;
+        const valueSymbol = valueIdentifier ? context.scopes.symbolFor(valueIdentifier) : null;
+        const setterSymbol = setterIdentifier ? context.scopes.symbolFor(setterIdentifier) : null;
+        if (
+          !valueSymbol ||
+          !setterSymbol ||
+          valueSymbol.kind !== "const" ||
+          setterSymbol.kind !== "const" ||
+          [valueSymbol, setterSymbol].some((symbol) =>
+            symbol.references.some(
+              (reference) =>
+                reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+            ),
+          )
+        ) {
+          continue;
+        }
+        payloadStateValueSymbolsByName.set(binding.valueName, valueSymbol);
+      }
       const effectConsumedNames = new Set<string>();
       for (const effectInfo of effectInfos) {
+        const writesRenderedState = Array.from(effectInfo.synchronouslyCalledFunctionSymbols).some(
+          (calleeSymbol) => renderedStateSetterSymbols.has(calleeSymbol),
+        );
         for (const dependencyName of effectInfo.dependencyNames) {
-          if (!selfEchoValueNames.has(dependencyName)) effectConsumedNames.add(dependencyName);
+          const valueSymbol = stateValueSymbolsByName.get(dependencyName);
+          const publishesRenderedState =
+            writesRenderedState &&
+            Boolean(valueSymbol && effectInfo.dependencySymbols.has(valueSymbol));
+          const payloadValueSymbol = payloadStateValueSymbolsByName.get(dependencyName);
+          const consumesStatePayload =
+            payloadValueSymbol &&
+            effectInfo.dependencySymbols.has(payloadValueSymbol) &&
+            effectInfo.payloadReadSymbols.has(payloadValueSymbol);
+          if (
+            !selfEchoValueNames.has(dependencyName) ||
+            publishesRenderedState ||
+            consumesStatePayload
+          ) {
+            effectConsumedNames.add(dependencyName);
+          }
         }
       }
       for (const hookArgumentName of customHookArgumentNames) {
@@ -305,8 +494,50 @@ export const rerenderStateOnlyInHandlers = defineRule({
             renderReachableExpressions,
           })
         : () => false;
+      const isReachableNode = createReachableNodeChecker(context.cfg);
+      const renderInvokedFunctions = collectSynchronouslyInvokedLocalFunctions(
+        componentBody,
+        context.scopes,
+        isReachableNode,
+        (functionNode) => {
+          if (!isNodeOfType(functionNode, "FunctionDeclaration") || !functionNode.id) return true;
+          let declarationScope = context.scopes.scopeFor(functionNode);
+          while (true) {
+            const functionSymbol = declarationScope.symbolsByName.get(functionNode.id.name);
+            if (functionSymbol?.declarationNode === functionNode) {
+              return !functionSymbol.references.some(
+                (reference) =>
+                  reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+              );
+            }
+            if (!declarationScope.parent) return false;
+            declarationScope = declarationScope.parent;
+          }
+        },
+      );
       for (const binding of bindings) {
         if (renderReachableNames.has(binding.valueName)) continue;
+        const valueBindingIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements[0]
+          : null;
+        const valueSymbol = valueBindingIdentifier
+          ? context.scopes.symbolFor(valueBindingIdentifier)
+          : null;
+        if (
+          valueSymbol?.references.some((reference) => {
+            if (
+              reference.flag === "write" ||
+              !isReachableNode(reference.identifier) ||
+              !isCallReceiverOrCalleeRead(reference.identifier)
+            ) {
+              return false;
+            }
+            const enclosingFunction = findEnclosingFunction(reference.identifier);
+            return Boolean(enclosingFunction && renderInvokedFunctions.has(enclosingFunction));
+          })
+        ) {
+          continue;
+        }
         const setterBindingIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
           ? binding.declarator.id.elements?.[1]
           : null;
@@ -345,6 +576,7 @@ export const rerenderStateOnlyInHandlers = defineRule({
         // shapes render-phase control flow, so it is NOT write-only and a
         // `useRef` swap would break the adjustment. Skip it.
         if (isSetterCalledDuringRender(componentBody, binding.setterName)) continue;
+        if (hasPairedRenderRefNotification(binding, componentBody, context)) continue;
 
         context.report({
           node: binding.declarator,

@@ -1,3 +1,5 @@
+import { getTsconfigAliasCacheGeneration } from "./resolve-tsconfig-alias.js";
+import { getModuleResolutionCacheGeneration } from "./resolve-relative-import-path.js";
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../constants/thresholds.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findReExportTargetsForName } from "./find-exported-function-body.js";
@@ -31,8 +33,15 @@ interface CrossFileValueExportLookup {
 }
 
 const crossFileValueExportByImport = new Map<string, CrossFileValueExportLookup>();
+let valueExportAliasGeneration: number | undefined;
+let valueExportResolutionGeneration: number | undefined;
+
+let crossFileExportCacheGeneration = 0;
+
+export const getCrossFileExportCacheGeneration = (): number => crossFileExportCacheGeneration;
 
 export const resetCrossFileExportCaches = (): void => {
+  crossFileExportCacheGeneration++;
   crossFileValueExportByImport.clear();
 };
 
@@ -107,6 +116,16 @@ export const resolveCrossFileValueExportWithFilePath = (
     return resolveValueExportInFile(resolvedFilePath, exportedName, new Set<string>());
   }
 
+  const aliasGeneration = getTsconfigAliasCacheGeneration();
+  const resolutionGeneration = getModuleResolutionCacheGeneration();
+  if (
+    valueExportAliasGeneration !== aliasGeneration ||
+    valueExportResolutionGeneration !== resolutionGeneration
+  ) {
+    crossFileValueExportByImport.clear();
+    valueExportAliasGeneration = aliasGeneration;
+    valueExportResolutionGeneration = resolutionGeneration;
+  }
   const cacheKey = `${fromFilename}\0${source}\0${exportedName}`;
   const cached = crossFileValueExportByImport.get(cacheKey);
   if (cached !== undefined) {

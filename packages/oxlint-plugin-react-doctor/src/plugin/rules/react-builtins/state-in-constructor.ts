@@ -73,6 +73,7 @@ export const stateInConstructor = defineRule({
         if (mode !== "always") return;
         if (node.static) return;
         if (!isStateKey(node.key)) return;
+        if (node.value === null && node.typeAnnotation) return;
         const enclosingClass = findEnclosingClass(node);
         if (!enclosingClass || !isEs6Component(enclosingClass)) return;
         context.report({ node: node.key, message: ALWAYS_MESSAGE });

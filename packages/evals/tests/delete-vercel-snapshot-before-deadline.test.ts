@@ -1,11 +1,18 @@
 import { Snapshot } from "@vercel/sandbox";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { deleteVercelSnapshotBeforeDeadline } from "../src/utils/delete-vercel-snapshot-before-deadline.js";
 const CONTROL_PLANE_TEST_TIMEOUT_MS = 5;
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["performance", "setTimeout", "clearTimeout"] });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("deleteVercelSnapshotBeforeDeadline", () => {
   it("recovers snapshots when the create response was lost", async () => {
+    vi.spyOn(globalThis.performance, "now").mockReturnValue(0);
     const deleteSnapshot = vi.fn(async () => undefined);
     vi.spyOn(Snapshot, "get").mockResolvedValue(
       Object.assign(Object.create(null), { delete: deleteSnapshot }),
@@ -25,6 +32,7 @@ describe("deleteVercelSnapshotBeforeDeadline", () => {
       }),
     ).resolves.toBeUndefined();
     expect(deleteSnapshot).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
   });
   it("times out a never-settling snapshot deletion", async () => {
     const snapshot = Object.create(Snapshot.prototype);
@@ -32,13 +40,17 @@ describe("deleteVercelSnapshotBeforeDeadline", () => {
       snapshotId: { value: "snapshot-name" },
       delete: { value: () => new Promise<never>(() => undefined) },
     });
-    await expect(
-      deleteVercelSnapshotBeforeDeadline({
-        credentials: {},
-        snapshotName: "builder",
-        snapshot,
-        deadlineMilliseconds: globalThis.performance.now() + CONTROL_PLANE_TEST_TIMEOUT_MS,
-      }),
-    ).rejects.toThrow("Timed out deleting Vercel snapshot snapshot-name");
+    const deletion = deleteVercelSnapshotBeforeDeadline({
+      credentials: {},
+      snapshotName: "builder",
+      snapshot,
+      deadlineMilliseconds: globalThis.performance.now() + CONTROL_PLANE_TEST_TIMEOUT_MS,
+    });
+    const deletionAssertion = expect(deletion).rejects.toThrow(
+      "Timed out deleting Vercel snapshot snapshot-name",
+    );
+    await vi.advanceTimersByTimeAsync(CONTROL_PLANE_TEST_TIMEOUT_MS);
+    await deletionAssertion;
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -1,0 +1,5 @@
+export const CSF2_COLD_PROOF_COUNTS = [20, 100];
+export const CSF2_PROGRAM_BODY_READ_LIMIT = 4;
+export const CSF2_PROGRAM_STATEMENT_PASSES = 4;
+export const CSF2_PARENT_READS_PER_NODE = 8;
+export const CSF2_AST_READS_PER_NODE = 64;

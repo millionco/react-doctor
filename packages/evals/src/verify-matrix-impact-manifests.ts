@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS, MILLISECONDS_PER_SECOND } from "./constants.js";
+import {
+  MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
+  MILLISECONDS_PER_SECOND,
+  TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES,
+} from "./constants.js";
 import type { LoadedMatrixTreatment } from "./matrix-treatment-descriptor.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 
@@ -96,6 +100,10 @@ export const verifyMatrixImpactManifests = async (
       }
     }
   } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
+    await rm(temporaryDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES,
+    });
   }
 };

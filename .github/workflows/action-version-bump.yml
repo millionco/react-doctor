@@ -44,7 +44,7 @@ jobs:
         run: |
           # Assign separately from `export` so errexit sees a failing git diff
           # instead of silently treating it as "no files changed".
-          changed_files="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          changed_files="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- action.yml scripts/)"
           all_tags="$(git tag --list 'v*')"
           export ACTION_CHANGED_FILES="${changed_files}"
           export ACTION_ALL_TAGS="${all_tags}"
@@ -144,7 +144,7 @@ jobs:
           # Assign separately from `export` so errexit sees a failing git diff
           # (e.g. an unreachable `github.event.before` after a force-push)
           # instead of silently treating it as "no files changed".
-          changed_files="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
+          changed_files="$(git diff --name-only "${base}" "${GITHUB_SHA}" -- action.yml scripts/)"
           all_tags="$(git tag --list 'v*')"
           export ACTION_CHANGED_FILES="${changed_files}"
           export ACTION_ALL_TAGS="${all_tags}"

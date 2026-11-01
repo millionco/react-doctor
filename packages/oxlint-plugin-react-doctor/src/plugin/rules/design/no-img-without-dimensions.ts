@@ -16,9 +16,11 @@ import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwind-class-name-token.js";
+import { getImageRenderParentElement } from "./utils/get-image-render-parent-element.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
+import { hasReservedStyledParentImageBox } from "./utils/has-reserved-styled-parent-image-box.js";
 import { resolveEffectiveTailwindClassNameToken } from "./utils/resolve-effective-tailwind-class-name-token.js";
 import {
   createStaticCssStyleResolver,
@@ -354,9 +356,8 @@ const getExternalCssParentBoxAxes = (
   context: RuleContext,
   resolver: StaticCssStyleResolver,
 ): ParentBoxAxes => {
-  const imageElement = node.parent;
-  const parentElement = imageElement?.parent;
-  return isNodeOfType(imageElement, "JSXElement") && isNodeOfType(parentElement, "JSXElement")
+  const parentElement = getImageRenderParentElement(node);
+  return parentElement
     ? getExternalCssElementBoxAxes(parentElement.openingElement, context, resolver)
     : { hasHeight: false, hasWidth: false };
 };
@@ -709,13 +710,8 @@ const hasReservedParentBox = (
   context: RuleContext,
   hasTailwind: boolean,
 ): boolean => {
-  const element = node.parent;
-  const parentElement = element?.parent;
-  if (
-    !isNodeOfType(element, "JSXElement") ||
-    !isNodeOfType(parentElement, "JSXElement") ||
-    hasJsxSpreadAttribute(parentElement.openingElement.attributes)
-  ) {
+  const parentElement = getImageRenderParentElement(node);
+  if (!parentElement || hasJsxSpreadAttribute(parentElement.openingElement.attributes)) {
     return false;
   }
   const parentOpeningElement = parentElement.openingElement;
@@ -794,9 +790,8 @@ const hasUnresolvedParentBox = (
   context: RuleContext,
   hasTailwind: boolean,
 ): boolean => {
-  const element = node.parent;
-  const parentElement = element?.parent;
-  if (!isNodeOfType(element, "JSXElement") || !isNodeOfType(parentElement, "JSXElement")) {
+  const parentElement = getImageRenderParentElement(node);
+  if (!parentElement) {
     return false;
   }
   if (!hasTailwind && getStaticClassName(parentElement.openingElement)) return true;
@@ -832,6 +827,7 @@ export const noImgWithoutDimensions = defineRule({
         if (
           hasReservedImageBox(node, context, hasTailwind) ||
           hasReservedParentBox(node, context, hasTailwind) ||
+          hasReservedStyledParentImageBox(node, context) ||
           hasReservedExternalCssBox(node, context, staticCssStyleResolver)
         ) {
           return;

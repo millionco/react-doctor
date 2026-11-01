@@ -169,7 +169,7 @@ const scanBaseline = async ({ baselinePath, expectedProducer }) => {
   const decoder = new StringDecoder("utf8");
   const repositories = [];
   let byteLength = 0;
-  let bufferedText = "";
+  const lineFragments = [];
   let recordCount = 0;
 
   const consumeLine = (line) => {
@@ -200,16 +200,23 @@ const scanBaseline = async ({ baselinePath, expectedProducer }) => {
   for await (const chunk of createReadStream(baselinePath)) {
     artifactHash.update(chunk);
     byteLength += chunk.byteLength;
-    bufferedText += decoder.write(chunk);
-    let newlineIndex = bufferedText.indexOf("\n");
+    const decodedChunk = decoder.write(chunk);
+    let lineStartIndex = 0;
+    let newlineIndex = decodedChunk.indexOf("\n");
     while (newlineIndex !== -1) {
-      consumeLine(bufferedText.slice(0, newlineIndex));
-      bufferedText = bufferedText.slice(newlineIndex + 1);
-      newlineIndex = bufferedText.indexOf("\n");
+      lineFragments.push(decodedChunk.slice(lineStartIndex, newlineIndex));
+      consumeLine(lineFragments.join(""));
+      lineFragments.length = 0;
+      lineStartIndex = newlineIndex + 1;
+      newlineIndex = decodedChunk.indexOf("\n", lineStartIndex);
+    }
+    if (lineStartIndex < decodedChunk.length) {
+      lineFragments.push(decodedChunk.slice(lineStartIndex));
     }
   }
-  bufferedText += decoder.end();
-  if (bufferedText.length !== 0) consumeLine(bufferedText);
+  const decoderTail = decoder.end();
+  if (decoderTail.length !== 0) lineFragments.push(decoderTail);
+  if (lineFragments.length !== 0) consumeLine(lineFragments.join(""));
   if (recordCount === 0) throw new Error("Baseline must contain at least one record");
 
   const projectSet = buildProjectSet(repositories, "baseline");

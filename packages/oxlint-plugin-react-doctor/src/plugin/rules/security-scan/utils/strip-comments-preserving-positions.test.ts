@@ -142,6 +142,28 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
       expect(stripped).toContain(`const description = "`);
     });
 
+    it.each(["description", '"description"', "'description'"])(
+      "blanks a single-word %s value without hiding executable neighbors",
+      (propertyName) => {
+        const source = `const tool = { ${propertyName}: "fetch", execute: () => exec(command) };`;
+        const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+        expect(stripped).toHaveLength(source.length);
+        expect(stripped).not.toContain("fetch");
+        expect(stripped).toContain("exec(command)");
+      },
+    );
+
+    it("does not mistake ternary branches for description properties", () => {
+      const source = `const tool = condition ? description : "fetch";`;
+      expect(stripCommentsAndStringLiteralsPreservingPositions(source)).toBe(source);
+    });
+
+    it("preserves other single-token properties and computed capability accesses", () => {
+      const source = `const tool = { notdescription: "fetch", module: "axios", execute: () => api["exec"](command) };`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toBe(source);
+    });
+
     it("keeps real call sites outside the quotes intact while blanking prose arguments", () => {
       const source = `const data = await fetch("all of the remote rows");`;
       const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);

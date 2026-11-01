@@ -2,6 +2,33 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noSetStateAfterAwaitInEffect } from "./no-set-state-after-await-in-effect.js";
 
+describe("erased native ref loader providers", () => {
+  const source =
+    'import {useEffect,useRef,useState} from "react"; const Panel=({id,load})=>{const[value,setValue]=useState(null);const sequence=useRef(0);const callback=async()=>{const snapshot=sequence.current;await load(id);if(snapshot===sequence.current)setValue(id);};const holder=useRef(callback);useEffect(()=>{holder.current=callback;},[callback]);useEffect(()=>{sequence.current++;callback();},[id]);return <output>{value}</output>;};';
+  it.each([
+    'declare const require: any; require("react").useRef=customRef;',
+    'import type require = require("./types"); require("react").useRef=customRef;',
+    'namespace require {}require("react").useRef=customRef;',
+    'namespace require {export namespace Shape {export interface Marker {}}}require("react").useRef=customRef;',
+    'declare function require(source: string): any; require("react").useRef=customRef;',
+    'declare const require: any; (require as any)("react").useRef=customRef;',
+  ])("retains a runtime provider replacement through %s", (exposure) => {
+    const result = runRule(noSetStateAfterAwaitInEffect, `${exposure}${source}`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it.each([
+    "declare const require: any;",
+    'const require=()=>({});require("metadata");',
+    'function require(){return {useRef:customRef};} namespace require {export interface Marker {}} require("react").useRef=customRef;',
+    'const require=()=>({useRef:customRef});interface require {} require("react").useRef=customRef;',
+  ])("allows inert declarations and real local loaders: %s", (metadata) => {
+    const result = runRule(noSetStateAfterAwaitInEffect, `${metadata}${source}`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
 describe("no-set-state-after-await-in-effect", () => {
   it("flags a declared-then-called inner async function that sets state after await", () => {
     const result = runRule(
@@ -2672,5 +2699,865 @@ describe("fresh cancellation guard aliases", () => {
     `,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("closed native ref read snapshots", () => {
+  it("accepts the complete direct generation snapshot control with a non-invoking holder", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import {useState,useEffect,useCallback,useRef} from 'react';const Panel=({id,load})=>{const[value,setValue]=useState(null);const sequence=useRef(0);const callback=(async()=>{const snapshot=sequence.current;await load(id);if(snapshot===sequence.current)setValue(id);});const run=useRef(callback);useEffect(()=>{run.current=callback;},[callback]);useEffect(()=>{sequence.current++;callback();},[id]);return null;};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  const guardedSource = `import {useState,useEffect,useRef} from 'react';
+    const Panel=({id,load})=>{
+      const[value,setValue]=useState(null);
+      const sequence=useRef(0);
+      const callback=async()=>{
+        const snapshot=sequence.current;
+        await load(id);
+        if(snapshot===sequence.current)setValue(id);
+      };
+      useEffect(()=>{sequence.current++;callback();},[id]);
+      return null;
+    };`;
+
+  const effectLocalSource = guardedSource
+    .replace(
+      "const callback=async()=>{",
+      "useEffect(()=>{sequence.current++;const callback=async()=>{",
+    )
+    .replace("useEffect(()=>{sequence.current++;callback();},[id]);", "callback();},[id]);");
+
+  const safeControls = [
+    [
+      "unrelated canonical require stays outside provider veto",
+      guardedSource.replace("const Panel", "const filesystem=require('node:fs');const Panel"),
+    ],
+    [
+      "shadowed require spelling stays outside canonical veto",
+      guardedSource.replace(
+        "const Panel",
+        "const require=()=>({useRef:custom});require('react');const Panel",
+      ),
+    ],
+
+    [
+      "owner branch returns after native construction",
+      guardedSource.replace("return null;", "if(!id)return null;return null;"),
+    ],
+    ["readonly effect-local const body", effectLocalSource],
+    [
+      "all local invocations follow declaration and prefix",
+      effectLocalSource.replace("callback();},[id]", "callback();callback();},[id]"),
+    ],
+
+    [
+      "harmless sibling default provider metadata",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';React.useRef.description='cell';React.useEffect.description='driver';const Panel",
+      ),
+    ],
+    [
+      "harmless sibling namespace metadata",
+      guardedSource.replace(
+        "const Panel",
+        "import * as React from 'react';React.useRef.description='cell';const Panel",
+      ),
+    ],
+    [
+      "harmless sibling provider computed-key read",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';const {[React.useRef]: label}=labels;const Panel",
+      ),
+    ],
+    [
+      "harmless sibling provider default RHS read",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';const {hook=React.useEffect}=options;const Panel",
+      ),
+    ],
+    [
+      "readonly sibling namespace presence",
+      guardedSource.replace("const Panel", "import * as React from 'react';const Panel"),
+    ],
+    [
+      "readonly provider alias metadata",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';const Provider=React;Provider.useRef.description='cell';const Panel",
+      ),
+    ],
+
+    ["direct readonly scalar capture", guardedSource],
+    ["layout effect native driver", guardedSource.replaceAll("useEffect", "useLayoutEffect")],
+    [
+      "closed non-invoking native holder",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const run=useRef(callback);useEffect(()=>{run.current=callback;},[callback]);useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "every direct call follows the prefix",
+      guardedSource.replace("callback();},[id]", "callback();callback();},[id]"),
+    ],
+    [
+      "renamed genuine imports",
+      guardedSource
+        .replace("useEffect,useRef}", "useEffect as runEffect,useRef as createRef}")
+        .replaceAll("useEffect(", "runEffect(")
+        .replaceAll("useRef(", "createRef("),
+    ],
+    [
+      "native hook metadata",
+      guardedSource.replace(
+        "const Panel",
+        "useEffect.description='driver';useRef.description='counter';const Panel",
+      ),
+    ],
+    [
+      "native hook computed-key reads",
+      guardedSource.replace("const Panel", "const {[useEffect]: effectLabel}=labels;const Panel"),
+    ],
+    [
+      "native hook default RHS reads",
+      guardedSource.replace("const Panel", "const {hook=useRef}=options;const Panel"),
+    ],
+    [
+      "counter scalar computed-key reads",
+      guardedSource.replace(
+        "const callback=",
+        "const {[sequence.current]: label}=labels;const callback=",
+      ),
+    ],
+    [
+      "counter scalar default RHS reads",
+      guardedSource.replace(
+        "const callback=",
+        "const {count=sequence.current}=options;const callback=",
+      ),
+    ],
+    [
+      "snapshot computed-key reads",
+      guardedSource.replace("await load(id);", "const {[snapshot]: label}=labels;await load(id);"),
+    ],
+    [
+      "snapshot default RHS reads",
+      guardedSource.replace("await load(id);", "const {count=snapshot}=options;await load(id);"),
+    ],
+    [
+      "anonymous direct IIFE",
+      guardedSource
+        .replace("const callback=async()=>{", "useEffect(()=>{sequence.current++;(async()=>{")
+        .replace(
+          "};\n      useEffect(()=>{sequence.current++;callback();},[id]);",
+          "})();},[id]);",
+        ),
+    ],
+    [
+      "mismatch early return",
+      guardedSource.replace(
+        "if(snapshot===sequence.current)setValue(id);",
+        "if(snapshot!==sequence.current)return;setValue(id);",
+      ),
+    ],
+  ];
+  for (const [description, source] of safeControls) {
+    it(`accepts ${description}`, () => {
+      const result = runRule(noSetStateAfterAwaitInEffect, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  }
+
+  const warningControls = [
+    [
+      "canonical React require property replacement",
+      guardedSource.replace("const Panel", "require('react').useRef=replacement;const Panel"),
+    ],
+    [
+      "canonical React require provider alias",
+      guardedSource.replace(
+        "const Panel",
+        "const Provider=require('react');Provider.useRef=replacement;const Panel",
+      ),
+    ],
+    [
+      "canonical React require provider escape",
+      guardedSource.replace(
+        "const Panel",
+        "const Provider=require('react');install(Provider);const Panel",
+      ),
+    ],
+
+    [
+      "conditional native holder and storage effect",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "if(condition){const holder=useRef(callback);useEffect(()=>{holder.current=callback;},[callback]);}useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "conditional native storage effect",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const holder=useRef(callback);if(condition)useEffect(()=>{holder.current=callback;},[callback]);useEffect(()=>{sequence.current++;",
+      ),
+    ],
+
+    [
+      "owner return before counter construction",
+      guardedSource.replace("const sequence=", "if(!id)return null;const sequence="),
+    ],
+    [
+      "owner return before effect registration",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "if(!id)return null;useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "conditional native counter construction",
+      guardedSource.replace(
+        "const sequence=useRef(0);",
+        "const sequence=condition?useRef(0):fallback;",
+      ),
+    ],
+    [
+      "conditional effect construction",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "if(condition)useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "conditional counter and effect construction",
+      guardedSource
+        .replace("const sequence=", "if(condition){const sequence=")
+        .replace("return null;", "}return null;"),
+    ],
+    [
+      "local callback alias",
+      effectLocalSource.replace("callback();},[id]", "const alias=callback;alias();},[id]"),
+    ],
+    [
+      "local cleanup invocation",
+      effectLocalSource.replace("callback();},[id]", "callback();return ()=>callback();},[id]"),
+    ],
+    [
+      "local nested callback capture",
+      effectLocalSource.replace(
+        "callback();},[id]",
+        "callback();const unused=()=>callback();},[id]",
+      ),
+    ],
+    [
+      "local transitive invocation",
+      effectLocalSource.replace("callback();},[id]", "const invoke=()=>callback();invoke();},[id]"),
+    ],
+    [
+      "local callback escape",
+      effectLocalSource.replace("callback();},[id]", "callback();publish(callback);},[id]"),
+    ],
+    [
+      "local native ref holder unsupported",
+      effectLocalSource.replace(
+        "callback();},[id]",
+        "const holder=useRef(callback);callback();},[id]",
+      ),
+    ],
+    [
+      "local call before declaration",
+      effectLocalSource.replace(
+        "const callback=async()=>{",
+        "callback();const callback=async()=>{",
+      ),
+    ],
+
+    [
+      "type-only native import declaration",
+      guardedSource.replace(
+        "import {useState,useEffect,useRef} from 'react';",
+        "import {useState,useEffect} from 'react';import type {useRef} from 'react';",
+      ),
+    ],
+
+    [
+      "sibling default ref API replacement",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';React.useRef=replacement;const Panel",
+      ),
+    ],
+    [
+      "sibling namespace ref API replacement",
+      guardedSource.replace(
+        "const Panel",
+        "import * as React from 'react';React.useRef=replacement;const Panel",
+      ),
+    ],
+    [
+      "sibling default effect API replacement",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';React.useEffect=replacement;const Panel",
+      ),
+    ],
+    [
+      "sibling provider Reflect mutation",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';Reflect.set(React,'useRef',replacement);const Panel",
+      ),
+    ],
+    [
+      "sibling provider descriptor replacement",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';Object.defineProperty(React,'useRef',{value:replacement});const Panel",
+      ),
+    ],
+    [
+      "sibling provider opaque escape",
+      guardedSource.replace("const Panel", "import React from 'react';install(React);const Panel"),
+    ],
+    [
+      "sibling provider method-value escape",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';install(React.useRef);const Panel",
+      ),
+    ],
+    [
+      "sibling namespace default projection",
+      guardedSource.replace(
+        "const Panel",
+        "import * as React from 'react';const provider=React.default;const Panel",
+      ),
+    ],
+    [
+      "sibling provider alias replacement",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';const Provider=React;Provider.useRef=replacement;const Panel",
+      ),
+    ],
+    [
+      "sibling provider pattern mutation",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';({hook:React.useRef}=replacement);const Panel",
+      ),
+    ],
+    [
+      "sibling provider computed unknown escape",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';install(React[key]);const Panel",
+      ),
+    ],
+    [
+      "sibling provider current API deletion",
+      guardedSource.replace(
+        "const Panel",
+        "import React from 'react';delete React.useRef;const Panel",
+      ),
+    ],
+    [
+      "type-only native API import",
+      guardedSource.replace("useState,useEffect,useRef}", "useState,useEffect,type useRef}"),
+    ],
+
+    [
+      "default namespace scope remains unsupported",
+      guardedSource
+        .replace(
+          "import {useState,useEffect,useRef} from 'react';",
+          "import React,{useState} from 'react';",
+        )
+        .replaceAll("useEffect(", "React.useEffect(")
+        .replaceAll("useRef(", "React.useRef("),
+    ],
+    [
+      "ref receiver aliases remain unsupported",
+      guardedSource
+        .replace("const callback=", "const alias=sequence;const callback=")
+        .replace("const snapshot=sequence.current;", "const snapshot=alias.current;"),
+    ],
+    [
+      "additional uncovered effect driver",
+      guardedSource.replace("return null;", "useEffect(()=>{callback();},[load]);return null;"),
+    ],
+
+    [
+      "early return leaves an older run live",
+      guardedSource.replace(
+        "sequence.current++;callback();",
+        "if(!id)return;sequence.current++;callback();",
+      ),
+    ],
+    [
+      "opaque call before invalidation can throw",
+      guardedSource.replace(
+        "sequence.current++;callback();",
+        "prepare(id);sequence.current++;callback();",
+      ),
+    ],
+    [
+      "conditional throw before invalidation",
+      guardedSource.replace(
+        "sequence.current++;callback();",
+        "if(!id)throw new Error('stop');sequence.current++;callback();",
+      ),
+    ],
+
+    ["no entry increment", guardedSource.replace("sequence.current++;", "")],
+    [
+      "increment after invocation",
+      guardedSource.replace("sequence.current++;callback();", "callback();sequence.current++;"),
+    ],
+    [
+      "conditional prefix bypass",
+      guardedSource.replace(
+        "sequence.current++;callback();",
+        "if(id)sequence.current++;callback();",
+      ),
+    ],
+    ["entry reset", guardedSource.replace("sequence.current++;", "sequence.current=0;")],
+    [
+      "additional outside-driver increment",
+      guardedSource.replace("return null;", "sequence.current++;return null;"),
+    ],
+    [
+      "first call precedes increment",
+      guardedSource.replace(
+        "sequence.current++;callback();",
+        "callback();sequence.current++;callback();",
+      ),
+    ],
+    [
+      "outside-driver decrement",
+      guardedSource.replace("return null;", "sequence.current--;return null;"),
+    ],
+    [
+      "snapshot capture before second await only",
+      guardedSource.replace(
+        "const snapshot=sequence.current;",
+        "await load(id);const snapshot=sequence.current;",
+      ),
+    ],
+    [
+      "counter reset after await",
+      guardedSource.replace("await load(id);", "await load(id);sequence.current=0;"),
+    ],
+    [
+      "counter reset before await",
+      guardedSource.replace("await load(id);", "sequence.current=0;await load(id);"),
+    ],
+    [
+      "counter object escape",
+      guardedSource.replace("const callback=", "mutate(sequence);const callback="),
+    ],
+    [
+      "counter getter replacement",
+      guardedSource.replace(
+        "const callback=",
+        "Object.defineProperty(sequence,'current',{get:()=>0});const callback=",
+      ),
+    ],
+    [
+      "counter binding replacement",
+      guardedSource
+        .replace("const sequence=", "let sequence=")
+        .replace("const callback=", "sequence={current:0};const callback="),
+    ],
+    [
+      "counter member pattern write",
+      guardedSource.replace(
+        "const callback=",
+        "({count:sequence.current}=options);const callback=",
+      ),
+    ],
+    ["mutable snapshot", guardedSource.replace("const snapshot=", "let snapshot=")],
+    [
+      "snapshot replacement",
+      guardedSource.replace("await load(id);", "snapshot=0;await load(id);"),
+    ],
+    [
+      "snapshot pattern replacement",
+      guardedSource.replace("await load(id);", "({count:snapshot}=options);await load(id);"),
+    ],
+    [
+      "capture after await",
+      guardedSource.replace(
+        "const snapshot=sequence.current;\n        await load(id);",
+        "await load(id);const snapshot=sequence.current;",
+      ),
+    ],
+    [
+      "custom ref provider",
+      guardedSource
+        .replace("useState,useEffect,useRef", "useState,useEffect")
+        .replace("const Panel", "const useRef=()=>({current:0});const Panel"),
+    ],
+    [
+      "unbound ref spelling",
+      guardedSource.replace("useState,useEffect,useRef", "useState,useEffect"),
+    ],
+    ["nonzero ref initializer", guardedSource.replace("useRef(0)", "useRef(id)")],
+    [
+      "named ref API replacement",
+      guardedSource.replace("const Panel", "useRef=replacement;const Panel"),
+    ],
+    [
+      "named effect API replacement",
+      guardedSource.replace("const Panel", "useEffect=replacement;const Panel"),
+    ],
+    [
+      "named effect API pattern replacement",
+      guardedSource.replace("const Panel", "({hook:useEffect}=replacement);const Panel"),
+    ],
+    ["ref API unknown escape", guardedSource.replace("const Panel", "mutate(useRef);const Panel")],
+    [
+      "effect API unknown escape",
+      guardedSource.replace("const Panel", "mutate(useEffect);const Panel"),
+    ],
+    ["outside-effect invocation", guardedSource.replace("return null;", "callback();return null;")],
+    [
+      "deferred additional invocation",
+      guardedSource.replace("return null;", "queueMicrotask(callback);return null;"),
+    ],
+    [
+      "uncalled nested callback capture",
+      guardedSource.replace("return null;", "const unused=()=>callback();return null;"),
+    ],
+    [
+      "self-recursive invocation",
+      guardedSource.replace("await load(id);", "callback();await load(id);"),
+    ],
+    [
+      "named function self invocation",
+      guardedSource
+        .replace("async()=>{", "async function recurse(){")
+        .replace("await load(id);", "recurse();await load(id);"),
+    ],
+    [
+      "callback arguments dependency",
+      guardedSource.replace("await load(id);", "await load(arguments[0]);"),
+    ],
+    ["callback this dependency", guardedSource.replace("await load(id);", "await this.load(id);")],
+    ["callback parameter mapping", guardedSource.replace("async()=>{", "async(input)=>{")],
+    [
+      "callback unknown escape",
+      guardedSource.replace("return null;", "publish(callback);return null;"),
+    ],
+    [
+      "callback alias",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const alias=callback;useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "holder read-as-call",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const run=useRef(callback);run.current();useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "holder alias escape",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const run=useRef(callback);const alias=run;useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "holder unknown escape",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const run=useRef(callback);publish(run);useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "holder return escape",
+      guardedSource
+        .replace(
+          "useEffect(()=>{sequence.current++;",
+          "const run=useRef(callback);useEffect(()=>{sequence.current++;",
+        )
+        .replace("return null;", "return run;"),
+    ],
+    [
+      "holder replacement",
+      guardedSource.replace(
+        "useEffect(()=>{sequence.current++;",
+        "const run=useRef(callback);run.current=other;useEffect(()=>{sequence.current++;",
+      ),
+    ],
+    [
+      "direct lexical eval",
+      guardedSource.replace("const callback=", "eval('sequence.current=0');const callback="),
+    ],
+    [
+      "nested invocation intermediary",
+      guardedSource.replace(
+        "sequence.current++;callback();",
+        "sequence.current++;const invoke=()=>callback();invoke();",
+      ),
+    ],
+  ];
+  for (const [description, source] of warningControls) {
+    it(`retains the warning for ${description}`, () => {
+      const result = runRule(noSetStateAfterAwaitInEffect, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+  }
+});
+
+interface CancellationShortCircuitCase {
+  name: string;
+  code: string;
+  expectedCount: number;
+}
+
+const cancellationShortCircuitCases: CancellationShortCircuitCase[] = [
+  {
+    name: "local-live-and-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "negated-cancelled-and-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let cancelled = false;\n    const load = async () => {\n      await pending;\n      if (!cancelled && readReady()) setCount(1);\n    };\n    load();\n    return () => { cancelled = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "cancelled-or-opaque-return",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let cancelled = false;\n    const load = async () => {\n      await pending;\n      if (cancelled || readReady()) return;\n      setCount(1);\n    };\n    load();\n    return () => { cancelled = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "native-ref-and-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  const active = useRef(true);\n  useEffect(() => {\n    const load = async () => {\n      await pending;\n      if (active.current && readReady()) setCount(1);\n    };\n    load();\n    return () => { active.current = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "legacy-pure-live-guard",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "reversed-mutating-prefix",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const resetAlive = () => { alive = true; return true; };\n    const load = async () => {\n      await pending;\n      if (resetAlive() && alive) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "mixed-or-allows-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive || readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nullish-conservatively-unsupported",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive ?? readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "snapshot-before-suspension",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      const liveSnapshot = alive;\n      await pending;\n      if (liveSnapshot && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "and-true-does-not-force-return",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let cancelled = false;\n    const load = async () => {\n      await pending;\n      if (cancelled && readReady()) return;\n      setCount(1);\n    };\n    load();\n    return () => { cancelled = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "getter-setter-member-guard",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    const guard = { get active() { return true; }, set active(nextValue) {} };\n    const load = async () => {\n      await pending;\n      if (guard.active && readReady()) setCount(1);\n    };\n    load();\n    return () => { guard.active = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nested-left-opaque-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if ((alive && readReady()) && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "shared-ref-reset-on-new-effect-run",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  const active = useRef(true);\n  useEffect(() => {\n    active.current = true;\n    const load = async () => {\n      await pending;\n      if (active.current && readReady()) setCount(1);\n    };\n    load();\n    return () => { active.current = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "module-flag-reset-on-new-effect-run",
+    code: "import { useEffect, useState, useRef } from 'react';\nlet active = true;\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    active = true;\n    const load = async () => {\n      await pending;\n      if (active && readReady()) setCount(1);\n    };\n    load();\n    return () => { active = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "var-local-positive",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    var alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "concise-cleanup-positive",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => alive = false;\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "wrapped-left-positive",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (((alive) as boolean) && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "additional-direct-write",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nested-reset-closure",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { alive = true; });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "array-pattern-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { [alive] = [true]; });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "object-pattern-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { ({ alive } = { alive: true }); });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "loop-target-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { for (alive of [true]) {} });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "direct-eval",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    eval(\"alive = true\");\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nested-wrapped-eval",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { (eval)(\"alive = true\"); });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "cleanup-same-value",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "cleanup-multiple-statements",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; log(); };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "cleanup-alias-return",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    const cleanup = () => { alive = false; };\n    return cleanup;\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "conditional-cleanup-value",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = readReady(); };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "destructured-local",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let [alive] = [true];\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "local-function-left-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const isActive = () => alive;\n    const load = async () => {\n      await pending;\n      if (isActive() && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "identifier-alias-left-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      const isActive = alive;\n      if (isActive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "comparison-left-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if ((alive === true) && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "shadow-cleanup-binding",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { let alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "post-await-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      alive = true;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "async-cleanup-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return async () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "generator-cleanup-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return function* () { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "parameter-cleanup-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return (unused = reset()) => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "module-ordinary-no-reset-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nlet alive = true;\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "boolean-wrapper-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (Boolean(alive && readReady())) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "replaced-boolean-wrapper-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nglobalThis.Boolean = () => true;\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (Boolean(alive && readReady())) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "reassigned-local-predicate-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    function isActive() { return alive && readReady(); }\n    const load = async () => {\n      await pending;\n      [isActive] = [() => true];\n      if (isActive()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "post-await-logical-alias-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      const canWrite = alive && readReady();\n      if (canWrite) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "before-await-logical-snapshot-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      const canWrite = alive && readReady();\n      await pending;\n      if (canWrite) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+];
+
+describe("effect-local cancellation short circuits", () => {
+  it.each(cancellationShortCircuitCases)("$name", ({ code, expectedCount }) => {
+    const result = runRule(noSetStateAfterAwaitInEffect, code, {
+      filename: "synthetic.tsx",
+      forceJsx: true,
+      includeLocations: true,
+      settings: {
+        "react-doctor": { portedRuleMode: "curated", capabilities: ["react", "react:19"] },
+      },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
   });
 });

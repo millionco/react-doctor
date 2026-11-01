@@ -1,3 +1,4 @@
+import { isNextPageDataReplacementEffect } from "./utils/is-next-page-data-replacement-effect.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
@@ -476,6 +477,8 @@ export const noEffectEventHandler = defineRule({
             }
           }
         }
+
+        if (isNextPageDataReplacementEffect(node, context)) return;
 
         context.report({
           node,

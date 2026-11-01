@@ -1,3 +1,10 @@
+import { getOwnedNativeEmitterCleanup } from "./utils/get-owned-native-emitter-cleanup.js";
+import { collectPlatformCleanedNativeAcquisitions } from "./utils/collect-platform-cleaned-native-acquisitions.js";
+import { collectStableMatcherCleanedNativeAcquisitions } from "./utils/collect-stable-matcher-cleaned-native-acquisitions.js";
+import { collectNativeClassCallbackRefReceivers } from "../../utils/collect-native-class-callback-ref-receivers.js";
+import { isSplideOwnedListenerDisposed } from "../../utils/is-splide-owned-listener-disposed.js";
+import { getEnclosingClassMember } from "../../utils/get-enclosing-class-member.js";
+import { getClassMemberName } from "../../utils/get-class-member-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -270,13 +277,6 @@ const getTimerCalleeName = (node: EsTreeNode, scopes: ScopeAnalysis): string | n
   return getStaticPropertyName(callee);
 };
 
-const getClassMemberName = (member: EsTreeNode): string | null => {
-  if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
-    return "constructor";
-  }
-  return getStaticPropertyKeyName(member, { allowComputedString: true });
-};
-
 interface ClassInstanceWrite {
   readonly node: EsTreeNode;
   readonly enclosingMemberName: string | null;
@@ -290,12 +290,6 @@ interface ClassBodyIndex {
 }
 
 const classBodyIndexCache = new WeakMap<EsTreeNode, ClassBodyIndex>();
-
-const getEnclosingClassMember = (node: EsTreeNode, classBody: EsTreeNode): EsTreeNode | null => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current && current.parent !== classBody) current = current.parent;
-  return current ?? null;
-};
 
 const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
   const cachedIndex = classBodyIndexCache.get(classBody);
@@ -931,6 +925,7 @@ const listenerIdentityKey = (
   signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  receiverKeys?: ReadonlyMap<EsTreeNode, string>,
 ): string | null => {
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
@@ -949,7 +944,9 @@ const listenerIdentityKey = (
   ) {
     return null;
   }
-  const receiverKey = serializeListenerIdentityPart(callee.object, scopes, classBody);
+  const receiverKey =
+    receiverKeys?.get(stripParenExpression(callee.object)) ??
+    serializeListenerIdentityPart(callee.object, scopes, classBody);
   if (!receiverKey) return null;
   const identityArgumentKeys: string[] = [];
   for (const [argumentIndex, argumentKind] of effectiveSignature.identityArgumentKinds.entries()) {
@@ -1020,8 +1017,9 @@ const listenerReleaseKey = (
   signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  receiverKeys?: ReadonlyMap<EsTreeNode, string>,
 ): string | null => {
-  const identityKey = listenerIdentityKey(call, signature, scopes, classBody);
+  const identityKey = listenerIdentityKey(call, signature, scopes, classBody, receiverKeys);
   return identityKey ? `listener:${signature.releaseMethodName}:${identityKey}` : null;
 };
 
@@ -1128,13 +1126,14 @@ const cleanupReleaseKeys = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  receiverKeys?: ReadonlyMap<EsTreeNode, string>,
 ): ReadonlyArray<string> => {
   const callee = stripParenExpression(call.callee);
   if (isNodeOfType(callee, "MemberExpression")) {
     const methodName = getStaticPropertyName(callee);
     const signature = methodName ? LISTENER_RELEASE_SIGNATURES.get(methodName) : undefined;
     if (signature) {
-      const releaseKey = listenerReleaseKey(call, signature, scopes, classBody);
+      const releaseKey = listenerReleaseKey(call, signature, scopes, classBody, receiverKeys);
       if (releaseKey) return [releaseKey];
     }
     if (methodName === "removeAllListeners" && call.arguments.length <= 1) {
@@ -1280,6 +1279,7 @@ const collectCleanupReleaseKeys = (
   classBody: EsTreeNode | null,
   context: RuleContext,
   visitedFunctions = new Set<EsTreeNode>(),
+  receiverKeys?: ReadonlyMap<EsTreeNode, string>,
 ): Set<string> => {
   const releaseKeys = new Set<string>();
   if (
@@ -1324,6 +1324,7 @@ const collectCleanupReleaseKeys = (
         classBody,
         context,
         visitedFunctions,
+        receiverKeys,
       );
       for (const releaseKey of hasThrowingPrelude ? [] : delegatedReleaseKeys) {
         const releaseCalls = releaseCallsByKey.get(releaseKey) ?? [];
@@ -1344,6 +1345,7 @@ const collectCleanupReleaseKeys = (
         classBody,
         context,
         visitedFunctions,
+        receiverKeys,
       );
       for (const releaseKey of delegatedReleaseKeys) {
         const releaseCalls = releaseCallsByKey.get(releaseKey) ?? [];
@@ -1353,7 +1355,7 @@ const collectCleanupReleaseKeys = (
     }
     for (const releaseKey of hasThrowingPrelude
       ? []
-      : cleanupReleaseKeys(candidate, context.scopes, classBody)) {
+      : cleanupReleaseKeys(candidate, context.scopes, classBody, receiverKeys)) {
       const releaseCalls = releaseCallsByKey.get(releaseKey) ?? [];
       releaseCalls.push(candidate);
       releaseCallsByKey.set(releaseKey, releaseCalls);
@@ -1755,6 +1757,13 @@ const isMountHazard = (
       !receiverIsRefOwnedNode &&
       !receiverIsRefOwnedD3Selection;
     if (!isHazard) return null;
+    if (
+      methodName === "on" &&
+      !isCalledAfterSuspension &&
+      !isAfterAwaitInEnclosingFunction(node, context) &&
+      isSplideOwnedListenerDisposed(node, classBody, context)
+    )
+      return null;
     const returnedReferenceKey = storedCallResultReferenceKey(node, scopes, classBody);
     const originalReceiver = stripParenExpression(callee.object);
     const importedReactNativeReceiverName = isNodeOfType(originalReceiver, "Identifier")
@@ -1851,8 +1860,15 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
     ClassBody(node: EsTreeNodeOfType<"ClassBody">) {
       const classNode = node.parent;
       if (!classNode || !isEs6Component(classNode)) return;
+      const platformCleanedAcquisitions = collectPlatformCleanedNativeAcquisitions(node, context);
 
+      const stableMatcherAcquisitions = collectStableMatcherCleanedNativeAcquisitions({
+        classBody: node,
+        context,
+        resolveMember: (memberName) => classMemberFunction(node, memberName),
+      });
       const members = node.body ?? [];
+      let callbackRefReceiverKeys: ReadonlyMap<EsTreeNode, string> | undefined;
       const componentWillUnmountMember = members.find(
         (member) => getClassMemberName(member) === "componentWillUnmount",
       );
@@ -1899,36 +1915,89 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         if (mountHazards.length === 0) continue;
         const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
         const undisposedHazard = mountHazards.find((mountHazard) => {
-          if (mountHazard.isAcquiredAfterSuspension) return true;
-          if (mountHazard.releaseKeys.length === 0) return true;
-          if (
-            mountHazard.releaseKeys.some((releaseKey) =>
-              componentWillUnmountReleaseKeys.has(releaseKey),
-            )
-          ) {
-            if (mountHazard.listenerIdentityKey && mountHazard.registrationCount > 1) {
-              const hasRemoveAllCleanup = mountHazard.releaseKeys.some(
-                (releaseKey) =>
-                  releaseKey.startsWith("listener:removeAllListeners:") &&
-                  componentWillUnmountReleaseKeys.has(releaseKey),
-              );
-              const matchingCleanupCount = mountHazard.releaseKeys.reduce(
-                (cleanupCount, releaseKey) =>
-                  releaseKey.startsWith("listener:removeAllListeners:")
-                    ? cleanupCount
-                    : cleanupCount + (componentWillUnmountReleaseCounts.get(releaseKey) ?? 0),
-                0,
-              );
-              if (!hasRemoveAllCleanup && matchingCleanupCount < mountHazard.registrationCount) {
-                return true;
-              }
+          const isUndisposedByExistingChecks = (() => {
+            if (mountHazard.isAcquiredAfterSuspension) return true;
+            const nativeEmitterCleanup = getOwnedNativeEmitterCleanup(
+              mountHazard.node,
+              node,
+              context,
+            );
+            if (nativeEmitterCleanup) {
+              const cleanupFunction = findEnclosingFunction(nativeEmitterCleanup);
+              if (
+                cleanupFunction &&
+                !functionHasPotentialSynchronousThrow(
+                  cleanupFunction,
+                  node,
+                  context.scopes,
+                  nativeEmitterCleanup.range[0],
+                )
+              )
+                return false;
             }
-            return false;
+            if (platformCleanedAcquisitions.has(mountHazard.node)) return false;
+            if (stableMatcherAcquisitions.has(mountHazard.node)) return false;
+            if (mountHazard.releaseKeys.length === 0) return true;
+            if (
+              mountHazard.releaseKeys.some((releaseKey) =>
+                componentWillUnmountReleaseKeys.has(releaseKey),
+              )
+            ) {
+              if (mountHazard.listenerIdentityKey && mountHazard.registrationCount > 1) {
+                const hasRemoveAllCleanup = mountHazard.releaseKeys.some(
+                  (releaseKey) =>
+                    releaseKey.startsWith("listener:removeAllListeners:") &&
+                    componentWillUnmountReleaseKeys.has(releaseKey),
+                );
+                const matchingCleanupCount = mountHazard.releaseKeys.reduce(
+                  (cleanupCount, releaseKey) =>
+                    releaseKey.startsWith("listener:removeAllListeners:")
+                      ? cleanupCount
+                      : cleanupCount + (componentWillUnmountReleaseCounts.get(releaseKey) ?? 0),
+                  0,
+                );
+                if (!hasRemoveAllCleanup && matchingCleanupCount < mountHazard.registrationCount) {
+                  return true;
+                }
+              }
+              return false;
+            }
+            return !mountHazard.releaseKeys.some((releaseKey) => {
+              const disposalCalls = mobxDisposalReleaseCalls.get(releaseKey) ?? [];
+              return doNodesCoverEveryPathAfterNode(mountHazard.node, disposalCalls, context);
+            });
+          })();
+          if (!isUndisposedByExistingChecks) return false;
+          if (mountHazard.isAcquiredAfterSuspension) return true;
+          const callee = stripParenExpression(mountHazard.node.callee);
+          if (
+            !isNodeOfType(callee, "MemberExpression") ||
+            getStaticPropertyName(callee) !== "addEventListener"
+          )
+            return true;
+          try {
+            callbackRefReceiverKeys ??= collectNativeClassCallbackRefReceivers(node, context);
+            if (!callbackRefReceiverKeys.has(stripParenExpression(callee.object))) return true;
+            const signature = LISTENER_REGISTRATION_SIGNATURES.get("addEventListener");
+            if (!signature) return true;
+            const releaseKey = listenerReleaseKey(
+              mountHazard.node,
+              signature,
+              context.scopes,
+              node,
+              callbackRefReceiverKeys,
+            );
+            const cleanupKeys = collectCleanupReleaseKeys(
+              componentWillUnmountMember ? getMemberFunction(componentWillUnmountMember) : null,
+              node,
+              context,
+              new Set<EsTreeNode>(),
+              callbackRefReceiverKeys,
+            );
+            return !releaseKey || !cleanupKeys.has(releaseKey);
+          } catch {
+            return true;
           }
-          return !mountHazard.releaseKeys.some((releaseKey) => {
-            const disposalCalls = mobxDisposalReleaseCalls.get(releaseKey) ?? [];
-            return doNodesCoverEveryPathAfterNode(mountHazard.node, disposalCalls, context);
-          });
         });
         if (undisposedHazard) {
           context.report({ node: undisposedHazard.node, message: MESSAGE });

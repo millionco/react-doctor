@@ -1,3 +1,5 @@
+import { isOwnedControllerRecordReset } from "./utils/is-owned-controller-record-reset.js";
+import { isPrivateInitializationLatchWrite } from "./utils/is-private-initialization-latch-write.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
@@ -104,7 +106,9 @@ export const noAdjustStateOnPropChange = defineRule({
         for (const fact of facts) {
           if (
             fact.isDeferred ||
+            isPrivateInitializationLatchWrite(fact.callExpression, context) ||
             isOwnedRequestMapReset(fact.callExpression, context) ||
+            isOwnedControllerRecordReset(fact.callExpression, context) ||
             isPortalMountStateWrite(fact.callExpression, context) ||
             isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
             hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)

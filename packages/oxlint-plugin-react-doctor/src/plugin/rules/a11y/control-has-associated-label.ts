@@ -19,6 +19,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
@@ -980,6 +981,20 @@ export const controlHasAssociatedLabel = defineRule({
         // it may gain children/labels there, so its context is unknowable.
         if (isInsideJsxAttribute(node)) return;
         if (findAncestorNameSource(node, checkContext) !== null) return;
+        if (
+          tagName === "button" &&
+          isNodeOfType(opening.name, "JSXIdentifier") &&
+          opening.name.name === "button" &&
+          opening.selfClosing &&
+          node.children.length === 0 &&
+          !opening.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))
+        ) {
+          const childrenAttribute = getAuthoritativeJsxAttribute(opening.attributes, "children");
+          const literalChildren = childrenAttribute
+            ? getStringLiteralAttributeValue(childrenAttribute)
+            : null;
+          if (literalChildren !== null && hasLetterOrDecimalDigit(literalChildren)) return;
+        }
         // A select's accessible name never comes from its contents —
         // option text names the options, not the control.
         if (tagName !== SELECT_ELEMENT) {

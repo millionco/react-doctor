@@ -1,3 +1,4 @@
+import { isFiniteNativeListenerDrivenState } from "./utils/is-finite-native-listener-driven-state.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
@@ -292,9 +293,10 @@ export const noPropCallbackInEffect = defineRule({
         const reactStateDeps = dependencyElements.filter((element) =>
           isReactStateDependency(analysis, element, propStackTracker.isPropName),
         );
+        const reactStateDependencySet = new Set(reactStateDeps);
         const customHookStateDeps = dependencyElements.filter(
           (element) =>
-            !reactStateDeps.includes(element) &&
+            !reactStateDependencySet.has(element) &&
             isCustomHookStateDependency(
               analysis,
               element,
@@ -333,7 +335,11 @@ export const noPropCallbackInEffect = defineRule({
           }
           if (
             stateLikeDepRefs.length === stateLikeDeps.length &&
-            stateLikeDepRefs.every((depRef) => isExternallyDrivenState(analysis, depRef))
+            stateLikeDepRefs.every(
+              (dependencyReference) =>
+                isExternallyDrivenState(analysis, dependencyReference) ||
+                isFiniteNativeListenerDrivenState(dependencyReference.identifier, context),
+            )
           ) {
             return;
           }

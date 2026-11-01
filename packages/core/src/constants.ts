@@ -1044,3 +1044,13 @@ export const MAINTAINABILITY_SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
 export const MAINTAINABILITY_PLUGIN = "react-doctor";
 export const MAINTAINABILITY_DUPLICATE_JSX_RULE = "duplicate-jsx-subtree";
 export const MAINTAINABILITY_CATEGORY = "Maintainability";
+
+export const DISABLED_LINGUIST_ATTRIBUTE_VALUES = new Set([
+  "",
+  "unspecified",
+  "unset",
+  "false",
+  "0",
+  "off",
+  "no",
+]);

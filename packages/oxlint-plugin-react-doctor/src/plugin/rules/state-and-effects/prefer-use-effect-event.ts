@@ -22,6 +22,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeDescriptor } from "../../semantic/scope-analysis.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { symbolHasStableHookOrigin } from "../react-builtins/exhaustive-deps-symbol-stability.js";
+import { isClosedLocalMemoGraph } from "./utils/is-closed-local-memo-graph.js";
 
 const STABLE_REACT_HOOK_VALUE_NAMES: ReadonlySet<string> = new Set([
   "useActionState",
@@ -446,6 +447,18 @@ export const preferUseEffectEvent = defineRule({
           const classification = classifyCallableReadsInsideEffect(depElement, callback, context);
           if (!classification.hasAnyRead) continue;
           if (!classification.allReadsAreInSubHandlers) continue;
+          if (
+            isFunctionTypedLocalDep &&
+            isClosedLocalMemoGraph({
+              identifier: depElement,
+              componentBody,
+              effectCall,
+              scopes: context.scopes,
+              isStableDependency: (dependency) => isStableReactHookDependency(dependency, context),
+              stableHookNames: STABLE_REACT_HOOK_VALUE_NAMES,
+            })
+          )
+            continue;
 
           const subHandlerLabel = classification.firstSubHandlerName
             ? `\`${classification.firstSubHandlerName}\``

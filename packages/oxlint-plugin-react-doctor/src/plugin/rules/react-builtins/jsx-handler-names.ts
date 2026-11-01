@@ -2,8 +2,242 @@ import { compileGlob } from "../../utils/compile-glob.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
+import {
+  getMemberWriteTarget,
+  isStableStaticPropertyReference,
+} from "../../utils/has-static-property-write-before.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+
+interface ForwardedComponentHandlerProof {
+  readonly isComponentProps: boolean;
+  readonly writtenPropertyNames: ReadonlySet<string> | null;
+}
+
+const isDirectReturnedJsxAttribute = (
+  memberExpression: EsTreeNodeOfType<"MemberExpression">,
+  component: EsTreeNode,
+): boolean => {
+  const container = memberExpression.parent;
+  const attribute = container?.parent;
+  const openingElement = attribute?.parent;
+  let output = openingElement?.parent;
+  if (
+    !isNodeOfType(container, "JSXExpressionContainer") ||
+    !isNodeOfType(attribute, "JSXAttribute") ||
+    !isNodeOfType(openingElement, "JSXOpeningElement") ||
+    !isNodeOfType(output, "JSXElement")
+  ) {
+    return false;
+  }
+  while (output) {
+    const outputRoot = findTransparentExpressionRoot(output);
+    const parent = outputRoot.parent;
+    if (parent === component && isFunctionLike(component) && component.body === outputRoot) {
+      return true;
+    }
+    if (isNodeOfType(parent, "ReturnStatement")) {
+      return parent.argument === outputRoot && findEnclosingFunction(parent) === component;
+    }
+    if (isNodeOfType(parent, "JSXElement") || isNodeOfType(parent, "JSXFragment")) {
+      output = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "JSXExpressionContainer") && parent.expression === outputRoot) {
+      const owner = parent.parent;
+      if (isNodeOfType(owner, "JSXElement") || isNodeOfType(owner, "JSXFragment")) {
+        output = owner;
+        continue;
+      }
+    }
+    return false;
+  }
+  return false;
+};
+
+const hasOnlyComponentBindingReferences = (
+  component: EsTreeNode,
+  context: RuleContext,
+  bindingSymbolsByScope: WeakMap<ScopeDescriptor, WeakMap<EsTreeNode, SymbolDescriptor[]>>,
+): boolean => {
+  const componentRoot = findTransparentExpressionRoot(component);
+  const parent = componentRoot.parent;
+  let isExported = isNodeOfType(parent, "ExportDefaultDeclaration");
+  if (isNodeOfType(component, "FunctionDeclaration")) {
+    isExported ||= isNodeOfType(parent, "ExportNamedDeclaration");
+  } else if (
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === componentRoot &&
+    isNodeOfType(parent.parent, "VariableDeclaration") &&
+    parent.parent.kind === "const"
+  ) {
+    isExported ||= isNodeOfType(parent.parent.parent, "ExportNamedDeclaration");
+  } else if (!isExported) {
+    return false;
+  }
+  if (isNodeOfType(component, "FunctionExpression") && component.id) return false;
+  const symbols = getFunctionBindingSymbols(component, context.scopes, bindingSymbolsByScope);
+  if (isNodeOfType(component, "FunctionDeclaration") && component.id) {
+    const functionBindingIdentifier = component.id;
+    const innerFunctionBindingSymbols = context.scopes
+      .ownScopeFor(component)
+      ?.symbols.filter((symbol) => symbol.bindingIdentifier === functionBindingIdentifier);
+    if (!innerFunctionBindingSymbols || innerFunctionBindingSymbols.length === 0) return false;
+    symbols.push(...innerFunctionBindingSymbols);
+  }
+  let hasJsxReference = false;
+  for (const symbol of symbols) {
+    for (const reference of symbol.references) {
+      const identifier = reference.identifier;
+      const referenceParent = identifier.parent;
+      if (
+        reference.flag === "read" &&
+        isNodeOfType(identifier, "JSXIdentifier") &&
+        (isNodeOfType(referenceParent, "JSXOpeningElement") ||
+          isNodeOfType(referenceParent, "JSXClosingElement")) &&
+        referenceParent.name === identifier
+      ) {
+        hasJsxReference = true;
+        continue;
+      }
+      if (
+        reference.flag === "read" &&
+        ((isNodeOfType(referenceParent, "ExportDefaultDeclaration") &&
+          referenceParent.declaration === identifier) ||
+          (isNodeOfType(referenceParent, "ExportSpecifier") &&
+            referenceParent.local === identifier))
+      ) {
+        isExported = true;
+        continue;
+      }
+      return false;
+    }
+  }
+  return isExported || hasJsxReference;
+};
+
+const isForwardedComponentHandler = (
+  memberExpression: EsTreeNodeOfType<"MemberExpression">,
+  context: RuleContext,
+  forwardedHandlerProofs: WeakMap<EsTreeNode, ForwardedComponentHandlerProof>,
+  bindingSymbolsByScope: WeakMap<ScopeDescriptor, WeakMap<EsTreeNode, SymbolDescriptor[]>>,
+): boolean => {
+  const receiver = memberExpression.object;
+  if (
+    memberExpression.computed ||
+    !isNodeOfType(memberExpression.property, "Identifier") ||
+    !isNodeOfType(receiver, "Identifier")
+  ) {
+    return false;
+  }
+  const symbol = context.scopes.symbolFor(receiver);
+  const component = symbol?.scope.node;
+  if (
+    symbol?.kind !== "parameter" ||
+    !isFunctionLike(component) ||
+    component.async ||
+    component.generator ||
+    !isComponentFunction(component) ||
+    component.params[0] !== symbol.bindingIdentifier ||
+    !isNodeOfType(component.params[0], "Identifier") ||
+    findEnclosingFunction(memberExpression) !== component ||
+    !isDirectReturnedJsxAttribute(memberExpression, component)
+  ) {
+    return false;
+  }
+  let proof = forwardedHandlerProofs.get(symbol.bindingIdentifier);
+  if (!proof) {
+    const isComponentProps =
+      hasOnlyComponentBindingReferences(component, context, bindingSymbolsByScope) &&
+      symbol.references.every((reference) => {
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const property = referenceRoot.parent;
+        if (
+          reference.flag !== "read" ||
+          findEnclosingFunction(reference.identifier) !== component ||
+          !isNodeOfType(property, "MemberExpression") ||
+          property.object !== referenceRoot ||
+          !isStableStaticPropertyReference(reference.identifier)
+        ) {
+          return false;
+        }
+        const propertyRoot = findTransparentExpressionRoot(property);
+        const propertyParent = propertyRoot.parent;
+        return !(
+          ((isNodeOfType(propertyParent, "CallExpression") ||
+            isNodeOfType(propertyParent, "NewExpression")) &&
+            propertyParent.callee === propertyRoot) ||
+          (isNodeOfType(propertyParent, "TaggedTemplateExpression") &&
+            propertyParent.tag === propertyRoot)
+        );
+      });
+    let writtenPropertyNames: Set<string> | null = new Set();
+    if (isComponentProps) {
+      for (const reference of symbol.references) {
+        let writeTarget = getMemberWriteTarget(reference.identifier);
+        if (!writeTarget) {
+          const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+          const property = referenceRoot.parent;
+          if (!isNodeOfType(property, "MemberExpression") || property.object !== referenceRoot) {
+            continue;
+          }
+          let assignmentTarget: EsTreeNode = findTransparentExpressionRoot(property);
+          let assignmentParent = assignmentTarget.parent;
+          while (
+            (isNodeOfType(assignmentParent, "AssignmentPattern") &&
+              assignmentParent.left === assignmentTarget) ||
+            (isNodeOfType(assignmentParent, "RestElement") &&
+              assignmentParent.argument === assignmentTarget) ||
+            (isNodeOfType(assignmentParent, "Property") &&
+              assignmentParent.value === assignmentTarget &&
+              isNodeOfType(assignmentParent.parent, "ObjectPattern")) ||
+            isNodeOfType(assignmentParent, "ArrayPattern") ||
+            isNodeOfType(assignmentParent, "ObjectPattern")
+          ) {
+            assignmentTarget = assignmentParent;
+            assignmentParent = assignmentParent.parent;
+          }
+          if (
+            !(
+              isNodeOfType(assignmentParent, "AssignmentExpression") ||
+              isNodeOfType(assignmentParent, "UpdateExpression") ||
+              (isNodeOfType(assignmentParent, "UnaryExpression") &&
+                assignmentParent.operator === "delete") ||
+              isNodeOfType(assignmentParent, "ForInStatement") ||
+              isNodeOfType(assignmentParent, "ForOfStatement")
+            ) ||
+            !isWithinAssignmentTarget(assignmentTarget)
+          ) {
+            continue;
+          }
+          writeTarget = property;
+        }
+        const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, context.scopes);
+        if (writtenPropertyName === null) {
+          writtenPropertyNames = null;
+          break;
+        }
+        writtenPropertyNames.add(writtenPropertyName);
+      }
+    }
+    proof = { isComponentProps, writtenPropertyNames };
+    forwardedHandlerProofs.set(symbol.bindingIdentifier, proof);
+  }
+  return (
+    proof.isComponentProps &&
+    proof.writtenPropertyNames !== null &&
+    !proof.writtenPropertyNames.has(memberExpression.property.name)
+  );
+};
 
 const buildHandlerNameMessage = (handlerName: string, propKey: string): string =>
   `The handler "${handlerName}" does not match the "${propKey}" event prop convention, so readers cannot trace event flow quickly.`;
@@ -178,6 +412,11 @@ export const jsxHandlerNames = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const forwardedHandlerProofs = new WeakMap<EsTreeNode, ForwardedComponentHandlerProof>();
+    const bindingSymbolsByScope = new WeakMap<
+      ScopeDescriptor,
+      WeakMap<EsTreeNode, SymbolDescriptor[]>
+    >();
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         // ignoreComponentNames check.
@@ -208,6 +447,14 @@ export const jsxHandlerNames = defineRule({
           const result = getHandlerNameFromMemberExpression(expression);
           handlerName = result?.name ?? null;
           isPropsHandler = result?.isPropsHandler ?? false;
+          if (!isPropsHandler && result && settings.propRegex?.test(result.name)) {
+            isPropsHandler = isForwardedComponentHandler(
+              expression,
+              context,
+              forwardedHandlerProofs,
+              bindingSymbolsByScope,
+            );
+          }
         } else if (isNodeOfType(expression, "Identifier")) {
           if (!settings.checkLocalVariables) return;
           handlerName = expression.name;

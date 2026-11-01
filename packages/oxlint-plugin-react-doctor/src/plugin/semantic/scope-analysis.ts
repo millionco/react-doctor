@@ -1,9 +1,11 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
 import { getValuePositionChildKeys } from "../utils/get-value-position-child-keys.js";
+import { pushChildNodesInReverse } from "../utils/push-child-nodes-in-reverse.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
+import { isErasedTypeScriptBinding } from "../utils/is-erased-typescript-binding.js";
 
 // Scope analyzer — per-file walker building a scope tree, symbol
 // table, and identifier reference resolution. Mirrors the subset of
@@ -222,6 +224,17 @@ const visitDestructuringDeclarations = (
   symbolKind: SymbolKind,
   declarationNode: EsTreeNode,
 ): void => {
+  if (isNodeOfType(pattern, "TSParameterProperty")) {
+    visitDestructuringDeclarations(
+      pattern.parameter,
+      baseInitializer,
+      scope,
+      state,
+      symbolKind,
+      declarationNode,
+    );
+    return;
+  }
   if (isNodeOfType(pattern, "Identifier")) {
     recordSymbol(scope, state, {
       name: pattern.name,
@@ -566,21 +579,17 @@ const openScope = (kind: ScopeKind, node: EsTreeNode, state: BuilderState): Scop
   return scope;
 };
 
-// Records references that live in the reference-bearing sub-parts of a
-// function parameter pattern: default-value expressions (`(a = expr) =>`)
-// and computed destructuring keys (`({ [k]: v }) =>`). The function-like
-// handler binds the parameter NAMES but walks only the body, so without
-// this the identifiers in defaults / computed keys would never be
-// recorded as references — leaving closure-capture and exhaustive-deps
-// analysis blind to them (e.g. misclassifying a module constant used as
-// a default). References are parked on the current (function) scope.
-const walkParameterReferences = (
+const walkBindingPatternReferences = (
   pattern: EsTreeNode,
   state: BuilderState,
   inheritedScope: ScopeDescriptor,
 ): void => {
+  if (pattern.type === "TSParameterProperty") {
+    walkBindingPatternReferences(pattern.parameter, state, inheritedScope);
+    return;
+  }
   if (pattern.type === "AssignmentPattern") {
-    walkParameterReferences(pattern.left as EsTreeNode, state, inheritedScope);
+    walkBindingPatternReferences(pattern.left as EsTreeNode, state, inheritedScope);
     const defaultValue = (pattern.right as EsTreeNode | null) ?? null;
     if (defaultValue) walk(defaultValue, state, inheritedScope);
     return;
@@ -589,7 +598,7 @@ const walkParameterReferences = (
     for (const property of pattern.properties) {
       const propertyNode = property as EsTreeNode;
       if (propertyNode.type === "RestElement") {
-        walkParameterReferences(
+        walkBindingPatternReferences(
           (propertyNode as { argument: EsTreeNode }).argument,
           state,
           inheritedScope,
@@ -603,18 +612,18 @@ const walkParameterReferences = (
         value: EsTreeNode;
       };
       if (propertyDetail.computed) walk(propertyDetail.key, state, inheritedScope);
-      walkParameterReferences(propertyDetail.value, state, inheritedScope);
+      walkBindingPatternReferences(propertyDetail.value, state, inheritedScope);
     }
     return;
   }
   if (pattern.type === "ArrayPattern") {
     for (const element of pattern.elements) {
-      if (element) walkParameterReferences(element as EsTreeNode, state, inheritedScope);
+      if (element) walkBindingPatternReferences(element as EsTreeNode, state, inheritedScope);
     }
     return;
   }
   if (pattern.type === "RestElement") {
-    walkParameterReferences(pattern.argument as EsTreeNode, state, inheritedScope);
+    walkBindingPatternReferences(pattern.argument as EsTreeNode, state, inheritedScope);
   }
 };
 
@@ -632,6 +641,7 @@ const walk = (
   node: EsTreeNode,
   state: BuilderState,
   inheritedScope: ScopeDescriptor | null,
+  pendingValuePositionNodes?: EsTreeNode[],
 ): void => {
   // Special-case structural nodes that open scopes BEFORE they bind
   // their own children. Keep these in source order to match JS scope
@@ -678,7 +688,7 @@ const walk = (
     // Record references inside parameter default values and computed
     // destructuring keys (the handler above binds names but doesn't walk
     // these reference-bearing sub-expressions).
-    for (const param of functionParams) walkParameterReferences(param, state, enclosingScope);
+    for (const param of functionParams) walkBindingPatternReferences(param, state, enclosingScope);
     // Walk the body inline; if it's a BlockStatement, we mark it so the
     // BlockStatement handler doesn't push a duplicate scope.
     const body = (node as { body: EsTreeNode }).body;
@@ -730,6 +740,7 @@ const walk = (
         "catch-clause-parameter",
         node as EsTreeNode,
       );
+      walkBindingPatternReferences(node.param, state, catchScope);
     }
     if (node.body) walk(node.body as EsTreeNode, state, catchScope);
     popScope(state);
@@ -780,11 +791,24 @@ const walk = (
   if (node.type === "TSEnumDeclaration") {
     handleTsDeclarations(node, state);
     const enumScope = openScope("ts-enum", node, state);
-    // Enum body members can reference siblings; record them in the enum
-    // scope, but don't process member references — TS enums are largely
-    // opaque to our rules.
-    const members = (node as { members?: ReadonlyArray<EsTreeNode> }).members ?? [];
-    for (const member of members) walk(member, state, enumScope);
+    const members = node.body.members;
+    for (const member of members) {
+      let memberName: string | null = null;
+      if (isNodeOfType(member.id, "Identifier")) memberName = member.id.name;
+      else if (isNodeOfType(member.id, "Literal") && typeof member.id.value === "string")
+        memberName = member.id.value;
+      if (memberName === null) continue;
+      recordSymbol(enumScope, state, {
+        name: memberName,
+        kind: "ts-enum",
+        bindingIdentifier: member.id,
+        declarationNode: member,
+        initializer: member.initializer ?? null,
+      });
+    }
+    for (const member of members) {
+      if (member.initializer) walk(member.initializer, state, enumScope);
+    }
     popScope(state);
     return;
   }
@@ -838,41 +862,54 @@ const walk = (
     }
   }
 
-  walkValuePositionChildren(node, state);
+  walkValuePositionChildren(node, state, pendingValuePositionNodes);
 };
 
 // Children of `node` resolve to `state.currentScope` through `scopeFor`'s
 // parent walk, because `node` is either tagged with it or inherits it.
-const walkValuePositionChildren = (node: EsTreeNode, state: BuilderState): void => {
-  const nodeRecord = node as unknown as Record<string, unknown>;
+const walkValuePositionChildren = (
+  node: EsTreeNode,
+  state: BuilderState,
+  pendingValuePositionNodes?: EsTreeNode[],
+): void => {
+  const pendingNodes = pendingValuePositionNodes ?? [];
+  pushChildNodesInReverse(node, pendingNodes, getValuePositionChildKeys(node));
+  if (pendingValuePositionNodes !== undefined) return;
   const childScope = state.currentScope;
-  for (const key of getValuePositionChildKeys(node)) {
-    const child = nodeRecord[key];
-    if (Array.isArray(child)) {
-      for (const item of child) if (isAstNode(item)) walk(item, state, childScope);
-    } else if (isAstNode(child)) {
-      walk(child, state, childScope);
-    }
+  while (pendingNodes.length > 0) {
+    const child = pendingNodes.pop();
+    if (child) walk(child, state, childScope, pendingNodes);
   }
 };
 
-// Resolution pass: for each scope's references, walk up the scope
-// chain to find the first scope that binds the same name. Set
-// `resolvedSymbol` and append to the symbol's `references` list.
+// Resolve runtime values first, retaining the nearest erased binding
+// when the scope chain contains no runtime value with that name.
 const resolveReferences = (rootScope: ScopeDescriptor): void => {
+  const runtimeSymbolsByScope = new Map<ScopeDescriptor, Map<string, SymbolDescriptor>>();
   const visitScope = (scope: ScopeDescriptor): void => {
+    const runtimeSymbols = new Map<string, SymbolDescriptor>();
+    for (const symbol of scope.symbols) {
+      if (!isErasedTypeScriptBinding(symbol)) runtimeSymbols.set(symbol.name, symbol);
+    }
+    runtimeSymbolsByScope.set(scope, runtimeSymbols);
     for (const reference of scope.references) {
       const name = (reference.identifier as { name?: string }).name;
       if (typeof name !== "string") continue;
       let lookup: ScopeDescriptor | null = scope;
+      let nearestErasedSymbol: SymbolDescriptor | null = null;
       while (lookup) {
-        const found = lookup.symbolsByName.get(name);
+        const found = runtimeSymbolsByScope.get(lookup)?.get(name);
         if (found) {
           reference.resolvedSymbol = found;
           found.references.push(reference);
           break;
         }
+        nearestErasedSymbol ??= lookup.symbolsByName.get(name) ?? null;
         lookup = lookup.parent;
+      }
+      if (!reference.resolvedSymbol && nearestErasedSymbol) {
+        reference.resolvedSymbol = nearestErasedSymbol;
+        nearestErasedSymbol.references.push(reference);
       }
     }
     for (const child of scope.children) visitScope(child);

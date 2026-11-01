@@ -1,3 +1,5 @@
+import { isTypedReduxStoreFactoryInitialization } from "./utils/is-typed-redux-store-factory-initialization.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -23,6 +25,7 @@ import {
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isStoredFunctionLocalBinding } from "./utils/is-stored-function-local-binding.js";
 
 interface RefCurrentWrite {
   node: EsTreeNode;
@@ -414,6 +417,7 @@ const isInitializationInputIndependent = (
   renderOwner: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
+  initializationRoot: EsTreeNode = node,
 ): boolean => {
   let isInputIndependent = true;
   walkAst(node, (child: EsTreeNode): boolean | void => {
@@ -424,6 +428,12 @@ const isInitializationInputIndependent = (
     if (!symbol) return;
     if (symbol.kind === "import") return false;
     if (symbol.kind === "let" || symbol.kind === "var" || symbol.kind === "using") {
+      if (
+        symbol.kind !== "using" &&
+        isStoredFunctionLocalBinding(child, symbol, initializationRoot)
+      ) {
+        return;
+      }
       isInputIndependent = false;
       return false;
     }
@@ -439,7 +449,13 @@ const isInitializationInputIndependent = (
     if (visitedSymbolIds.has(symbol.id)) return false;
     visitedSymbolIds.add(symbol.id);
     if (
-      !isInitializationInputIndependent(symbol.initializer, renderOwner, scopes, visitedSymbolIds)
+      !isInitializationInputIndependent(
+        symbol.initializer,
+        renderOwner,
+        scopes,
+        visitedSymbolIds,
+        initializationRoot,
+      )
     ) {
       isInputIndependent = false;
     }
@@ -603,16 +619,18 @@ const isPredictableGuardedInitialization = (
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
+  context: RuleContext,
 ): boolean =>
   write.value !== null &&
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
-  isPredictableInitializationValue(
+  (isPredictableInitializationValue(
     write.value,
     refSymbol,
     renderOwner,
     scopes,
     requiresClosedTruthyDomain,
-  ) &&
+  ) ||
+    isTypedReduxStoreFactoryInitialization(write.value, refSymbol, context)) &&
   !hasRepeatedExecutionAncestor(write.node, guardedBranch) &&
   (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
   hasNoPriorCoExecutableWrite(write, renderOwner, refSymbol, scopes) &&
@@ -622,8 +640,9 @@ const isPredictableGuardedInitialization = (
 const isDocumentedLazyInitialization = (
   write: RefCurrentWrite,
   refSymbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
+  const scopes = context.scopes;
   const renderOwner = findRenderPhaseComponentOrHook(write.node, scopes);
   if (!renderOwner) return false;
   if (write.operator === "??=" || write.operator === "||=") {
@@ -634,6 +653,7 @@ const isDocumentedLazyInitialization = (
       refSymbol,
       scopes,
       write.operator === "||=",
+      context,
     );
   }
   if (write.operator !== "=") return false;
@@ -655,6 +675,7 @@ const isDocumentedLazyInitialization = (
         refSymbol,
         scopes,
         true,
+        context,
       )
     ) {
       return true;
@@ -681,6 +702,7 @@ const isDocumentedLazyInitialization = (
           refSymbol,
           scopes,
           false,
+          context,
         )
       )
         return true;
@@ -709,7 +731,7 @@ export const noRefCurrentInRender = defineRule({
     const reportWrite = (node: EsTreeNode) => {
       const write = getRefCurrentWrite(node, context.scopes);
       if (!write || !findRenderPhaseComponentOrHook(node, context.scopes)) return;
-      if (isDocumentedLazyInitialization(write, write.refSymbol, context.scopes)) return;
+      if (isDocumentedLazyInitialization(write, write.refSymbol, context)) return;
       report(isNodeOfType(node, "AssignmentExpression") ? node.left : node);
     };
 

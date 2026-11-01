@@ -10,6 +10,7 @@ import { getSingleReturnExpression } from "../../utils/get-single-return-express
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
+import { isAfterMountGatedMemoEarlyReturn } from "../../utils/is-after-mount-gated-memo-early-return.js";
 import { isAfterFalsyServerSnapshotEarlyReturn } from "../../utils/is-after-falsy-server-snapshot-early-return.js";
 import { isEffectCallbackReference } from "../../utils/is-effect-callback-reference.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -302,6 +303,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       if (isGatedByFalsyInitialState(node, context.scopes)) return;
       if (isGatedByFalsyServerSnapshot(node, context.scopes, context.filename)) return;
       if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode, context.scopes)) return;
+      if (isAfterMountGatedMemoEarlyReturn(node, componentOrHookNode, context)) return;
       if (
         isAfterFalsyServerSnapshotEarlyReturn(
           node,

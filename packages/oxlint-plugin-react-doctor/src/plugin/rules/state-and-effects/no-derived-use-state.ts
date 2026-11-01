@@ -9,6 +9,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isKeyedEditablePropState } from "../../utils/is-keyed-editable-prop-state.js";
 import { NEXTJS_PAGE_DATA_EXPORT_NAMES } from "../../utils/nextjs-page-data-export-names.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -558,9 +559,10 @@ export const noDerivedUseState = defineRule({
               return;
             }
           }
+          if (isKeyedEditablePropState(node, context)) return;
           context.report({
             node,
-            message: `Your users see a stale value when prop "${propName}" changes because useState copies it once.`,
+            message: `Copying prop "${propName}" into state can leave a stale value when that prop changes.`,
           });
         };
 

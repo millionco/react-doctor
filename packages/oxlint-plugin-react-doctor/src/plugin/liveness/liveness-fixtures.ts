@@ -672,10 +672,39 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const first = values.find(Boolean).id;",
   },
   "no-array-index-as-key": {
+    settings: {
+      "react-doctor": {
+        portedRuleMode: "curated",
+        capabilities: ["react"],
+        reactVersion: "17.0.1",
+        reactMajorVersion: 17,
+        styledComponentsVersion: "5.3.3",
+        framework: "unknown",
+        hasReactCompiler: false,
+        hasReactNativeWorkspace: false,
+        preactVersion: null,
+        preactMajorVersion: null,
+      },
+    },
     code: 'const STEPS = [\n  { title: "Install", body: "npm i" },\n  { title: "Run", body: "npm start" },\n];\nconst Steps = () => (\n  <ol>\n    {STEPS.map((step, index) => (\n      <StepCard key={index} title={step.title} body={step.body} />\n    ))}\n  </ol>\n);\n',
   },
   "no-array-index-deref-without-bounds-or-empty-guard": {
     code: "const version = /v(\\d+)/.exec(input)[1].trim();",
+    settings: {
+      "react-doctor": {
+        portedRuleMode: "curated",
+        framework: "nextjs",
+        capabilities: [
+          "nextjs",
+          "nextjs:15",
+          "nextjs:16",
+          "react",
+          "react:17",
+          "react:18",
+          "react:19",
+        ],
+      },
+    },
   },
   "no-array-index-key": {
     code: "const rows = things.map((thing, index) => React.cloneElement(thing, { key: index }));",
@@ -832,6 +861,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "function Game({ card }) {\n        const [goldCardCount, setGoldCardCount] = useState(0);\n        const [round, setRound] = useState(1);\n        useEffect(() => { if (card.gold) setGoldCardCount(goldCardCount + 1); }, [card]);\n        useEffect(() => { if (goldCardCount > 3) setRound(round + 1); }, [goldCardCount]);\n        return null;\n      }",
   },
   "no-effect-event-handler": {
+    settings: { "react-doctor": { capabilities: ["react", "nextjs"] } },
     code: "\nimport { useEffect } from \"react\";\nconst Checkout = ({ status }) => {\n  useEffect(() => {\n    if (status !== 'submitted') {\n      return;\n    }\n    toast('Order submitted!');\n  }, [status]);\n  return null;\n};\n",
   },
   "no-effect-event-in-deps": {
@@ -1219,6 +1249,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     forceJsx: true,
   },
   "no-set-state-after-await-in-effect": {
+    settings: { "react-doctor": { capabilities: ["react", "react:18", "vite"] } },
     code: 'import { useEffect, useState } from "react"; const C = ({ id }) => { const [, setUser] = useState(); useEffect(() => { const run = async () => { const user = await load(id); setUser(user); }; run(); }, [id]); };',
   },
   "no-side-effect-in-state-updater-function": {
@@ -1772,8 +1803,8 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { headers } from "./my-io.js";\nexport default async function Page() {\n  const headersList = await headers();\n  const rows = await fetchRows();\n  return rows;\n}',
   },
   "state-in-constructor": {
-    code: "\n                    class Foo extends React.Component {\n                      constructor(props) {\n                        super(props)\n                        this.state = { bar: 0 }\n                      }\n                      render() {\n                        return <div>Foo</div>\n                      }\n                    }\n                  ",
-    settings: { "react-doctor": { stateInConstructor: { mode: "never" } } },
+    code: "class ExplicitStateInitializer extends React.Component { state = undefined; }",
+    settings: { "react-doctor": { stateInConstructor: { mode: "always" } } },
     forceJsx: true,
   },
   "style-prop-object": {

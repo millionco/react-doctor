@@ -91,3 +91,18 @@ export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
 ]);
 
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
+
+export const OBSERVER_SNAPSHOT_UNARY_ARGUMENT_COUNT = 1;
+export const OBSERVER_SNAPSHOT_MAP_PARAMETER_COUNT = 1;
+export const OBSERVER_SNAPSHOT_CALLBACK_PARAMETER_LIMIT = 1;
+export const OBSERVER_SNAPSHOT_CLEANUP_PARAMETER_COUNT = 2;
+export const OBSERVER_SNAPSHOT_CONSTRUCTOR_ARGUMENT_LIMIT = 2;
+export const OBSERVER_SNAPSHOT_BLOCK_STATEMENT_COUNT = 3;
+export const OBSERVER_SNAPSHOT_SINGLE_STATEMENT_COUNT = 1;
+export const OBSERVER_SNAPSHOT_UNSUPPORTED_PROPERTIES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "caller",
+  "callee",
+]);

@@ -1,3 +1,4 @@
+import { hasNativeIframeReadinessConsumption } from "./utils/has-native-iframe-readiness-consumption.js";
 import type { Reference } from "eslint-scope";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
@@ -33,8 +34,12 @@ import {
   isState,
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
+import { hasKeyedImmutableRecordReset } from "./utils/has-keyed-immutable-record-reset.js";
+import { isMatchedSlateCurrentFocusRead } from "./utils/is-matched-slate-current-focus-read.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
+import { hasPostcommitFocusRequestConsumption } from "./utils/has-postcommit-focus-request-consumption.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
+import { hasUnresetNativeComponentState } from "./utils/has-unreset-native-component-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-reset-all-state-on-prop-change.js`.
@@ -793,6 +798,7 @@ const isSetStateToInitialValue = (
       return false;
     }
   }
+  if (isMatchedSlateCurrentFocusRead(context, useStateDecl, callExpr)) return false;
   return getNodeText(setStateToValue) === getNodeText(stateInitialValue);
 };
 
@@ -1292,7 +1298,30 @@ const findPropUsedToResetAllState = (
   const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
 
+  if (
+    stateSetterRefs.length === 1 &&
+    hasPostcommitFocusRequestConsumption(
+      useEffectNode,
+      getUseStateDecl(analysis, stateSetterRefs[0]),
+      context,
+    )
+  ) {
+    return null;
+  }
+
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
+  if (
+    componentFunctionNode &&
+    hasUnresetNativeComponentState({
+      analysis,
+      context,
+      componentFunction: componentFunctionNode,
+      effectCall: useEffectNode,
+      resetSetterReferences: stateSetterRefs,
+    })
+  ) {
+    return null;
+  }
   if (
     componentFunctionNode &&
     areAllResetStateReadsHiddenUntilReset(
@@ -1346,6 +1375,13 @@ export const noResetAllStateOnPropChange = defineRule({
           mediaReceiverCache,
         );
         if (!propUsedToReset) return;
+        const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
+        if (
+          componentFunctionNode &&
+          hasKeyedImmutableRecordReset(componentFunctionNode, node, context)
+        )
+          return;
+        if (hasNativeIframeReadinessConsumption(node, context)) return;
         context.report({
           node,
           message:

@@ -3,9 +3,48 @@ import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { parseSourceText } from "./parse-source-file.js";
 import { wrapWithSemanticContext } from "./wrap-with-semantic-context.js";
 import type { Rule } from "./rule.js";
+import type { BaseRuleSourceCode } from "./rule-context.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
+interface SourceForwardingHost {
+  report: () => void;
+  sourceCode: BaseRuleSourceCode | undefined;
+}
+
 describe("wrapWithSemanticContext", () => {
+  it("forwards the host source object and preserves its getText receiver", () => {
+    const sourceCode = {
+      sourceText: "export const value = 1;",
+      getText() {
+        return this.sourceText;
+      },
+    };
+    const rule: Rule = {
+      id: "source-code-forwarding",
+      severity: "error",
+      create: (context) => {
+        expect(context.sourceCode).toBe(sourceCode);
+        expect(context.sourceCode?.getText?.()).toBe(sourceCode.sourceText);
+        return EMPTY_RULE_VISITORS;
+      },
+    };
+
+    wrapWithSemanticContext(rule).create({ report: () => {}, sourceCode });
+  });
+
+  it("leaves source code unavailable when the host does not provide it", () => {
+    const rule: Rule = {
+      id: "source-code-unavailable",
+      severity: "error",
+      create: (context) => {
+        expect(context.sourceCode).toBeUndefined();
+        return EMPTY_RULE_VISITORS;
+      },
+    };
+
+    wrapWithSemanticContext(rule).create({ report: () => {} });
+  });
+
   it("preserves the bound getFilename fallback and adds the root-capture Program visitor", () => {
     let resolvedFilename: string | undefined;
     const callExpressionHandler = (): void => {};
@@ -113,5 +152,42 @@ describe("wrapWithSemanticContext", () => {
     expect(liveScopes).not.toBe(fallbackScopes);
     expect(liveScopes?.rootScope.node).toBe(program);
     expect(repeatedScopes).toBe(liveScopes);
+  });
+});
+
+describe("wrapWithSemanticContext source forwarding", () => {
+  it("preserves the current host source object and bound text receiver", () => {
+    let readCurrentSource: () => string | undefined = () => undefined;
+    let readCurrentSourceCode: () => BaseRuleSourceCode | undefined = () => undefined;
+    const rule: Rule = {
+      id: "current-source-forwarding",
+      severity: "error",
+      create: (context) => {
+        readCurrentSource = () => context.sourceCode?.getText?.();
+        readCurrentSourceCode = () => context.sourceCode;
+        return EMPTY_RULE_VISITORS;
+      },
+    };
+    const originalSource = {
+      text: "original source",
+      getText() {
+        return this.text;
+      },
+    };
+    const hostContext: SourceForwardingHost = {
+      report: () => {},
+      sourceCode: originalSource,
+    };
+    wrapWithSemanticContext(rule).create(hostContext);
+    expect(readCurrentSourceCode()).toBe(originalSource);
+    expect(readCurrentSource()).toBe("original source");
+    originalSource.text = "updated source";
+    expect(readCurrentSource()).toBe("updated source");
+    hostContext.sourceCode = {
+      getText: () => "replacement source",
+    };
+    expect(readCurrentSource()).toBe("replacement source");
+    hostContext.sourceCode = undefined;
+    expect(readCurrentSource()).toBeUndefined();
   });
 });

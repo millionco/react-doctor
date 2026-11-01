@@ -1,5 +1,6 @@
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
+import { isClosedStringMemberCapture } from "./utils/is-closed-string-member-capture.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -439,6 +440,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  hookCall?: EsTreeNode,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -486,7 +488,10 @@ const collectCaptureDepKeys = (
     ) {
       continue;
     }
-    if (isStableRefContainerCapture(symbol, depKey, scopes)) {
+    if (
+      isStableRefContainerCapture(symbol, depKey, scopes) ||
+      isClosedStringMemberCapture({ reference, dependencyKey: depKey, callback, hookCall, scopes })
+    ) {
       stableCapturedNames.add(depKey);
       continue;
     }
@@ -2310,6 +2315,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
                     undefined,
                     false,
                     context.filename,
+                    node,
                   ).keys,
                 )
               : new Set<string>();
@@ -2434,6 +2440,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          node,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

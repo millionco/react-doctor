@@ -1,4 +1,10 @@
+import { getClassifiedWebhookEntrypoint } from "./utils/get-classified-webhook-entrypoint.js";
+import { getLocationAtIndex } from "./utils/get-location-at-index.js";
+import { WEBHOOK_EMPTY_FINDING_COUNT } from "./utils/webhook-entrypoint/constants.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { parseSourceText } from "../../utils/parse-source-file.js";
+import { hasCanonicalShopifyWebhookGate } from "./utils/has-canonical-shopify-webhook-gate.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
@@ -49,27 +55,57 @@ const REQUEST_READ_PATTERN = /\b(?:req|request)\b/;
 const COMMENT_OR_STRING_PATTERN =
   /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`/g;
 
+const scanWebhookEntrypoints = scanByPattern({
+  shouldScan: (file) => {
+    if (!isProductionSourcePath(file.relativePath)) return false;
+    if (OUTBOUND_WEBHOOK_CONFIG_PATTERN.test(file.content)) return false;
+    const judgeableContent = file.content
+      .replace(COMMENT_OR_STRING_PATTERN, "")
+      .replace(OUTBOUND_WEBHOOK_URL_MENTION_PATTERN, "");
+    return (
+      WEBHOOK_HANDLER_PATTERN.test(file.relativePath) ||
+      WEBHOOK_HANDLER_PATTERN.test(judgeableContent)
+    );
+  },
+  pattern: WEBHOOK_ENTRYPOINT_PATTERN,
+  requireAll: [REQUEST_READ_PATTERN],
+  suppressWhen: WEBHOOK_SIGNATURE_VERIFICATION_PATTERN,
+  message: "Webhook handler code does not show an obvious signature verification step.",
+});
+
 export const webhookSignatureRisk = defineRule({
   id: "webhook-signature-risk",
   title: "Webhook handler lacks signature verification",
   severity: "warn",
   recommendation:
     "Verify provider signatures before parsing or acting on webhook bodies. Use provider SDK helpers or HMAC verification with timing-safe comparison.",
-  scan: scanByPattern({
-    shouldScan: (file) => {
-      if (!isProductionSourcePath(file.relativePath)) return false;
-      if (OUTBOUND_WEBHOOK_CONFIG_PATTERN.test(file.content)) return false;
-      const judgeableContent = file.content
-        .replace(COMMENT_OR_STRING_PATTERN, "")
-        .replace(OUTBOUND_WEBHOOK_URL_MENTION_PATTERN, "");
-      return (
-        WEBHOOK_HANDLER_PATTERN.test(file.relativePath) ||
-        WEBHOOK_HANDLER_PATTERN.test(judgeableContent)
-      );
-    },
-    pattern: WEBHOOK_ENTRYPOINT_PATTERN,
-    requireAll: [REQUEST_READ_PATTERN],
-    suppressWhen: WEBHOOK_SIGNATURE_VERIFICATION_PATTERN,
-    message: "Webhook handler code does not show an obvious signature verification step.",
-  }),
+  scan: (file) => {
+    const findings = scanWebhookEntrypoints(file);
+    if (findings.length === WEBHOOK_EMPTY_FINDING_COUNT) return findings;
+    let parsedProgram: EsTreeNode | null | undefined;
+    const readProgram = (): EsTreeNode | null => {
+      if (parsedProgram === undefined) {
+        try {
+          parsedProgram = parseSourceText({
+            filename: file.absolutePath,
+            sourceText: file.content,
+            shouldAttachParentReferences: false,
+          });
+        } catch {
+          parsedProgram = null;
+        }
+      }
+      return parsedProgram;
+    };
+    if (hasCanonicalShopifyWebhookGate(file, readProgram)) return [];
+    const entrypoint = getClassifiedWebhookEntrypoint(
+      file,
+      WEBHOOK_ENTRYPOINT_PATTERN,
+      readProgram,
+    );
+    if (!entrypoint) return findings;
+    if (entrypoint.index === null) return [];
+    const location = getLocationAtIndex(file.content, entrypoint.index);
+    return findings.map((finding) => ({ ...finding, ...location }));
+  },
 });

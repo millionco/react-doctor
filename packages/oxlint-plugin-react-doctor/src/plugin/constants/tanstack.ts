@@ -98,3 +98,5 @@ export const TANSTACK_QUERY_MODULE_PATTERN = /^@tanstack\/[^/]*query/;
 export const TRPC_UTILS_INVALIDATE_METHOD = "invalidate";
 export const TRPC_UTILS_HOOK_PATTERN = /^use\w*Utils$/;
 export const QUERY_CLIENT_HOOK_NAME = "useQueryClient";
+
+export const TANSTACK_FORM_OPTIONS_ARGUMENT_COUNT = 1;

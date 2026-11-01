@@ -586,3 +586,314 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+interface ConditionalImageParentCase {
+  name: string;
+  code: string;
+  css: string | null;
+  expectedDiagnostics: number;
+}
+
+const conditionalImageParentCases: ConditionalImageParentCase[] = [
+  {
+    name: "direct-fixed-height-control",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-consequent-fixed-height",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-alternate-fixed-height",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{ready ? null : <img src="/sample.jpg" alt="Sample" />}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-two-image-branches",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : <img src="/other.jpg" alt="Other" />}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "direct-ratio-block-control",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ aspectRatio: "3 / 2" }}><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-ratio-block",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ aspectRatio: "3 / 2" }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-tailwind-height",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div className="relative flex h-24">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "direct-missing-box-control",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-missing-box",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-no-ancestor-climb",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}><div>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div></div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-absolute-ratio",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ position: "absolute", aspectRatio: "3 / 2" }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-float-ratio",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ float: "left", aspectRatio: "3 / 2" }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-shrink-inline-block-ratio",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ display: "inline-block", aspectRatio: "3 / 2" }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-shrink-inline-flex-ratio",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ display: "inline-flex", aspectRatio: "3 / 2" }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-inline-span-ratio",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <span style={{ aspectRatio: "3 / 2" }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</span>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-absolute-explicit-two-axes",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ position: "absolute", width: 160, height: 96 }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-parent-trailing-spread",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }} {...props}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-parent-dynamic-css",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div className={styles.frame}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-parent-dynamic-style",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={box}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-in-test-not-result",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{<img src="/sample.jpg" alt="Sample" /> ? "visible" : "fallback"}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-in-attribute",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }} data-content={ready ? <img src="/sample.jpg" alt="Sample" /> : null} />;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-call-argument",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{wrap(ready ? <img src="/sample.jpg" alt="Sample" /> : null)}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-render-prop",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{() => ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-portal",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{createPortal(ready ? <img src="/sample.jpg" alt="Sample" /> : null, target)}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-custom-react-parent",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <Surface style={{ width: 160, height: 96 }}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</Surface>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "nested-conditional-deferred",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{ready ? nested ? <img src="/sample.jpg" alt="Sample" /> : null : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "fragment-deferred",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{ready ? <><img src="/sample.jpg" alt="Sample" /></> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "logical-deferred",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{ready && <img src="/sample.jpg" alt="Sample" />}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "array-deferred",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{[ready ? <img src="/sample.jpg" alt="Sample" /> : null]}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "jsx-container-without-conditional-deferred",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{<img src="/sample.jpg" alt="Sample" />}</div>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "ts-transparent-result-and-conditional",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div style={{ height: 96 }}>{(ready ? (<img src="/sample.jpg" alt="Sample" /> as unknown) : null) as React.ReactNode}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-own-image-dimensions-control",
+    code: 'const Picture = ({ ready, nested, props, styles, box }) => <div>{ready ? <img src="/sample.jpg" alt="Sample" width={160} height={96} /> : null}</div>;',
+    css: null,
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "conditional-component-_Surface",
+    code: 'const Picture = ({ready}) => <_Surface style={{width: 160, height: 96}}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</_Surface>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-component-dollarSurface",
+    code: 'const Picture = ({ready}) => <$Surface style={{width: 160, height: 96}}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</$Surface>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-component-_surface",
+    code: 'const Picture = ({ready}) => <_surface style={{width: 160, height: 96}}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</_surface>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "conditional-component-UI-Surface",
+    code: 'const Picture = ({ready}) => <UI.Surface style={{width: 160, height: 96}}>{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</UI.Surface>;',
+    css: null,
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-fixed-height-direct",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block"><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: ".block {height: 96px;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "external-css-fixed-height-conditional",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: ".block {height: 96px;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "external-css-fixed-two-axes-direct",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block"><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: ".block {width:160px;height:96px;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "external-css-fixed-two-axes-conditional",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: ".block {width:160px;height:96px;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "external-css-missing-parent-css-direct",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block"><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: "img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-missing-parent-css-conditional",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: "img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-zero-parent-height-direct",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block"><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: ".block {width:160px;height:0;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-zero-parent-height-conditional",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: ".block {width:160px;height:0;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-auto-parent-height-direct",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block"><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: ".block {width:160px;height:auto;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-auto-parent-height-conditional",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: ".block {width:160px;height:auto;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-absolute-parent-auto-height-direct",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block"><img src="/sample.jpg" alt="Sample" /></div>;',
+    css: ".block {position:absolute;height:auto;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "external-css-absolute-parent-auto-height-conditional",
+    code: 'import "./styles.css";\nconst Picture = ({ready}) => <div className="block">{ready ? <img src="/sample.jpg" alt="Sample" /> : null}</div>;',
+    css: ".block {position:absolute;height:auto;} img {width:100%;height:100%;}",
+    expectedDiagnostics: 1,
+  },
+];
+
+describe("conditional image parent boxes", () => {
+  for (const testCase of conditionalImageParentCases) {
+    it(testCase.name, () => {
+      const result =
+        testCase.css === null
+          ? runRule(noImgWithoutDimensions, testCase.code, { filename: "image-parent.tsx" })
+          : runRuleWithSiblingCss(testCase.code, testCase.css, false);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(testCase.expectedDiagnostics);
+    });
+  }
+});

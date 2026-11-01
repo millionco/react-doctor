@@ -17,6 +17,7 @@ import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
+import { isNodeOnUnconditionalPath } from "../../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isProvenBrowserApiReceiver } from "../../../utils/is-proven-browser-api-receiver.js";
 import { nodeDominatesNode } from "../../../utils/node-dominates-node.js";
@@ -271,6 +272,7 @@ const doesControlRegionReadState = (
   controlRegion: EsTreeNode,
   stateSymbolId: number | null,
   scopes: ScopeAnalysis,
+  includeAncestorRegions = false,
 ): boolean => {
   if (stateSymbolId === null) return false;
   const parent = controlRegion.parent;
@@ -282,8 +284,8 @@ const doesControlRegionReadState = (
         : null;
   if (!condition) return false;
   let doesReadState = false;
-  walkAst(condition as EsTreeNode, (child) => {
-    if (child !== condition && isFunctionLike(child)) return false;
+  walkAst(getFinalSequenceExpressionValue(condition as EsTreeNode), (child) => {
+    if (isFunctionLike(child)) return false;
     const parent = child.parent;
     if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
       const leftBoolean = readStaticBoolean(getFinalSequenceExpressionValue(parent.left));
@@ -308,7 +310,13 @@ const doesControlRegionReadState = (
       return false;
     }
   });
-  return doesReadState;
+  if (doesReadState || !includeAncestorRegions) return doesReadState;
+  const containingFunction = findEnclosingFunction(controlRegion);
+  if (!containingFunction || !parent) return false;
+  const enclosingRegion = getControlRegion(parent, containingFunction);
+  return Boolean(
+    enclosingRegion && doesControlRegionReadState(enclosingRegion, stateSymbolId, scopes, true),
+  );
 };
 
 const isWorkRelatedToWrite = (
@@ -393,13 +401,37 @@ const isWorkRelatedToWrite = (
       return true;
     }
   }
+  const doesCancellationDominateWrite =
+    isResourceCancellation && nodeDominatesNode(workAnchor, writeNode, context);
+  const doesCancellationPrecedeWrite =
+    doesCancellationDominateWrite &&
+    (workFunction === writeFunction ||
+      (isNodeOnUnconditionalPath(workNode, workFunction) &&
+        context.cfg.isUnconditionalFromEntry(workNode) &&
+        invocationPath
+          .slice(
+            invocationPath.findLastIndex(
+              (invocationEdge) => invocationEdge.parentFunction === writeFunction,
+            ) + 1,
+          )
+          .every(
+            (invocationEdge) =>
+              isNodeOnUnconditionalPath(
+                invocationEdge.callExpression,
+                invocationEdge.parentFunction,
+              ) && context.cfg.isUnconditionalFromEntry(invocationEdge.callExpression),
+          )));
   const workRegion = getControlRegion(workAnchor, writeFunction);
   const writeRegion = getControlRegion(writeNode, writeFunction);
   if (
-    isResourceCancellation &&
+    doesCancellationDominateWrite &&
     writeRegion &&
-    doesControlRegionReadState(writeRegion, writeStateSymbolId, scopes) &&
-    nodeDominatesNode(workAnchor, writeNode, context)
+    doesControlRegionReadState(
+      writeRegion,
+      writeStateSymbolId,
+      scopes,
+      doesCancellationPrecedeWrite,
+    )
   ) {
     return true;
   }
@@ -420,7 +452,12 @@ const isWorkRelatedToWrite = (
   );
   return Boolean(
     writeInvocationRegion &&
-    doesControlRegionReadState(writeInvocationRegion, writeStateSymbolId, scopes),
+    doesControlRegionReadState(
+      writeInvocationRegion,
+      writeStateSymbolId,
+      scopes,
+      doesCancellationPrecedeWrite,
+    ),
   );
 };
 

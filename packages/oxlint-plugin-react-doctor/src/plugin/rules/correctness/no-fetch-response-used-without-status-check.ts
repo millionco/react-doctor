@@ -19,6 +19,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
+import { isHandledFetchErrorPayloadContinuation } from "./utils/is-handled-fetch-error-payload-continuation.js";
 
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
@@ -525,8 +526,10 @@ const localValidatorChecksResponseStatus = (
       }
     });
   }
-  const statusAwareReturns = returnedExpressions.filter((returnedExpression) =>
-    expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+  const statusAwareReturns = new Set(
+    returnedExpressions.filter((returnedExpression) =>
+      expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+    ),
   );
   const booleanReturnIsStatusGuarded = (returnedExpression: EsTreeNode): boolean => {
     const fallback = stripGroupingParens(returnedExpression);
@@ -545,9 +548,9 @@ const localValidatorChecksResponseStatus = (
     return false;
   };
   return (
-    statusAwareReturns.length > 0 &&
+    statusAwareReturns.size > 0 &&
     returnedExpressions.every((returnedExpression) => {
-      if (statusAwareReturns.includes(returnedExpression)) return true;
+      if (statusAwareReturns.has(returnedExpression)) return true;
       const fallback = stripGroupingParens(returnedExpression);
       return (
         booleanReturnIsStatusGuarded(returnedExpression) ||
@@ -896,6 +899,9 @@ const reportUnguarded = ({
       allStatusReferences.length > 0 &&
       consumptionResultIsGuardedBeforeUse(consumption, allStatusReferences)
     ) {
+      return true;
+    }
+    if (isHandledFetchErrorPayloadContinuation({ consumption, responseBinding, context })) {
       return true;
     }
     const consumptionRoot = findTransparentExpressionRoot(consumption);

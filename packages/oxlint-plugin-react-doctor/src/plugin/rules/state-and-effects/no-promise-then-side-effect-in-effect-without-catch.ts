@@ -1,3 +1,4 @@
+import { isRejectableOidcUserManagerCall } from "../../utils/is-rejectable-oidc-user-manager-call.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -354,6 +355,7 @@ const isProvablyRejectableExpression = (
     return isProvablyRejectableExpression(stripped.argument, remainingDepth, context);
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
+  if (isRejectableOidcUserManagerCall(stripped, context)) return true;
   const callee = stripParenExpression(stripped.callee);
   if (isNodeOfType(callee, "Identifier")) {
     if (callee.name === "fetch" && context.scopes.isGlobalReference(callee)) {

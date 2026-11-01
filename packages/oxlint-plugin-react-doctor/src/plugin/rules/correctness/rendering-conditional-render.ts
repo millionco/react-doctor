@@ -1,3 +1,5 @@
+import { isLocalStringFormatterResult } from "./utils/is-local-string-formatter-result.js";
+import { isClosedStringStateBinding } from "./utils/is-closed-string-state-binding.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { isBooleanResultExpression } from "../../utils/is-boolean-result-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -87,7 +89,13 @@ export const renderingConditionalRender = defineRule({
       const isNumericIdentifier = isNodeOfType(left, "Identifier") && isNumericName(left.name);
       if (isNumericIdentifier) {
         const symbol = context.scopes.symbolFor(left);
-        if (symbol && isBooleanResultExpression(getDirectConstInitializer(symbol))) return;
+        if (
+          symbol &&
+          (isBooleanResultExpression(getDirectConstInitializer(symbol)) ||
+            isLocalStringFormatterResult(symbol, context.scopes) ||
+            isClosedStringStateBinding(symbol, context.scopes))
+        )
+          return;
       }
 
       if (isLengthMemberAccess || isNumericIdentifier) {

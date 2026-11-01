@@ -1,3 +1,5 @@
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { getButtonDisablingStateSetter } from "./utils/get-button-disabling-state-setter.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
@@ -291,6 +293,7 @@ const analyzeHandlerStatements = (
   statements: EsTreeNode[],
   initialStates: HandlerPathState[],
   context: RuleContext,
+  disablingSetter: SymbolDescriptor | null = null,
 ): { states: HandlerPathState[]; unsafeAwait: EsTreeNode | null } => {
   let states = initialStates;
   for (const statement of statements) {
@@ -300,7 +303,12 @@ const analyzeHandlerStatements = (
       continue;
     }
     if (isNodeOfType(statement, "BlockStatement")) {
-      const nested = analyzeHandlerStatements(statement.body as EsTreeNode[], states, context);
+      const nested = analyzeHandlerStatements(
+        statement.body as EsTreeNode[],
+        states,
+        context,
+        disablingSetter,
+      );
       if (nested.unsafeAwait) return nested;
       states = nested.states;
       continue;
@@ -320,6 +328,7 @@ const analyzeHandlerStatements = (
           : [statement.consequent as EsTreeNode],
         states.map((state) => ({ ...state })),
         context,
+        disablingSetter,
       );
       if (consequent.unsafeAwait) return consequent;
       const alternate = statement.alternate
@@ -329,6 +338,7 @@ const analyzeHandlerStatements = (
               : [statement.alternate as EsTreeNode],
             states.map((state) => ({ ...state })),
             context,
+            disablingSetter,
           )
         : { states: states.map((state) => ({ ...state })), unsafeAwait: null };
       if (alternate.unsafeAwait) return alternate;
@@ -343,6 +353,7 @@ const analyzeHandlerStatements = (
           collectSwitchPathStatements(statement.cases, caseIndex),
           states.map((state) => ({ ...state })),
           context,
+          disablingSetter,
         );
         if (switched.unsafeAwait) return switched;
         switchStates.push(...switched.states);
@@ -354,13 +365,19 @@ const analyzeHandlerStatements = (
       continue;
     }
     if (isNodeOfType(statement, "TryStatement")) {
-      const tried = analyzeHandlerStatements(statement.block.body as EsTreeNode[], states, context);
+      const tried = analyzeHandlerStatements(
+        statement.block.body as EsTreeNode[],
+        states,
+        context,
+        disablingSetter,
+      );
       if (tried.unsafeAwait) return tried;
       const caught = statement.handler
         ? analyzeHandlerStatements(
             statement.handler.body.body as EsTreeNode[],
             tried.states.map((state) => ({ ...state })),
             context,
+            disablingSetter,
           )
         : { states: [], unsafeAwait: null };
       if (caught.unsafeAwait) return caught;
@@ -371,6 +388,7 @@ const analyzeHandlerStatements = (
           statement.finalizer.body as EsTreeNode[],
           states,
           context,
+          disablingSetter,
         );
         if (finalized.unsafeAwait) return finalized;
         states = finalized.states;
@@ -409,7 +427,13 @@ const analyzeHandlerStatements = (
     }
     if (
       isNodeOfType(statement, "ExpressionStatement") &&
-      expressionWritesReentryGuard(statement.expression as EsTreeNode, context)
+      (expressionWritesReentryGuard(statement.expression as EsTreeNode, context) ||
+        (disablingSetter &&
+          isNodeOfType(statement.expression, "CallExpression") &&
+          isNodeOfType(statement.expression.callee, "Identifier") &&
+          context.scopes.symbolFor(statement.expression.callee) === disablingSetter &&
+          isNodeOfType(statement.expression.arguments[0], "Literal") &&
+          statement.expression.arguments[0].value === true))
     ) {
       states = states.map((state) => ({ ...state, hasReentryGuard: true }));
     }
@@ -417,15 +441,41 @@ const analyzeHandlerStatements = (
   return { states, unsafeAwait: null };
 };
 
-const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
+const analyzeAsyncHandler = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+  eventAttribute: EsTreeNodeOfType<"JSXAttribute">,
+): void => {
   if (!isFunctionLike(functionNode)) return;
   if (!(functionNode as { async?: boolean }).async) return;
   if (!isNodeOfType(functionNode.body, "BlockStatement")) return;
 
+  const awaits = collectOrderedHandlerEvents(functionNode.body, context).filter((event) =>
+    isNodeOfType(event, "AwaitExpression"),
+  );
+  const mutatingAwaits = awaits.filter((event) =>
+    awaitedExpressionIsMutatingNetworkOp(event.argument, context),
+  );
+  const awaitEndOffsets = mutatingAwaits.map((event) => getNodeOffset(event, "end"));
+  const awaitStartOffsets = awaits.map((event) => getNodeOffset(event, "start"));
+  const disablingSetter =
+    isNodeOfType(functionNode, "ArrowFunctionExpression") &&
+    awaitEndOffsets.length > 0 &&
+    awaitEndOffsets.every((offset) => offset !== null) &&
+    awaitStartOffsets.every((offset) => offset !== null)
+      ? getButtonDisablingStateSetter({
+          eventAttribute,
+          handlerFunction: functionNode,
+          lastMutatingAwaitEnd: Math.max(...awaitEndOffsets.filter((offset) => offset !== null)),
+          firstAwaitStart: Math.min(...awaitStartOffsets.filter((offset) => offset !== null)),
+          context,
+        })
+      : null;
   const analysis = analyzeHandlerStatements(
     functionNode.body.body as EsTreeNode[],
     [{ hasReentryGuard: false, mutatingAwait: null }],
     context,
+    disablingSetter,
   );
   if (analysis.unsafeAwait) context.report({ node: analysis.unsafeAwait, message: MESSAGE });
 };
@@ -456,7 +506,7 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode, context);
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
-        analyzeAsyncHandler(context, handlerFunction);
+        analyzeAsyncHandler(context, handlerFunction, node);
       },
     };
   },

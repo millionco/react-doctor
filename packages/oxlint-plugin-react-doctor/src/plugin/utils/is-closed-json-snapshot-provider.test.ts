@@ -7,6 +7,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 import { isClosedJsonSnapshotProvider } from "./is-closed-json-snapshot-provider.js";
+import { CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT } from "./closed-json-snapshot/constants.js";
 
 const directories: string[] = [];
 const providerSource = `
@@ -84,6 +85,173 @@ afterEach(() => {
 });
 
 describe("isClosedJsonSnapshotProvider", () => {
+  it.each([
+    [
+      "const requestOptions = { url: '/catalog', responseType: 'json' };",
+      "",
+      "axios(requestOptions)",
+    ],
+    [
+      "",
+      "const requestOptions = { url: '/catalog', responseType: 'json' };",
+      "axios.request(requestOptions)",
+    ],
+    [
+      "const url = '/catalog'; const transport = { url };",
+      "const requestOptions = { ...transport, responseType: 'json' };",
+      "axios(requestOptions)",
+    ],
+    [
+      "const unused = null; const record = { method: 'get' };",
+      "const requestOptions = { url: '/catalog', responseType: 'json' };",
+      "axios(requestOptions)",
+    ],
+    ["const url = `/catalog`; const unused = !false;", "", "axios({ url, responseType: 'json' })"],
+  ])(
+    "certifies closed ordered const preludes: %s %s",
+    (helperPrelude, executorPrelude, request) => {
+      const source = `import axios from 'axios'; export const load = () => {
+      ${helperPrelude}
+      return new Promise((resolve, reject) => {
+        ${executorPrelude}
+        ${request}.then(response => resolve(response.data)).catch(reject);
+      });
+    };`;
+      expect(checkProvider(source)).toBe(true);
+      expect(checkProvider(source, {}, ["./provider.js"])).toBe(true);
+    },
+  );
+
+  it.each([
+    ["const url = options.url;", "const requestOptions = { url, responseType: 'json' };"],
+    ["const requestOptions = { ...options, responseType: 'json' };", ""],
+    [
+      "const unused = options.method;",
+      "const requestOptions = { ...options, responseType: 'json' };",
+    ],
+  ])(
+    "retains exact caller provenance through const preludes: %s %s",
+    (helperPrelude, executorPrelude) => {
+      const source = `import axios from 'axios'; export const load = options => {
+      ${helperPrelude}
+      return new Promise((resolve, reject) => {
+        ${executorPrelude}
+        axios(requestOptions).then(response => resolve(response.data)).catch(reject);
+      });
+    };`;
+      const consumer =
+        "import { load } from './provider'; load({ url: '/catalog', method: 'get' });";
+      expect(checkProvider(source, {}, [], consumer)).toBe(true);
+      expect(checkProvider(source, {}, ["./provider.js"], consumer)).toBe(false);
+      expect(checkProvider(source)).toBe(false);
+    },
+  );
+
+  it.each([
+    "const unused = sideEffect();",
+    "const unused = { get url() { return '/other'; } };",
+    "const unused = () => options;",
+    "const alias = options;",
+    "const unused = { ...foreign };",
+    "const unused = { url: foreign };",
+    "const before = { url: after }; const after = '/catalog';",
+    "const before = { ...after }; const after = { url: '/catalog' };",
+    "const before = { url: before };",
+    "const before = { ...before };",
+    "const first = '/catalog'; const alias = first;",
+    "const unused = true ? { url: '/catalog' } : { url: '/other' };",
+    "const unused = { url: options.missing };",
+    "const unused = options['url'];",
+    "const unused = { headers: {} };",
+    "const unused = { ['url']: '/catalog' };",
+    "const unused = { adapter: 'custom' };",
+    "const unused = new Promise(() => {});",
+    "const { url } = options;",
+    "const first = '/catalog', second = '/other';",
+    "let unused = '/catalog';",
+    "var unused = '/catalog';",
+    "const unused = '/catalog'; unused = '/other';",
+    "const unused = { url: '/catalog' }; unused.url = '/other';",
+    "const unused = '/catalog'; publish(unused);",
+    "const unused = { url: '/catalog' }; publish(unused);",
+    "const unused = '/catalog'; void unused;",
+    "const unused = '/catalog'; ;",
+    "if (true) { const unused = '/catalog'; }",
+    "for (;;) {}",
+    "'use strict';",
+  ])("refuses unsupported helper and executor preludes: %s", (prelude) => {
+    for (const placement of ["helper", "executor"]) {
+      const source = `import axios from 'axios'; export const load = options => {
+        ${placement === "helper" ? prelude : ""}
+        return new Promise((resolve, reject) => {
+          ${placement === "executor" ? prelude : ""}
+          axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+        });
+      };`;
+      expect(
+        checkProvider(
+          source,
+          {},
+          [],
+          "import { load } from './provider'; load({ url: '/catalog' });",
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it.each([
+    "const outside = '/catalog'; export const load = () => { const url = outside; return new Promise((resolve, reject) => { axios({ url, responseType: 'json' }).then(response => resolve(response.data)).catch(reject); }); };",
+    "const outside = { url: '/catalog' }; export const load = () => { const requestOptions = { ...outside, responseType: 'json' }; return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); }); };",
+    "export const load = () => { const url = '/catalog'; return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); }); };",
+  ])(
+    "keeps module inputs and unsupported local URL aliases outside the prelude proof: %s",
+    (declaration) => {
+      expect(checkProvider(`import axios from 'axios'; ${declaration}`)).toBe(false);
+    },
+  );
+
+  it("retains the local-record refusal for a cross-module imported client", () => {
+    expect(
+      checkProvider(
+        `import client from './client'; export const load = () => {
+      const requestOptions = { url: '/catalog', responseType: 'json' };
+      return new Promise((resolve, reject) => { client(requestOptions).then(response => resolve(response.data)).catch(reject); });
+    };`,
+        {
+          "client.js":
+            "import axios from 'axios'; const client = axios.create(); export default client;",
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it("bounds declarations across both prefixes and option alternatives without changing the no-prefix path", () => {
+    const declarations = Array.from(
+      { length: CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT },
+      (_, index) => `const unused${index} = null;`,
+    );
+    const createSource = (
+      helperPrelude: string,
+      executorPrelude: string,
+      requestOptions = "{ url: '/catalog', responseType: 'json' }",
+    ) => `import axios from 'axios'; export const load = () => {
+      ${helperPrelude}
+      return new Promise((resolve, reject) => { ${executorPrelude} axios(${requestOptions}).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(
+      checkProvider(createSource(declarations.slice(0, -1).join(" "), declarations.at(-1) ?? "")),
+    ).toBe(true);
+    expect(checkProvider(createSource(declarations.join(" "), "const extra = null;"))).toBe(false);
+    let alternatives = "{ responseType: 'json' }";
+    let alternativeCount = 1;
+    while (alternativeCount <= CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT) {
+      alternatives = `true ? (${alternatives}) : (${alternatives})`;
+      alternativeCount *= 2;
+    }
+    expect(checkProvider(createSource("", "", alternatives))).toBe(true);
+    expect(checkProvider(createSource("const unused = null;", "", alternatives))).toBe(false);
+  });
+
   it.each([
     "axios({ ...options, responseType: 'json' })",
     "axios({ url: options.url, method: options.method, responseType: 'json' })",

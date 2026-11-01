@@ -11,6 +11,7 @@ import {
 import type { SymbolDescriptor, ReferenceDescriptor } from "../semantic/scope-analysis.js";
 import {
   CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH,
+  CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT,
   CLOSED_JSON_SNAPSHOT_RESOURCE_IMPORT_PATTERN,
 } from "./closed-json-snapshot/constants.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -21,6 +22,7 @@ import type {
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getSingleReturnExpression } from "./get-single-return-expression.js";
+import { getClosedJsonSnapshotProviderBody } from "./get-closed-json-snapshot-provider-body.js";
 import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
 import { getImportedName } from "./get-imported-name.js";
 import { getStaticStringExpression } from "./get-static-string-expression.js";
@@ -514,6 +516,7 @@ const readRequestOptions = (
   depth = 0,
   allowContainers = true,
   argument?: SnapshotRequestArgument,
+  boundAlternatives = false,
 ): Map<string, EsTreeNode>[] | null => {
   if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return null;
   const node = stripParenExpression(expression);
@@ -551,7 +554,14 @@ const readRequestOptions = (
     ) {
       return null;
     }
-    return readRequestOptions(symbol.initializer, module, depth + 1, false, argument);
+    return readRequestOptions(
+      symbol.initializer,
+      module,
+      depth + 1,
+      false,
+      argument,
+      boundAlternatives,
+    );
   }
   if (node.type === "ConditionalExpression") {
     if (!isInertTransportCondition(node.test, module, depth + 1)) return null;
@@ -561,6 +571,7 @@ const readRequestOptions = (
       depth + 1,
       allowContainers,
       argument,
+      boundAlternatives,
     );
     const alternate = readRequestOptions(
       node.alternate,
@@ -568,10 +579,12 @@ const readRequestOptions = (
       depth + 1,
       allowContainers,
       argument,
+      boundAlternatives,
     );
     return consequent &&
       alternate &&
-      (!argument || consequent.length + alternate.length <= CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH)
+      (!(argument || boundAlternatives) ||
+        consequent.length + alternate.length <= CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH)
       ? [...consequent, ...alternate]
       : null;
   }
@@ -585,6 +598,7 @@ const readRequestOptions = (
         depth + 1,
         allowContainers,
         argument,
+        boundAlternatives,
       );
       if (!spreadRecords) return null;
       const expandedRecords: Map<string, EsTreeNode>[] = [];
@@ -614,8 +628,9 @@ const hasFixedJsonRequestOptions = (
   module: ClosedJsonSnapshotModule,
   defaultsOnly = false,
   argument?: SnapshotRequestArgument,
+  boundAlternatives = false,
 ): boolean => {
-  const records = readRequestOptions(expression, module, 0, true, argument);
+  const records = readRequestOptions(expression, module, 0, true, argument, boundAlternatives);
   return Boolean(
     records &&
     records.every((record) => {
@@ -623,6 +638,87 @@ const hasFixedJsonRequestOptions = (
       const responseType = record.get("responseType");
       return responseType?.type === "Literal" && responseType.value === "json";
     }),
+  );
+};
+
+const hasClosedSnapshotProviderPrelude = (
+  declarations: ReadonlyArray<EsTreeNode>,
+  request: EsTreeNode,
+  module: ClosedJsonSnapshotModule,
+  argument?: SnapshotRequestArgument,
+): boolean => {
+  if (declarations.length === 0) return true;
+  if (declarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT)
+    return false;
+  const recordBySymbol = new Map<SymbolDescriptor, boolean>();
+  const approvedReferences = new Set<EsTreeNode>();
+  const isPrimitive = (expression: EsTreeNode, depth = 0): boolean => {
+    if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return false;
+    const node = stripParenExpression(expression);
+    if (node.type === "Identifier") {
+      const symbol = module.scopes.symbolFor(node);
+      if (!symbol || recordBySymbol.get(symbol) !== false) return false;
+      approvedReferences.add(node);
+    } else if (node.type === "UnaryExpression" && ["-", "+", "!"].includes(node.operator)) {
+      if (!isPrimitive(node.argument, depth + 1)) return false;
+    } else if (
+      node.type !== "Literal" &&
+      !(node.type === "TemplateLiteral" && node.expressions.length === 0) &&
+      !getSnapshotRequestArgumentValue(node, module, argument)
+    )
+      return false;
+    return isInertRequestValue(node, module, depth, false, argument);
+  };
+  for (const declaration of declarations) {
+    if (declaration.type !== "VariableDeclarator" || declaration.id.type !== "Identifier")
+      return false;
+    const symbol = module.scopes.symbolFor(declaration.id);
+    if (!symbol || symbol.kind !== "const" || symbol.bindingIdentifier !== declaration.id)
+      return false;
+    const initializer = declaration.init && stripParenExpression(declaration.init);
+    if (!initializer || initializer.type === "Identifier") return false;
+    const isRecord = initializer.type === "ObjectExpression";
+    if (isRecord) {
+      for (const property of initializer.properties) {
+        if (property.type === "SpreadElement") {
+          const spread = stripParenExpression(property.argument);
+          const spreadSymbol =
+            spread.type === "Identifier" ? module.scopes.symbolFor(spread) : null;
+          if (
+            !spreadSymbol ||
+            (recordBySymbol.get(spreadSymbol) !== true && spreadSymbol !== argument?.parameter)
+          )
+            return false;
+          approvedReferences.add(spread);
+          continue;
+        }
+        if (
+          property.type !== "Property" ||
+          property.kind !== "init" ||
+          property.method ||
+          !REQUEST_OPTION_NAMES.has(getStaticPropertyKeyName(property) ?? "") ||
+          !isPrimitive(property.value)
+        )
+          return false;
+        if (
+          property.shorthand &&
+          property.key.type === "Identifier" &&
+          property.value.type === "Identifier" &&
+          module.scopes.symbolFor(property.key) === module.scopes.symbolFor(property.value)
+        )
+          approvedReferences.add(property.key);
+      }
+      if (!readRequestOptions(initializer, module, 0, true, argument, true)) return false;
+    } else if (!isPrimitive(initializer)) return false;
+    recordBySymbol.set(symbol, isRecord);
+  }
+  walkAst(request, (node) => {
+    approvedReferences.add(node);
+  });
+  return [...recordBySymbol.keys()].every((symbol) =>
+    getActiveSnapshotReferences(symbol).every(
+      (reference) => reference.flag === "read" && approvedReferences.has(reference.identifier),
+    ),
   );
 };
 
@@ -732,6 +828,7 @@ const isClientRequest = (
   module: ClosedJsonSnapshotModule,
   clients: ReadonlyMap<SymbolDescriptor, SnapshotClientBinding>,
   argument?: SnapshotRequestArgument,
+  boundAlternatives = false,
 ): boolean => {
   if (call.type !== "CallExpression" || call.optional) return false;
   const callee = call.callee;
@@ -742,7 +839,7 @@ const isClientRequest = (
       clients.has(symbol) &&
       call.arguments.length === 1 &&
       call.arguments[0] &&
-      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument),
+      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument, boundAlternatives),
     );
   }
   if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return false;
@@ -753,7 +850,7 @@ const isClientRequest = (
     return (
       call.arguments.length === 1 &&
       Boolean(call.arguments[0]) &&
-      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument)
+      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument, boundAlternatives)
     );
   }
   return (
@@ -761,7 +858,7 @@ const isClientRequest = (
     call.arguments.length === 2 &&
     Boolean(call.arguments[0] && call.arguments[1]) &&
     isInertRequestValue(call.arguments[0], module, 0, true, argument) &&
-    hasFixedJsonRequestOptions(call.arguments[1], module, false, argument)
+    hasFixedJsonRequestOptions(call.arguments[1], module, false, argument, boundAlternatives)
   );
 };
 
@@ -1332,7 +1429,8 @@ export const isClosedJsonSnapshotProvider = ({
   }
   const clients = collectClientBindings(project);
   if (!clients?.size || !hasClosedProviderGlobals(project, clients)) return false;
-  const returned = getSingleReturnExpression(helperFunction);
+  const helperBody = getClosedJsonSnapshotProviderBody(helperFunction.body, "ReturnStatement");
+  const returned = getSingleReturnExpression(helperFunction) ?? helperBody?.terminal;
   if (
     returned?.type !== "NewExpression" ||
     returned.callee.type !== "Identifier" ||
@@ -1349,10 +1447,8 @@ export const isClosedJsonSnapshotProvider = ({
   if (resolveParameter?.type !== "Identifier" || executor.params.length > 2) return false;
   const resolveSymbol = module.scopes.symbolFor(resolveParameter);
   if (!resolveSymbol || getActiveSnapshotReferences(resolveSymbol).length !== 1) return false;
-  let chain: EsTreeNode | null =
-    executor.body.body.length === 1 && executor.body.body[0]?.type === "ExpressionStatement"
-      ? executor.body.body[0].expression
-      : null;
+  const executorBody = getClosedJsonSnapshotProviderBody(executor.body, "ExpressionStatement");
+  let chain = executorBody?.terminal ?? null;
   if (
     chain?.type === "CallExpression" &&
     chain.callee.type === "MemberExpression" &&
@@ -1373,7 +1469,19 @@ export const isClosedJsonSnapshotProvider = ({
     chain.callee.type !== "MemberExpression" ||
     getStaticPropertyName(chain.callee) !== "then" ||
     chain.arguments.length !== 1 ||
-    !isClientRequest(chain.callee.object, module, clients, argument)
+    !hasClosedSnapshotProviderPrelude(
+      [...(helperBody?.declarations ?? []), ...(executorBody?.declarations ?? [])],
+      chain.callee.object,
+      module,
+      argument,
+    ) ||
+    !isClientRequest(
+      chain.callee.object,
+      module,
+      clients,
+      argument,
+      Boolean(helperBody?.declarations.length || executorBody?.declarations.length),
+    )
   )
     return false;
   const approvedRequest = { module, call: chain.callee.object };

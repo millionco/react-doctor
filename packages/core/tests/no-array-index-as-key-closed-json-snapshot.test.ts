@@ -671,6 +671,82 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 
 describe("closed imported JSON snapshot ordinal keys", () => {
   it.each([
+    ["const requestOptions = { url: '/catalog', responseType: 'json' };", "", "requestOptions"],
+    ["", "const requestOptions = { url: '/catalog', responseType: 'json' };", "requestOptions"],
+    [
+      "const url = '/catalog'; const transport = { url };",
+      "const requestOptions = { ...transport, responseType: 'json' };",
+      "requestOptions",
+    ],
+  ])(
+    "certifies closed provider const preludes through the ordinal rule: %s %s",
+    (helperPrelude, executorPrelude, requestOptions) => {
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => {
+      ${helperPrelude}
+      return new Promise((resolve, reject) => { ${executorPrelude} axios(${requestOptions}).then(response => resolve(response.data)).catch(reject); });
+    };`,
+      );
+      expect(runSnapshotLeaf()).toEqual([]);
+    },
+  );
+
+  it("retains private fresh-argument and public zero-argument boundaries with provider preludes", () => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = options => {
+      const url = options.url;
+      return new Promise((resolve, reject) => { const requestOptions = { url, responseType: 'json' }; axios(requestOptions).then(response => resolve(response.data)).catch(reject); });
+    };`,
+    );
+    replaceSnapshotSource({
+      name: "prelude argument",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ url: '/catalog' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({ ...SNAPSHOT_MANIFEST, main: "src/request.js" }),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => {
+      const requestOptions = { url: '/catalog', responseType: 'json' };
+      return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); });
+    };`,
+    );
+    writeSnapshotFile("src/owner.js", SNAPSHOT_FILES["src/owner.js"]);
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it.each([
+    "const unused = sideEffect();",
+    "const unused = { get url() { return '/catalog'; } };",
+    "const unused = { ...unknown };",
+    "const first = { url: later }; const later = '/catalog';",
+    "const unused = () => foreign;",
+    "const unused = { headers: {} };",
+    "const unused = true ? { url: '/catalog' } : { url: '/other' };",
+    "let unused = '/catalog';",
+    "const unused = '/catalog'; publish(unused);",
+    "const unused = { url: '/catalog' }; unused.url = '/other';",
+    "if (true) { const unused = '/catalog'; }",
+  ])("retains the ordinal warning for unsupported provider preludes: %s", (prelude) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => {
+      ${prelude}
+      return new Promise((resolve, reject) => { axios({ url: '/catalog', responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
     ['import React from "react";', "React.Fragment"],
     ['import * as Runtime from "react";', "Runtime.Fragment"],
     ['import { Fragment as Group } from "react";', "Group"],

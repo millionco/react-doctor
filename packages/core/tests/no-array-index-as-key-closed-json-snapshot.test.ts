@@ -671,6 +671,132 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 
 describe("closed imported JSON snapshot ordinal keys", () => {
   it.each([
+    ["null", 0],
+    ["/(?i:a)/", 1],
+    ["1n", 1],
+    ["1e999", 0],
+  ])(
+    "keeps request and prelude primitive syntax closed in the ordinal rule: %s",
+    (value, warningCount) => {
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => {
+      const unused = ${value};
+      return new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`,
+      );
+      expect(runSnapshotLeaf()).toHaveLength(warningCount);
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ data: ${value}, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+    });`,
+      );
+      expect(runSnapshotLeaf()).toHaveLength(warningCount);
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+    });`,
+      );
+      replaceSnapshotSource({
+        name: "primitive caller",
+        filename: "src/owner.js",
+        before: "load().then",
+        after: `load({ data: ${value} }).then`,
+      });
+      expect(runSnapshotLeaf()).toHaveLength(warningCount);
+    },
+  );
+
+  it.each([
+    ["null", 0],
+    ["/(?i:a)/", 1],
+    ["1n", 1],
+  ])(
+    "keeps special literal rejection syntax outside ordinal certification: %s",
+    (reason, warningCount) => {
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => {
+        if (response.status === 200) resolve(response.data); else reject(${reason});
+      }).catch(reject);
+    });`,
+      );
+      expect(runSnapshotLeaf()).toHaveLength(warningCount);
+    },
+  );
+
+  it.each([
+    ["response.status === 200", ""],
+    ["200 === response.status", "'failed'"],
+    ["response.status === 200", "false"],
+    ["200 === response.status", "null"],
+    ["response.status === 200", "0"],
+    ["200.5 === response.status", "response.status"],
+  ])("certifies exact exhaustive HTTP-status forwarding: %s / %s", (condition, reason) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => {
+      const requestOptions = { url: '/catalog', responseType: 'json' };
+      return new Promise((resolve, reject) => {
+        axios(requestOptions).then(response => {
+          if (${condition}) { return resolve(response['data']); } else { return reject(${reason}); }
+        }).catch(reject);
+      });
+    };`,
+    );
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it("preserves fresh argument and public-entry boundaries for status forwarding", () => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options, responseType: 'json' };
+      return new Promise((complete, fail) => {
+        axios(requestOptions).then(reply => { if (200 === reply.status) complete(reply.data); else fail(reply.status); }).catch(fail);
+      });
+    };`,
+    );
+    replaceSnapshotSource({
+      name: "guarded caller",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ url: '/catalog' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({ ...SNAPSHOT_MANIFEST, main: "src/request.js" }),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "if (foreign.status === 200) resolve(response.data); else reject(response.status);",
+    "if (response.status === 200) resolve(foreign.data); else reject(response.status);",
+    "if (response.status === 200) resolve(response.data); else reject(foreign.status);",
+    "if (response.status == 200) resolve(response.data); else reject();",
+    "if (response['status'] === 200) resolve(response.data); else reject();",
+    "if (response.status === 200) resolve(response.data);",
+    "if (response.status === 200) resolve(response.data); else resolve(response.data);",
+    "if (response.status === 200) resolve(response.data); else reject(response.data);",
+    "if (response.status === 200) resolve(response.data); else reject(new Error('failed'));",
+    "if (response.status === 200) { resolve(response.data); console.log(response); } else reject();",
+    "if (response.status === 200) return resolve(response.data); return reject();",
+  ])("retains the ordinal warning for an unproved status callback: %s", (body) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => { ${body} }).catch(reject);
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
     ["const requestOptions = { url: '/catalog', responseType: 'json' };", "", "requestOptions"],
     ["", "const requestOptions = { url: '/catalog', responseType: 'json' };", "requestOptions"],
     [

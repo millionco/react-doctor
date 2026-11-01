@@ -401,6 +401,15 @@ const getSnapshotRequestArgumentValue = (
   return value;
 };
 
+const isSnapshotPrimitiveLiteral = (node: EsTreeNode, requireFiniteNumbers = false): boolean =>
+  node.type === "Literal" &&
+  !("regex" in node) &&
+  !("bigint" in node) &&
+  (node.value === null ||
+    typeof node.value === "string" ||
+    typeof node.value === "boolean" ||
+    (typeof node.value === "number" && (!requireFiniteNumbers || Number.isFinite(node.value))));
+
 const isInertRequestValue = (
   expression: EsTreeNode,
   module: ClosedJsonSnapshotModule,
@@ -413,9 +422,7 @@ const isInertRequestValue = (
   const argumentValue = getSnapshotRequestArgumentValue(node, module, argument);
   if (argumentValue && argument)
     return isInertRequestValue(argumentValue, argument.module, depth + 1);
-  if (node.type === "Literal") {
-    return node.value === null || ["string", "number", "boolean"].includes(typeof node.value);
-  }
+  if (node.type === "Literal") return isSnapshotPrimitiveLiteral(node);
   if (node.type === "TemplateLiteral") return node.expressions.length === 0;
   if (node.type === "UnaryExpression" && ["-", "+", "!"].includes(node.operator)) {
     return isInertRequestValue(node.argument, module, depth + 1, true, argument);
@@ -1408,11 +1415,7 @@ export const isClosedJsonSnapshotProvider = ({
         property.method ||
         property.computed ||
         property.shorthand ||
-        property.value.type !== "Literal" ||
-        !(
-          property.value.value === null ||
-          ["string", "number", "boolean"].includes(typeof property.value.value)
-        )
+        !isSnapshotPrimitiveLiteral(property.value)
       )
         return false;
       const propertyName = getStaticPropertyKeyName(property);
@@ -1449,6 +1452,7 @@ export const isClosedJsonSnapshotProvider = ({
   if (!resolveSymbol || getActiveSnapshotReferences(resolveSymbol).length !== 1) return false;
   const executorBody = getClosedJsonSnapshotProviderBody(executor.body, "ExpressionStatement");
   let chain = executorBody?.terminal ?? null;
+  let rejectionHandler: EsTreeNode | null = null;
   if (
     chain?.type === "CallExpression" &&
     chain.callee.type === "MemberExpression" &&
@@ -1462,6 +1466,7 @@ export const isClosedJsonSnapshotProvider = ({
       module.scopes.symbolFor(catchArgument) !== module.scopes.symbolFor(rejectParameter)
     )
       return false;
+    rejectionHandler = catchArgument;
     chain = chain.callee.object;
   }
   if (
@@ -1498,28 +1503,110 @@ export const isClosedJsonSnapshotProvider = ({
   const responseParameter = successCallback.params[0];
   if (responseParameter?.type !== "Identifier") return false;
   const responseSymbol = module.scopes.symbolFor(responseParameter);
-  if (!responseSymbol || getActiveSnapshotReferences(responseSymbol).length !== 1) return false;
+  if (!responseSymbol) return false;
+  const isResolution = (resolution: EsTreeNode | null): boolean => {
+    if (
+      resolution?.type !== "CallExpression" ||
+      resolution.callee.type !== "Identifier" ||
+      module.scopes.symbolFor(resolution.callee) !== resolveSymbol ||
+      resolution.arguments.length !== 1
+    )
+      return false;
+    const body = resolution.arguments[0];
+    return (
+      body?.type === "MemberExpression" &&
+      !body.optional &&
+      getStaticPropertyName(body) === "data" &&
+      body.object.type === "Identifier" &&
+      module.scopes.symbolFor(body.object) === responseSymbol
+    );
+  };
+  const statement =
+    successCallback.body.type === "BlockStatement" && successCallback.body.body.length === 1
+      ? successCallback.body.body[0]
+      : null;
+  if (statement?.type === "IfStatement") {
+    if (
+      successCallback.async ||
+      successCallback.generator ||
+      rejectParameter?.type !== "Identifier"
+    )
+      return false;
+    const rejectSymbol = module.scopes.symbolFor(rejectParameter);
+    if (!rejectSymbol || rejectSymbol === resolveSymbol) return false;
+    const isResponseStatus = (node: EsTreeNode): boolean =>
+      node.type === "MemberExpression" &&
+      !node.optional &&
+      !node.computed &&
+      getStaticPropertyName(node) === "status" &&
+      node.object.type === "Identifier" &&
+      module.scopes.symbolFor(node.object) === responseSymbol;
+    const isNumericLiteral = (node: EsTreeNode): boolean =>
+      node.type === "Literal" &&
+      typeof node.value === "number" &&
+      isSnapshotPrimitiveLiteral(node, true);
+    const condition = statement.test;
+    if (condition.type !== "BinaryExpression" || condition.operator !== "===") return false;
+    const status =
+      isResponseStatus(condition.left) && isNumericLiteral(condition.right)
+        ? condition.left
+        : isNumericLiteral(condition.left) && isResponseStatus(condition.right)
+          ? condition.right
+          : null;
+    if (status?.type !== "MemberExpression") return false;
+    const getSettlement = (branch: EsTreeNode | null | undefined): EsTreeNode | null => {
+      const settlement =
+        branch?.type === "BlockStatement"
+          ? branch.body.length === 1
+            ? branch.body[0]
+            : null
+          : branch;
+      if (settlement?.type === "ExpressionStatement") return settlement.expression;
+      if (settlement?.type === "ReturnStatement") return settlement.argument;
+      return null;
+    };
+    const resolution = getSettlement(statement.consequent);
+    const rejection = getSettlement(statement.alternate);
+    if (
+      resolution?.type !== "CallExpression" ||
+      resolution.optional ||
+      !isResolution(resolution) ||
+      rejection?.type !== "CallExpression" ||
+      rejection.optional ||
+      rejection.callee.type !== "Identifier" ||
+      module.scopes.symbolFor(rejection.callee) !== rejectSymbol ||
+      rejection.arguments.length > 1
+    )
+      return false;
+    const body = resolution.arguments[0];
+    if (body?.type !== "MemberExpression") return false;
+    const responseReferences = new Set<EsTreeNode>([status.object, body.object]);
+    const reason = rejection.arguments[0];
+    if (reason) {
+      if (isResponseStatus(reason) && reason.type === "MemberExpression")
+        responseReferences.add(reason.object);
+      else if (!isSnapshotPrimitiveLiteral(reason, true)) return false;
+    }
+    const rejectReferences = new Set<EsTreeNode>([rejection.callee]);
+    if (rejectionHandler) rejectReferences.add(rejectionHandler);
+    return (
+      getActiveSnapshotReferences(responseSymbol).every(
+        (reference) => reference.flag === "read" && responseReferences.has(reference.identifier),
+      ) &&
+      getActiveSnapshotReferences(resolveSymbol).every(
+        (reference) => reference.flag === "read" && reference.identifier === resolution.callee,
+      ) &&
+      getActiveSnapshotReferences(rejectSymbol).every(
+        (reference) => reference.flag === "read" && rejectReferences.has(reference.identifier),
+      )
+    );
+  }
+  if (getActiveSnapshotReferences(responseSymbol).length !== 1) return false;
   let resolution: EsTreeNode | null = null;
   if (successCallback.body.type !== "BlockStatement") resolution = successCallback.body;
   else {
-    const statement = successCallback.body.body[0];
-    if (successCallback.body.body.length !== 1) return false;
     if (statement?.type === "ExpressionStatement") resolution = statement.expression;
     if (statement?.type === "ReturnStatement") resolution = statement.argument;
   }
-  if (
-    resolution?.type !== "CallExpression" ||
-    resolution.callee.type !== "Identifier" ||
-    module.scopes.symbolFor(resolution.callee) !== resolveSymbol ||
-    resolution.arguments.length !== 1
-  )
-    return false;
-  const body = resolution.arguments[0];
-  return (
-    body?.type === "MemberExpression" &&
-    !body.optional &&
-    getStaticPropertyName(body) === "data" &&
-    body.object.type === "Identifier" &&
-    module.scopes.symbolFor(body.object) === responseSymbol
-  );
+  return isResolution(resolution);
 };

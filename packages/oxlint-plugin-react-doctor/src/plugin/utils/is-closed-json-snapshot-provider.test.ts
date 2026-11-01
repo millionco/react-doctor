@@ -27,6 +27,7 @@ const checkProvider = (
   otherFiles: Record<string, string> = {},
   knownPublicEntryTargets: ReadonlyArray<string> = [],
   invocationSource?: string,
+  simulateRegExpNull = false,
 ): boolean => {
   const rootDirectory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "json-provider-")));
   directories.push(rootDirectory);
@@ -51,7 +52,19 @@ const checkProvider = (
   const helperFunction = module?.scopes.rootScope.symbols.find(
     (symbol) => symbol.name === "load",
   )?.initializer;
+  if (simulateRegExpNull) expect(project).toBeDefined();
   if (!project) return false;
+  if (simulateRegExpNull) {
+    let didFindRegExp = false;
+    for (const currentModule of project.modules.values())
+      walkAst(currentModule.program, (node) => {
+        if (node.type === "Literal" && "regex" in node) {
+          node.value = null;
+          didFindRegExp = true;
+        }
+      });
+    expect(didFindRegExp).toBe(true);
+  }
   expect(helperFunction).toBeDefined();
   const consumer = project.modules.get(normalizeFilename(path.join(rootDirectory, "consumer.js")));
   let invocationCall: EsTreeNode | undefined;
@@ -85,6 +98,243 @@ afterEach(() => {
 });
 
 describe("isClosedJsonSnapshotProvider", () => {
+  it.each([
+    ["null", true],
+    ["/(?i:a)/", false],
+    ["1n", false],
+    ["1e999", true],
+  ])(
+    "keeps provider primitive admissions syntax-aware without tightening legacy numbers: %s",
+    (value, isCertified) => {
+      const simulateRegExpNull = value === "/(?i:a)/";
+      expect(
+        checkProvider(
+          `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ data: ${value}, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+    });`,
+          {},
+          [],
+          undefined,
+          simulateRegExpNull,
+        ),
+      ).toBe(isCertified);
+      expect(
+        checkProvider(
+          `import axios from 'axios'; export const load = () => {
+      const unused = ${value};
+      return new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`,
+          {},
+          [],
+          undefined,
+          simulateRegExpNull,
+        ),
+      ).toBe(isCertified);
+      expect(
+        checkProvider(
+          `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+    });`,
+          {},
+          [],
+          `import { load } from './provider'; load({ data: ${value} });`,
+          simulateRegExpNull,
+        ),
+      ).toBe(isCertified);
+    },
+  );
+
+  it.each([
+    ["null", true],
+    ["/(?i:a)/", false],
+    ["1n", false],
+  ])("distinguishes primitive null from special literal syntax: %s", (reason, isCertified) => {
+    expect(
+      checkProvider(
+        `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => {
+        if (response.status === 200) resolve(response.data); else reject(${reason});
+      }).catch(reject);
+    });`,
+        {},
+        [],
+        undefined,
+        reason === "/(?i:a)/",
+      ),
+    ).toBe(isCertified);
+  });
+
+  it.each([
+    "response.status === 200",
+    "200 === response.status",
+    "response.status === 0",
+    "200.5 === response.status",
+    "response.status === 0xC8",
+    "2e2 === response.status",
+  ])("certifies an exact numeric status comparison: %s", (condition) => {
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => {
+        if (${condition}) resolve(response.data); else reject();
+      }).catch(reject);
+    });`;
+    expect(checkProvider(source)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"])).toBe(true);
+  });
+
+  it.each(["", "'failed'", "false", "null", "0", "200.5", "response.status"])(
+    "certifies a closed rejection payload: %s",
+    (reason) => {
+      for (const catchClause of ["", ".catch(reject)"]) {
+        const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+          axios({ responseType: 'json' }).then(response => {
+            if (response.status === 200) { return resolve(response['data']); }
+            else { return reject(${reason}); }
+          })${catchClause};
+        });`;
+        expect(checkProvider(source)).toBe(true);
+      }
+    },
+  );
+
+  it("tracks renamed native settlement and response bindings through const preludes", () => {
+    const source = `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options, responseType: 'json' };
+      return new Promise((complete, fail) => {
+        const unused = null;
+        axios(requestOptions).then(function accept(reply) {
+          if (200 === reply.status) return complete(reply.data); else { fail(reply.status); }
+        }).catch(fail);
+      });
+    };`;
+    const consumer = "import { load } from './provider'; load({ url: '/catalog' });";
+    expect(checkProvider(source, {}, [], consumer)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"], consumer)).toBe(false);
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each([
+    "if (foreign.status === 200) resolve(response.data); else reject(response.status);",
+    "if (response.status === 200) resolve(foreign.data); else reject(response.status);",
+    "if (response.status === 200) resolve(response.data); else reject(foreign.status);",
+    "if (response.status == 200) resolve(response.data); else reject();",
+    "if (response.status !== 200) resolve(response.data); else reject();",
+    "if (response.status >= 200) resolve(response.data); else reject();",
+    "if (response.status === code) resolve(response.data); else reject();",
+    "if (response.status === '200') resolve(response.data); else reject();",
+    "if (response.status === 1e999) resolve(response.data); else reject();",
+    "if (response['status'] === 200) resolve(response.data); else reject();",
+    "if (response?.status === 200) resolve(response.data); else reject();",
+    "if ((response.status = 200)) resolve(response.data); else reject();",
+    "if (matches(response.status)) resolve(response.data); else reject();",
+    "if (response.status === 200) resolve(response.data);",
+    "if (response.status === 200) resolve(response.data); else if (true) reject();",
+    "if (response.status === 200) resolve(response.data); else resolve(response.data);",
+    "if (response.status === 200) other(response.data); else reject();",
+    "if (response.status === 200) resolve(response.data); else other();",
+    "if (response.status === 200) { resolve(response.data); throw failure; } else reject();",
+    "if (response.status === 200) { resolve(response.data); console.log(response); } else reject();",
+    "if (response.status === 200) resolve(response.data); else { reject(); console.log('failed'); }",
+    "if (response.status === 200) { const body = response.data; resolve(body); } else reject();",
+    "if (response.status === 200) return resolve(response.data); return reject();",
+    "return response.status === 200 ? resolve(response.data) : reject();",
+    "const status = response.status; if (status === 200) resolve(response.data); else reject();",
+    "if (response.status === 200) resolve(response.data); else reject(); ;",
+    "'use strict'; if (response.status === 200) resolve(response.data); else reject();",
+    "if (response.status === 200) resolve(response.data); else { ; reject(); }",
+    "if (response.status === 200) resolve(response.data); else throw failure;",
+  ])("refuses a status callback outside the exhaustive source grammar: %s", (body) => {
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => { ${body} }).catch(reject);
+    });`),
+    ).toBe(false);
+  });
+
+  it.each([
+    "undefined",
+    "`failed`",
+    "-1",
+    "+1",
+    "1n",
+    "/failed/",
+    "{}",
+    "[]",
+    "new Error('failed')",
+    "createFailure()",
+    "response",
+    "response.data",
+    "response.statusText",
+    "foreign.status",
+    "response['status']",
+    "response?.status",
+    "'failed', 0",
+    "1e999",
+  ])("refuses an unproved status rejection payload: %s", (reason) => {
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => {
+        if (response.status === 200) resolve(response.data); else reject(${reason});
+      }).catch(reject);
+    });`),
+    ).toBe(false);
+  });
+
+  it.each([
+    "async response => { if (response.status === 200) resolve(response.data); else reject(); }",
+    "function* (response) { if (response.status === 200) resolve(response.data); else reject(); }",
+    "response => { if (response.status === 200) resolve?.(response.data); else reject(); }",
+    "response => { if (response.status === 200) resolve(response.data); else reject?.(); }",
+    "(response, extra) => { if (response.status === 200) resolve(response.data); else reject(); }",
+  ])("refuses unsupported guarded callbacks: %s", (callback) => {
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(${callback}).catch(reject);
+    });`),
+    ).toBe(false);
+  });
+
+  it.each([
+    ".catch(resolve)",
+    ".catch(error => reject(error))",
+    ".catch(() => null).then(resolve)",
+  ])("retains exact native rejection handling: %s", (catchClause) => {
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        axios({ responseType: 'json' }).then(response => {
+          if (response.status === 200) resolve(response.data); else reject(response.status);
+        })${catchClause};
+      });`),
+    ).toBe(false);
+  });
+
+  it.each([
+    "axios({ responseType: 'text' })",
+    "axios({ responseType: 'json', adapter: custom })",
+    "axios({ responseType: 'json', transformResponse: custom })",
+    "unknown({ responseType: 'json' })",
+  ])("keeps the native JSON request proof before the status gate: %s", (request) => {
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${request}.then(response => { if (response.status === 200) resolve(response.data); else reject(); }).catch(reject);
+    });`),
+    ).toBe(false);
+  });
+
+  it("preserves legacy direct forwarding without a reject parameter or catch", () => {
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise(resolve => {
+      axios({ responseType: 'json' }).then(response => resolve(response.data));
+    });`),
+    ).toBe(true);
+    expect(
+      checkProvider(`import axios from 'axios'; export const load = () => new Promise(resolve => {
+      axios({ responseType: 'json' }).then(response => {
+        if (response.status === 200) resolve(response.data); else reject();
+      });
+    });`),
+    ).toBe(false);
+  });
+
   it.each([
     [
       "const requestOptions = { url: '/catalog', responseType: 'json' };",

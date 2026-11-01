@@ -92,6 +92,8 @@ export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo
 // callee name already matches the hook naming convention
 // (`isReactHookName`). Includes the bare `use(...)` hook from React 19,
 // which `isReactHookName` matches by exact name.
+export const REDUCER_HOOK_NAMES: ReadonlySet<string> = new Set(["useReducer"]);
+
 export const BUILTIN_HOOK_NAMES: ReadonlySet<string> = new Set([
   "use",
   "useState",

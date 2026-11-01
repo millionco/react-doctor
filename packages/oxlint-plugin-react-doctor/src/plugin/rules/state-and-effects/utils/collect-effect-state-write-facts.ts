@@ -1,4 +1,5 @@
 import type { Reference, Variable } from "eslint-scope";
+import { REDUCER_HOOK_NAMES } from "../../../constants/react.js";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import { collectPossibleAssignedExpressions } from "../../../utils/collect-possible-assigned-expressions.js";
@@ -15,6 +16,7 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
+import { isReactHookResultReference } from "../../../utils/is-react-hook-result-reference.js";
 import { isSynchronousIteratorCall } from "../../../utils/is-synchronous-iterator-callback.js";
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
@@ -97,6 +99,10 @@ export interface EffectStateWriteSite {
   node: EsTreeNode;
   setter: EsTreeNode;
   value: EsTreeNode | undefined;
+}
+
+export interface StateWriteSiteOptions {
+  acceptsReducerDispatch?: boolean;
 }
 
 export interface ResolvedStateWriteSite extends EffectStateWriteSite {
@@ -1606,6 +1612,7 @@ const findStateSetterReference = (
   context: RuleContext,
   frame: EffectExecutionFrame,
   callExpression: EsTreeNode,
+  options: StateWriteSiteOptions = {},
 ): Reference | null => {
   if (!isNodeOfType(callExpression, "CallExpression")) return null;
   const callee = stripParenExpression(callExpression.callee);
@@ -1678,6 +1685,16 @@ const findStateSetterReference = (
     if (!isNodeOfType(argument, "Identifier")) return null;
     const argumentReference = getRef(analysis, argument);
     if (!argumentReference) return null;
+    if (
+      options.acceptsReducerDispatch &&
+      isReactHookResultReference(argument, REDUCER_HOOK_NAMES, 1, context.scopes)
+    ) {
+      return argumentReference.resolved?.references.some(
+        (candidate) => candidate.isWrite() && !candidate.init,
+      )
+        ? null
+        : argumentReference;
+    }
     const setterReference = resolveStateSetterReference(analysis, argumentReference);
     if (!setterReference) return null;
     if (
@@ -1948,6 +1965,10 @@ const stateWriteSitesByAnalysis = new WeakMap<
   ProgramAnalysis,
   WeakMap<EsTreeNode, ResolvedStateWriteSite | null>
 >();
+const dispatchWriteSitesByAnalysis = new WeakMap<
+  ProgramAnalysis,
+  WeakMap<EsTreeNode, ResolvedStateWriteSite | null>
+>();
 const forwardedSetterCallsByFunction = new WeakMap<
   EsTreeNode,
   EsTreeNodeOfType<"CallExpression"> | null
@@ -1957,12 +1978,16 @@ export const resolveStateWriteSite = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   invocation: EsTreeNode,
+  options: StateWriteSiteOptions = {},
 ): ResolvedStateWriteSite | null => {
   if (!isNodeOfType(invocation, "CallExpression")) return null;
-  let writeSitesByInvocation = stateWriteSitesByAnalysis.get(analysis);
+  const writeSiteCache = options.acceptsReducerDispatch
+    ? dispatchWriteSitesByAnalysis
+    : stateWriteSitesByAnalysis;
+  let writeSitesByInvocation = writeSiteCache.get(analysis);
   if (!writeSitesByInvocation) {
     writeSitesByInvocation = new WeakMap();
-    stateWriteSitesByAnalysis.set(analysis, writeSitesByInvocation);
+    writeSiteCache.set(analysis, writeSitesByInvocation);
   }
   if (writeSitesByInvocation.has(invocation)) return writeSitesByInvocation.get(invocation) ?? null;
   writeSitesByInvocation.set(invocation, null);
@@ -1975,7 +2000,13 @@ export const resolveStateWriteSite = (
     introducedBindings: new Set(),
     substitutions: new Map(),
   };
-  const directSetterReference = findStateSetterReference(analysis, context, rootFrame, invocation);
+  const directSetterReference = findStateSetterReference(
+    analysis,
+    context,
+    rootFrame,
+    invocation,
+    options,
+  );
   if (directSetterReference) {
     const writeSite = {
       ...getFrameStateWriteSite(analysis, rootFrame, invocation),
@@ -2008,7 +2039,13 @@ export const resolveStateWriteSite = (
     invocation,
     substitutions: buildSubstitutions(analysis, helperFunction, invocation.arguments, rootFrame),
   };
-  const setterReference = findStateSetterReference(analysis, context, helperFrame, forwardedCall);
+  const setterReference = findStateSetterReference(
+    analysis,
+    context,
+    helperFrame,
+    forwardedCall,
+    options,
+  );
   if (!setterReference) return null;
   const writeSite = {
     ...getFrameStateWriteSite(analysis, helperFrame, forwardedCall),

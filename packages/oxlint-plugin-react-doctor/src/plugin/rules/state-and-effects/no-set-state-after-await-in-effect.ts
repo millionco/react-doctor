@@ -1,5 +1,5 @@
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
-import { certifyLiveEffectContinuations } from "../../utils/effect/certify-live-effect-continuations.js";
+import { createLiveEffectContinuationCertifier } from "../../utils/effect/certify-live-effect-continuations.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
@@ -1477,47 +1477,49 @@ export const noSetStateAfterAwaitInEffect = defineRule({
   category: "Bugs",
   recommendation:
     "In an effect whose dependencies can change, guard setters after `await` or inside deferred microtask and Promise callbacks with a cancellation/ignore flag checked after deferral, or return a cleanup that cancels the async work.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (
-        !isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes, {
-          allowGlobalReactNamespace: true,
-          allowUnboundBareCalls: true,
-        })
-      ) {
-        return;
-      }
-      const callback = getEffectCallback(node);
-      if (!isFunctionLike(callback)) return;
-      if (callback.async) return;
-      const dependencyArray = getDependencyArray(node);
-      if (dependencyArray && hasOnlyStableIdentityDependencies({ dependencyArray, context })) {
-        return;
-      }
-      let areEffectContinuationsCertified: boolean | undefined;
-      for (const asyncFunction of collectTransitivelyInvokedFunctions(callback, context)) {
+  create: (context: RuleContext) => {
+    let certifyLiveEffectContinuations = createLiveEffectContinuationCertifier(context);
+    return {
+      Program() {
+        certifyLiveEffectContinuations = createLiveEffectContinuationCertifier(context);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
-          asyncFunction !== callback &&
-          hasUnsafePostAwaitSetter(asyncFunction, callback, context)
+          !isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes, {
+            allowGlobalReactNamespace: true,
+            allowUnboundBareCalls: true,
+          })
         ) {
-          const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
-          if (
-            !deferredCall &&
-            (areEffectContinuationsCertified ??= certifyLiveEffectContinuations(
-              callback,
-              context,
-              node,
-            ))
-          ) {
-            continue;
-          }
-          context.report({
-            node,
-            message: deferredCall ? DEFERRED_MESSAGE : MESSAGE,
-          });
           return;
         }
-      }
-    },
-  }),
+        const callback = getEffectCallback(node);
+        if (!isFunctionLike(callback)) return;
+        if (callback.async) return;
+        const dependencyArray = getDependencyArray(node);
+        if (dependencyArray && hasOnlyStableIdentityDependencies({ dependencyArray, context })) {
+          return;
+        }
+        let areEffectContinuationsCertified: boolean | undefined;
+        for (const asyncFunction of collectTransitivelyInvokedFunctions(callback, context)) {
+          if (
+            asyncFunction !== callback &&
+            hasUnsafePostAwaitSetter(asyncFunction, callback, context)
+          ) {
+            const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
+            if (
+              !deferredCall &&
+              (areEffectContinuationsCertified ??= certifyLiveEffectContinuations(callback, node))
+            ) {
+              continue;
+            }
+            context.report({
+              node,
+              message: deferredCall ? DEFERRED_MESSAGE : MESSAGE,
+            });
+            return;
+          }
+        }
+      },
+    };
+  },
 });

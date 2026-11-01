@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import type { SourceProjectIndex } from "../build-source-project-index.js";
 import type { EsTreeNode } from "../es-tree-node.js";
 import { isNodeOfType } from "../is-node-of-type.js";
 import { isPassiveValueUse } from "../is-passive-value-use.js";
 import type { Rule } from "../rule.js";
 import { walkAst } from "../walk-ast.js";
-import { certifyNativeSignalDelay } from "./certify-native-signal-delay.js";
+import {
+  certifyNativeSignalDelay,
+  hasClosedNativeDelayGlobals,
+  type NativeDelayGlobalCache,
+} from "./certify-native-signal-delay.js";
 import { NATIVE_DELAY_MAX_ALIAS_DEPTH } from "./native-signal-delay/constants.js";
 
 interface PassiveDiamondObservation {
@@ -64,6 +69,68 @@ const inspect = (producer: string, invocation = "pause(24, ownedSignal)", extra 
 };
 
 describe("certifyNativeSignalDelay", () => {
+  it.each([false, true])(
+    "reuses only project-bound global certificates, writer: %s",
+    (hasWriter) => {
+      const probeRule: Rule = {
+        id: "native-delay-global-cache-test",
+        severity: "warn",
+        create: (context) => ({
+          Program: (program) => {
+            if (!isNodeOfType(program, "Program")) throw new Error("Expected Program");
+            const scopes = context.scopes;
+            const project: SourceProjectIndex = {
+              modulesByFilePath: new Map([
+                ["fixture.tsx", { filePath: "fixture.tsx", programNode: program, scopes }],
+              ]),
+              htmlFilePaths: [],
+              consumerModulesByFilePath: new Map(),
+              resolvedSourcePathByNode: new WeakMap(),
+              unresolvedRuntimeSources: new Set(),
+              hasOpaqueMdxConsumerSurface: false,
+            };
+            const cache: NativeDelayGlobalCache = { project, resultsByScope: new WeakMap() };
+            const descriptor = Object.getOwnPropertyDescriptor(program, "type");
+            if (!descriptor) throw new Error("Expected Program descriptor");
+            let programReads = 0;
+            Object.defineProperty(program, "type", {
+              configurable: true,
+              get: () => {
+                programReads += 1;
+                return "Program";
+              },
+            });
+            try {
+              expect(hasClosedNativeDelayGlobals(scopes, project, cache)).toBe(!hasWriter);
+              expect(programReads).toBeGreaterThan(0);
+              programReads = 0;
+              expect(hasClosedNativeDelayGlobals(scopes, project, cache)).toBe(!hasWriter);
+              expect(hasClosedNativeDelayGlobals(scopes, project, cache)).toBe(!hasWriter);
+              expect(programReads).toBe(0);
+              expect(hasClosedNativeDelayGlobals(scopes, project)).toBe(!hasWriter);
+              expect(programReads).toBeGreaterThan(0);
+              programReads = 0;
+              expect(hasClosedNativeDelayGlobals(scopes, { ...project }, cache)).toBe(!hasWriter);
+              expect(programReads).toBeGreaterThan(0);
+              const unrelatedScopes = { ...scopes };
+              cache.resultsByScope.set(unrelatedScopes, true);
+              expect(hasClosedNativeDelayGlobals(unrelatedScopes, project, cache)).toBe(false);
+              expect(hasClosedNativeDelayGlobals(scopes)).toBe(!hasWriter);
+            } finally {
+              Object.defineProperty(program, "type", descriptor);
+            }
+          },
+        }),
+      };
+      const result = runRule(
+        probeRule,
+        hasWriter ? "globalThis.setTimeout = foreign;" : "const value = 1;",
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it.each([
     "const parts = ['quay', 'ridge']; const selector = `[data-part=${parts[1]}]`;",
     "const parts = ['quay', 'ridge']; const index = 1; const selector = `[data-part=${parts[index]}]`;",

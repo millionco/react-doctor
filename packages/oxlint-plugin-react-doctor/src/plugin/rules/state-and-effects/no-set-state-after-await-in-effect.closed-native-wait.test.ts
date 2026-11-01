@@ -1,8 +1,14 @@
 import * as fs from "node:fs";
+import filesystem from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../../test-utils/run-rule.js";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { runRule, runRuleOnParsedFixture } from "../../../test-utils/run-rule.js";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { resetFilesystemCaches } from "../../utils/reset-filesystem-caches.js";
 import { wrapWithSemanticContext } from "../../utils/wrap-with-semantic-context.js";
@@ -592,6 +598,113 @@ const diagnosticsFor = (fixture: ContinuationFixture, useHostWrapper = false): n
 };
 
 describe("closed native wait continuation certificate", () => {
+  it.each([false, true])(
+    "inventories the project once across multiple effects, rejected role: %s",
+    (rejectRole) => {
+      const fixture = createFixture(`${freshBarrier} setStatus("ready");`);
+      const component = fixture.source.slice(fixture.source.indexOf("export const Panel"));
+      fixture.source += component.replace("export const Panel", "export const SecondPanel");
+      fs.writeFileSync(fixture.filename, fixture.source);
+      if (rejectRole)
+        fs.writeFileSync(
+          path.join(fixture.directory, "package.json"),
+          JSON.stringify({
+            dependencies: { react: "^18.0.0", "react-dom": "^18.0.0", next: "^16.0.0" },
+          }),
+        );
+      const readDirectory = vi.spyOn(filesystem, "readdirSync");
+      syncBuiltinESMExports();
+      try {
+        expect(diagnosticsFor(fixture)).toBe(rejectRole ? 2 : 0);
+        expect(
+          readDirectory.mock.calls.filter(
+            ([directory]) =>
+              typeof directory === "string" &&
+              normalizeFilename(directory) === normalizeFilename(fixture.directory),
+          ),
+        ).toHaveLength(1);
+      } finally {
+        readDirectory.mockRestore();
+        syncBuiltinESMExports();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "refreshes new scans of the identical AST after a global writer change, initial writer: %s",
+    (initialWriter) => {
+      const fixture = createFixture(`${freshBarrier} setStatus("ready");`);
+      const writerPath = path.join(fixture.directory, "writer.ts");
+      if (initialWriter) fs.writeFileSync(writerPath, "globalThis.setTimeout = foreign;");
+      const parsed = parseFixture(fixture.source, { filename: fixture.filename });
+      const before = runRuleOnParsedFixture(noSetStateAfterAwaitInEffect, fixture.source, parsed, {
+        filename: fixture.filename,
+      });
+      expect(before.parseErrors).toEqual([]);
+      expect(before.diagnostics).toHaveLength(initialWriter ? 1 : 0);
+      if (initialWriter) fs.unlinkSync(writerPath);
+      else fs.writeFileSync(writerPath, "globalThis.setTimeout = foreign;");
+      resetFilesystemCaches();
+      const after = runRuleOnParsedFixture(noSetStateAfterAwaitInEffect, fixture.source, parsed, {
+        filename: fixture.filename,
+      });
+      expect(after.parseErrors).toEqual([]);
+      expect(after.diagnostics).toHaveLength(initialWriter ? 0 : 1);
+    },
+  );
+
+  it.each([false, true])(
+    "refreshes the same visitors on repeated Program entry, initial writer: %s",
+    (initialWriter) => {
+      const fixture = createFixture(`${freshBarrier} setStatus("ready");`);
+      const writerPath = path.join(fixture.directory, "writer.ts");
+      if (initialWriter) fs.writeFileSync(writerPath, "globalThis.setTimeout = foreign;");
+      let firstReports = 0;
+      let secondReports = 0;
+      let isSecondEntry = false;
+      const repeatedProgramRule = {
+        ...noSetStateAfterAwaitInEffect,
+        create: (context: RuleContext) => {
+          const sharedContext: RuleContext = {
+            ...context,
+            report: (descriptor) => {
+              if (isSecondEntry) secondReports += 1;
+              else firstReports += 1;
+              context.report(descriptor);
+            },
+          };
+          const visitors = noSetStateAfterAwaitInEffect.create(sharedContext);
+          let effectCall: EsTreeNode | undefined;
+          return {
+            ...visitors,
+            CallExpression(node: EsTreeNode) {
+              if (
+                isNodeOfType(node, "CallExpression") &&
+                isNodeOfType(node.callee, "Identifier") &&
+                node.callee.name === "useEffect"
+              )
+                effectCall = node;
+              visitors.CallExpression?.(node);
+            },
+            "Program:exit"(node: EsTreeNode) {
+              if (initialWriter) fs.unlinkSync(writerPath);
+              else fs.writeFileSync(writerPath, "globalThis.setTimeout = foreign;");
+              resetFilesystemCaches();
+              isSecondEntry = true;
+              visitors.Program?.(node);
+              expect(effectCall).toBeDefined();
+              if (effectCall) visitors.CallExpression?.(effectCall);
+            },
+          };
+        },
+      };
+      const result = runRule(repeatedProgramRule, fixture.source, { filename: fixture.filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(firstReports).toBe(initialWriter ? 1 : 0);
+      expect(secondReports).toBe(initialWriter ? 0 : 1);
+    },
+  );
+
   beforeEach(() => resetFilesystemCaches());
   afterAll(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
 

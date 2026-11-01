@@ -114,13 +114,23 @@ const isNativeCall = (
   !expression.optional &&
   isProvenUnmodifiedGlobalNamespaceReference(expression.callee, name, context.scopes);
 
+export interface NativeDelayGlobalCache {
+  readonly project: SourceProjectIndex;
+  readonly resultsByScope: WeakMap<ScopeAnalysis, boolean>;
+}
+
 export const hasClosedNativeDelayGlobals = (
   scopes: ScopeAnalysis,
   project?: SourceProjectIndex,
+  globalCache?: NativeDelayGlobalCache,
 ): boolean => {
   const sourceModule =
     project && [...project.modulesByFilePath.values()].find((module) => module.scopes === scopes);
   if (project && !sourceModule) return false;
+  const resultsByScope =
+    project && globalCache?.project === project ? globalCache.resultsByScope : undefined;
+  const cached = resultsByScope?.get(scopes);
+  if (cached !== undefined) return cached;
   const isPrivatePrimitiveArrayRead = createPrivatePrimitiveArrayReadCertificate(scopes, project);
   let isClosed = true;
   let visitedNodes = 0;
@@ -305,6 +315,7 @@ export const hasClosedNativeDelayGlobals = (
     }
     return;
   });
+  resultsByScope?.set(scopes, isClosed);
   return isClosed;
 };
 
@@ -471,6 +482,7 @@ export const certifyNativeSignalDelay = (
   signal: EsTreeNode,
   context: RuleContext,
   project?: SourceProjectIndex,
+  globalCache?: NativeDelayGlobalCache,
 ): boolean => {
   if (call.optional || call.arguments.length !== NATIVE_DELAY_MAX_ARGUMENT_COUNT) return false;
   const producerSymbol = resolveConstIdentifierAlias(
@@ -556,6 +568,6 @@ export const certifyNativeSignalDelay = (
     Boolean(
       listenerStatement && isSignalListenerCall(listenerStatement, "addEventListener", bindings),
     ) &&
-    hasClosedNativeDelayGlobals(context.scopes, project)
+    hasClosedNativeDelayGlobals(context.scopes, project, globalCache)
   );
 };

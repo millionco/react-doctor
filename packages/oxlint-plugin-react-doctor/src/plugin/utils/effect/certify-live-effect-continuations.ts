@@ -28,6 +28,7 @@ import { certifyImperativeStateCall } from "./certify-imperative-state-call.js";
 import {
   certifyNativeSignalDelay,
   hasClosedNativeDelayGlobals,
+  type NativeDelayGlobalCache,
 } from "./certify-native-signal-delay.js";
 import {
   certifyOwnedNativeDomOperation,
@@ -65,6 +66,7 @@ interface ContinuationState {
 interface ContinuationCertificate {
   context: RuleContext;
   project: SourceProjectIndex;
+  certifyDelay: (call: EsTreeNodeOfType<"CallExpression">, signal: EsTreeNode) => boolean;
   effect: EsTreeNode;
   cleanupReturn: EsTreeNode;
   signals: Map<string, EsTreeNode>;
@@ -213,6 +215,7 @@ const collectOwnedEffectResources = (
   effect: EsTreeNode,
   context: RuleContext,
   resolveProject: () => SourceProjectIndex | null,
+  certifyDelay: ContinuationCertificate["certifyDelay"],
 ): OwnedEffectResources | null => {
   const signals = new Map<string, EsTreeNode>();
   if (!isFunctionLike(effect) || !isNodeOfType(effect.body, "BlockStatement")) return null;
@@ -346,7 +349,7 @@ const collectOwnedEffectResources = (
     if (!isNodeOfType(parent, "CallExpression")) return false;
     const project = resolveProject();
     if (!project) return false;
-    if (certifyNativeSignalDelay(parent, signalReference, context, project)) return true;
+    if (certifyDelay(parent, signalReference)) return true;
     const localFunction = resolveClosedLocalFunction(parent.callee, context);
     const parameterIndex = parent.arguments.findIndex((argument) => argument === signalRoot);
     if (!isFunctionLike(localFunction) || parameterIndex < 0) return false;
@@ -774,10 +777,7 @@ const evaluateExpression = (
         const signal = awaited.arguments.find((argument) =>
           resolveSignal(argument, state, certificate),
         );
-        if (
-          !signal ||
-          !certifyNativeSignalDelay(awaited, signal, certificate.context, certificate.project)
-        ) {
+        if (!signal || !certificate.certifyDelay(awaited, signal)) {
           allCertified = false;
           break;
         }
@@ -1173,30 +1173,18 @@ const evaluateStatements = (
   return states;
 };
 
-export const certifyLiveEffectContinuations = (
-  effect: EsTreeNode,
-  context: RuleContext,
-  effectCall: EsTreeNodeOfType<"CallExpression">,
-): boolean => {
-  const filename = context.filename;
-  if (
-    !filename ||
-    !path.isAbsolute(filename) ||
-    !isFunctionLike(effect) ||
-    !isNodeOfType(effect.body, "BlockStatement")
-  )
-    return false;
-  if (
-    ![...EFFECT_HOOK_NAMES].some((hookName) =>
-      isClosedReactHookCall(effectCall, hookName, context.scopes),
-    )
-  )
-    return false;
-  const program = context.scopes.rootScope.node;
-  if (!isNodeOfType(program, "Program")) return false;
+export const createLiveEffectContinuationCertifier = (context: RuleContext) => {
+  let hasClosedGlobals: boolean | undefined;
+  let globalCache: NativeDelayGlobalCache | undefined;
   let resolvedProject: SourceProjectIndex | null | undefined;
   const resolveProject = (): SourceProjectIndex | null => {
     if (resolvedProject !== undefined) return resolvedProject;
+    const filename = context.filename;
+    const program = context.scopes.rootScope.node;
+    if (!filename || !path.isAbsolute(filename) || !isNodeOfType(program, "Program")) {
+      resolvedProject = null;
+      return null;
+    }
     const rootDirectory = findNearestPackageDirectory(filename);
     resolvedProject = rootDirectory
       ? buildSourceProjectIndex({
@@ -1208,50 +1196,76 @@ export const certifyLiveEffectContinuations = (
       : null;
     if (resolvedProject && !hasModernSourceSchedulingRole(context, resolvedProject))
       resolvedProject = null;
+    if (resolvedProject) globalCache = { project: resolvedProject, resultsByScope: new WeakMap() };
     return resolvedProject;
   };
-  const resources = collectOwnedEffectResources(effect, context, resolveProject);
-  if (!resources || resources.signals.size === 0) return false;
-  const project = resolveProject();
-  if (
-    !project ||
-    [...project.modulesByFilePath.values()].some(
-      (module) => !hasClosedNativeDelayGlobals(module.scopes, project),
-    )
-  )
-    return false;
-  const certificate: ContinuationCertificate = {
-    context,
-    project,
-    effect,
-    cleanupReturn: effect.body.body.at(-1) ?? effect,
-    signals: resources.signals,
-    activeFunctions: new Set([effect]),
-    steps: 0,
-    failed: false,
-    sawBarrier: false,
-    sawWrite: false,
+  const certifyDelay: ContinuationCertificate["certifyDelay"] = (call, signal) => {
+    const project = resolveProject();
+    return Boolean(
+      project && certifyNativeSignalDelay(call, signal, context, project, globalCache),
+    );
   };
-  if (!resources.prefixGuardTests.every((test) => isClosedPrefixGuardExpression(test, certificate)))
-    return false;
-  const completions = evaluateStatements(
-    effect.body.body,
-    [
-      {
-        suspended: false,
-        asyncStarted: false,
-        live: false,
-        completion: "normal",
-        value: UNKNOWN_VALUE,
-        bindings: new Map(),
-      },
-    ],
-    certificate,
-  );
-  return (
-    !certificate.failed &&
-    certificate.sawBarrier &&
-    certificate.sawWrite &&
-    completions.every((state) => state.completion === "return")
-  );
+  return (effect: EsTreeNode, effectCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+    const filename = context.filename;
+    if (
+      !filename ||
+      !path.isAbsolute(filename) ||
+      !isFunctionLike(effect) ||
+      !isNodeOfType(effect.body, "BlockStatement")
+    )
+      return false;
+    if (
+      ![...EFFECT_HOOK_NAMES].some((hookName) =>
+        isClosedReactHookCall(effectCall, hookName, context.scopes),
+      )
+    )
+      return false;
+    const program = context.scopes.rootScope.node;
+    if (!isNodeOfType(program, "Program")) return false;
+    const resources = collectOwnedEffectResources(effect, context, resolveProject, certifyDelay);
+    if (!resources || resources.signals.size === 0) return false;
+    const project = resolveProject();
+    if (!project) return false;
+    hasClosedGlobals ??= [...project.modulesByFilePath.values()].every((module) =>
+      hasClosedNativeDelayGlobals(module.scopes, project, globalCache),
+    );
+    if (!hasClosedGlobals) return false;
+    const certificate: ContinuationCertificate = {
+      context,
+      project,
+      certifyDelay,
+      effect,
+      cleanupReturn: effect.body.body.at(-1) ?? effect,
+      signals: resources.signals,
+      activeFunctions: new Set([effect]),
+      steps: 0,
+      failed: false,
+      sawBarrier: false,
+      sawWrite: false,
+    };
+    if (
+      !resources.prefixGuardTests.every((test) => isClosedPrefixGuardExpression(test, certificate))
+    )
+      return false;
+    const completions = evaluateStatements(
+      effect.body.body,
+      [
+        {
+          suspended: false,
+          asyncStarted: false,
+          live: false,
+          completion: "normal",
+          value: UNKNOWN_VALUE,
+          bindings: new Map(),
+        },
+      ],
+      certificate,
+    );
+    return (
+      !certificate.failed &&
+      certificate.sawBarrier &&
+      certificate.sawWrite &&
+      completions.every((state) => state.completion === "return")
+    );
+  };
 };

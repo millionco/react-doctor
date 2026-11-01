@@ -260,7 +260,9 @@ const collectDirectlyInvokedFunctions = (
       functions.add(callback);
     }
   }
-  return [...functions];
+  return [...functions].filter(
+    (invokedFunction) => isFunctionLike(invokedFunction) && !invokedFunction.generator,
+  );
 };
 
 const collectTransitivelyInvokedFunctions = (

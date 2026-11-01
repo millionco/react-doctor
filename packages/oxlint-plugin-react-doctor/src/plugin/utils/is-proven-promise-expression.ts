@@ -2,10 +2,11 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
-import { hasPossibleStaticPropertyWrite } from "./has-static-property-write-before.js";
+import { hasPossibleStaticPropertyMutationOrEscape } from "./has-static-property-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
+import { isSymbolReadOnly } from "./is-symbol-read-only.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const PROMISE_FACTORY_METHOD_NAMES = new Set([
@@ -20,6 +21,7 @@ const PROMISE_DEFERRED_METHOD_NAMES = new Set(["catch", "finally", "then"]);
 
 interface ProvenPromiseExpressionOptions {
   allowAsyncFunctions?: boolean;
+  requireUnmodifiedGlobalPromise?: boolean;
 }
 
 export const isProvenPromiseExpression = (
@@ -41,7 +43,7 @@ export const isProvenPromiseExpression = (
     if (
       !functionSymbol ||
       functionVisitedSymbolIds.has(functionSymbol.id) ||
-      !functionSymbol.references.every((reference) => reference.flag === "read")
+      !isSymbolReadOnly(functionSymbol)
     ) {
       return false;
     }
@@ -59,12 +61,7 @@ export const isProvenPromiseExpression = (
   if (isNodeOfType(expression, "Identifier")) {
     const symbol = scopes.symbolFor(expression);
     const initializer = symbol ? getDirectConstInitializer(symbol) : null;
-    if (
-      !symbol ||
-      !initializer ||
-      visitedSymbolIds.has(symbol.id) ||
-      !symbol.references.every((reference) => reference.flag === "read")
-    ) {
+    if (!symbol || !initializer || visitedSymbolIds.has(symbol.id) || !isSymbolReadOnly(symbol)) {
       return false;
     }
     const nextVisitedSymbolIds = new Set(visitedSymbolIds);
@@ -76,7 +73,9 @@ export const isProvenPromiseExpression = (
     return (
       isNodeOfType(callee, "Identifier") &&
       callee.name === "Promise" &&
-      scopes.isGlobalReference(callee)
+      scopes.isGlobalReference(callee) &&
+      (!options.requireUnmodifiedGlobalPromise ||
+        isProvenUnmodifiedGlobalNamespaceReference(callee, "Promise", scopes, undefined, true))
     );
   }
   if (!isNodeOfType(expression, "CallExpression")) return false;
@@ -90,7 +89,11 @@ export const isProvenPromiseExpression = (
   const calleeObject = stripParenExpression(callee.object);
   const methodName = getStaticPropertyName(callee);
   if (PROMISE_DEFERRED_METHOD_NAMES.has(methodName ?? "")) {
-    if (methodName && hasPossibleStaticPropertyWrite(calleeObject, methodName, scopes)) {
+    if (
+      methodName &&
+      (hasPossibleStaticPropertyMutationOrEscape(calleeObject, methodName, scopes) ||
+        hasPossibleStaticPropertyMutationOrEscape(calleeObject, "constructor", scopes))
+    ) {
       return false;
     }
     return isProvenPromiseExpression(callee.object, scopes, options, visitedSymbolIds);
@@ -104,7 +107,8 @@ export const isProvenPromiseExpression = (
       calleeObject,
       "Promise",
       scopes,
-      methodName ?? undefined,
+      options.requireUnmodifiedGlobalPromise ? undefined : (methodName ?? undefined),
+      options.requireUnmodifiedGlobalPromise,
     ),
   );
 };

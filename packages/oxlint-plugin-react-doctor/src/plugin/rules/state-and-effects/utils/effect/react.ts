@@ -1,4 +1,4 @@
-import type { Reference } from "eslint-scope";
+import type { Reference, Scope } from "eslint-scope";
 import type { ScopeAnalysis } from "../../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { findTransparentExpressionRoot } from "../../../../utils/find-transparent-expression-root.js";
@@ -10,6 +10,7 @@ import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
 import { isNoOpFunction } from "../../../../utils/is-no-op-function.js";
+import type { NoOpExpressionOptions } from "../../../../utils/is-no-op-expression.js";
 import { resolveFirstArgumentBinding } from "../../../../utils/resolve-first-argument-binding.js";
 import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -788,7 +789,35 @@ export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTr
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
-  if (isFunctionLike(node)) return !isNoOpFunction(node);
+  const noOpOptions: NoOpExpressionOptions = {
+    isNoOpIdentifier: (identifier) => {
+      const reference = getRef(analysis, identifier);
+      if (!reference || reference.tainted) return false;
+      for (let scope: Scope | null = reference.from; scope; scope = scope.upper) {
+        if (scope.type === "with") return false;
+      }
+      if (!reference.resolved) return identifier.name === "undefined";
+      return (
+        reference.resolved.scope.type !== "global" &&
+        reference.resolved.defs.some((definition) => {
+          if (!isAstNode(definition.node)) return false;
+          let declaration: EsTreeNode | null | undefined = definition.node;
+          while (declaration && !isNodeOfType(declaration, "Program")) {
+            if ("declare" in declaration && declaration.declare) return false;
+            if (
+              (isNodeOfType(declaration, "ImportDeclaration") ||
+                isNodeOfType(declaration, "ImportSpecifier")) &&
+              declaration.importKind === "type"
+            )
+              return false;
+            declaration = declaration.parent;
+          }
+          return true;
+        })
+      );
+    },
+  };
+  if (isFunctionLike(node)) return !isNoOpFunction(node, noOpOptions);
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
     const ref = getRef(analysis, node);
@@ -805,7 +834,7 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
     ) {
       return true;
     }
-    return !isNoOpFunction(resolvedFunction);
+    return !isNoOpFunction(resolvedFunction, noOpOptions);
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     const branches = [node.consequent as EsTreeNode, node.alternate as EsTreeNode];

@@ -25,9 +25,9 @@ const NO_OP_CLEANUPS = [
   ["an arrow returning void 0", "return () => void 0;"],
   ["a binding to an empty arrow", "const noop = () => {};\nreturn noop;"],
   ["an empty arrow behind a conditional", "return isEnabled ? () => {} : undefined;"],
-  ["an arrow that only reads a binding", "return () => { isEnabled; };"],
-  ["an arrow returning a binding", "return () => isEnabled;"],
-  ["an arrow returning void of a binding", "return () => void isEnabled;"],
+  ["an arrow that only reads a binding", "const isEnabled = true; return () => { isEnabled; };"],
+  ["an arrow returning a binding", "const isEnabled = true; return () => isEnabled;"],
+  ["an arrow returning void of a binding", "const isEnabled = true; return () => void isEnabled;"],
 ];
 
 const CLEANUP_EXEMPT_RULE_CASES: Record<string, CleanupExemptRuleCase> = {
@@ -100,6 +100,30 @@ describe.each(Object.entries(CLEANUP_EXEMPT_RULE_CASES))(
       const result = runRule(rule, buildCode(cleanup), { forceJsx: true });
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it.each([
+      "return () => { cleanupSignal; };",
+      "return () => cleanupSignal;",
+      "return () => void cleanupSignal;",
+    ])("retains a cleanup that reads a global accessor: %s", (cleanup) => {
+      const source = `Object.defineProperty(globalThis, "cleanupSignal", {
+        get() { connection.close(); }
+      });\n${buildCode(cleanup)}`;
+      const result = runRule(rule, source, { forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      "declare const cleanupSignal: unknown;",
+      'import type { cleanupSignal } from "cleanup-types";',
+    ])("does not treat an erased binding as a local cleanup read: %s", (declaration) => {
+      const result = runRule(rule, `${declaration}\n${buildCode("return () => cleanupSignal;")}`, {
+        forceJsx: true,
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
     });
 
     it.each([

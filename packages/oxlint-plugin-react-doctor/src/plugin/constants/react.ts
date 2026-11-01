@@ -442,3 +442,9 @@ export const STANDARD_REACT_JSX_MODES: ReadonlySet<string> = new Set([
   "react-jsxdev",
   "preserve",
 ]);
+
+export const FOCUS_EFFECT_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "expo-router",
+  "@react-navigation/native",
+  "@react-navigation/core",
+]);

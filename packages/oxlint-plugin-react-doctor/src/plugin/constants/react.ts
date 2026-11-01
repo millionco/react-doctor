@@ -422,3 +422,9 @@ export const CONSTRUCTOR_PROP_CALLBACK_RUNTIME_TYPESCRIPT_TYPES: ReadonlySet<str
   "TSImportEqualsDeclaration",
   "TSExportAssignment",
 ]);
+
+export const FOCUS_EFFECT_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "expo-router",
+  "@react-navigation/native",
+  "@react-navigation/core",
+]);

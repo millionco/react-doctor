@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceProjectModule } from "../build-source-project-index.js";
 import type { ClosedJsonSnapshotSourceResolutionPolicy } from "./interfaces.js";
-import { normalizeFilename } from "../normalize-filename.js";
 import { SNAPSHOT_CONFIG_MAX_BYTES } from "./constants.js";
+import { normalizeFilename } from "../normalize-filename.js";
 
 export interface ResolveClosedJsonSnapshotWebpackSourceInput {
   readonly fromFilePath: string;
@@ -19,6 +19,7 @@ export const resolveClosedJsonSnapshotWebpackSource = ({
   resolutionPolicy,
 }: ResolveClosedJsonSnapshotWebpackSourceInput): string | null => {
   if (/[!?\\]/.test(source) || source.endsWith("/") || path.isAbsolute(source)) return null;
+  const rootDirectory = path.resolve(resolutionPolicy.rootDirectory);
   const alias = resolutionPolicy.aliases.find(
     (candidate) =>
       source === candidate.name || (!candidate.exact && source.startsWith(`${candidate.name}/`)),
@@ -29,12 +30,11 @@ export const resolveClosedJsonSnapshotWebpackSource = ({
   else if (source.startsWith("./") || source.startsWith("../"))
     requested = path.resolve(path.dirname(fromFilePath), source);
   else return null;
-  const relative = path.relative(resolutionPolicy.rootDirectory, requested);
+  const relative = path.relative(rootDirectory, requested);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
     return null;
   try {
-    let directory =
-      requested === resolutionPolicy.rootDirectory ? requested : path.dirname(requested);
+    let directory = requested === rootDirectory ? requested : path.dirname(requested);
     while (true) {
       const manifestPath = path.join(directory, "package.json");
       if (fs.existsSync(manifestPath)) {
@@ -48,31 +48,33 @@ export const resolveClosedJsonSnapshotWebpackSource = ({
         )
           return null;
       }
-      if (directory === resolutionPolicy.rootDirectory) break;
+      if (directory === rootDirectory) break;
       const parent = path.dirname(directory);
       if (parent === directory) return null;
       directory = parent;
     }
-    if (fs.statSync(requested, { throwIfNoEntry: false })?.isFile())
-      return modules.has(normalizeFilename(requested)) ? normalizeFilename(requested) : null;
+    if (fs.statSync(requested, { throwIfNoEntry: false })?.isFile()) {
+      const normalizedRequestedPath = normalizeFilename(requested);
+      return modules.has(normalizedRequestedPath) ? normalizedRequestedPath : null;
+    }
     const candidates = resolutionPolicy.extensions
       .map((extension) => `${requested}${extension}`)
       .filter(
         (filename) =>
           modules.has(normalizeFilename(filename)) ||
-          (filename.startsWith(`${resolutionPolicy.rootDirectory}${path.sep}`) &&
+          (filename.startsWith(`${rootDirectory}${path.sep}`) &&
             fs.statSync(filename, { throwIfNoEntry: false })?.isFile()),
-      );
+      )
+      .map(normalizeFilename);
     if (candidates.length > 0)
-      return candidates.length === 1 && modules.has(normalizeFilename(candidates[0]))
-        ? normalizeFilename(candidates[0])
-        : null;
+      return candidates.length === 1 && modules.has(candidates[0]) ? candidates[0] : null;
     if (fs.existsSync(path.join(requested, "package.json"))) return null;
     const indexCandidates = resolutionPolicy.extensions
       .map((extension) => path.join(requested, `index${extension}`))
-      .filter((filename) => fs.statSync(filename, { throwIfNoEntry: false })?.isFile());
-    return indexCandidates.length === 1 && modules.has(normalizeFilename(indexCandidates[0]))
-      ? normalizeFilename(indexCandidates[0])
+      .filter((filename) => fs.statSync(filename, { throwIfNoEntry: false })?.isFile())
+      .map(normalizeFilename);
+    return indexCandidates.length === 1 && modules.has(indexCandidates[0])
+      ? indexCandidates[0]
       : null;
   } catch {
     return null;

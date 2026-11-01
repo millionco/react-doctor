@@ -14,6 +14,7 @@ import { parseSourceText } from "../../oxlint-plugin-react-doctor/src/plugin/uti
 import type { RuleContext } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule-context.js";
 import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
 import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
+import { normalizeFilename } from "../../oxlint-plugin-react-doctor/src/plugin/utils/normalize-filename.js";
 import { noArrayIndexAsKey } from "../../oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-array-index-as-key.js";
 
 interface SnapshotFixtureMutation {
@@ -127,12 +128,17 @@ const runSnapshotLeaf = () => {
   return result.diagnostics;
 };
 
-const runNativeSnapshotLeaf = async (cacheEnabled = false, hasPreparedHtml = false) => {
+const runNativeSnapshotLeaf = async (
+  cacheEnabled = false,
+  hasPreparedHtml = false,
+  includePaths?: string[],
+) => {
   const partialFailures: string[] = [];
   let didReportCacheStats = false;
   const diagnostics = await runOxlint({
     rootDirectory: temporaryDirectory,
     project: discoverProject(temporaryDirectory),
+    includePaths,
     customRulesOnly: true,
     userConfig: { rules: { "react-doctor/no-array-index-as-key": "warn" } },
     perFileLintCacheEnabled: cacheEnabled,
@@ -397,6 +403,18 @@ const SNAPSHOT_REFUSALS: ReadonlyArray<SnapshotFixtureMutation> = [
     filename: "package.json",
     before: '"private":true',
     after: '"private":true,"exports":"./src/leaf.js"',
+  },
+  {
+    name: "a package export with different source casing",
+    filename: "package.json",
+    before: '"private":true',
+    after: '"private":true,"exports":"./src/LEAF.js"',
+  },
+  {
+    name: "a package wildcard export with different source casing",
+    filename: "package.json",
+    before: '"private":true',
+    after: '"private":true,"exports":{"./*":"./SRC/*.JS"}',
   },
   {
     name: "a window alias JSON decoder mutation",
@@ -901,6 +919,29 @@ describe("closed imported JSON snapshot ordinal keys", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
     expect(fs.readFileSync(filename, "utf8")).toBe(diskSource);
+  });
+
+  it("certifies native and canonical host filenames without hiding authoritative pragmas", () => {
+    const filename = path.join(temporaryDirectory, "src/leaf.js");
+    const sourceText = fs.readFileSync(filename, "utf8");
+    for (const hostFilename of [filename, normalizeFilename(filename)]) {
+      const snapshotResult = runRule(noArrayIndexAsKey, sourceText, {
+        filename: hostFilename,
+        forceJsx: true,
+      });
+      expect(snapshotResult.parseErrors).toEqual([]);
+      expect(snapshotResult.diagnostics).toEqual([]);
+      const customPragmaResult = runRule(
+        noArrayIndexAsKey,
+        `/** @jsx customFactory */\n${sourceText}`,
+        {
+          filename: hostFilename,
+          forceJsx: true,
+        },
+      );
+      expect(customPragmaResult.parseErrors).toEqual([]);
+      expect(customPragmaResult.diagnostics).toHaveLength(1);
+    }
   });
 
   it("certifies the same complete topology in the actual engine", async () => {
@@ -1481,13 +1522,15 @@ describe("closed imported JSON snapshot ordinal keys", () => {
   });
 
   it("bypasses both lint cache layers after a new incoming consumer", async () => {
-    expect(await runNativeSnapshotLeaf(true)).toEqual([]);
-    expect(await runNativeSnapshotLeaf(true)).toEqual([]);
+    writeSnapshotFile("src/cache-control.js", "export const stable = true;");
+    const includePaths = ["src/leaf.js", "src/cache-control.js"];
+    expect(await runNativeSnapshotLeaf(true, false, includePaths)).toEqual([]);
+    expect(await runNativeSnapshotLeaf(true, false, includePaths)).toEqual([]);
     expect(lastNativeCacheHitCount).toBeGreaterThan(0);
     writeSnapshotFile(
       "src/other.js",
       'import React from "react"; import Leaf from "./leaf"; export const Other = props => <Leaf {...props} />;',
     );
-    expect(await runNativeSnapshotLeaf(true)).toHaveLength(1);
+    expect(await runNativeSnapshotLeaf(true, false, includePaths)).toHaveLength(1);
   });
 });

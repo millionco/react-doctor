@@ -12,9 +12,9 @@ import {
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import type { SourceProjectIndex, SourceProjectModule } from "./build-source-project-index.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { normalizeFilename } from "./normalize-filename.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { parseSourceText } from "./parse-source-file.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import type { ClosedJsonSnapshotSourceResolutionPolicy } from "./closed-json-snapshot-config/interfaces.js";
 import { resolveClosedJsonSnapshotWebpackSource } from "./closed-json-snapshot-config/resolve-closed-json-snapshot-webpack-source.js";
 
@@ -56,6 +56,9 @@ export const getClosedJsonSnapshotProject = ({
   knownPublicEntryTargets = [],
 }: ClosedJsonSnapshotProjectInput): ClosedJsonSnapshotProject | null => {
   const absoluteRootDirectory = path.resolve(rootDirectory);
+  const normalizedCurrentFilePath = currentFilePath
+    ? normalizeFilename(path.resolve(currentFilePath))
+    : "";
   if (path.resolve(sourceResolutionPolicy.rootDirectory) !== absoluteRootDirectory) return null;
   const programNode =
     currentProgramNode ??
@@ -80,7 +83,7 @@ export const getClosedJsonSnapshotProject = ({
   try {
     index = buildSourceProjectIndex({
       rootDirectory: absoluteRootDirectory,
-      currentFilePath: currentFilePath ? normalizeFilename(path.resolve(currentFilePath)) : "",
+      currentFilePath: normalizedCurrentFilePath,
       currentProgramNode: programNode,
       currentScopes: currentScopes ?? analyzeScopes(programNode),
       currentSourceText,
@@ -104,8 +107,7 @@ export const getClosedJsonSnapshotProject = ({
       normalizeFilename(path.resolve(filename)),
     ),
   );
-  if (currentFilePath && excludedConfigPaths.has(normalizeFilename(path.resolve(currentFilePath))))
-    return null;
+  if (normalizedCurrentFilePath && excludedConfigPaths.has(normalizedCurrentFilePath)) return null;
   const unresolvedRuntimeSourcesByFilePath = new Map(
     [...index.unresolvedRuntimeSourcesByFilePath].filter(
       ([filename]) => !excludedConfigPaths.has(filename),
@@ -166,7 +168,7 @@ export const getClosedJsonSnapshotProject = ({
   }
   const resolveImport = (fromFilePath: string, source: string): ClosedJsonSnapshotModule | null => {
     const resolvedPath = resolveSource(fromFilePath, source, index.modulesByFilePath);
-    return resolvedPath ? (modules.get(normalizeFilename(resolvedPath)) ?? null) : null;
+    return resolvedPath ? (modules.get(resolvedPath) ?? null) : null;
   };
   return {
     rootDirectory: absoluteRootDirectory,

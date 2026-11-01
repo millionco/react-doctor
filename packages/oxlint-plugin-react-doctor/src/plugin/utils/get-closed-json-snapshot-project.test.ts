@@ -6,8 +6,9 @@ import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project
 import type { ClosedJsonSnapshotProjectInput } from "./get-closed-json-snapshot-project.js";
 import type { ClosedJsonSnapshotSourceResolutionPolicy } from "./closed-json-snapshot-config/interfaces.js";
 import { parseSourceText } from "./parse-source-file.js";
-import { CLOSED_JSON_SNAPSHOT_PROJECT_MAX_FILES } from "./closed-json-snapshot/constants.js";
 import { normalizeFilename } from "./normalize-filename.js";
+import { isClosedJsonSnapshotPublicEntry } from "./is-closed-json-snapshot-public-entry.js";
+import { CLOSED_JSON_SNAPSHOT_PROJECT_MAX_FILES } from "./closed-json-snapshot/constants.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 
 const temporaryDirectories: string[] = [];
@@ -117,10 +118,9 @@ describe("getClosedJsonSnapshotProject", () => {
       allowJsxInJs: true,
       sourceResolutionPolicy,
     });
-    expect([...(project?.modules.keys() ?? [])]).toEqual([
-      normalizeFilename(currentFilePath),
-      normalizeFilename(path.join(rootDirectory, "unmounted-writer.js")),
-    ]);
+    expect([...(project?.modules.keys() ?? [])]).toEqual(
+      [currentFilePath, path.join(rootDirectory, "unmounted-writer.js")].map(normalizeFilename),
+    );
     expect(project?.sourceResolutionPolicy).toBe(sourceResolutionPolicy);
     expect(project?.index.htmlFilePaths).toEqual([]);
     expect(project?.index.unresolvedRuntimeSources.size).toBe(0);
@@ -134,20 +134,24 @@ describe("getClosedJsonSnapshotProject", () => {
     const currentProgramNode = parseSourceText({ filename: currentFilePath, sourceText });
     if (!currentProgramNode) throw new Error("Expected an engine program");
     const currentScopes = analyzeScopes(currentProgramNode);
-    const project = readSourceProject({
-      rootDirectory,
-      allowJsxInJs: true,
-      currentFilePath,
-      currentProgramNode,
-      currentScopes,
-      currentSourceText: sourceText,
-      sourceResolutionPolicy: { rootDirectory, extensions: [".js"], aliases: [] },
-    });
-    expect(project?.modules.get(normalizeFilename(currentFilePath))?.program).toBe(
-      currentProgramNode,
-    );
-    expect(project?.modules.get(normalizeFilename(currentFilePath))?.scopes).toBe(currentScopes);
-    expect(project?.modules.get(normalizeFilename(currentFilePath))?.sourceText).toBe(sourceText);
+    const normalizedCurrentFilePath = normalizeFilename(currentFilePath);
+    for (const engineFilePath of [currentFilePath, normalizedCurrentFilePath]) {
+      const project = readSourceProject({
+        rootDirectory,
+        allowJsxInJs: true,
+        currentFilePath: engineFilePath,
+        currentProgramNode,
+        currentScopes,
+        currentSourceText: sourceText,
+        sourceResolutionPolicy: { rootDirectory, extensions: [".js"], aliases: [] },
+      });
+      expect(project?.modules.get(normalizedCurrentFilePath)?.filePath).toBe(
+        normalizedCurrentFilePath,
+      );
+      expect(project?.modules.get(normalizedCurrentFilePath)?.program).toBe(currentProgramNode);
+      expect(project?.modules.get(normalizedCurrentFilePath)?.scopes).toBe(currentScopes);
+      expect(project?.modules.get(normalizedCurrentFilePath)?.sourceText).toBe(sourceText);
+    }
   });
 
   it("keeps ordinary asset imports outside the JavaScript source projection", () => {
@@ -252,6 +256,42 @@ describe("getClosedJsonSnapshotProject", () => {
       readSourceProject({ rootDirectory, allowJsxInJs: true, sourceResolutionPolicy }),
     ).toBeNull();
   });
+
+  it.each([
+    { entry: "./src/LEAF.js", relativeFilePath: "src/leaf.js", isPublic: true },
+    { entry: "./src/LEAF", relativeFilePath: "src/leaf.js", isPublic: true },
+    { entry: "./SRC", relativeFilePath: "src/index.js", isPublic: true },
+    { entry: "./SRC/*.JS", relativeFilePath: "src/leaf.js", isPublic: true },
+    { entry: "./src/LEAF", relativeFilePath: "src/leaf.web.js", isPublic: true },
+    { entry: "./SRC/LEAF", relativeFilePath: "src/leaf/index.web.js", isPublic: true },
+    { entry: "./SRC/LEAF.WEB.JS", relativeFilePath: "src/leaf.web.js", isPublic: true },
+    { entry: "./src/OTHER.js", relativeFilePath: "src/leaf.js", isPublic: false },
+    { entry: "./src/OTHER", relativeFilePath: "src/leaf.web.js", isPublic: false },
+    { entry: "./SRC/OTHER", relativeFilePath: "src/leaf/index.web.js", isPublic: false },
+    { entry: "./OTHER/*.JS", relativeFilePath: "src/leaf.js", isPublic: false },
+  ])(
+    "classifies public entry $entry for $relativeFilePath",
+    ({ entry, relativeFilePath, isPublic }) => {
+      const rootDirectory = createProjectDirectory();
+      const filename = path.join(rootDirectory, relativeFilePath);
+      fs.mkdirSync(path.dirname(filename), { recursive: true });
+      fs.writeFileSync(filename, "export default () => null;");
+      const project = readSourceProject({
+        rootDirectory,
+        allowJsxInJs: true,
+        knownPublicEntryTargets: [entry],
+        sourceResolutionPolicy: { rootDirectory, extensions: [".web.js", ".js"], aliases: [] },
+      });
+      expect(project).not.toBeNull();
+      if (!project) throw new Error("Expected a source project");
+      const module = project.modules.get(normalizeFilename(filename));
+      expect(module).toBeDefined();
+      if (!module) throw new Error("Expected an indexed module");
+      expect(isClosedJsonSnapshotPublicEntry({ project, filePath: module.filePath })).toBe(
+        isPublic,
+      );
+    },
+  );
 
   it("declines source policies for another package root", () => {
     const rootDirectory = createProjectDirectory();

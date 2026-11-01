@@ -2,11 +2,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { normalizeFilename } from "./normalize-filename.js";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 import { isClosedJsonSnapshotLocaleCarrier } from "./is-closed-json-snapshot-locale-carrier.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import { normalizeFilename } from "./normalize-filename.js";
 import { walkAst } from "./walk-ast.js";
 import {
   CLOSED_JSON_SNAPSHOT_LOCALE_MAX_NODES,

@@ -18,8 +18,7 @@ const REQUEST_MAP_CONTEXT_CASES = [
       {
         column: 12,
         line: 15,
-        message:
-          "Updating state in an effect after a prop changes can trigger another render and show stale values.",
+        message: "Adjusting state in an effect after a prop changes costs an extra render.",
         nodeType: "CallExpression",
       },
     ],
@@ -32,8 +31,7 @@ const REQUEST_MAP_CONTEXT_CASES = [
       {
         column: 12,
         line: 18,
-        message:
-          "Updating state in an effect after a prop changes can trigger another render and show stale values.",
+        message: "Adjusting state in an effect after a prop changes costs an extra render.",
         nodeType: "CallExpression",
       },
     ],

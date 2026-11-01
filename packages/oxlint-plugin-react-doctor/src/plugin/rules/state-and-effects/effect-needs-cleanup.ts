@@ -1,3 +1,4 @@
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { hasGlobalIdentifierWriteBefore } from "../../utils/has-global-identifier-write-before.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasRuntimeValueBinding } from "../../utils/has-runtime-value-binding.js";

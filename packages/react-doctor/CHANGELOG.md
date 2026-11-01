@@ -1,5 +1,12 @@
 # react-doctor
 
+## 0.9.21
+
+### Patch Changes
+
+- Updated dependencies [[`5a2c6f5`](https://github.com/millionco/react-doctor/commit/5a2c6f541f9ee031e99fc1704637265d4367b55b), [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823)]:
+  - oxlint-plugin-react-doctor@0.9.21
+
 ## 0.9.20
 
 ### Patch Changes

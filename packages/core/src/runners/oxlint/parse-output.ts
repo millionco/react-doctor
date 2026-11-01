@@ -28,6 +28,7 @@ import { createDiagnosticContextReader } from "../../utils/create-diagnostic-con
 import { mapPreparedSourceLabels } from "../../utils/map-prepared-source-labels.js";
 import type { PreparedSourceMap } from "../../utils/prepare-lint-sources.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
+import { bridgeReactCompilerDiagnostic } from "./bridge-react-compiler-diagnostic.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
 import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
@@ -447,8 +448,9 @@ export const parseOxlintOutput = (
   };
 
   const readContextRanges = createDiagnosticContextReader(diagnosticContextDirectory);
-  const sourceMappedDiagnostics = parsed.diagnostics.flatMap((rawDiagnostic) => {
-    if (!isMappableOxlintDiagnostic(rawDiagnostic)) return [];
+  const sourceMappedDiagnostics = parsed.diagnostics.flatMap((unbridgedDiagnostic) => {
+    if (!isMappableOxlintDiagnostic(unbridgedDiagnostic)) return [];
+    const rawDiagnostic = bridgeReactCompilerDiagnostic(unbridgedDiagnostic);
     const { plugin, rule } = parseRuleCode(rawDiagnostic.code);
     const primarySpan = rawDiagnostic.labels[0]?.span;
     const contextRanges =

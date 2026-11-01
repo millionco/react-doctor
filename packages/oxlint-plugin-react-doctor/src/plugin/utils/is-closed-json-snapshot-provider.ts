@@ -1451,22 +1451,69 @@ export const isClosedJsonSnapshotProvider = ({
   const resolveSymbol = module.scopes.symbolFor(resolveParameter);
   if (!resolveSymbol || getActiveSnapshotReferences(resolveSymbol).length !== 1) return false;
   const executorBody = getClosedJsonSnapshotProviderBody(executor.body, "ExpressionStatement");
+  const getSettlement = (branch: EsTreeNode | null | undefined): EsTreeNode | null => {
+    const settlement =
+      branch?.type === "BlockStatement"
+        ? branch.body.length === 1
+          ? branch.body[0]
+          : null
+        : branch;
+    if (settlement?.type === "ExpressionStatement") return settlement.expression;
+    if (settlement?.type === "ReturnStatement") return settlement.argument;
+    return null;
+  };
   let chain = executorBody?.terminal ?? null;
   let rejectionHandler: EsTreeNode | null = null;
+  let inlineRejectSymbol: SymbolDescriptor | null = null;
   if (
     chain?.type === "CallExpression" &&
     chain.callee.type === "MemberExpression" &&
     getStaticPropertyName(chain.callee) === "catch"
   ) {
     const catchArgument = chain.arguments[0];
-    if (
-      chain.arguments.length !== 1 ||
-      rejectParameter?.type !== "Identifier" ||
-      catchArgument?.type !== "Identifier" ||
-      module.scopes.symbolFor(catchArgument) !== module.scopes.symbolFor(rejectParameter)
-    )
-      return false;
-    rejectionHandler = catchArgument;
+    if (chain.arguments.length !== 1 || rejectParameter?.type !== "Identifier") return false;
+    const rejectSymbol = module.scopes.symbolFor(rejectParameter);
+    if (catchArgument?.type === "Identifier") {
+      if (module.scopes.symbolFor(catchArgument) !== rejectSymbol) return false;
+      rejectionHandler = catchArgument;
+    } else {
+      if (
+        catchArgument?.type !== "ArrowFunctionExpression" ||
+        catchArgument.async ||
+        catchArgument.params.length !== 1 ||
+        catchArgument.params[0]?.type !== "Identifier" ||
+        !rejectSymbol ||
+        rejectSymbol === resolveSymbol
+      )
+        return false;
+      const errorSymbol = module.scopes.symbolFor(catchArgument.params[0]);
+      const forwarding =
+        catchArgument.body.type === "BlockStatement"
+          ? getSettlement(catchArgument.body)
+          : catchArgument.body;
+      if (
+        !errorSymbol ||
+        forwarding?.type !== "CallExpression" ||
+        forwarding.optional ||
+        forwarding.callee.type !== "Identifier" ||
+        module.scopes.symbolFor(forwarding.callee) !== rejectSymbol ||
+        forwarding.arguments.length !== 1
+      )
+        return false;
+      const error = forwarding.arguments[0];
+      const errorReferences = getActiveSnapshotReferences(errorSymbol);
+      if (
+        error?.type !== "Identifier" ||
+        module.scopes.symbolFor(error) !== errorSymbol ||
+        errorReferences.length !== 1 ||
+        errorReferences.some(
+          (reference) => reference.flag !== "read" || reference.identifier !== error,
+        )
+      )
+        return false;
+      rejectionHandler = forwarding.callee;
+      inlineRejectSymbol = rejectSymbol;
+    }
     chain = chain.callee.object;
   }
   if (
@@ -1554,17 +1601,6 @@ export const isClosedJsonSnapshotProvider = ({
           ? condition.right
           : null;
     if (status?.type !== "MemberExpression") return false;
-    const getSettlement = (branch: EsTreeNode | null | undefined): EsTreeNode | null => {
-      const settlement =
-        branch?.type === "BlockStatement"
-          ? branch.body.length === 1
-            ? branch.body[0]
-            : null
-          : branch;
-      if (settlement?.type === "ExpressionStatement") return settlement.expression;
-      if (settlement?.type === "ReturnStatement") return settlement.argument;
-      return null;
-    };
     const resolution = getSettlement(statement.consequent);
     const rejection = getSettlement(statement.alternate);
     if (
@@ -1608,5 +1644,11 @@ export const isClosedJsonSnapshotProvider = ({
     if (statement?.type === "ExpressionStatement") resolution = statement.expression;
     if (statement?.type === "ReturnStatement") resolution = statement.argument;
   }
-  return isResolution(resolution);
+  return (
+    isResolution(resolution) &&
+    (!inlineRejectSymbol ||
+      getActiveSnapshotReferences(inlineRejectSymbol).every(
+        (reference) => reference.flag === "read" && reference.identifier === rejectionHandler,
+      ))
+  );
 };

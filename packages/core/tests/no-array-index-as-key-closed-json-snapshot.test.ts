@@ -671,6 +671,67 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 
 describe("closed imported JSON snapshot ordinal keys", () => {
   it.each([
+    "error => reject(error)",
+    "error => { reject(error); }",
+    "error => { return reject(error); }",
+    "response => reject(response)",
+  ])("certifies exact inline rejection forwarding through the ordinal rule: %s", (handler) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => {
+      const requestOptions = { url: '/catalog', responseType: 'json' };
+      return new Promise((resolve, reject) => {
+        axios(requestOptions).then(response => { if (200 === response.status) resolve(response.data); else reject(response.status); }).catch(${handler});
+      });
+    };`,
+    );
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it("retains the private-argument boundary with inline rejection forwarding", () => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options, responseType: 'json' };
+      return new Promise((complete, fail) => {
+        axios(requestOptions).then(reply => complete(reply.data)).catch(problem => fail(problem));
+      });
+    };`,
+    );
+    replaceSnapshotSource({
+      name: "inline rejection caller",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ url: '/catalog' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({ ...SNAPSHOT_MANIFEST, main: "src/request.js" }),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "error => reject(other)",
+    "reject => reject(reject)",
+    "error => resolve(error)",
+    "error => reject(error.message)",
+    "async error => reject(error)",
+    "error => { const unused = null; reject(error); }",
+    "error => { console.log(error); reject(error); }",
+    "error => { ; reject(error); }",
+  ])("retains ordinal warnings for unproved inline rejection handling: %s", (handler) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(${handler});
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
     ["null", 0],
     ["/(?i:a)/", 1],
     ["1n", 1],

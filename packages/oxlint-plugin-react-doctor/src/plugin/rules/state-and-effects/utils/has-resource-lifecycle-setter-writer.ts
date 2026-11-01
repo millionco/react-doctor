@@ -1,6 +1,9 @@
 import type { Reference } from "eslint-scope";
+import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../../constants/dom-property-tags.js";
+import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
@@ -17,6 +20,7 @@ import { walkAst } from "../../../utils/walk-ast.js";
 import { getCallExpr, getRef, getUpstreamRefs } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { hasDeferredOrExternalEffectWork } from "./has-deferred-or-external-effect-work.js";
+import { isMediaElementRefReceiver } from "./is-media-element-ref-receiver.js";
 import {
   isSetterWiredToJsxHandler,
   referencesIdentifierNamed,
@@ -171,6 +175,7 @@ const isWrittenByResourceSyncEffect = (
   context: RuleContext,
   setterReference: Reference,
   componentFunction: EsTreeNode,
+  mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
 ): boolean => {
   const identifier = setterReference.identifier as unknown as EsTreeNode;
   let cursor: EsTreeNode | null | undefined = identifier;
@@ -180,7 +185,7 @@ const isWrittenByResourceSyncEffect = (
       isFunctionLike(cursor) &&
       isNodeOfType(cursor.parent, "CallExpression") &&
       cursor.parent.arguments?.[0] === cursor &&
-      isReactHookCall(cursor.parent, "useEffect", context.scopes)
+      isReactHookCall(cursor.parent, EFFECT_HOOK_NAMES, context.scopes)
     ) {
       effectCall = cursor.parent;
       break;
@@ -194,9 +199,11 @@ const isWrittenByResourceSyncEffect = (
   }
   const effectFunction = effectCall.arguments?.[0];
   if (!effectFunction || !isFunctionLike(effectFunction)) return false;
+  const invokedFunctions = collectEffectInvokedFunctions(effectFunction, context.scopes);
   let didFindResourceSync = false;
   walkAst(effectFunction.body, (child) => {
     if (didFindResourceSync) return false;
+    if (isFunctionLike(child) && !invokedFunctions.has(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
@@ -204,7 +211,8 @@ const isWrittenByResourceSyncEffect = (
     if (
       methodName &&
       RESOURCE_SYNC_METHOD_NAMES.has(methodName) &&
-      isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes)
+      (isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes) ||
+        isMediaElementRefReceiver(callee.object, context.scopes, mediaReceiverCache))
     ) {
       didFindResourceSync = true;
       return false;
@@ -250,6 +258,7 @@ export const hasResourceLifecycleSetterWriter = (
   effectNode: EsTreeNode,
   dependencyReferences: readonly Reference[],
   matchesStateInitializer: boolean,
+  mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
 ): boolean => {
   if (!setterReference.resolved) return false;
   const componentFunction = findEnclosingFunction(effectNode);
@@ -333,7 +342,13 @@ export const hasResourceLifecycleSetterWriter = (
     }
     if (
       hasMatchingResourceIdentity &&
-      isWrittenByResourceSyncEffect(analysis, context, reference, componentFunction)
+      isWrittenByResourceSyncEffect(
+        analysis,
+        context,
+        reference,
+        componentFunction,
+        mediaReceiverCache,
+      )
     ) {
       return true;
     }

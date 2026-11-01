@@ -147,6 +147,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "effect-listener-cleanup-reference-mismatch",
       "effect-needs-cleanup",
       "exhaustive-deps",
+      "forwarded-set-state-in-effect",
       "ink-ctrl-c-handler-requires-exit-option",
       "ink-newline-inside-text",
       "ink-no-bare-process-exit",
@@ -270,5 +271,14 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect([...collectorRuleIds, ...UNBOUNDED_CROSS_FILE_RULE_IDS].sort()).toEqual(
       [...CROSS_FILE_RULE_IDS].sort(),
     );
+  });
+
+  it("keeps native continuation certificates unbounded while forwarding retains its collector", () => {
+    expect(CROSS_FILE_RULE_IDS.has("no-set-state-after-await-in-effect")).toBe(true);
+    expect(CROSS_FILE_DEPENDENCY_COLLECTORS.has("no-set-state-after-await-in-effect")).toBe(false);
+    expect(UNBOUNDED_CROSS_FILE_RULE_IDS.has("no-set-state-after-await-in-effect")).toBe(true);
+    expect(CROSS_FILE_RULE_IDS.has("forwarded-set-state-in-effect")).toBe(true);
+    expect(CROSS_FILE_DEPENDENCY_COLLECTORS.has("forwarded-set-state-in-effect")).toBe(true);
+    expect(UNBOUNDED_CROSS_FILE_RULE_IDS.has("forwarded-set-state-in-effect")).toBe(false);
   });
 });

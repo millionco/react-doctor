@@ -161,7 +161,9 @@ const isStateDispatcherCall = (
     return false;
   }
   const analysis = getProgramAnalysis(callExpression);
-  const forwardedWrite = analysis ? resolveStateWriteSite(analysis, context, callExpression) : null;
+  const forwardedWrite = analysis
+    ? resolveStateWriteSite(analysis, context, callExpression, { acceptsReducerDispatch: true })
+    : null;
   return Boolean(
     forwardedWrite?.isForwardedWrite &&
     isStateDispatcherReference(stripParenExpression(forwardedWrite.setter), context),

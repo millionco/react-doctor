@@ -1,6 +1,10 @@
 import { CORE_REACT_DOCTOR_RULES, CORE_RULE_REGISTRY } from "./plugin/core-rule-registry.js";
 
-export { EXTERNAL_RULES, REACT_COMPILER_RULES } from "./external-rules.js";
+export {
+  EXTERNAL_RULES,
+  REACT_COMPILER_BRIDGE_RULES,
+  REACT_COMPILER_RULES,
+} from "./external-rules.js";
 
 export const REACT_DOCTOR_RULES = CORE_REACT_DOCTOR_RULES;
 export const REACT_DOCTOR_PROJECT_RULES = CORE_REACT_DOCTOR_RULES.filter(

@@ -15,6 +15,7 @@ import type { RuleContext } from "../../oxlint-plugin-react-doctor/src/plugin/ut
 import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
 import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
 import { normalizeFilename } from "../../oxlint-plugin-react-doctor/src/plugin/utils/normalize-filename.js";
+import { CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT } from "../../oxlint-plugin-react-doctor/src/plugin/utils/closed-json-snapshot/constants.js";
 import { noArrayIndexAsKey } from "../../oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-array-index-as-key.js";
 
 interface SnapshotFixtureMutation {
@@ -670,6 +671,152 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 };
 
 describe("closed imported JSON snapshot ordinal keys", () => {
+  it.each([
+    "error => reject(error)",
+    "error => { reject(error); }",
+    "error => { return reject(error); }",
+    "resolve => reject(resolve)",
+  ])(
+    "certifies executor-local const rejection forwarding through the ordinal rule: %s",
+    (handler) => {
+      for (const success of [
+        "response => resolve(response.data)",
+        "response => { if (response.status === 200) resolve(response.data); else reject(response.status); }",
+      ]) {
+        writeSnapshotFile(
+          "src/request.js",
+          `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        const onFailure = ${handler};
+        axios({ responseType: 'json' }).then(${success}).catch(onFailure);
+      });`,
+        );
+        expect(runSnapshotLeaf()).toEqual([]);
+      }
+    },
+  );
+
+  it("preserves private caller and exact default-response roles with local forwarding and inert prefixes", () => {
+    const manifest = {
+      ...SNAPSHOT_MANIFEST,
+      dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+    };
+    writeSnapshotFile("package.json", JSON.stringify(manifest));
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options };
+      return new Promise((complete, fail) => {
+        const onProblem = reason => { return fail(reason); };
+        const unused = null;
+        axios(requestOptions).then(reply => complete(reply.data)).catch(onProblem);
+      });
+    };`,
+    );
+    replaceSnapshotSource({
+      name: "local forwarding caller",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ responseType: 'text' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile("package.json", JSON.stringify(SNAPSHOT_MANIFEST));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile("package.json", JSON.stringify({ ...manifest, main: "src/request.js" }));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "error => reject(other)",
+    "reject => reject(reject)",
+    "error => resolve(error)",
+    "error => reject(error.message)",
+    "error => reject?.(error)",
+    "async error => reject(error)",
+    "function(error) { reject(error); }",
+    "(error = other) => reject(error)",
+    "(...errors) => reject(errors)",
+    "({ error }) => reject(error)",
+    "error => { ; reject(error); }",
+    "error => { 'use strict'; reject(error); }",
+    "error => { console.log(error); reject(error); }",
+    "error => { const reason = error; reject(reason); }",
+    "error => onFailure(error)",
+    "makeForwarder(reject)",
+  ])("retains ordinal warnings for unproved local rejection functions: %s", (handler) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      const onFailure = ${handler};
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "let onFailure = error => reject(error);",
+    "var onFailure = error => reject(error);",
+    "const onFailure = error => reject(error), unused = null;",
+    "const onFailure = error => reject(error); const alias = onFailure;",
+    "const onFailure = error => reject(error); const unused = reject;",
+    "const onFailure = error => reject(error); const unused = () => null;",
+    "const onFailure = error => reject(error); onFailure(other);",
+    "{ const onFailure = error => reject(error); }",
+  ])("retains exact local declaration and use closure in the ordinal rule: %s", (declarations) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${declarations}
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it("keeps module-level and late rejection declarations outside the local proof", () => {
+    for (const source of [
+      "import axios from 'axios'; const onFailure = error => reject(error); export const load = () => new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure); });",
+      "import axios from 'axios'; export const load = () => new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure); const onFailure = error => reject(error); });",
+    ]) {
+      writeSnapshotFile("src/request.js", source);
+      expect(runSnapshotLeaf()).toHaveLength(1);
+    }
+  });
+
+  it("counts the selected local handler inside the combined twelve-declaration limit", () => {
+    const inert = Array.from(
+      { length: CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT - 1 },
+      (_, index) => `const unused${index} = null;`,
+    ).join(" ");
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${inert} const onFailure = error => reject(error);
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`;
+    writeSnapshotFile("src/request.js", source);
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "src/request.js",
+      source.replace("const onFailure", "const extra = null; const onFailure"),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "axios.interceptors.response.use(decode);",
+    "axios.defaults.transformResponse = decode;",
+    "JSON.parse = decode;",
+    "XMLHttpRequest = ForeignRequest;",
+  ])("retains native/client/source guards with a local handler: %s", (prefix) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; ${prefix} export const load = () => new Promise((resolve, reject) => {
+      const onFailure = error => reject(error);
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
   it.each([
     ["0.17.1", "url: '/catalog'", 0],
     ["0.17.1", "responseType: 'text'", 0],

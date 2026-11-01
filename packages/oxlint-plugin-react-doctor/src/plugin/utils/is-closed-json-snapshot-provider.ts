@@ -1496,7 +1496,8 @@ export const isClosedJsonSnapshotProvider = ({
   };
   let chain = executorBody?.terminal ?? null;
   let rejectionHandler: EsTreeNode | null = null;
-  let inlineRejectSymbol: SymbolDescriptor | null = null;
+  let forwardingDeclaration: EsTreeNode | null = null;
+  let forwardingRejectSymbol: SymbolDescriptor | null = null;
   if (
     chain?.type === "CallExpression" &&
     chain.callee.type === "MemberExpression" &&
@@ -1505,24 +1506,46 @@ export const isClosedJsonSnapshotProvider = ({
     const catchArgument = chain.arguments[0];
     if (chain.arguments.length !== 1 || rejectParameter?.type !== "Identifier") return false;
     const rejectSymbol = module.scopes.symbolFor(rejectParameter);
-    if (catchArgument?.type === "Identifier") {
-      if (module.scopes.symbolFor(catchArgument) !== rejectSymbol) return false;
+    if (
+      catchArgument?.type === "Identifier" &&
+      module.scopes.symbolFor(catchArgument) === rejectSymbol
+    ) {
       rejectionHandler = catchArgument;
     } else {
+      let forwardingHandler: EsTreeNode | undefined = catchArgument;
+      if (catchArgument?.type === "Identifier") {
+        const handlerSymbol = module.scopes.symbolFor(catchArgument);
+        const declaration = handlerSymbol?.declarationNode;
+        const references = handlerSymbol && getActiveSnapshotReferences(handlerSymbol);
+        if (
+          handlerSymbol?.kind !== "const" ||
+          declaration?.type !== "VariableDeclarator" ||
+          declaration.id !== handlerSymbol.bindingIdentifier ||
+          declaration.parent?.type !== "VariableDeclaration" ||
+          declaration.parent.parent !== executor.body ||
+          !executorBody?.declarations.includes(declaration) ||
+          references?.length !== 1 ||
+          references[0]?.flag !== "read" ||
+          references[0].identifier !== catchArgument
+        )
+          return false;
+        forwardingDeclaration = declaration;
+        forwardingHandler = declaration.init ?? undefined;
+      }
       if (
-        catchArgument?.type !== "ArrowFunctionExpression" ||
-        catchArgument.async ||
-        catchArgument.params.length !== 1 ||
-        catchArgument.params[0]?.type !== "Identifier" ||
+        forwardingHandler?.type !== "ArrowFunctionExpression" ||
+        forwardingHandler.async ||
+        forwardingHandler.params.length !== 1 ||
+        forwardingHandler.params[0]?.type !== "Identifier" ||
         !rejectSymbol ||
         rejectSymbol === resolveSymbol
       )
         return false;
-      const errorSymbol = module.scopes.symbolFor(catchArgument.params[0]);
+      const errorSymbol = module.scopes.symbolFor(forwardingHandler.params[0]);
       const forwarding =
-        catchArgument.body.type === "BlockStatement"
-          ? getSettlement(catchArgument.body)
-          : catchArgument.body;
+        forwardingHandler.body.type === "BlockStatement"
+          ? getSettlement(forwardingHandler.body)
+          : forwardingHandler.body;
       if (
         !errorSymbol ||
         forwarding?.type !== "CallExpression" ||
@@ -1544,17 +1567,22 @@ export const isClosedJsonSnapshotProvider = ({
       )
         return false;
       rejectionHandler = forwarding.callee;
-      inlineRejectSymbol = rejectSymbol;
+      forwardingRejectSymbol = rejectSymbol;
     }
     chain = chain.callee.object;
   }
+  const preludeDeclarations = [
+    ...(helperBody?.declarations ?? []),
+    ...(executorBody?.declarations ?? []),
+  ];
   if (
     chain?.type !== "CallExpression" ||
     chain.callee.type !== "MemberExpression" ||
     getStaticPropertyName(chain.callee) !== "then" ||
     chain.arguments.length !== 1 ||
+    preludeDeclarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT ||
     !hasClosedSnapshotProviderPrelude(
-      [...(helperBody?.declarations ?? []), ...(executorBody?.declarations ?? [])],
+      preludeDeclarations.filter((declaration) => declaration !== forwardingDeclaration),
       chain.callee.object,
       module,
       argument,
@@ -1679,8 +1707,8 @@ export const isClosedJsonSnapshotProvider = ({
   }
   return (
     isResolution(resolution) &&
-    (!inlineRejectSymbol ||
-      getActiveSnapshotReferences(inlineRejectSymbol).every(
+    (!forwardingRejectSymbol ||
+      getActiveSnapshotReferences(forwardingRejectSymbol).every(
         (reference) => reference.flag === "read" && reference.identifier === rejectionHandler,
       ))
   );

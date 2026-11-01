@@ -104,6 +104,163 @@ afterEach(() => {
 
 describe("isClosedJsonSnapshotProvider", () => {
   it.each([
+    "error => reject(error)",
+    "error => { reject(error); }",
+    "error => { return reject(error); }",
+    "response => reject(response)",
+    "resolve => reject(resolve)",
+  ])("certifies an exact executor-local const rejection callback: %s", (handler) => {
+    for (const success of [
+      "response => resolve(response.data)",
+      "response => { if (200 === response.status) resolve(response.data); else reject(response.status); }",
+    ]) {
+      const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        const onFailure = ${handler};
+        axios({ responseType: 'json' }).then(${success}).catch(onFailure);
+      });`;
+      expect(checkProvider(source)).toBe(true);
+      expect(checkProvider(source, {}, ["./provider.js"])).toBe(true);
+    }
+  });
+
+  it("retains renamed native roles, inert prefixes and private arguments with local forwarding", () => {
+    const source = `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options, responseType: 'json' };
+      return new Promise((complete, fail) => {
+        const onProblem = reason => { return fail(reason); };
+        const unused = null;
+        axios(requestOptions).then(reply => complete(reply.data)).catch(onProblem);
+      });
+    };`;
+    const caller = "import { load } from './provider'; load({ url: '/catalog' });";
+    expect(checkProvider(source, {}, [], caller)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"], caller)).toBe(false);
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each(["{}", "{ responseType: 'text' }", "{ responseType: 'json' }"])(
+    "preserves exact default-response capability with local forwarding: %s",
+    (options) => {
+      const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        const onFailure = error => reject(error);
+        axios(${options}).then(response => resolve(response.data)).catch(onFailure);
+      });`;
+      expect(checkProvider(source, {}, [], undefined, false, true)).toBe(true);
+      expect(checkProvider(source)).toBe(options.includes("'json'"));
+      expect(
+        checkProvider(
+          source.replace(options, "{ responseType: 'arraybuffer' }"),
+          {},
+          [],
+          undefined,
+          false,
+          true,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    "error => reject(other)",
+    "error => other(error)",
+    "reject => reject(reject)",
+    "error => resolve(error)",
+    "error => reject()",
+    "error => reject(error, other)",
+    "error => reject(...[error])",
+    "error => reject(error.message)",
+    "error => reject?.(error)",
+    "error => reject.call(null, error)",
+    "async error => reject(error)",
+    "function(error) { reject(error); }",
+    "(error, extra) => reject(error)",
+    "(error = other) => reject(error)",
+    "(...errors) => reject(errors)",
+    "({ error }) => reject(error)",
+    "error => { const reason = error; reject(reason); }",
+    "error => { console.log(error); reject(error); }",
+    "error => { reject(error); console.log(error); }",
+    "error => { reject(error); throw error; }",
+    "error => { if (error) reject(error); }",
+    "error => { ; reject(error); }",
+    "error => { 'use strict'; reject(error); }",
+    "error => { reject(error); return; }",
+    "error => (reject(error), error)",
+    "error => { error = other; reject(error); }",
+    "error => onFailure(error)",
+    "true ? (error => reject(error)) : (error => reject(error))",
+    "makeForwarder(reject)",
+    "anotherHandler",
+  ])("refuses executor-local callbacks outside exact forwarding: %s", (handler) => {
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      const onFailure = ${handler};
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`;
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each([
+    "const onFailure = error => reject(error), unused = null;",
+    "let onFailure = error => reject(error);",
+    "var onFailure = error => reject(error);",
+    "function onFailure(error) { reject(error); }",
+    "{ const onFailure = error => reject(error); }",
+    "const onFailure = error => reject(error); const alias = onFailure;",
+    "const onFailure = error => reject(error); const unused = reject;",
+    "const onFailure = error => reject(error); const unused = error => reject(error);",
+    "const onFailure = error => reject(error); const unused = () => null;",
+    "const onFailure = error => reject(error); onFailure = other;",
+    "const onFailure = error => reject(error); onFailure(other);",
+    "const onFailure = error => reject(error); observe(onFailure);",
+    "const onFailure = error => reject(error); onFailure.extra = other;",
+  ])("keeps local declaration ownership and exact helper/native references: %s", (declarations) => {
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${declarations}
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`;
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each([
+    "import axios from 'axios'; const onFailure = error => reject(error); export const load = () => new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure); });",
+    "import axios from 'axios'; export const load = () => { const onFailure = error => reject(error); return new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure); }); };",
+    "import axios from 'axios'; export const load = () => new Promise((resolve, reject) => { axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure); const onFailure = error => reject(error); });",
+    "import axios from 'axios'; export const load = () => new Promise((resolve, reject) => { const onFailure = error => reject(error); axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure).catch(onFailure); });",
+    "import axios from 'axios'; const onFailure = error => other(error); export const load = () => new Promise((resolve, reject) => { const unused = new Promise((done, fail) => { const onFailure = error => fail(error); }); axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure); });",
+  ])("refuses outer, late, sibling-executor and multiply consumed handlers", (source) => {
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it("counts the selected forwarding declaration in the existing combined prelude cap", () => {
+    const inert = Array.from(
+      { length: CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT - 1 },
+      (_, index) => `const unused${index} = null;`,
+    ).join(" ");
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${inert} const onFailure = error => reject(error);
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`;
+    expect(checkProvider(source)).toBe(true);
+    expect(
+      checkProvider(source.replace("const onFailure", "const extra = null; const onFailure")),
+    ).toBe(false);
+  });
+
+  it.each([
+    "axios.interceptors.response.use(decode);",
+    "axios.defaults.transformResponse = decode;",
+    "JSON.parse = decode;",
+    "const Promise = FakePromise;",
+    "XMLHttpRequest = ForeignRequest;",
+  ])("retains source/native/client closure with an executor-local handler: %s", (prefix) => {
+    const source = `import axios from 'axios'; ${prefix} export const load = () => new Promise((resolve, reject) => {
+      const onFailure = error => reject(error);
+      axios({ responseType: 'json' }).then(response => resolve(response.data)).catch(onFailure);
+    });`;
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each([
     "axios({})",
     "axios({ responseType: 'text' })",
     "axios.request({ url: '/catalog' })",

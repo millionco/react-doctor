@@ -95,10 +95,6 @@ describe("forwarded-set-state-in-effect", () => {
       "a direct call beside a forwarded call",
       "useEffect(() => { setOther(id); assign(setValue, id); }, [id]);",
     ],
-    [
-      "a local function the compiler follows",
-      "useEffect(() => { const sync = () => setOther(id); sync(); assign(setValue, id); }, [id]);",
-    ],
   ])("leaves %s to the compiler", (_scenario, effectSource) => {
     expect(countDiagnostics(ASSIGN_HELPER, effectSource)).toBe(0);
   });
@@ -145,5 +141,131 @@ describe("forwarded-set-state-in-effect", () => {
       const helper = (setValue, id) => { useEffect(() => { assign(setValue, id); }, [id]); };`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+});
+
+describe("forwarded compiler parity regressions", () => {
+  it.each([
+    ["a ref snapshot alias", "const next = latestRef.current; assign(setValue, next);"],
+    [
+      "a destructured ref measurement",
+      "const {height} = latestRef.current.getBoundingClientRect(); assign(setValue, height);",
+    ],
+    [
+      "a ref guard alias",
+      "const changed = latestRef.current !== id; if (changed) assign(setValue, id);",
+    ],
+    ["a preceding ref guard", "if (!latestRef.current) return; assign(setValue, id);"],
+    [
+      "a snapshot alias chain",
+      "const first = latestRef.current; const second = first; assign(setValue, second);",
+    ],
+    ["a ref object alias", "const otherRef = latestRef; assign(setValue, otherRef.current);"],
+    [
+      "a returned ref-derived measurement",
+      "const measure = () => latestRef.current.getBoundingClientRect().height; assign(setValue, measure());",
+    ],
+    ["an unreachable return continuation", "return; assign(setValue, id);"],
+    ["a statically false branch", "if (false) assign(setValue, id);"],
+    ["an unconstructed class field", "class Pending { value = assign(setValue, id); }"],
+  ])("preserves compiler allowance for %s", (_name, body) => {
+    expect(countDiagnostics(ASSIGN_HELPER, `useEffect(() => {${body}}, [id]);`)).toBe(0);
+  });
+
+  it.each([
+    [
+      "a synchronous effect-local captured setter helper",
+      "const sync = () => setOther(id); sync(); assign(setValue, id);",
+    ],
+    [
+      "a ref-guarded effect-local helper invocation",
+      "const sync = () => setOther(id); if (latestRef.current) sync(); assign(setValue, id);",
+    ],
+    [
+      "an uncalled returned setter callback",
+      "const makeHandler = () => () => setOther(id); makeHandler(); assign(setValue, id);",
+    ],
+    [
+      "a helper's deferred setter callback",
+      "const subscribe = () => window.addEventListener('resize', () => setOther(id)); subscribe(); assign(setValue, id);",
+    ],
+    [
+      "a ref-controlled direct setter",
+      "if (latestRef.current) setOther(id); assign(setValue, id);",
+    ],
+    [
+      "a ref-controlled local helper",
+      "const sync = () => {if (latestRef.current) setOther(id);}; sync(); assign(setValue, id);",
+    ],
+    [
+      "a ref-derived local helper",
+      "const sync = () => setOther(latestRef.current); sync(); assign(setValue, id);",
+    ],
+    ["an unreachable direct setter", "assign(setValue, id); return; setOther(id);"],
+    ["a statically false direct setter", "if (false) setOther(id); assign(setValue, id);"],
+    ["a plain current property", "const plain = {current: id}; assign(setValue, plain.current);"],
+    [
+      "a plain current-property guard",
+      "const plain = {current: id}; if (plain.current) assign(setValue, id);",
+    ],
+    [
+      "a shadowed ref snapshot",
+      "const next = latestRef.current; { const next = id; assign(setValue, next); }",
+    ],
+    [
+      "a reassigned local value",
+      "let next = latestRef.current; next = id; assign(setValue, next);",
+    ],
+    ["an unrelated ref read", "latestRef.current; assign(setValue, id);"],
+  ])("does not hide a forwarded write behind %s", (_name, body) => {
+    expect(countDiagnostics(ASSIGN_HELPER, `useEffect(() => {${body}}, [id]);`)).toBe(1);
+  });
+
+  it("does not treat a shadowed useRef function as React provenance", () => {
+    expect(
+      countDiagnostics(
+        ASSIGN_HELPER,
+        `
+      useEffect(() => {
+        const useRef = (value) => ({current: value});
+        const plain = useRef(id);
+        assign(setValue, plain.current);
+      }, [id]);
+    `,
+      ),
+    ).toBe(1);
+  });
+
+  it("reports through nested helpers declared inside the effect", () => {
+    expect(
+      countDiagnostics(
+        ASSIGN_HELPER,
+        `
+      useEffect(() => {
+        const inner = () => setOther(id);
+        const outer = () => inner();
+        outer();
+        assign(setValue, id);
+      }, [id]);
+    `,
+      ),
+    ).toBe(1);
+  });
+});
+
+describe("compiler-visible component helpers", () => {
+  it.each([
+    ["update();", 0],
+    ["if (latestRef.current) update();", 1],
+  ])("matches native duplicate suppression for %s", (invoke, expected) => {
+    expect(
+      countDiagnostics(
+        ASSIGN_HELPER,
+        `
+      const update = () => setOther(id);
+      useEffect(() => { ${invoke} assign(setValue, id); }, [id]);
+    `,
+      ),
+    ).toBe(expected);
   });
 });

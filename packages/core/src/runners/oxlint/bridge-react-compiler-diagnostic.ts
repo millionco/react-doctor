@@ -1,7 +1,5 @@
 import { REACT_COMPILER_BRIDGE_RULES } from "oxlint-plugin-react-doctor/core";
-import type { OxlintOutput } from "../../types/index.js";
-
-type OxlintDiagnostic = OxlintOutput["diagnostics"][number];
+import type { OxlintDiagnostic } from "../../types/diagnostic.js";
 
 const formatOxlintRuleCode = (ruleKey: string): string => {
   const separatorIndex = ruleKey.indexOf("/");

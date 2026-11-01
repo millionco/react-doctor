@@ -1,5 +1,21 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.20
+
+### Patch Changes
+
+- [#2317](https://github.com/millionco/react-doctor/pull/2317) [`2c5d72c`](https://github.com/millionco/react-doctor/commit/2c5d72c6f89e7a5c523fa2db22f73e1927b7daa0) Thanks [@aidenybai](https://github.com/aidenybai)! - Report an unguarded state update after `await` or inside a microtask or Promise callback when it goes through a transparent local setter helper, such as `queueMicrotask(() => assign(setValue, next))`, exactly where the direct setter call is reported. Cleanup guards still protect the forwarded write. Imported, reassigned, asynchronous, deferred, conditional, and multi-statement helpers stay outside the proof. Preserve transparent TypeScript setter arguments and implicit undefined writes, and exclude bound/call/apply argument shifts from the forwarding proof.
+
+  Keep resource lifecycle exemptions when the same setter is forwarded through immutable aliases, and register the deferred-write rule in cross-file cache metadata.
+
+- [#2315](https://github.com/millionco/react-doctor/pull/2315) [`8a7c60a`](https://github.com/millionco/react-doctor/commit/8a7c60aef10140662db12ef22281a50150f93a34) Thanks [@aidenybai](https://github.com/aidenybai)! - Report state adjusted after a prop change through a transparent local setter helper, such as `assign(setValue, "")`, exactly where the direct setter call is reported, including functional updaters and layout effects. Evaluate the forwarded write at its call site for the released object URL, portal mount, request map, resource lifecycle, and external work checks. Imported, reassigned, asynchronous, deferred, conditional, and multi-statement helpers stay outside the proof.
+
+  Preserve resource lifecycle and asynchronous loading exemptions when related event or completion writers also use transparent setter helpers.
+
+- [#2316](https://github.com/millionco/react-doctor/pull/2316) [`b713862`](https://github.com/millionco/react-doctor/commit/b713862d9681855fb861a481d4b4f76b0e371a7e) Thanks [@aidenybai](https://github.com/aidenybai)! - Report an effect that resets all state after a prop change through a transparent local setter helper, such as `assign(setKey, "")`, exactly where the direct reset is reported, including layout effects. A reload forwarded through the same helper from an asynchronous callback now counts as a loading lifecycle, and a handler that writes through the helper keeps the hidden-until-reset exemption. Imported, reassigned, asynchronous, deferred, conditional, and multi-statement helpers stay outside the proof.
+
+  Keep setter identity stable across immutable aliases when counting reset state and recognizing asynchronous reloads. Resource lifecycle handlers retain their exemptions when their writes are forwarded through the same proven helper.
+
 ## 0.9.19
 
 ### Patch Changes

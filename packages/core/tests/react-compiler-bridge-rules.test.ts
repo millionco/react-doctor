@@ -91,6 +91,55 @@ describe("React Compiler bridge rules", () => {
     ).not.toHaveProperty(BRIDGE_RULE_KEY);
   });
 
+  it("uses the canonical compiler severity when the internal bridge requests another severity", () => {
+    const warningRules = buildConfig({
+      severityControls: {
+        rules: { [COMPILER_RULE_KEY]: "warn", [BRIDGE_RULE_KEY]: "error" },
+      },
+    }).rules;
+    expect(warningRules[COMPILER_RULE_KEY]).toBe("warn");
+    expect(warningRules[BRIDGE_RULE_KEY]).toBe("warn");
+
+    const errorRules = buildConfig({
+      severityControls: {
+        rules: { [COMPILER_RULE_KEY]: "error", [BRIDGE_RULE_KEY]: "warn" },
+      },
+    }).rules;
+    expect(errorRules[COMPILER_RULE_KEY]).toBe("error");
+    expect(errorRules[BRIDGE_RULE_KEY]).toBe("error");
+  });
+
+  it("does not let an internal bridge override enable a disabled compiler rule", () => {
+    const rules = buildConfig({
+      severityControls: {
+        rules: { [COMPILER_RULE_KEY]: "off", [BRIDGE_RULE_KEY]: "error" },
+      },
+    }).rules;
+    expect(rules).not.toHaveProperty(COMPILER_RULE_KEY);
+    expect(rules).not.toHaveProperty(BRIDGE_RULE_KEY);
+  });
+
+  it("uses the internal bridge off switch without disabling the compiler rule", () => {
+    const rules = buildConfig({
+      severityControls: {
+        rules: { [COMPILER_RULE_KEY]: "error", [BRIDGE_RULE_KEY]: "off" },
+      },
+    }).rules;
+    expect(rules[COMPILER_RULE_KEY]).toBe("error");
+    expect(rules).not.toHaveProperty(BRIDGE_RULE_KEY);
+  });
+
+  it("keeps the bridge off when compiler loading falls back despite explicit severities", () => {
+    const rules = buildConfig({
+      disableReactHooksJsPlugin: true,
+      severityControls: {
+        rules: { [COMPILER_RULE_KEY]: "error", [BRIDGE_RULE_KEY]: "error" },
+      },
+    }).rules;
+    expect(rules).not.toHaveProperty(COMPILER_RULE_KEY);
+    expect(rules).not.toHaveProperty(BRIDGE_RULE_KEY);
+  });
+
   it.each([
     "// eslint-disable-next-line react-hooks/set-state-in-effect",
     "// eslint-disable-next-line react-hooks-js/set-state-in-effect",

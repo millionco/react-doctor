@@ -95,6 +95,20 @@ const certifies = (
 };
 
 describe("createPrivatePrimitiveArrayReadCertificate", () => {
+  it.each([
+    ["null", true],
+    ["'value'", true],
+    ["true", true],
+    ["17", true],
+    ["1n", false],
+    ["/pattern/", false],
+    ["/(?i:pattern)/", false],
+  ])(
+    "classifies literal primitives without treating RegExp objects as null: %s",
+    (expression, expected) =>
+      expect(certifies(`const values=[${expression}]; const selected=values[0];`)).toBe(expected),
+  );
+
   it("reuses completed flag inventories for repeated converging readonly aliases", () => {
     const current = fixture(
       "const origin=['a','b'];const values=origin;const second=origin;const first=values[0];const next=second[1];",

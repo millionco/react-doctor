@@ -75,6 +75,10 @@ import {
   PACKAGE_VERSION_SEGMENT_COUNT,
 } from "./modern-source-scheduling-role/constants.js";
 
+interface RuntimePackageMappingOptions {
+  readonly includeInstalledManifests?: boolean;
+}
+
 interface SchedulingRangeBranch {
   readonly minimumMajor: number;
   readonly maximumMajor: number;
@@ -255,14 +259,22 @@ const hasStandardNextConfiguration = (filename: string): boolean => {
 
 const hasSupportedPackageVersions = (filename: string): boolean => {
   const manifest = readNearestPackageManifest(filename);
+  const workspace = readPnpmRoleWorkspace(filename);
   if (
     !manifest ||
+    workspace === false ||
     !hasStandardNextConfiguration(filename) ||
     !hasUnaliasedRuntimePackageIdentities(filename)
   )
     return false;
   return MODERN_ROLE_PACKAGES.every((packageName) => {
     const supportedMajor = packageName === "next" ? MODERN_NEXT_MAJOR : MODERN_REACT_MAJOR;
+    if (
+      !hasUnmappedRuntimePackage(filename, packageName, workspace, supportedMajor, undefined, {
+        includeInstalledManifests: false,
+      })
+    )
+      return false;
     const declaredRange =
       manifest.dependencies?.[packageName] ??
       manifest.devDependencies?.[packageName] ??
@@ -796,6 +808,7 @@ const hasUnmappedRuntimePackage = (
   workspace: PnpmRoleWorkspace | null,
   supportedMajor = NATIVE_UI_SDK_MAJOR,
   hasSupportedInstalledManifest?: (manifest: PackageManifest) => boolean,
+  options?: RuntimePackageMappingOptions,
 ): boolean => {
   const packageDirectory = findNearestPackageDirectory(filename);
   if (!packageDirectory) return false;
@@ -808,10 +821,11 @@ const hasUnmappedRuntimePackage = (
         continue;
       if (fs.existsSync(configPath)) return false;
     }
-    for (const manifestDirectory of [
-      currentDirectory,
-      path.join(currentDirectory, "node_modules", packageName),
-    ]) {
+    const manifestDirectories =
+      options?.includeInstalledManifests === false
+        ? [currentDirectory]
+        : [currentDirectory, path.join(currentDirectory, "node_modules", packageName)];
+    for (const manifestDirectory of manifestDirectories) {
       const manifest = readPackageManifest(manifestDirectory);
       if (manifest) {
         for (const field of NATIVE_UI_SDK_MAPPING_FIELDS) {

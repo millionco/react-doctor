@@ -191,6 +191,7 @@ const scalarValue = (
   if (!proof.context.spendStep() || depth >= NATIVE_DELAY_MAX_ALIAS_DEPTH) return null;
   const node = stripParenExpression(expression);
   if (isNodeOfType(node, "Literal")) {
+    if ("regex" in node) return null;
     if (node.value === null) return { kind: "null" };
     const kind = typeof node.value;
     return kind === "string" || kind === "number" || kind === "boolean" ? { kind } : null;

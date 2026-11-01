@@ -781,7 +781,9 @@ const createNativeDomCertificate = (
       return descend(resolved, false, () => {
         if (isNodeOfType(current, "Literal"))
           return (
-            current.value === null || ["string", "number", "boolean"].includes(typeof current.value)
+            !("regex" in current) &&
+            (current.value === null ||
+              ["string", "number", "boolean"].includes(typeof current.value))
           );
         if (isNodeOfType(current, "Identifier"))
           return (

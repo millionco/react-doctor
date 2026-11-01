@@ -166,6 +166,20 @@ const certify = (
 };
 
 describe("owned native DOM source certificate", () => {
+  it.each([
+    ["null", true],
+    ["'value'", true],
+    ["true", true],
+    ["17", true],
+    ["1n", false],
+    ["/pattern/", false],
+    ["/(?i:pattern)/", false],
+  ])(
+    "classifies literal primitives without treating RegExp objects as null: %s",
+    (expression, expected) =>
+      expect(certify(`const verdict = ${expression}`, undefined, {}, "primitive")).toBe(expected),
+  );
+
   it("reads a private ref data property without requiring an opaque child subtree", () => {
     const body =
       "const OpaqueChild = () => <x-widget />; if (!host.current) return; const verdict = host.current";

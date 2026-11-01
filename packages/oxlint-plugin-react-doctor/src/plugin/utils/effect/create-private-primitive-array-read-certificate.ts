@@ -91,6 +91,7 @@ export const createPrivatePrimitiveArrayReadCertificate = (
   const primitive = (node: EsTreeNode | null): boolean =>
     Boolean(
       isNodeOfType(node, "Literal") &&
+      !("regex" in node) &&
       (node.value === null ||
         typeof node.value === "string" ||
         typeof node.value === "boolean" ||

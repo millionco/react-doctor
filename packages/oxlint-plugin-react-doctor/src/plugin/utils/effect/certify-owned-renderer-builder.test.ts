@@ -150,6 +150,24 @@ const formattedBuilderSource = builderSource
   );
 
 describe("certifyOwnedRendererBuilder", () => {
+  it.each([
+    ["null", true],
+    ["'value'", true],
+    ["true", true],
+    ["17", true],
+    ["1n", false],
+    ["/pattern/", false],
+    ["/(?i:pattern)/", false],
+  ])(
+    "classifies literal primitives without treating RegExp objects as null: %s",
+    (expression, expected) =>
+      expect(
+        certify(
+          builderSource.replace(" const records", ` const unused = ${expression}; const records`),
+        ),
+      ).toBe(expected),
+  );
+
   it.each(["void 0;", "(void (0));", "(void (0)) as undefined;"])(
     "admits the exact void-zero recipe at both statement gates: %s",
     (statement) =>

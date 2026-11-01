@@ -13,6 +13,8 @@ import { normalizeFilename } from "../normalize-filename.js";
 import { parseSourceFile } from "../parse-source-file.js";
 import { resetFilesystemCaches } from "../reset-filesystem-caches.js";
 import {
+  MODERN_ROLE_PACKAGES,
+  NATIVE_UI_SDK_MAPPING_CONFIG_NAMES,
   PNPM_LOCK_ROLE_MAX_FILE_BYTES,
   PNPM_ROLE_MAX_BYTES,
 } from "./modern-source-scheduling-role/constants.js";
@@ -317,6 +319,93 @@ describe("hasModernSourceSchedulingRole", () => {
       JSON.stringify({ compilerOptions: { paths: { react: ["./missing-react.ts"] } } }),
     );
     expect(getRole(fixture)).toBe(false);
+  });
+
+  it.each(MODERN_ROLE_PACKAGES)("refuses source browser remapping of %s", (packageName) => {
+    const fixture = createFixture(undefined, nativeWaitSource);
+    expect(getRole(fixture)).toBe(true);
+    fs.writeFileSync(
+      path.join(fixture.directory, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "^19", "react-dom": "^19", next: "^16" },
+        browser: { [packageName]: "./replacement.js" },
+      }),
+    );
+    resetFilesystemCaches();
+    expect(getRole(fixture)).toBe(false);
+    const result = runRule(noSetStateAfterAwaitInEffect, fixture.source, {
+      filename: fixture.filename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("refuses source browser remapping in an ancestor package", () => {
+    const fixture = createFixture();
+    fs.writeFileSync(
+      path.join(fixture.directory, "package.json"),
+      JSON.stringify({ browser: { react: "./replacement.js" } }),
+    );
+    const childDirectory = path.join(fixture.directory, "feature");
+    fs.mkdirSync(childDirectory);
+    fs.writeFileSync(
+      path.join(childDirectory, "package.json"),
+      JSON.stringify({ dependencies: { react: "^19", "react-dom": "^19", next: "^16" } }),
+    );
+    const filename = path.join(childDirectory, "view.tsx");
+    fs.writeFileSync(filename, fixture.source);
+    expect(getRole({ ...fixture, directory: childDirectory, filename })).toBe(false);
+  });
+
+  it.each(NATIVE_UI_SDK_MAPPING_CONFIG_NAMES)(
+    "refuses source runtime mapping configuration %s",
+    (configName) => {
+      const fixture = createFixture();
+      fs.writeFileSync(path.join(fixture.directory, configName), "{}");
+      expect(getRole(fixture)).toBe(false);
+    },
+  );
+
+  it("preserves installed ReactDOM server and static browser mappings", () => {
+    const fixture = createFixture();
+    for (const [name, version] of [
+      ["react", "19.2.0"],
+      ["react-dom", "19.2.0"],
+      ["next", "16.0.0"],
+    ]) {
+      const directory = path.join(fixture.directory, "node_modules", name);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(
+        path.join(directory, "package.json"),
+        JSON.stringify({
+          name,
+          version,
+          ...(name === "react-dom"
+            ? {
+                browser: {
+                  "./server.js": "./server.browser.js",
+                  "./static.js": "./static.browser.js",
+                },
+              }
+            : {}),
+        }),
+      );
+    }
+    expect(getRole(fixture)).toBe(true);
+  });
+
+  it("records and refreshes source runtime mapping configuration changes", () => {
+    const fixture = createFixture();
+    const configPath = path.join(fixture.directory, "import-map.json");
+    const { value, trace } = captureCrossFileProbes(() => getRole(fixture));
+    expect(value).toBe(true);
+    expect(trace.existencePaths.has(configPath)).toBe(true);
+    fs.writeFileSync(configPath, JSON.stringify({ imports: { react: "./replacement.js" } }));
+    resetFilesystemCaches();
+    expect(getRole(fixture)).toBe(false);
+    fs.unlinkSync(configPath);
+    resetFilesystemCaches();
+    expect(getRole(fixture)).toBe(true);
   });
 
   it("records package and absent installed metadata probes on warm lookups", () => {

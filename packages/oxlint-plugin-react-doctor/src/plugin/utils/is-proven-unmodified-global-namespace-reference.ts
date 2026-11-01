@@ -3,7 +3,10 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isProvenGlobalNamespaceReference } from "./is-proven-global-namespace-reference.js";
+import {
+  isProvenGlobalObjectReference,
+  isProvenGlobalNamespaceReference,
+} from "./is-proven-global-namespace-reference.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const namespaceMutationByAnalysis = new WeakMap<ScopeAnalysis, Map<string, boolean>>();
@@ -21,11 +24,11 @@ const memberIsMutated = (member: EsTreeNode): boolean => {
 };
 
 const namespaceHasMemberMutation = (
-  namespaceName: string,
+  namespaceName: string | null,
   scopes: ScopeAnalysis,
   memberName?: string,
 ): boolean => {
-  const cacheKey = memberName ? `${namespaceName}.${memberName}` : namespaceName;
+  const cacheKey = JSON.stringify([namespaceName, memberName]);
   const cachedMutation = namespaceMutationByAnalysis.get(scopes)?.get(cacheKey);
   if (cachedMutation !== undefined) return cachedMutation;
   const mutationByNamespace = namespaceMutationByAnalysis.get(scopes) ?? new Map<string, boolean>();
@@ -34,16 +37,18 @@ const namespaceHasMemberMutation = (
   while (pendingScopes.length > 0) {
     const currentScope = pendingScopes.pop();
     if (!currentScope) break;
-    pendingScopes.push(...currentScope.children);
+    for (const childScope of currentScope.children) pendingScopes.push(childScope);
     for (const reference of currentScope.references) {
       let candidate = findTransparentExpressionRoot(reference.identifier);
       while (candidate.parent && isNodeOfType(candidate.parent, "MemberExpression")) {
         const member = candidate.parent;
         if (stripParenExpression(member.object) !== stripParenExpression(candidate)) break;
         if (
-          isProvenGlobalNamespaceReference(candidate, namespaceName, scopes) &&
+          memberIsMutated(member) &&
           (!memberName || getStaticPropertyName(member) === memberName) &&
-          memberIsMutated(member)
+          (namespaceName === null
+            ? isProvenGlobalObjectReference(candidate, scopes)
+            : isProvenGlobalNamespaceReference(candidate, namespaceName, scopes))
         ) {
           mutationByNamespace.set(cacheKey, true);
           return true;
@@ -58,9 +63,11 @@ const namespaceHasMemberMutation = (
 
 export const isProvenUnmodifiedGlobalNamespaceReference = (
   expression: EsTreeNode,
-  namespaceName: string,
+  namespaceName: string | null,
   scopes: ScopeAnalysis,
   memberName?: string,
 ): boolean =>
-  isProvenGlobalNamespaceReference(expression, namespaceName, scopes) &&
+  (namespaceName === null
+    ? isProvenGlobalObjectReference(expression, scopes)
+    : isProvenGlobalNamespaceReference(expression, namespaceName, scopes)) &&
   !namespaceHasMemberMutation(namespaceName, scopes, memberName);

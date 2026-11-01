@@ -214,4 +214,64 @@ describe("qualified native timers", () => {
       expect(result.diagnostics).toEqual([]);
     },
   );
+  it.each([
+    ["globalThis.setInterval = () => 0;", "globalThis"],
+    ["const scheduler = globalThis; scheduler.setInterval = () => 0;", "scheduler"],
+    ["const scheduler = window; scheduler.setInterval = () => 0;", "globalThis"],
+    ["delete globalThis.setInterval;", "globalThis"],
+    ["globalThis.setInterval++;", "globalThis"],
+  ])("does not claim an overridden qualified allocator is native: %s", (setup, receiver) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import {useEffect} from "react";
+      ${setup}
+      const Clock = () => { useEffect(() => { ${receiver}.setInterval(refresh, 1000); }, []); return null; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "globalThis.clearInterval = () => {};",
+    "const scheduler = globalThis; scheduler.clearInterval = () => {};",
+    "delete globalThis.clearInterval;",
+    "globalThis.clearInterval++;",
+  ])("does not trust an overridden qualified cleanup: %s", (setup) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import {useEffect} from "react";
+      ${setup}
+      const Clock = () => { useEffect(() => {
+        const timer = globalThis.setInterval(refresh, 1000);
+        return () => globalThis.clearInterval(timer);
+      }, []); return null; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const scheduler = globalThis; scheduler.unrelated = () => 0;",
+    "function custom(globalThis) { globalThis.setInterval = () => 0; }",
+  ])("preserves native allocation despite unrelated or shadowed writes: %s", (setup) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import {useEffect} from "react";
+      ${setup}
+      const Clock = () => { useEffect(() => { globalThis.setInterval(refresh, 1000); }, []); return null; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not prove a reassigned namespace alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import {useEffect} from "react";
+      let scheduler = globalThis; scheduler = customScheduler;
+      const Clock = () => { useEffect(() => { scheduler.setInterval(refresh, 1000); }, []); return null; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

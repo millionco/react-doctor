@@ -4,7 +4,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNativeTimerIdentifier } from "./is-native-timer-identifier.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isProvenGlobalObjectReference } from "./is-proven-global-namespace-reference.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 export const getNativeTimerCalleeName = (
@@ -23,7 +23,7 @@ export const getNativeTimerCalleeName = (
   const methodName = getStaticPropertyName(callee);
   return methodName !== null &&
     calleeNames.has(methodName) &&
-    isProvenGlobalObjectReference(callee.object, scopes)
+    isProvenUnmodifiedGlobalNamespaceReference(callee.object, null, scopes, methodName)
     ? methodName
     : null;
 };

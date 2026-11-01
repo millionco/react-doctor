@@ -25,6 +25,7 @@ import {
   isSetterWiredToJsxHandler,
   referencesIdentifierNamed,
 } from "./is-controlled-prop-mirror.js";
+import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
 
 const RESOURCE_LIFECYCLE_EVENT_NAMES: ReadonlySet<string> = new Set([
   "onAbort",
@@ -194,7 +195,14 @@ const isWrittenByResourceSyncEffect = (
   }
   if (!effectCall || !isNodeOfType(effectCall, "CallExpression")) return false;
   const writerCall = getCallExpr(setterReference);
-  if (writerCall && hasDeferredOrExternalEffectWork(analysis, effectCall, context, writerCall)) {
+  if (
+    isNodeOfType(writerCall, "CallExpression") &&
+    hasDeferredOrExternalEffectWork(analysis, effectCall, context, {
+      node: writerCall,
+      setter: writerCall.callee,
+      value: writerCall.arguments[0],
+    })
+  ) {
     return true;
   }
   const effectFunction = effectCall.arguments?.[0];
@@ -259,6 +267,7 @@ export const hasResourceLifecycleSetterWriter = (
   dependencyReferences: readonly Reference[],
   matchesStateInitializer: boolean,
   mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
+  forwardedResetWrite?: EffectStateWriteSite,
 ): boolean => {
   if (!setterReference.resolved) return false;
   const componentFunction = findEnclosingFunction(effectNode);
@@ -272,9 +281,10 @@ export const hasResourceLifecycleSetterWriter = (
   );
   if (dependencyVariables.size === 0) return false;
   const resetCall = getCallExpr(setterReference);
-  const resetValue = isNodeOfType(resetCall, "CallExpression")
+  const directResetValue = isNodeOfType(resetCall, "CallExpression")
     ? (resetCall.arguments?.[0] as EsTreeNode | undefined)
     : undefined;
+  const resetValue = forwardedResetWrite ? forwardedResetWrite.value : directResetValue;
   let isResourceKeyReconciliation = false;
   if (!matchesStateInitializer && resetValue && isFunctionLike(resetValue)) {
     const parameterNames = new Set(

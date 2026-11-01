@@ -30,6 +30,7 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
+import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
 import { getEffectDepsRefs, getEffectFn, isProp, isState } from "./effect/react.js";
 import { isSubscribeOrObserveCallExpression } from "./is-subscribe-like-call-expression.js";
 
@@ -317,7 +318,7 @@ const isWorkRelatedToWrite = (
   workFunction: EsTreeNode,
   invocationPath: ReadonlyArray<FunctionInvocationEdge>,
   propDependencyBindings: ReadonlySet<unknown>,
-  writeNode: EsTreeNode,
+  write: EffectStateWriteSite,
   writeFunction: EsTreeNode,
   writeStateSymbolId: number | null,
   context: RuleContext,
@@ -333,14 +334,14 @@ const isWorkRelatedToWrite = (
     if (!invocationEdge) return false;
     workAnchor = invocationEdge.callExpression;
   }
-  if (isNodeOfType(writeNode, "CallExpression") && isNodeOfType(writeNode.callee, "Identifier")) {
-    const setterBinding = getRef(analysis, writeNode.callee)?.resolved;
+  if (isNodeOfType(write.setter, "Identifier")) {
+    const setterBinding = getRef(analysis, write.setter)?.resolved;
     if (setterBinding) {
       let writesSameState = false;
       walkAst(workNode, (child) => {
         if (writesSameState) return false;
         if (
-          child !== writeNode &&
+          child !== write.node &&
           isNodeOfType(child, "CallExpression") &&
           isNodeOfType(child.callee, "Identifier") &&
           getRef(analysis, child.callee)?.resolved === setterBinding
@@ -394,12 +395,12 @@ const isWorkRelatedToWrite = (
     }
   }
   const workRegion = getControlRegion(workAnchor, writeFunction);
-  const writeRegion = getControlRegion(writeNode, writeFunction);
+  const writeRegion = getControlRegion(write.node, writeFunction);
   if (
     isResourceCancellation &&
     writeRegion &&
     doesControlRegionReadState(writeRegion, writeStateSymbolId, scopes) &&
-    nodeDominatesNode(workAnchor, writeNode, context)
+    nodeDominatesNode(workAnchor, write.node, context)
   ) {
     return true;
   }
@@ -428,16 +429,15 @@ export const hasDeferredOrExternalEffectWork = (
   analysis: ProgramAnalysis,
   effectNode: EsTreeNode,
   context: RuleContext,
-  writeNode: EsTreeNode,
+  write: EffectStateWriteSite,
 ): boolean => {
   const { scopes } = context;
   const effectFunction = getEffectFn(analysis, effectNode);
-  const writeFunction = findEnclosingFunction(writeNode);
+  const writeFunction = findEnclosingFunction(write.node);
   if (!effectFunction || !writeFunction) return false;
-  const writeStateSymbolId =
-    isNodeOfType(writeNode, "CallExpression") && isNodeOfType(writeNode.callee, "Identifier")
-      ? (resolveReactUseStatePair(writeNode.callee, scopes)?.stateSymbol?.id ?? null)
-      : null;
+  const writeStateSymbolId = isNodeOfType(write.setter, "Identifier")
+    ? (resolveReactUseStatePair(write.setter, scopes)?.stateSymbol?.id ?? null)
+    : null;
   const propDependencyBindings = new Set<unknown>();
   for (const dependencyReference of getEffectDepsRefs(analysis, effectNode) ?? []) {
     const upstreamReferences = isState(analysis, dependencyReference)
@@ -479,7 +479,7 @@ export const hasDeferredOrExternalEffectWork = (
             frame.functionNode,
             frame.invocationPath,
             propDependencyBindings,
-            writeNode,
+            write,
             writeFunction,
             writeStateSymbolId,
             context,
@@ -501,7 +501,7 @@ export const hasDeferredOrExternalEffectWork = (
             frame.functionNode,
             frame.invocationPath,
             propDependencyBindings,
-            writeNode,
+            write,
             writeFunction,
             writeStateSymbolId,
             context,
@@ -534,7 +534,7 @@ export const hasDeferredOrExternalEffectWork = (
           frame.functionNode,
           frame.invocationPath,
           propDependencyBindings,
-          writeNode,
+          write,
           writeFunction,
           writeStateSymbolId,
           context,

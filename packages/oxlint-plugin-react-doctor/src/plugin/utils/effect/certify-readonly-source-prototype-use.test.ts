@@ -11,6 +11,7 @@ import { getResolvedStaticPropertyName } from "../get-resolved-static-property-n
 import { getRuntimeStaticDependencySource } from "../get-runtime-static-dependency-source.js";
 import { getStaticStringExpression } from "../get-static-string-expression.js";
 import { isNodeOfType } from "../is-node-of-type.js";
+import { normalizeFilename } from "../normalize-filename.js";
 import { resetFilesystemCaches } from "../reset-filesystem-caches.js";
 import { walkAst } from "../walk-ast.js";
 import { certifyReadonlySourcePrototypeUse } from "./certify-readonly-source-prototype-use.js";
@@ -64,7 +65,7 @@ const fixture = (
     expect(parsed.errors).toEqual([]);
     if (!isNodeOfType(parsed.program, "Program")) throw new Error("Expected Program fixture");
     attachParentReferences(parsed.program);
-    const filePath = path.resolve(rootDirectory, name);
+    const filePath = normalizeFilename(path.resolve(rootDirectory, name));
     modules.set(filePath, {
       filePath,
       programNode: parsed.program,
@@ -79,7 +80,7 @@ const fixture = (
         ? getStaticStringExpression(node.source)
         : getRuntimeStaticDependencySource(node);
       if (!source?.startsWith(".")) return;
-      const basePath = path.resolve(path.dirname(module.filePath), source);
+      const basePath = normalizeFilename(path.resolve(path.dirname(module.filePath), source));
       const filePath = [basePath, `${basePath}.ts`].find((candidate) => modules.has(candidate));
       if (!filePath) return;
       resolvedPaths.set(node, filePath);
@@ -87,7 +88,7 @@ const fixture = (
       sourceConsumers.add(module);
       consumers.set(filePath, sourceConsumers);
     });
-  const module = modules.get(path.resolve(rootDirectory, "consumer.ts"));
+  const module = modules.get(normalizeFilename(path.resolve(rootDirectory, "consumer.ts")));
   if (!module) throw new Error("Missing consumer fixture");
   let prototype: EsTreeNode | null = null;
   walkAst(module.programNode, (node) => {

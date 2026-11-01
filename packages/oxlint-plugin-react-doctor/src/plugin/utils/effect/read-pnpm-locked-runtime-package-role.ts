@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { isAlias, isMap, isScalar, isSeq, parseAllDocuments } from "yaml";
 import { recordContentProbe, recordExistenceProbe } from "../cross-file-probe-recorder.js";
 import { isPathInside } from "../is-path-inside.js";
+import { normalizeFilename } from "../normalize-filename.js";
 import { readPackageManifest } from "../read-nearest-package-manifest.js";
 import {
   PNPM_LOCK_ROLE_DEPENDENCY_FIELDS,
@@ -336,7 +337,9 @@ export const readPnpmLockedRuntimePackageRole = (
       !isPathInside(project.packageDirectory, project.lockDirectory)
     )
       return { didFindLockfile, hasSupportedResolution: false, hasContradiction: true };
-    const isSelectedProject = project.packageDirectory === input.packageDirectory;
+    const isSelectedProject =
+      normalizeFilename(project.packageDirectory) === normalizeFilename(input.packageDirectory);
+    const lockDirectoryKey = normalizeFilename(project.lockDirectory);
     const lockPath = path.join(project.lockDirectory, "pnpm-lock.yaml");
     recordExistenceProbe(lockPath);
     try {
@@ -345,7 +348,7 @@ export const readPnpmLockedRuntimePackageRole = (
       return { didFindLockfile, hasSupportedResolution: false, hasContradiction: true };
     }
     if (isSelectedProject) didFindLockfile = true;
-    if (seenLockDirectories.has(project.lockDirectory) && !isSelectedProject) continue;
+    if (seenLockDirectories.has(lockDirectoryKey) && !isSelectedProject) continue;
     const rootManifest = readPackageManifest(project.lockDirectory);
     if (
       !rootManifest ||
@@ -361,7 +364,7 @@ export const readPnpmLockedRuntimePackageRole = (
       recordContentProbe(lockPath);
       source = fs.readFileSync(lockPath, "utf8");
       const bytes = Buffer.byteLength(source);
-      if (!seenLockDirectories.has(project.lockDirectory)) aggregateBytes += bytes;
+      if (!seenLockDirectories.has(lockDirectoryKey)) aggregateBytes += bytes;
       if (
         bytes > PNPM_LOCK_ROLE_MAX_FILE_BYTES ||
         aggregateBytes > PNPM_LOCK_ROLE_MAX_AGGREGATE_BYTES
@@ -370,7 +373,7 @@ export const readPnpmLockedRuntimePackageRole = (
     } catch {
       return { didFindLockfile, hasSupportedResolution: false, hasContradiction: true };
     }
-    seenLockDirectories.add(project.lockDirectory);
+    seenLockDirectories.add(lockDirectoryKey);
     let lock: Map<string, unknown> | null;
     try {
       lock = readLockDocument(source);

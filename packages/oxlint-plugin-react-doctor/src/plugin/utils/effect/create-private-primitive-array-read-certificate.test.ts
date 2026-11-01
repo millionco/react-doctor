@@ -7,6 +7,7 @@ import type { SourceProjectIndex, SourceProjectModule } from "../build-source-pr
 import type { EsTreeNode } from "../es-tree-node.js";
 import { getRuntimeStaticDependencySource } from "../get-runtime-static-dependency-source.js";
 import { isNodeOfType } from "../is-node-of-type.js";
+import { normalizeFilename } from "../normalize-filename.js";
 import { walkAst } from "../walk-ast.js";
 import { createPrivatePrimitiveArrayReadCertificate } from "./create-private-primitive-array-read-certificate.js";
 
@@ -36,14 +37,14 @@ const fixture = (
     expect(parsed.errors).toEqual([]);
     if (!isNodeOfType(parsed.program, "Program")) throw new Error("Expected Program");
     attachParentReferences(parsed.program);
-    const filePath = path.resolve("/array-fixture", name);
+    const filePath = normalizeFilename(path.resolve("/array-fixture", name));
     modules.set(filePath, {
       filePath,
       programNode: parsed.program,
       scopes: analyzeScopes(parsed.program),
     });
   }
-  const module = modules.get("/array-fixture/owner.tsx");
+  const module = modules.get(normalizeFilename(path.resolve("/array-fixture/owner.tsx")));
   if (!module) throw new Error("Missing owner");
   const consumerModulesByFilePath = new Map<string, Set<SourceProjectModule>>();
   const resolvedSourcePathByNode = new WeakMap<EsTreeNode, string>();

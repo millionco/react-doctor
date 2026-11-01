@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
+import * as NodeModule from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -30,6 +30,21 @@ interface RoleFixture {
 
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-modern-role-"));
 let fixtureNumber = 0;
+
+const nativeConfigurationImportCases = [
+  {
+    importSource: "import type { Token } from './initialization.mjs';",
+    emittedImportSource: "",
+    expectedRole: true,
+    keepsRuntimeImport: false,
+  },
+  {
+    importSource: "import { type Token } from './initialization.mjs';",
+    emittedImportSource: "import {} from './initialization.mjs';",
+    expectedRole: false,
+    keepsRuntimeImport: true,
+  },
+];
 
 const createFixture = (
   dependencies: Readonly<Record<string, string | undefined>> = {
@@ -477,25 +492,34 @@ describe("hasModernSourceSchedulingRole", () => {
     expect(getRole(fixture)).toBe(expectedRole);
   });
 
-  it.each([
-    {
-      importSource: "import type { Token } from './initialization.mjs';",
-      expectedRole: true,
-      keepsRuntimeImport: false,
+  it.each(nativeConfigurationImportCases)(
+    "preserves source and emitted configuration roles for $importSource",
+    ({ importSource, emittedImportSource, expectedRole }) => {
+      const fixture = createFixture();
+      fs.writeFileSync(
+        path.join(fixture.directory, "next.config.ts"),
+        `${importSource} export default { output: 'export' };`,
+      );
+      expect(getRole(fixture)).toBe(expectedRole);
+      const emittedFixture = createFixture();
+      fs.writeFileSync(
+        path.join(emittedFixture.directory, "next.config.mjs"),
+        `${emittedImportSource} export default { output: 'export' };`,
+      );
+      expect(getRole(emittedFixture)).toBe(expectedRole);
     },
-    {
-      importSource: "import { type Token } from './initialization.mjs';",
-      expectedRole: false,
-      keepsRuntimeImport: true,
-    },
-  ])(
+  );
+
+  it
+    .skipIf(typeof NodeModule.stripTypeScriptTypes !== "function")
+    .each(nativeConfigurationImportCases)(
     "accounts for Node native type stripping of $importSource",
     ({ importSource, expectedRole, keepsRuntimeImport }) => {
       const configurationSource = `${importSource} export default { output: 'export' };`;
-      const transformedSource = stripTypeScriptTypes(configurationSource);
+      const transformedSource = NodeModule.stripTypeScriptTypes(configurationSource);
       expect(/\bimport\s*\{\s*\}\s*from/.test(transformedSource)).toBe(keepsRuntimeImport);
       const fixture = createFixture();
-      fs.writeFileSync(path.join(fixture.directory, "next.config.ts"), configurationSource);
+      fs.writeFileSync(path.join(fixture.directory, "next.config.mjs"), transformedSource);
       expect(getRole(fixture)).toBe(expectedRole);
     },
   );

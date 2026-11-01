@@ -9,6 +9,7 @@ import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import type { SourceProjectIndex, SourceProjectModule } from "../build-source-project-index.js";
 import type { EsTreeNode } from "../es-tree-node.js";
 import { isNodeOfType } from "../is-node-of-type.js";
+import { normalizeFilename } from "../normalize-filename.js";
 import type { RuleContext } from "../rule-context.js";
 import {
   OWNED_NATIVE_DOM_PROJECT_NODE_BUDGET,
@@ -69,12 +70,14 @@ const certify = (
   const extraModulePaths = new Map(
     Object.keys(extraModules).map((filePath) => [
       filePath,
-      directory ? path.join(directory, path.basename(filePath)) : filePath,
+      normalizeFilename(directory ? path.join(directory, path.basename(filePath)) : filePath),
     ]),
   );
   const code = `import { useRef } from "react"; ${options.imports ?? ""}
     ${Object.keys(extraModules)
-      .map((filePath) => `import { Visual } from "${extraModulePaths.get(filePath)}";`)
+      .map(
+        (filePath) => `import { Visual } from ${JSON.stringify(extraModulePaths.get(filePath))};`,
+      )
       .join("\n")}
     function View() { const host = useRef(null); ${body}; return ${template}; }`;
   const parseModule = (filePath: string, source: string): SourceProjectModule => {
@@ -82,7 +85,11 @@ const certify = (
     expect(parsed.errors).toEqual([]);
     attachParentReferences(parsed.program);
     if (!isNodeOfType(parsed.program, "Program")) throw new Error("expected program");
-    return { filePath, programNode: parsed.program, scopes: analyzeScopes(parsed.program) };
+    return {
+      filePath: normalizeFilename(filePath),
+      programNode: parsed.program,
+      scopes: analyzeScopes(parsed.program),
+    };
   };
   const currentModule =
     options.reuseCurrentModule ??

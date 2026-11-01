@@ -788,7 +788,6 @@ export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTr
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
-  // An empty `() => {}` releases nothing, so it must not exempt the effect.
   if (isFunctionLike(node)) return !isNoOpFunction(node);
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
@@ -796,15 +795,28 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
     if (!ref) return false;
     if (hasParameterDefinition(ref)) return true;
     const resolvedFunction = resolveToFunction(ref);
-    return resolvedFunction !== null && isCleanupReturnArgument(analysis, resolvedFunction);
+    if (!resolvedFunction) return false;
+    const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
+    if (
+      !isNodeOfType(definitionNode, "VariableDeclarator") ||
+      !isNodeOfType(definitionNode.parent, "VariableDeclaration") ||
+      definitionNode.parent.kind !== "const" ||
+      definitionNode.init !== resolvedFunction
+    ) {
+      return true;
+    }
+    return !isNoOpFunction(resolvedFunction);
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     const branches = [node.consequent as EsTreeNode, node.alternate as EsTreeNode];
     if (branches.some((branch) => isCleanupReturnArgument(analysis, branch))) return true;
-    // `enabled ? subscribe() : () => {}` returns a function on both paths, so the call is the disposer.
     return (
-      branches.some(isFunctionLike) &&
-      branches.some((branch) => isNodeOfType(branch, "CallExpression"))
+      branches.some((branch) => {
+        if (isFunctionLike(branch)) return true;
+        if (!isNodeOfType(branch, "Identifier")) return false;
+        const branchReference = getRef(analysis, branch);
+        return Boolean(branchReference && resolveToFunction(branchReference));
+      }) && branches.some((branch) => isNodeOfType(branch, "CallExpression"))
     );
   }
   return false;

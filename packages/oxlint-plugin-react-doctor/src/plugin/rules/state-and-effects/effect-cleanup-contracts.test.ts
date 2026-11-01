@@ -14,6 +14,12 @@ interface CleanupExemptRuleCase {
 
 const NO_OP_CLEANUPS = [
   ["an empty arrow", "return () => {};"],
+  ["an empty arrow with an unused identifier parameter", "return (_unused) => {};"],
+  ["a parenthesized const binding to an empty arrow", "const noop = (() => {}); return noop;"],
+  [
+    "a const empty function behind TypeScript assertions",
+    "const noop = ((() => {}) as (() => void)) satisfies (() => void); return noop;",
+  ],
   ["an empty function expression", "return function () {};"],
   ["an arrow returning undefined", "return () => undefined;"],
   ["an arrow returning void 0", "return () => void 0;"],
@@ -96,6 +102,24 @@ describe.each(Object.entries(CLEANUP_EXEMPT_RULE_CASES))(
     it.each([
       ["a cleanup that does work", "return () => { cancelled = true; };"],
       ["a disposer call opposite an empty arrow", "return isEnabled ? subscribe() : () => {};"],
+      [
+        "a mutable binding replaced by a working arrow",
+        "let cleanup = () => {}; cleanup = () => { cancelled = true; }; return cleanup;",
+      ],
+      [
+        "a mutable binding replaced by a disposer call",
+        "let cleanup = () => {}; cleanup = subscribe(); return cleanup;",
+      ],
+      ["a cleanup with default-parameter work", "return (_unused = dispose()) => {};"],
+      ["a cleanup with destructuring-default work", "return ({ unused = dispose() } = {}) => {};"],
+      [
+        "a disposer call opposite a named empty function",
+        "const noop = () => {}; return isEnabled ? subscribe() : noop;",
+      ],
+      [
+        "an unrelated useCallback factory returning a working cleanup",
+        "const api = { useCallback: () => () => { cancelled = true; } }; const cleanup = api.useCallback(() => {}); return cleanup;",
+      ],
     ])("stays silent when the effect returns %s", (_, cleanup) => {
       const result = runRule(rule, buildCode(cleanup), { forceJsx: true });
       expect(result.parseErrors).toEqual([]);

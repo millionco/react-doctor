@@ -2,11 +2,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../../test-utils/run-rule.js";
-import { discoverProject } from "../../../../../core/src/project-info/discover-project.js";
-import { runOxlint } from "../../../../../core/src/run-oxlint.js";
-import { parseSourceText } from "../../utils/parse-source-file.js";
-import { noArrayIndexAsKey } from "./no-array-index-as-key.js";
+import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { discoverProject } from "../src/project-info/discover-project.js";
+import { runOxlint } from "../src/run-oxlint.js";
+import { parseSourceText } from "../../oxlint-plugin-react-doctor/src/plugin/utils/parse-source-file.js";
+import { noArrayIndexAsKey } from "../../oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-array-index-as-key.js";
 
 interface SnapshotFixtureMutation {
   readonly name: string;

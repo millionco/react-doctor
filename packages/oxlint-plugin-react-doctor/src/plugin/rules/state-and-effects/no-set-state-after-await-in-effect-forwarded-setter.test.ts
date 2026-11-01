@@ -86,6 +86,33 @@ describe("no-set-state-after-await-in-effect forwarded setters", () => {
     ).toBe(1);
   });
 
+  it.each(["setValue as CallableFunction", "setValue!", "setValue satisfies CallableFunction"])(
+    "reports a transparently wrapped setter argument: %s",
+    (setter) => {
+      expect(
+        countDiagnostics(ASSIGN_HELPER, `queueMicrotask(() => assign((${setter}), id));`),
+      ).toBe(1);
+    },
+  );
+
+  it.each([
+    "queueMicrotask(() => clear(setValue));",
+    "const load = async () => { await fetch(id); clear(setValue); }; load();",
+  ])("reports an implicit undefined write: %s", (effectBody) => {
+    expect(countDiagnostics("const clear = (setter) => setter();", effectBody)).toBe(1);
+  });
+
+  it.each([
+    "queueMicrotask(() => assign.bind(null, consume)(setValue, id));",
+    "const bound = assign.bind(null, consume); queueMicrotask(() => bound(setValue, id));",
+    "queueMicrotask(() => assign.call(setValue, consume, id));",
+    "queueMicrotask(() => assign.apply(setValue, [consume, id]));",
+  ])("does not confuse bound arguments or receivers with a setter: %s", (effectBody) => {
+    expect(countDiagnostics(ASSIGN_HELPER + " const consume = () => undefined;", effectBody)).toBe(
+      0,
+    );
+  });
+
   it.each([
     ["an imported helper", 'import { assign } from "writer";'],
     ["an unknown helper", ""],

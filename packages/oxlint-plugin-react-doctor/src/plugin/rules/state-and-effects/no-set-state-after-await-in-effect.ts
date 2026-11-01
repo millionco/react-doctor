@@ -31,7 +31,7 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getForwardedStateSetterWrite } from "./utils/collect-effect-state-write-facts.js";
+import { resolveStateWriteSite } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 const MESSAGE =
@@ -152,16 +152,18 @@ const isStateDispatcherCall = (
   context: RuleContext,
 ): boolean => {
   if (isStateDispatcherReference(callExpression.callee, context)) return true;
-  if (!callExpression.arguments.some((argument) => isStateDispatcherReference(argument, context))) {
+  if (
+    !callExpression.arguments.some((argument) =>
+      isStateDispatcherReference(stripParenExpression(argument), context),
+    )
+  ) {
     return false;
   }
   const analysis = getProgramAnalysis(callExpression);
-  const forwardedWrite = analysis
-    ? getForwardedStateSetterWrite(analysis, context, callExpression)
-    : null;
+  const forwardedWrite = analysis ? resolveStateWriteSite(analysis, context, callExpression) : null;
   return Boolean(
-    forwardedWrite &&
-    isStateDispatcherReference(stripParenExpression(forwardedWrite.setterExpression), context),
+    forwardedWrite?.isForwardedWrite &&
+    isStateDispatcherReference(stripParenExpression(forwardedWrite.setter), context),
   );
 };
 

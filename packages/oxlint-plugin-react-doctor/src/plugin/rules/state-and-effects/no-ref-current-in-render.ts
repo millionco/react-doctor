@@ -14,6 +14,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import {
   resolveReactRefObjectSymbol,
@@ -44,7 +45,7 @@ const getRefCurrentWrite = (node: EsTreeNode, scopes: ScopeAnalysis): RefCurrent
   if (
     !isNodeOfType(receiver, "Identifier") ||
     receiver.name !== "Object" ||
-    !scopes.isGlobalReference(receiver)
+    !isProvenUnmodifiedGlobalNamespaceReference(receiver, "Object", scopes, "assign")
   ) {
     return null;
   }

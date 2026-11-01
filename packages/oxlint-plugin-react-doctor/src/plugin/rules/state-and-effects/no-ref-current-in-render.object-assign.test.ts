@@ -50,6 +50,9 @@ describe("ref writes through Object.assign during render", () => {
 
   it.each([
     "const Object = { assign() {} }; Object.assign(valueRef, { current: value });",
+    "Object.assign = (target, source) => target; Object.assign(valueRef, { current: value });",
+    "Object.defineProperty(Object, 'assign', { value: (target, source) => target }); Object.assign(valueRef, { current: value });",
+    "Object.assign(Object, { assign: (target, source) => target }); Object.assign(valueRef, { current: value });",
     "((Object) => Object.assign(valueRef, { current: value }))(customObject);",
     "const record = { current: null }; Object.assign(record, { current: value });",
     "Object.assign(valueRef, { value });",

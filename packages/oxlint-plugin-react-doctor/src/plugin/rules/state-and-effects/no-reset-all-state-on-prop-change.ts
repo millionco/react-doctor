@@ -19,7 +19,13 @@ import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-funct
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { getCallExpr, getDownstreamRefs, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  getCallExpr,
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+  isSynchronous,
+} from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   findContainingNode,
@@ -32,7 +38,12 @@ import {
   isRefCurrent,
   isState,
   isSyncStateSetterCall,
+  resolveStateSetterReference,
 } from "./utils/effect/react.js";
+import {
+  getForwardedStateSetterWrite,
+  type ForwardedStateSetterWrite,
+} from "./utils/collect-effect-state-write-facts.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
@@ -757,14 +768,37 @@ const haveSameLivePropExpressionIdentity = (
   return left.memberPath.every((propertyName, index) => propertyName === right.memberPath[index]);
 };
 
+const getForwardedSetterWrite = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  setterRef: Reference,
+): ForwardedStateSetterWrite | null => {
+  const identifier = setterRef.identifier as unknown as EsTreeNode;
+  const invocation = identifier.parent;
+  if (
+    !isNodeOfType(invocation, "CallExpression") ||
+    !invocation.arguments?.some((argument) => argument === identifier) ||
+    !resolveStateSetterReference(analysis, setterRef)
+  ) {
+    return null;
+  }
+  const forwardedWrite = getForwardedStateSetterWrite(analysis, context, invocation);
+  return forwardedWrite?.setterExpression === identifier ? forwardedWrite : null;
+};
+
 const isSetStateToInitialValue = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   setterRef: Reference,
+  forwardedWrite: ForwardedStateSetterWrite | undefined,
 ): boolean => {
   const callExpr = getCallExpr(setterRef);
-  if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
-  const setStateToValue: EsTreeNode | undefined = callExpr.arguments?.[0] as EsTreeNode | undefined;
+  if (!forwardedWrite && !isNodeOfType(callExpr, "CallExpression")) return false;
+  const setStateToValue: EsTreeNode | undefined = forwardedWrite
+    ? forwardedWrite.writtenValue
+    : isNodeOfType(callExpr, "CallExpression")
+      ? (callExpr.arguments?.[0] as EsTreeNode | undefined)
+      : undefined;
   const useStateDecl = getUseStateDecl(analysis, setterRef);
   if (!useStateDecl || !isNodeOfType(useStateDecl, "VariableDeclarator")) return false;
   if (!isNodeOfType(useStateDecl.init, "CallExpression")) return false;
@@ -1130,7 +1164,7 @@ const areAllSetterWritesVisibilityGuarded = (
       }
       if (resetIdentifiers.has(setterReference.identifier)) continue;
       const setterCall = getCallExpr(setterReference);
-      if (!setterCall) return false;
+      if (!setterCall && !getForwardedSetterWrite(analysis, context, setterReference)) return false;
       const conditionsByExposure = getSetterExposureConditions(
         analysis,
         context,
@@ -1242,13 +1276,20 @@ const findPropUsedToResetAllState = (
   // A setter that only runs inside a listener / observer / subscription
   // callback fires on that event, not when the prop changes — only
   // synchronous setter calls are the reset-on-prop-change shape.
-  const stateSetterRefs = effectFnRefs.filter((ref) =>
-    isSyncStateSetterCall(analysis, ref, effectFn),
-  );
+  const forwardedWritesByReference = new Map<Reference, ForwardedStateSetterWrite>();
+  for (const ref of effectFnRefs) {
+    const forwardedWrite = getForwardedSetterWrite(analysis, context, ref);
+    if (forwardedWrite) forwardedWritesByReference.set(ref, forwardedWrite);
+  }
+  const isSyncSetterWrite = (ref: Reference): boolean =>
+    isSyncStateSetterCall(analysis, ref, effectFn) ||
+    (forwardedWritesByReference.has(ref) &&
+      isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn));
+  const stateSetterRefs = effectFnRefs.filter(isSyncSetterWrite);
   if (stateSetterRefs.length === 0) return null;
 
   const allResetToInitial = stateSetterRefs.every((ref) =>
-    isSetStateToInitialValue(analysis, context, ref),
+    isSetStateToInitialValue(analysis, context, ref, forwardedWritesByReference.get(ref)),
   );
   if (!allResetToInitial) return null;
   if (hasSynchronousResourceLifecycleTransition(effectFn, context.scopes)) return null;
@@ -1278,8 +1319,8 @@ const findPropUsedToResetAllState = (
         (otherRef) =>
           otherRef !== setterRef &&
           otherRef.resolved === setterRef.resolved &&
-          Boolean(getCallExpr(otherRef)) &&
-          !isSyncStateSetterCall(analysis, otherRef, effectFn),
+          (Boolean(getCallExpr(otherRef)) || forwardedWritesByReference.has(otherRef)) &&
+          !isSyncSetterWrite(otherRef),
       ) ||
       effectInvokesAsyncSetterReloadHelper(analysis, context, effectFnRefs, effectFn, setterRef),
   );

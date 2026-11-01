@@ -50,6 +50,12 @@ export interface EffectExecutionFrame {
   currentFilename?: string;
 }
 
+export interface ForwardedStateSetterWrite {
+  setterReference: Reference;
+  setterExpression: EsTreeNode;
+  writtenValue: EsTreeNode | undefined;
+}
+
 interface EffectValueSubstitution {
   expression: EsTreeNode;
   frame: EffectExecutionFrame;
@@ -1882,6 +1888,58 @@ const collectFrameSetterCalls = (
     if (setterReference) calls.push({ callExpression: child, setterReference });
   });
   return calls;
+};
+
+export const getForwardedStateSetterWrite = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  invocation: EsTreeNode,
+): ForwardedStateSetterWrite | null => {
+  if (!isNodeOfType(invocation, "CallExpression")) return null;
+  const helperFunction = resolveExactLocalFunction(invocation.callee, context.scopes);
+  const callerFunction = findEnclosingFunction(invocation);
+  if (!helperFunction || !isFunctionLike(helperFunction) || !callerFunction) return null;
+  const callerFrame: EffectExecutionFrame = {
+    functionNode: callerFunction,
+    invocation: null,
+    isDeferred: false,
+    introducedBindings: new Set(),
+    substitutions: new Map(),
+  };
+  const helperFrame: EffectExecutionFrame = {
+    ...callerFrame,
+    functionNode: helperFunction,
+    invocation,
+    substitutions: buildSubstitutions(
+      analysis,
+      helperFunction,
+      (invocation.arguments ?? []) as ReadonlyArray<EsTreeNode>,
+      callerFrame,
+    ),
+  };
+  for (const { callExpression, setterReference } of collectFrameSetterCalls(
+    analysis,
+    context,
+    helperFrame,
+  )) {
+    if (!isNodeOfType(callExpression, "CallExpression")) continue;
+    const setterSubstitution = helperFrame.substitutions.get(
+      getIdentifierBindingIdentity(analysis, stripParenExpression(callExpression.callee)),
+    );
+    if (!setterSubstitution) continue;
+    const writtenArgument = callExpression.arguments?.[0] as EsTreeNode | undefined;
+    const valueSubstitution = writtenArgument
+      ? helperFrame.substitutions.get(
+          getIdentifierBindingIdentity(analysis, stripParenExpression(writtenArgument)),
+        )
+      : undefined;
+    return {
+      setterReference,
+      setterExpression: setterSubstitution.expression,
+      writtenValue: valueSubstitution?.expression ?? writtenArgument,
+    };
+  }
+  return null;
 };
 
 const expressionReadsStateDeclarator = (

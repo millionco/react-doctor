@@ -31,6 +31,8 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getForwardedStateSetterWrite } from "./utils/collect-effect-state-write-facts.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 const MESSAGE =
   "This setter runs after `await`, so overlapping re-runs of the effect can resolve out of order and write stale state; gate it behind a cancellation/ignore flag or return a cleanup that cancels the work.";
@@ -141,16 +143,25 @@ const hasOnlyStableIdentityDependencies = ({
     );
   });
 
+const isStateDispatcherReference = (node: EsTreeNode, context: RuleContext): boolean =>
+  isNodeOfType(node, "Identifier") &&
+  isReactHookResultReference(node, STATE_DISPATCHER_HOOKS, 1, context.scopes);
+
 const isStateDispatcherCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  if (!isNodeOfType(callExpression.callee, "Identifier")) return false;
-  return isReactHookResultReference(
-    callExpression.callee,
-    STATE_DISPATCHER_HOOKS,
-    1,
-    context.scopes,
+  if (isStateDispatcherReference(callExpression.callee, context)) return true;
+  if (!callExpression.arguments.some((argument) => isStateDispatcherReference(argument, context))) {
+    return false;
+  }
+  const analysis = getProgramAnalysis(callExpression);
+  const forwardedWrite = analysis
+    ? getForwardedStateSetterWrite(analysis, context, callExpression)
+    : null;
+  return Boolean(
+    forwardedWrite &&
+    isStateDispatcherReference(stripParenExpression(forwardedWrite.setterExpression), context),
   );
 };
 

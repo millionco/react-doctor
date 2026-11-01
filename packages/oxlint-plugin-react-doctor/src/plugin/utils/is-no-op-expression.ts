@@ -5,9 +5,9 @@ import type { EsTreeNode } from "./es-tree-node.js";
 export const isNoOpExpression = (node: EsTreeNode): boolean => {
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "Literal")) return true;
-  if (isNodeOfType(expression, "Identifier")) return expression.name === "undefined";
+  if (isNodeOfType(expression, "Identifier")) return true;
   if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
-    return isNodeOfType(stripParenExpression(expression.argument), "Literal");
+    return isNoOpExpression(expression.argument);
   }
   return false;
 };

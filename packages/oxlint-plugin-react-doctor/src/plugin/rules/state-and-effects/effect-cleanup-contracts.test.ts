@@ -25,6 +25,9 @@ const NO_OP_CLEANUPS = [
   ["an arrow returning void 0", "return () => void 0;"],
   ["a binding to an empty arrow", "const noop = () => {};\nreturn noop;"],
   ["an empty arrow behind a conditional", "return isEnabled ? () => {} : undefined;"],
+  ["an arrow that only reads a binding", "return () => { isEnabled; };"],
+  ["an arrow returning a binding", "return () => isEnabled;"],
+  ["an arrow returning void of a binding", "return () => void isEnabled;"],
 ];
 
 const CLEANUP_EXEMPT_RULE_CASES: Record<string, CleanupExemptRuleCase> = {
@@ -101,6 +104,7 @@ describe.each(Object.entries(CLEANUP_EXEMPT_RULE_CASES))(
 
     it.each([
       ["a cleanup that does work", "return () => { cancelled = true; };"],
+      ["a cleanup that reads a member", "return () => { connection.state; };"],
       ["a disposer call opposite an empty arrow", "return isEnabled ? subscribe() : () => {};"],
       [
         "a mutable binding replaced by a working arrow",

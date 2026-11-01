@@ -38,6 +38,7 @@ interface ClosedJsonSnapshotProviderInput {
   readonly module: ClosedJsonSnapshotModule;
   readonly helperFunction: EsTreeNode;
   readonly decoderRole: "browser-native-json";
+  readonly allowsAxiosDefaultResponseSnapshot?: boolean;
   readonly invocation?: SnapshotProviderInvocation;
 }
 
@@ -630,12 +631,13 @@ const readRequestOptions = (
   return records;
 };
 
-const hasFixedJsonRequestOptions = (
+const hasClosedSnapshotRequestOptions = (
   expression: EsTreeNode,
   module: ClosedJsonSnapshotModule,
   defaultsOnly = false,
   argument?: SnapshotRequestArgument,
   boundAlternatives = false,
+  allowsDefaultResponse = false,
 ): boolean => {
   const records = readRequestOptions(expression, module, 0, true, argument, boundAlternatives);
   return Boolean(
@@ -643,7 +645,13 @@ const hasFixedJsonRequestOptions = (
     records.every((record) => {
       if (defaultsOnly) return [...record.keys()].every((name) => CLIENT_DEFAULT_NAMES.has(name));
       const responseType = record.get("responseType");
-      return responseType?.type === "Literal" && responseType.value === "json";
+      return (
+        (responseType?.type === "Literal" && responseType.value === "json") ||
+        (allowsDefaultResponse &&
+          records.length <= CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH &&
+          (!record.has("responseType") ||
+            (responseType?.type === "Literal" && responseType.value === "text")))
+      );
     }),
   );
 };
@@ -795,7 +803,7 @@ const collectClientBindings = (
           clients.get(module.scopes.symbolFor(initializer.callee.object)!)?.isAxios &&
           initializer.arguments.length <= 1 &&
           (!initializer.arguments[0] ||
-            hasFixedJsonRequestOptions(initializer.arguments[0], module, true))
+            hasClosedSnapshotRequestOptions(initializer.arguments[0], module, true))
         ) {
           clients.set(symbol, { module, symbol, isAxios: false });
           didAddBinding = true;
@@ -836,6 +844,7 @@ const isClientRequest = (
   clients: ReadonlyMap<SymbolDescriptor, SnapshotClientBinding>,
   argument?: SnapshotRequestArgument,
   boundAlternatives = false,
+  allowsDefaultResponse = false,
 ): boolean => {
   if (call.type !== "CallExpression" || call.optional) return false;
   const callee = call.callee;
@@ -846,7 +855,14 @@ const isClientRequest = (
       clients.has(symbol) &&
       call.arguments.length === 1 &&
       call.arguments[0] &&
-      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument, boundAlternatives),
+      hasClosedSnapshotRequestOptions(
+        call.arguments[0],
+        module,
+        false,
+        argument,
+        boundAlternatives,
+        allowsDefaultResponse,
+      ),
     );
   }
   if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return false;
@@ -857,7 +873,14 @@ const isClientRequest = (
     return (
       call.arguments.length === 1 &&
       Boolean(call.arguments[0]) &&
-      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument, boundAlternatives)
+      hasClosedSnapshotRequestOptions(
+        call.arguments[0],
+        module,
+        false,
+        argument,
+        boundAlternatives,
+        allowsDefaultResponse,
+      )
     );
   }
   return (
@@ -865,7 +888,14 @@ const isClientRequest = (
     call.arguments.length === 2 &&
     Boolean(call.arguments[0] && call.arguments[1]) &&
     isInertRequestValue(call.arguments[0], module, 0, true, argument) &&
-    hasFixedJsonRequestOptions(call.arguments[1], module, false, argument, boundAlternatives)
+    hasClosedSnapshotRequestOptions(
+      call.arguments[1],
+      module,
+      false,
+      argument,
+      boundAlternatives,
+      allowsDefaultResponse,
+    )
   );
 };
 
@@ -917,7 +947,8 @@ const hasClosedClientReferences = (
           isAxios &&
           propertyName === "create" &&
           call.arguments.length <= 1 &&
-          (!call.arguments[0] || hasFixedJsonRequestOptions(call.arguments[0], module, true)) &&
+          (!call.arguments[0] ||
+            hasClosedSnapshotRequestOptions(call.arguments[0], module, true)) &&
           call.parent?.type === "VariableDeclarator" &&
           call.parent.id.type === "Identifier" &&
           clients.has(module.scopes.symbolFor(call.parent.id)!)
@@ -1374,6 +1405,7 @@ export const isClosedJsonSnapshotProvider = ({
   module,
   helperFunction,
   decoderRole,
+  allowsAxiosDefaultResponseSnapshot = false,
   invocation,
 }: ClosedJsonSnapshotProviderInput): boolean => {
   if (decoderRole !== "browser-native-json") return false;
@@ -1533,6 +1565,7 @@ export const isClosedJsonSnapshotProvider = ({
       clients,
       argument,
       Boolean(helperBody?.declarations.length || executorBody?.declarations.length),
+      allowsAxiosDefaultResponseSnapshot,
     )
   )
     return false;

@@ -671,6 +671,270 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 
 describe("closed imported JSON snapshot ordinal keys", () => {
   it.each([
+    ["0.17.1", "url: '/catalog'", 0],
+    ["0.17.1", "responseType: 'text'", 0],
+    ["0.17.1", "responseType: 'json'", 0],
+    ["0.18.0", "url: '/catalog'", 0],
+    ["0.18.0", "responseType: 'text'", 0],
+    ["0.18.0", "responseType: 'json'", 0],
+    ["0.21.1", "url: '/catalog'", 0],
+    ["0.21.1", "responseType: 'text'", 0],
+    ["0.21.1", "responseType: 'json'", 0],
+    ["0.17.0", "responseType: 'text'", 1],
+    ["0.18.1", "url: '/catalog'", 1],
+    ["0.21.0", "responseType: 'text'", 1],
+    ["0.21.2", "url: '/catalog'", 1],
+    ["^0.21.0", "responseType: 'text'", 1],
+    ["0.17.1 || 0.18.0", "url: '/catalog'", 1],
+    ["0.21.0", "responseType: 'json'", 0],
+    ["^0.21.0", "responseType: 'json'", 0],
+    ["0.21.1", "responseType: 'arraybuffer'", 1],
+    ["0.21.1", "responseType: 'blob'", 1],
+    ["0.21.1", "responseType: ''", 1],
+    ["0.21.1", "responseType: null", 1],
+    ["0.21.1", "responseType: undefined", 1],
+    ["0.21.1", "responseType: false", 1],
+    ["0.21.1", "responseType: 'text', ...{ responseType: 'arraybuffer' }", 1],
+    ["0.21.1", "responseType: 'arraybuffer', ...{ responseType: 'text' }", 0],
+    ["0.21.1", "responseType: 'text', ...{ responseType: 'json' }", 0],
+  ])(
+    "gates default-response ordinal proofs on exact source evidence: %s / %s",
+    (version, options, count) => {
+      writeSnapshotFile(
+        "package.json",
+        JSON.stringify({
+          ...SNAPSHOT_MANIFEST,
+          dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: version },
+        }),
+      );
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({ ${options} }).then(response => resolve(response.data)).catch(error => reject(error));
+    });`,
+      );
+      expect(runSnapshotLeaf()).toHaveLength(count);
+    },
+  );
+
+  it.each([
+    ["axios.request({})", 0],
+    ["axios.get('/catalog', { responseType: 'text' })", 0],
+    ["axios.get('/catalog')", 1],
+    ["axios(process.env.NODE_ENV === 'production' ? {} : { responseType: 'text' })", 0],
+    ["axios(process.env.NODE_ENV === 'production' ? {} : { responseType: 'arraybuffer' })", 1],
+  ])("keeps target request arity and every final record closed: %s", (request, count) => {
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({
+        ...SNAPSHOT_MANIFEST,
+        dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+      }),
+    );
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${request}.then(response => resolve(response.data)).catch(reject);
+    });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(count);
+  });
+
+  it.each([
+    { resolutions: { axios: "0.17.1" } },
+    { overrides: { axios: "0.21.0" } },
+    { overrides: { tooling: { axios: "0.21.1" } } },
+  ])(
+    "disables default/text on relevant replacements while preserving explicit JSON: %j",
+    (replacement) => {
+      writeSnapshotFile(
+        "package.json",
+        JSON.stringify({
+          ...SNAPSHOT_MANIFEST,
+          ...replacement,
+          dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.17.1" },
+        }),
+      );
+      for (const responseType of ["text", "json"]) {
+        writeSnapshotFile(
+          "src/request.js",
+          `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        axios({ responseType: '${responseType}' }).then(response => resolve(response.data)).catch(reject);
+      });`,
+        );
+        expect(runSnapshotLeaf()).toHaveLength(responseType === "json" ? 0 : 1);
+      }
+    },
+  );
+
+  it.each([
+    [{ pnpm: { overrides: { axios: "npm:foreign-client@1.0.0" } } }, false],
+    [{ pnpm: { patchedDependencies: { "axios@0.21.1": "patches/axios.patch" } } }, false],
+    [{ pnpm: "opaque" }, false],
+    [{ pnpm: {} }, false],
+    [{ patchedDependencies: {} }, false],
+    [{ packageExtensions: {} }, false],
+    [{ packageManager: "pnpm@9.15.9" }, false],
+    [{ packageManager: "bun@1.3.0" }, false],
+    [{ packageManager: null }, false],
+    [{ packageManager: "npm@latest" }, false],
+    [{ packageManager: "npm@10.9.0" }, true],
+    [{ packageManager: "yarn@1.22.22" }, true],
+    [{ overrides: { tooling: "99.0.0" } }, true],
+  ])(
+    "applies the conservative upstream manifest profile only to default/text: %j",
+    (metadata, allowsDefault) => {
+      writeSnapshotFile(
+        "package.json",
+        JSON.stringify({
+          ...SNAPSHOT_MANIFEST,
+          ...metadata,
+          dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+        }),
+      );
+      for (const options of ["{}", "{ responseType: 'text' }", "{ responseType: 'json' }"]) {
+        writeSnapshotFile(
+          "src/request.js",
+          `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        axios(${options}).then(response => resolve(response.data)).catch(reject);
+      });`,
+        );
+        expect(runSnapshotLeaf()).toHaveLength(allowsDefault || options.includes("'json'") ? 0 : 1);
+      }
+    },
+  );
+
+  it("uses only selected lock evidence for default-response ownership", () => {
+    for (const declaration of ["^0.17.0", "^0.21.0"]) {
+      const version = declaration === "^0.17.0" ? "0.17.1" : "0.21.1";
+      writeSnapshotFile(
+        "package.json",
+        JSON.stringify({
+          ...SNAPSHOT_MANIFEST,
+          dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: declaration },
+        }),
+      );
+      writeSnapshotFile(
+        "yarn.lock",
+        `# yarn lockfile v1\n\n"axios@${declaration}":\n  version "${version}"\n  resolved "https://registry.yarnpkg.com/axios/-/axios-${version}.tgz#${"a".repeat(40)}"\n`,
+      );
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        axios({}).then(response => resolve(response.data)).catch(reject);
+      });`,
+      );
+      expect(runSnapshotLeaf()).toHaveLength(declaration === "^0.17.0" ? 0 : 1);
+    }
+  });
+
+  it.each([
+    "axios({});",
+    "axios.request({ responseType: 'text' });",
+    "axios.defaults.responseType = 'text';",
+    "axios.defaults.transformResponse = decode;",
+    "axios.interceptors.response.use(decode);",
+    "const alias = axios;",
+    "JSON.parse = decode;",
+    "XMLHttpRequest = ForeignRequest;",
+  ])("retains client/global closure with eligible default-response evidence: %s", (prefix) => {
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({
+        ...SNAPSHOT_MANIFEST,
+        dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+      }),
+    );
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; ${prefix}
+      export const load = () => new Promise((resolve, reject) => {
+        axios({}).then(response => resolve(response.data)).catch(reject);
+      });`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it("keeps default-response approval bound to the exact module and target call", () => {
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({
+        ...SNAPSHOT_MANIFEST,
+        dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+      }),
+    );
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({}).then(response => resolve(response.data)).catch(reject);
+    });`,
+    );
+    writeSnapshotFile("src/other.js", "import axios from 'axios'; axios({});");
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile(
+      "src/other.js",
+      "import axios from 'axios'; axios({ responseType: 'json' });",
+    );
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it("bounds new default-response alternatives without changing the legacy JSON ordinal proof", () => {
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({
+        ...SNAPSHOT_MANIFEST,
+        dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+      }),
+    );
+    for (const options of ["{}", "{ responseType: 'text' }", "{ responseType: 'json' }"]) {
+      let alternatives = options;
+      for (let depth = 0; depth < 4; depth++)
+        alternatives = `true ? (${alternatives}) : (${alternatives})`;
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        axios(${alternatives}).then(response => resolve(response.data)).catch(reject);
+      });`,
+      );
+      expect(runSnapshotLeaf()).toHaveLength(options.includes("'json'") ? 0 : 1);
+    }
+  });
+
+  it("preserves private caller and sole-population boundaries for default-response preludes", () => {
+    const manifest = {
+      ...SNAPSHOT_MANIFEST,
+      dependencies: { ...SNAPSHOT_MANIFEST.dependencies, axios: "0.21.1" },
+    };
+    writeSnapshotFile("package.json", JSON.stringify(manifest));
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options };
+      return new Promise((resolve, reject) => {
+        axios(requestOptions).then(response => { if (200 === response.status) resolve(response.data); else reject(response.status); }).catch(reject);
+      });
+    };`,
+    );
+    replaceSnapshotSource({
+      name: "default-response private caller",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ responseType: 'text' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile("package.json", JSON.stringify({ ...manifest, main: "src/request.js" }));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile("package.json", JSON.stringify(manifest));
+    replaceSnapshotSource({
+      name: "second population",
+      filename: "src/owner.js",
+      before: "if (envelope.code === 0) setSettings(envelope.data);",
+      after: "if (envelope.code === 0) setSettings(envelope.data); setSettings(envelope.data);",
+    });
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
     "error => reject(error)",
     "error => { reject(error); }",
     "error => { return reject(error); }",

@@ -617,6 +617,7 @@ const hasSolePopulation = (
   module: ClosedJsonSnapshotModule,
   project: ClosedJsonSnapshotProject,
   decoderRole: "browser-native-json",
+  allowsAxiosDefaultResponseSnapshot: boolean,
 ): boolean => {
   if (!isFunctionLike(owner)) return false;
   const declarator = state.declarationNode;
@@ -713,6 +714,7 @@ const hasSolePopulation = (
       module: imported.module,
       helperFunction: imported.component,
       decoderRole,
+      allowsAxiosDefaultResponseSnapshot,
       invocation:
         then.callee.object.arguments.length === 1
           ? { module, call: then.callee.object }
@@ -751,6 +753,7 @@ const certifyRouteConsumer = (
   targetPath: ReadonlyArray<string>,
   project: ClosedJsonSnapshotProject,
   decoderRole: "browser-native-json",
+  allowsAxiosDefaultResponseSnapshot: boolean,
   hasLodashEmptiness: boolean,
   hasAntdLocaleProvider: boolean,
 ): boolean => {
@@ -827,7 +830,14 @@ const certifyRouteConsumer = (
   if (
     !hasEmptyGate(owner, state, route, consumer.module, hasLodashEmptiness) ||
     !hasStableOwnerHookOrder(owner, consumer.module, hasLodashEmptiness) ||
-    !hasSolePopulation(state, owner, consumer.module, project, decoderRole) ||
+    !hasSolePopulation(
+      state,
+      owner,
+      consumer.module,
+      project,
+      decoderRole,
+      allowsAxiosDefaultResponseSnapshot,
+    ) ||
     !getConsumers(project, consumer.module, owner)?.every(
       (ownerConsumer) =>
         isClosingElementReference(ownerConsumer.reference) ||
@@ -902,6 +912,7 @@ export const createClosedJsonSnapshotOrdinalMap = (context: RuleContext) => {
         leaf.targetPath,
         project,
         role.decoderRole,
+        role.allowsAxiosDefaultResponseSnapshot,
         role.hasLodashEmptiness,
         role.hasAntdLocaleProvider,
       )

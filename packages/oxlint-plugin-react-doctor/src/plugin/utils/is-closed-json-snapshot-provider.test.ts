@@ -7,7 +7,10 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 import { isClosedJsonSnapshotProvider } from "./is-closed-json-snapshot-provider.js";
-import { CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT } from "./closed-json-snapshot/constants.js";
+import {
+  CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH,
+  CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT,
+} from "./closed-json-snapshot/constants.js";
 
 const directories: string[] = [];
 const providerSource = `
@@ -28,6 +31,7 @@ const checkProvider = (
   knownPublicEntryTargets: ReadonlyArray<string> = [],
   invocationSource?: string,
   simulateRegExpNull = false,
+  allowsAxiosDefaultResponseSnapshot = false,
 ): boolean => {
   const rootDirectory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "json-provider-")));
   directories.push(rootDirectory);
@@ -86,6 +90,7 @@ const checkProvider = (
       module,
       helperFunction,
       decoderRole: "browser-native-json",
+      allowsAxiosDefaultResponseSnapshot,
       invocation:
         consumer && invocationCall ? { module: consumer, call: invocationCall } : undefined,
     }),
@@ -98,6 +103,129 @@ afterEach(() => {
 });
 
 describe("isClosedJsonSnapshotProvider", () => {
+  it.each([
+    "axios({})",
+    "axios({ responseType: 'text' })",
+    "axios.request({ url: '/catalog' })",
+    "axios.get('/catalog', {})",
+    "axios({ ...{ responseType: 'arraybuffer' }, responseType: 'text' })",
+    "axios({ responseType: 'text', ...{ responseType: 'json' } })",
+    "axios(process.env.NODE_ENV === 'production' ? {} : { responseType: 'text' })",
+  ])("uses the exact capability only for the target final request records: %s", (request) => {
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${request}.then(response => resolve(response.data)).catch(error => reject(error));
+    });`;
+    expect(checkProvider(source, {}, [], undefined, false, true)).toBe(true);
+    if (!request.includes("...{ responseType: 'json' }")) expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each([
+    "axios()",
+    "axios.get('/catalog')",
+    "axios({}, {})",
+    "axios.request()",
+    "axios({ responseType: null })",
+    "axios({ responseType: undefined })",
+    "axios({ responseType: false })",
+    "axios({ responseType: '' })",
+    "axios({ responseType: 'arraybuffer' })",
+    "axios({ responseType: 'blob' })",
+    "axios({ responseType: 'document' })",
+    "axios({ responseType: 'stream' })",
+    "axios({ responseType: 'text', ...{ responseType: 'arraybuffer' } })",
+    "axios(process.env.NODE_ENV === 'production' ? {} : { responseType: 'arraybuffer' })",
+    "axios({ get responseType() { return 'text'; } })",
+    "axios({ responseType: 'text', transformResponse: [JSON.parse] })",
+    "axios({ adapter: customAdapter })",
+    "axios({ responseEncoding: 'utf8' })",
+  ])(
+    "refuses modes and call shapes outside the exact default-response capability: %s",
+    (request) => {
+      const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      ${request}.then(response => resolve(response.data)).catch(reject);
+    });`;
+      expect(checkProvider(source, {}, [], undefined, false, true)).toBe(false);
+    },
+  );
+
+  it.each([
+    "axios({});",
+    "axios.request({ responseType: 'text' });",
+    "axios.defaults.responseType = 'text';",
+    "axios.defaults.transformResponse = decode;",
+    "axios.interceptors.response.use(decode);",
+    "const alias = axios;",
+    "const client = axios.create({ responseType: 'text' });",
+    "JSON.parse = decode;",
+    "XMLHttpRequest = ForeignRequest;",
+  ])("retains closed client and global references with the capability: %s", (prefix) => {
+    const source = `import axios from 'axios'; ${prefix}
+      export const load = () => new Promise((resolve, reject) => {
+        axios({}).then(response => resolve(response.data)).catch(reject);
+      });`;
+    expect(checkProvider(source, {}, [], undefined, false, true)).toBe(false);
+  });
+
+  it("does not approve an identical-looking default request in a different module", () => {
+    const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+      axios({}).then(response => resolve(response.data)).catch(reject);
+    });`;
+    expect(
+      checkProvider(
+        source,
+        { "other.js": "import axios from 'axios'; axios({});" },
+        [],
+        undefined,
+        false,
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      checkProvider(
+        source,
+        { "other.js": "import axios from 'axios'; axios({ responseType: 'json' });" },
+        [],
+        undefined,
+        false,
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("bounds only the new default-response alternatives while preserving legacy JSON", () => {
+    for (const options of ["{}", "{ responseType: 'text' }", "{ responseType: 'json' }"]) {
+      let alternatives = options;
+      let alternativeCount = 1;
+      while (alternativeCount <= CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) {
+        alternatives = `true ? (${alternatives}) : (${alternatives})`;
+        alternativeCount *= 2;
+      }
+      const source = `import axios from 'axios'; export const load = () => new Promise((resolve, reject) => {
+        axios(${alternatives}).then(response => resolve(response.data)).catch(reject);
+      });`;
+      expect(checkProvider(source, {}, [], undefined, false, true)).toBe(
+        options.includes("'json'"),
+      );
+    }
+  });
+
+  it("retains private argument and prelude closure for default-response records", () => {
+    const source = `import axios from 'axios'; export const load = options => {
+      const requestOptions = { ...options };
+      return new Promise((resolve, reject) => {
+        axios(requestOptions).then(response => { if (response.status === 200) resolve(response.data); else reject(); }).catch(reject);
+      });
+    };`;
+    const caller =
+      "import { load } from './provider'; load({ url: '/catalog', responseType: 'text' });";
+    expect(checkProvider(source, {}, [], caller, false, true)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"], caller, false, true)).toBe(false);
+    expect(checkProvider(source, {}, [], caller)).toBe(false);
+    expect(
+      checkProvider(source, {}, [], caller.replace("'text'", "'arraybuffer'"), false, true),
+    ).toBe(false);
+  });
+
   it.each([
     "error => reject(error)",
     "error => { reject(error); }",

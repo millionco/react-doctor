@@ -29,6 +29,7 @@ import {
   SNAPSHOT_ROLE_ANTD_MINIMUM,
   SNAPSHOT_ROLE_ANTD_MAXIMUM,
   SNAPSHOT_ROLE_HISTORICAL_AXIOS_VERSIONS,
+  SNAPSHOT_ROLE_AXIOS_DEFAULT_RESPONSE_VERSIONS,
 } from "./closed-json-snapshot-role/constants.js";
 
 export interface ClosedJsonSnapshotSourceRole {
@@ -37,6 +38,7 @@ export interface ClosedJsonSnapshotSourceRole {
   hasLodashEmptiness: boolean;
   hasAntdLocaleProvider: boolean;
   axiosVersion: string;
+  allowsAxiosDefaultResponseSnapshot: boolean;
   decoderRole: "browser-native-json";
   sourceResolutionPolicy: ClosedJsonSnapshotSourceResolutionPolicy;
   knownPublicEntryTargets: ReadonlyArray<string>;
@@ -452,6 +454,7 @@ export const getClosedJsonSnapshotSourceRole = (
     depth: 0,
   }));
   let replacementCount = 0;
+  let hasAxiosReplacement = false;
   while (pendingReplacements.length > 0) {
     const current = pendingReplacements.pop();
     if (!current) break;
@@ -469,6 +472,7 @@ export const getClosedJsonSnapshotSourceRole = (
     if (!isRecord(current.value)) continue;
     for (const [name, replacement] of Object.entries(current.value)) {
       if (SNAPSHOT_KNOWN_SDK_REQUEST_HEADS.includes(name)) {
+        if (name === "axios") hasAxiosReplacement = true;
         const role = sourceRolesByPackageName.get(name);
         if (
           current.field === "browser" ||
@@ -502,10 +506,27 @@ export const getClosedJsonSnapshotSourceRole = (
     }
   }
   let axiosVersion = "0.17.0 || 0.17.1 || 0.18.0 || 0.18.1 || >=0.19.0 <0.22.0";
+  const packageManagerParts =
+    typeof manifest.packageManager === "string" ? manifest.packageManager.split("@") : [];
+  const hasUpstreamManifestProfile =
+    !["pnpm", "patchedDependencies", "packageExtensions"].some((field) =>
+      Object.hasOwn(manifest, field),
+    ) &&
+    (!Object.hasOwn(manifest, "packageManager") ||
+      (packageManagerParts.length === 2 &&
+        ["npm", "yarn"].includes(packageManagerParts[0]) &&
+        Boolean(parseStableVersion(packageManagerParts[1]))));
+  let allowsAxiosDefaultResponseSnapshot = false;
   for (const role of dependencyRoles) {
     const evidence = readSnapshotDependencyEvidence(projectDirectory, manifest, role);
     if (!evidence) return null;
-    if (role.packageName === "axios" && evidence.exactVersion) axiosVersion = evidence.exactVersion;
+    if (role.packageName === "axios" && evidence.exactVersion) {
+      axiosVersion = evidence.exactVersion;
+      allowsAxiosDefaultResponseSnapshot =
+        !hasAxiosReplacement &&
+        hasUpstreamManifestProfile &&
+        SNAPSHOT_ROLE_AXIOS_DEFAULT_RESPONSE_VERSIONS.includes(evidence.exactVersion);
+    }
   }
   const domDeclaration = getDependencyDeclaration(manifest, "react-dom");
   const hasDomDeclaration = [
@@ -603,6 +624,7 @@ export const getClosedJsonSnapshotSourceRole = (
     hasLodashEmptiness: lodashEvidence !== null,
     hasAntdLocaleProvider: antdEvidence !== null,
     axiosVersion,
+    allowsAxiosDefaultResponseSnapshot,
     decoderRole: "browser-native-json",
     sourceResolutionPolicy,
     knownPublicEntryTargets: [...knownPublicEntryTargets],

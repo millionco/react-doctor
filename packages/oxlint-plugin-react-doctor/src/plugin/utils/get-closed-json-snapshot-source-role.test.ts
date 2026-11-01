@@ -44,6 +44,114 @@ afterEach(() => {
 });
 
 describe("fixed snapshot source API and resolution roles", () => {
+  it.each(["0.17.1", "0.18.0", "0.21.1"])(
+    "selects the default-response capability only for an exact reviewed version: %s",
+    (version) => {
+      const directory = createProject();
+      writeDependency(directory, "axios", version);
+      expect(readRole(directory)).toMatchObject({
+        axiosVersion: version,
+        allowsAxiosDefaultResponseSnapshot: true,
+      });
+    },
+  );
+
+  it.each([
+    "0.17.0",
+    "0.18.1",
+    "0.19.0",
+    "0.21.0",
+    "0.21.2",
+    "^0.21.0",
+    "~0.21.1",
+    "0.17.1 || 0.18.0",
+  ])("keeps the existing JSON role without the new capability: %s", (declaration) => {
+    const directory = createProject();
+    writeDependency(directory, "axios", declaration);
+    expect(readRole(directory)).toMatchObject({
+      decoderRole: "browser-native-json",
+      allowsAxiosDefaultResponseSnapshot: false,
+    });
+  });
+
+  it("uses selected exact Yarn evidence without promoting an unselected contained-range entry", () => {
+    const directory = createProject();
+    writeDependency(directory, "axios", "^0.17.0");
+    writeFile(directory, "yarn.lock", yarnEntry("axios", "^0.17.0", "0.17.1"));
+    expect(readRole(directory)).toMatchObject({ allowsAxiosDefaultResponseSnapshot: true });
+    writeDependency(directory, "axios", "^0.21.0");
+    writeFile(directory, "yarn.lock", yarnEntry("axios", "^0.21.0", "0.21.1"));
+    expect(readRole(directory)).toMatchObject({ allowsAxiosDefaultResponseSnapshot: false });
+  });
+
+  it.each([
+    { resolutions: { axios: "0.17.1" } },
+    { overrides: { axios: "0.21.0" } },
+    { overrides: { tooling: { axios: "0.21.1" } } },
+    { resolutions: { tooling: { axios: "^0.21.0" } } },
+  ])("disables only the new capability for every relevant replacement: %j", (replacement) => {
+    const directory = createProject(replacement);
+    writeDependency(directory, "axios", "0.17.1");
+    expect(readRole(directory)).toMatchObject({
+      axiosVersion: "0.17.1",
+      decoderRole: "browser-native-json",
+      allowsAxiosDefaultResponseSnapshot: false,
+    });
+  });
+
+  it("keeps unrelated replacements outside the exact capability and refreshes dependency evidence", () => {
+    const directory = createProject({ overrides: { tooling: "99.0.0" } });
+    writeDependency(directory, "axios", "0.21.1");
+    expect(readRole(directory)?.allowsAxiosDefaultResponseSnapshot).toBe(true);
+    writeDependency(directory, "axios", "^0.21.0");
+    expect(readRole(directory)?.allowsAxiosDefaultResponseSnapshot).toBe(false);
+  });
+
+  it.each([
+    { browser: { axios: "./client.js" } },
+    { resolutions: { "**/axios": "0.21.1" } },
+    { overrides: { axios: { ".": "0.21.1" } } },
+  ])("retains source-origin refusals despite an eligible exact dependency: %j", (replacement) => {
+    const directory = createProject(replacement);
+    writeDependency(directory, "axios", "0.21.1");
+    expect(readRole(directory)).toBeNull();
+  });
+
+  it.each([
+    { pnpm: { overrides: { axios: "npm:foreign-client@1.0.0" } } },
+    { pnpm: { patchedDependencies: { "axios@0.21.1": "patches/axios.patch" } } },
+    { pnpm: { packageExtensions: {} } },
+    { pnpm: null },
+    { pnpm: "opaque" },
+    { pnpm: {} },
+    { patchedDependencies: {} },
+    { packageExtensions: {} },
+    { packageManager: "pnpm@9.15.9" },
+    { packageManager: "bun@1.3.0" },
+    { packageManager: "npm@latest" },
+    { packageManager: "yarn@1.22.22+custom" },
+    { packageManager: null },
+    { packageManager: {} },
+  ])("holds only the new capability outside the upstream manifest profile: %j", (metadata) => {
+    const directory = createProject(metadata);
+    writeDependency(directory, "axios", "0.21.1");
+    expect(readRole(directory)).toMatchObject({
+      axiosVersion: "0.21.1",
+      decoderRole: "browser-native-json",
+      allowsAxiosDefaultResponseSnapshot: false,
+    });
+  });
+
+  it.each([
+    { packageManager: "npm@10.9.0" },
+    { packageManager: "yarn@1.22.22" },
+    { scripts: { test: "echo invented" }, overrides: { tooling: "99.0.0" } },
+  ])("retains ordinary npm/Yarn and unrelated metadata controls: %j", (metadata) => {
+    const directory = createProject(metadata);
+    writeDependency(directory, "axios", "0.21.1");
+    expect(readRole(directory)?.allowsAxiosDefaultResponseSnapshot).toBe(true);
+  });
+
   it("requires source APIs without app, build, or installed-output attestation", () => {
     const directory = createProject();
     expect(readRole(directory)).toEqual({
@@ -52,6 +160,7 @@ describe("fixed snapshot source API and resolution roles", () => {
       hasLodashEmptiness: false,
       hasAntdLocaleProvider: false,
       axiosVersion: "0.17.0 || 0.17.1 || 0.18.0 || 0.18.1 || >=0.19.0 <0.22.0",
+      allowsAxiosDefaultResponseSnapshot: false,
       decoderRole: "browser-native-json",
       knownPublicEntryTargets: ["./index"],
       sourceResolutionPolicy: {

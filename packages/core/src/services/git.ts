@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import * as NodeChildProcessSpawner from "@effect/platform-node-shared/NodeChildProcessSpawner";
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import * as NodePath from "@effect/platform-node-shared/NodePath";
@@ -436,6 +439,65 @@ export class Git extends Context.Service<
       ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
         runCommand({ command: "git", args, directory });
 
+      const findUntrackedRenames = (
+        directory: string,
+        diffArgs: ReadonlyArray<string>,
+        plan: GitBaselineDiffPlan,
+        untrackedFiles: ReadonlyArray<string>,
+      ): Effect.Effect<Record<string, string>, ReactDoctorError> => {
+        const headFiles = new Set(plan.headFiles);
+        const deletedFiles = new Set(
+          plan.baseFiles.filter(
+            (filePath) => !headFiles.has(filePath) && plan.renamedFiles?.[filePath] === undefined,
+          ),
+        );
+        if (deletedFiles.size === 0 || untrackedFiles.length === 0) return Effect.succeed({});
+        return Effect.acquireUseRelease(
+          Effect.try(() => fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-index-"))),
+          (temporaryDirectory) =>
+            Effect.gen(function* () {
+              const indexPath = yield* runGit(directory, [
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-path",
+                "index",
+              ]);
+              if (indexPath.status !== 0) return {};
+              const indexFile = path.join(temporaryDirectory, "index");
+              const pathspecFile = path.join(temporaryDirectory, "untracked");
+              yield* Effect.try(() => {
+                fs.copyFileSync(indexPath.stdout.trim(), indexFile);
+                fs.writeFileSync(pathspecFile, untrackedFiles.join("\0"));
+              });
+              const env = { GIT_INDEX_FILE: indexFile };
+              const intentToAdd = yield* runCommand({
+                command: "git",
+                args: [
+                  "--literal-pathspecs",
+                  "add",
+                  "--intent-to-add",
+                  `--pathspec-from-file=${pathspecFile}`,
+                  "--pathspec-file-nul",
+                ],
+                directory,
+                env,
+              });
+              if (intentToAdd.status !== 0) return {};
+              const result = yield* runCommand({ command: "git", args: diffArgs, directory, env });
+              if (result.status !== 0) return {};
+              const untrackedFileSet = new Set(untrackedFiles);
+              return Object.fromEntries(
+                Object.entries(parseBaselineDiffPlan(result.stdout)?.renamedFiles ?? {}).filter(
+                  ([basePath, headPath]) =>
+                    deletedFiles.has(basePath) && untrackedFileSet.has(headPath),
+                ),
+              );
+            }),
+          (temporaryDirectory) =>
+            Effect.sync(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true })),
+        ).pipe(Effect.catch(() => Effect.succeed({})));
+      };
+
       const listUntrackedFilePaths = (
         directory: string,
         includePaths: ReadonlyArray<string> = [],
@@ -694,7 +756,7 @@ export class Git extends Context.Service<
               "--relative",
             ]);
             if (unmerged.status !== 0 || unmerged.stdout.length > 0) return null;
-            const result = yield* runGit(input.directory, [
+            const diffArgs = [
               "diff",
               "--no-ext-diff",
               "--no-textconv",
@@ -703,7 +765,8 @@ export class Git extends Context.Service<
               "--name-status",
               "--relative",
               input.ref,
-            ]);
+            ];
+            const result = yield* runGit(input.directory, diffArgs);
             if (result.status !== 0) return null;
             const plan = parseBaselineDiffPlan(result.stdout);
             if (plan === null) return null;
@@ -714,11 +777,19 @@ export class Git extends Context.Service<
               "-z",
             ]);
             if (untracked.status !== 0) return null;
+            const untrackedFiles = splitNullSeparated(untracked.stdout);
+            const untrackedRenamedFiles = yield* findUntrackedRenames(
+              input.directory,
+              diffArgs,
+              plan,
+              untrackedFiles,
+            );
+            const renamedFiles = { ...plan.renamedFiles, ...untrackedRenamedFiles };
             return {
-              ...plan,
+              ...(Object.keys(renamedFiles).length > 0 ? { renamedFiles } : {}),
               baseFiles: plan.baseFiles,
               headFiles: plan.headFiles,
-              untrackedFiles: splitNullSeparated(untracked.stdout),
+              untrackedFiles,
             } satisfies GitBaselineDiffPlan;
           }).pipe(
             Effect.catch(() => Effect.succeed(null)),

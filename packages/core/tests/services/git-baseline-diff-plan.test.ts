@@ -60,18 +60,43 @@ describe("Git.baselineDiffPlan", () => {
     });
   });
 
-  it("keeps an unstaged rename destination on the head side", async () => {
-    writeFile(directory, "src/old-name.tsx", "export const value = 1;\n");
-    const baseRef = commitAll(directory, "base");
-    fs.renameSync(
-      path.join(directory, "src/old-name.tsx"),
-      path.join(directory, "src/new-name.tsx"),
+  it("records a rename whose destination is untracked", async () => {
+    writeFile(
+      directory,
+      "src/old-name.tsx",
+      "export const first = 1;\nexport const second = 2;\nexport const third = 3;\nexport const fourth = 4;\n",
     );
+    const baseRef = commitAll(directory, "base");
+    fs.rmSync(path.join(directory, "src/old-name.tsx"));
+    writeFile(
+      directory,
+      "src/new-name.tsx",
+      "export const first = 1;\nexport const second = 2;\nexport const third = 3;\nexport const fourth = 5;\n",
+    );
+    const indexBefore = fs.readFileSync(path.join(directory, ".git/index"));
 
     await expect(readPlan(directory, baseRef)).resolves.toEqual({
       baseFiles: ["src/old-name.tsx"],
       headFiles: [],
+      renamedFiles: { "src/old-name.tsx": "src/new-name.tsx" },
       untrackedFiles: ["src/new-name.tsx"],
+    });
+    expect(fs.readFileSync(path.join(directory, ".git/index"))).toEqual(indexBefore);
+    expect(runGit(directory, ["status", "--porcelain"])).toBe(
+      "D src/old-name.tsx\n?? src/new-name.tsx",
+    );
+  });
+
+  it("keeps an unrelated untracked file head-only when a tracked file is deleted", async () => {
+    writeFile(directory, "src/deleted.tsx", "export const value = 1;\n");
+    const baseRef = commitAll(directory, "base");
+    fs.rmSync(path.join(directory, "src/deleted.tsx"));
+    writeFile(directory, "src/unrelated.tsx", "export const Unrelated = () => null;\n");
+
+    await expect(readPlan(directory, baseRef)).resolves.toEqual({
+      baseFiles: ["src/deleted.tsx"],
+      headFiles: [],
+      untrackedFiles: ["src/unrelated.tsx"],
     });
   });
 

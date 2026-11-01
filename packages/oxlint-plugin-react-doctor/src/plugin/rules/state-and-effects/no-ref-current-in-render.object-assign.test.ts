@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { noRefCurrentInRender } from "./no-ref-current-in-render.js";
 
 describe("ref writes through Object.assign during render", () => {
@@ -269,5 +272,62 @@ describe("ref writes through Object.assign during render", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const Panel = () => render(value);",
+    "const Panel = () => values.map(render);",
+    "const Panel = () => Object.keys(value);",
+    "const Panel = () => value?.render();",
+    "const Panel = () => (render as typeof render)(value);",
+  ])("keeps scopes lazy for unrelated calls: %s", (source) => {
+    const parsed = parseFixture(source);
+    expect(parsed.errors).toEqual([]);
+    const visitors = noRefCurrentInRender.create({
+      report: () => {},
+      get scopes(): never {
+        throw new Error("unrelated calls must not request scopes");
+      },
+      get cfg(): never {
+        throw new Error("unrelated calls must not request control flow");
+      },
+    });
+    walkAst(parsed.program, (node) => {
+      if (isNodeOfType(node, "CallExpression")) visitors.CallExpression(node);
+    });
+  });
+
+  it.each([
+    ["const alias = valueRef; Object.assign(alias, { current: value });", 1],
+    [
+      "const alias = valueRef; const nestedAlias = alias; Object.assign(nestedAlias, { current: value });",
+      1,
+    ],
+    [
+      "const alias = {}; { const valueRef = alias; Object.assign(valueRef, { current: value }); }",
+      0,
+    ],
+    ["const alias = valueRef.current; Object.assign(alias, { current: value });", 0],
+    ["Object.assign({ ...valueRef }, { current: value });", 0],
+    ["Object.assign(valueRef, { __proto__: { current: value } });", 0],
+    ["Object.assign(valueRef, { set current(value) {} });", 1],
+    ["Object.assign(valueRef, { current() { return value; } });", 1],
+    ["Object.assign?.(valueRef, { current: value });", 1],
+    ["Object[`assign`](valueRef, { [`current`]: value });", 1],
+    ["const deferred = () => Object.assign(valueRef, { current: value });", 0],
+    ["function deferred() { Object.assign(valueRef, { current: value }); }", 0],
+    ["Object.assign(valueRef, { current: value }); return valueRef.current;", 1],
+  ])("preserves target identity and execution scope: %s", (statement, diagnosticCount) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react";
+       const Panel = ({ value }) => {
+         const valueRef = useRef(null);
+         ${statement}
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
   });
 });

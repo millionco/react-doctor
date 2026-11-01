@@ -717,6 +717,13 @@ export const noRefCurrentInRender = defineRule({
         reportWrite(node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callee = stripParenExpression(node.callee);
+        if (
+          !isNodeOfType(callee, "MemberExpression") ||
+          getStaticPropertyName(callee) !== "assign"
+        ) {
+          return;
+        }
         reportWrite(node);
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {

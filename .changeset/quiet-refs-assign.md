@@ -4,4 +4,4 @@
 "react-doctor": patch
 ---
 
-Detect render-time ref.current writes made through Object.assign while preserving predictable guarded initialization and deferred effect or event writes.
+Detect render-time ref.current writes made through Object.assign while preserving predictable guarded initialization and deferred effect or event writes. Keep semantic analysis lazy for unrelated calls.

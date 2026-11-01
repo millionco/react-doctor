@@ -3,6 +3,20 @@ import { runScanRule } from "../../../test-utils/run-scan-rule.js";
 import { mcpToolCapabilityRisk } from "./mcp-tool-capability-risk.js";
 
 describe("security-scan/mcp-tool-capability-risk — regressions", () => {
+  it.each(["fetch", "exec", "axios"])(
+    "ignores a single-word %s description (#841)",
+    (description) => {
+      for (const propertyName of ["description", '"description"', "'description'"]) {
+        expect(
+          runScanRule(mcpToolCapabilityRisk, {
+            relativePath: "src/mcp/local-echo.ts",
+            content: `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"; const server = new McpServer({ name: "local", version: "1" }); server.tool("echo", { ${propertyName}: "${description}" }, async () => ({ content: [{ type: "text", text: "done" }] }));`,
+          }),
+        ).toHaveLength(0);
+      }
+    },
+  );
+
   it("stays silent on McpServer construction and prompt registration (millionco/expect shape)", () => {
     const content = [
       'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',

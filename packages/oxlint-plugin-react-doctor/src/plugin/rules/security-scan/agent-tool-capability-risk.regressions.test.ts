@@ -3,6 +3,20 @@ import { runScanRule } from "../../../test-utils/run-scan-rule.js";
 import { agentToolCapabilityRisk } from "./agent-tool-capability-risk.js";
 
 describe("security-scan/agent-tool-capability-risk — regressions", () => {
+  it.each(["fetch", "exec", "axios"])(
+    "ignores a single-word %s description (#841)",
+    (description) => {
+      for (const propertyName of ["description", '"description"', "'description'"]) {
+        expect(
+          runScanRule(agentToolCapabilityRisk, {
+            relativePath: "src/agents/tools/local-echo.ts",
+            content: `import { tool } from "ai"; export const echo = tool({ ${propertyName}: "${description}", execute: async () => ({ text: "done" }) });`,
+          }),
+        ).toHaveLength(0);
+      }
+    },
+  );
+
   it("stays silent when a capability keyword appears only in description prose (#838)", () => {
     const findings = runScanRule(agentToolCapabilityRisk, {
       relativePath: "src/agents/tools/list-items.ts",

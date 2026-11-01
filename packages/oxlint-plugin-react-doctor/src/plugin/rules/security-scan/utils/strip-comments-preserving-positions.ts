@@ -203,18 +203,33 @@ const findRegexLiteralEnd = (content: string, slashIndex: number): number | null
   return null;
 };
 
-// A capability keyword is a real signal as a single-token literal — a module
-// specifier (`"node:child_process"`, `"axios"`) or identifier-shaped value —
-// and noise as prose (a tool `description: "...ALWAYS fetch the numbers..."`).
-// Specifiers and identifiers never contain whitespace; prose is multiple words.
-// Keying on the literal's own content (rather than the call syntax around it)
-// preserves every import/require form — `from "x"`, `require("x")`,
-// `(0, require)("x")`, `require?.("x")` — without trying to parse the callee.
-const quotedLiteralHasWhitespace = (
+const shouldBlankQuotedLiteral = (
   content: string,
   openQuoteIndex: number,
   delimiterCharCode: number,
 ): boolean => {
+  let propertyCursor = openQuoteIndex - 1;
+  while (propertyCursor >= 0 && WHITESPACE_PATTERN.test(content[propertyCursor]))
+    propertyCursor -= 1;
+  if (content[propertyCursor] === ":") {
+    propertyCursor -= 1;
+    while (propertyCursor >= 0 && WHITESPACE_PATTERN.test(content[propertyCursor]))
+      propertyCursor -= 1;
+    const propertyDelimiter = content[propertyCursor];
+    const isQuotedProperty = propertyDelimiter === '"' || propertyDelimiter === "'";
+    if (isQuotedProperty) propertyCursor -= 1;
+    const propertyStart = propertyCursor - "description".length + 1;
+    let propertyPrefix = propertyStart - (isQuotedProperty ? 2 : 1);
+    while (propertyPrefix >= 0 && WHITESPACE_PATTERN.test(content[propertyPrefix]))
+      propertyPrefix -= 1;
+    if (
+      (content[propertyPrefix] === "{" || content[propertyPrefix] === ",") &&
+      content.slice(propertyStart, propertyCursor + 1) === "description" &&
+      (!isQuotedProperty || content[propertyStart - 1] === propertyDelimiter)
+    ) {
+      return true;
+    }
+  }
   for (let cursor = openQuoteIndex + 1; cursor < content.length; cursor += 1) {
     const charCode = content.charCodeAt(cursor);
     if (charCode === BACKSLASH_CHAR_CODE) {
@@ -233,9 +248,9 @@ const quotedLiteralHasWhitespace = (
 // the stripped content still maps 1:1 onto the original file. When
 // `blankStringContents` is set it also blanks string-literal interiors (the
 // delimiting quotes are kept), so a capability keyword that appears only in
-// prose — a tool `description: "...ALWAYS fetch the numbers..."` — no longer
-// counts as a real call site; single-token literals (module specifiers,
-// identifiers) are exempt. Newlines are always preserved for line mapping.
+// prose or a description value no longer counts as a real call site; other
+// single-token literals (module specifiers, identifiers) are exempt.
+// Newlines are always preserved for line mapping.
 const blankNonCodePreservingPositions = (content: string, blankStringContents: boolean): string => {
   const contentLength = content.length;
   const blankedRanges = createBlankedRanges();
@@ -324,8 +339,7 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
 
     if (charCode === DOUBLE_QUOTE_CHAR_CODE || charCode === SINGLE_QUOTE_CHAR_CODE) {
       stringDelimiterCharCode = charCode;
-      isBlankingString =
-        blankStringContents && quotedLiteralHasWhitespace(content, index, charCode);
+      isBlankingString = blankStringContents && shouldBlankQuotedLiteral(content, index, charCode);
       index += 1;
       continue;
     }

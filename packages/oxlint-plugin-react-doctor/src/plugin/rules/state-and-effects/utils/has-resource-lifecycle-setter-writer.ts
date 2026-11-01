@@ -5,6 +5,7 @@ import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
@@ -25,7 +26,10 @@ import {
   isSetterWiredToJsxHandler,
   referencesIdentifierNamed,
 } from "./is-controlled-prop-mirror.js";
-import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
+import {
+  resolveStateWriteSite,
+  type EffectStateWriteSite,
+} from "./collect-effect-state-write-facts.js";
 
 const RESOURCE_LIFECYCLE_EVENT_NAMES: ReadonlySet<string> = new Set([
   "onAbort",
@@ -56,12 +60,9 @@ const RESOURCE_SYNC_METHOD_NAMES: ReadonlySet<string> = new Set(["load", "pause"
 
 const writesFailureLatch = (
   analysis: ProgramAnalysis,
-  setterReference: Reference,
+  writtenValue: EsTreeNode | undefined,
   dependencyVariables: ReadonlySet<unknown>,
 ): boolean => {
-  const callExpression = getCallExpr(setterReference);
-  if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
-  const writtenValue = callExpression.arguments?.[0] as EsTreeNode | undefined;
   if (isNodeOfType(writtenValue, "Literal") && writtenValue.value === true) return true;
   if (!writtenValue) return false;
   if (isNodeOfType(writtenValue, "Identifier")) {
@@ -174,12 +175,11 @@ const hasResourceIdentityElement = (
 const isWrittenByResourceSyncEffect = (
   analysis: ProgramAnalysis,
   context: RuleContext,
-  setterReference: Reference,
+  write: EffectStateWriteSite,
   componentFunction: EsTreeNode,
   mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
 ): boolean => {
-  const identifier = setterReference.identifier as unknown as EsTreeNode;
-  let cursor: EsTreeNode | null | undefined = identifier;
+  let cursor: EsTreeNode | null | undefined = write.node;
   let effectCall: EsTreeNode | null = null;
   while (cursor && cursor !== componentFunction) {
     if (
@@ -194,15 +194,7 @@ const isWrittenByResourceSyncEffect = (
     cursor = cursor.parent ?? null;
   }
   if (!effectCall || !isNodeOfType(effectCall, "CallExpression")) return false;
-  const writerCall = getCallExpr(setterReference);
-  if (
-    isNodeOfType(writerCall, "CallExpression") &&
-    hasDeferredOrExternalEffectWork(analysis, effectCall, context, {
-      node: writerCall,
-      setter: writerCall.callee,
-      value: writerCall.arguments[0],
-    })
-  ) {
+  if (hasDeferredOrExternalEffectWork(analysis, effectCall, context, write)) {
     return true;
   }
   const effectFunction = effectCall.arguments?.[0];
@@ -324,8 +316,20 @@ export const hasResourceLifecycleSetterWriter = (
 
   for (const reference of setterReference.resolved.references) {
     if (reference.init) continue;
-    if (!writesFailureLatch(analysis, reference, dependencyVariables)) continue;
     const identifier = reference.identifier as unknown as EsTreeNode;
+    const referenceCall = getCallExpr(reference);
+    const directCall = isNodeOfType(referenceCall, "CallExpression") ? referenceCall : null;
+    const invocation = directCall ? null : findTransparentExpressionRoot(identifier).parent;
+    const write = invocation ? resolveStateWriteSite(analysis, context, invocation) : null;
+    if (
+      (!directCall && (!write || write.setterReference.resolved !== setterReference.resolved)) ||
+      !writesFailureLatch(
+        analysis,
+        directCall ? directCall.arguments[0] : write?.value,
+        dependencyVariables,
+      )
+    )
+      continue;
     let outermostFunctionBelowComponent: EsTreeNode | null = null;
     let cursor: EsTreeNode | null | undefined = identifier;
     while (cursor && cursor !== componentFunction) {
@@ -350,17 +354,23 @@ export const hasResourceLifecycleSetterWriter = (
     ) {
       return true;
     }
-    if (
-      hasMatchingResourceIdentity &&
-      isWrittenByResourceSyncEffect(
-        analysis,
-        context,
-        reference,
-        componentFunction,
-        mediaReceiverCache,
+    if (hasMatchingResourceIdentity) {
+      const writeSite =
+        write ??
+        (directCall
+          ? { node: directCall, setter: directCall.callee, value: directCall.arguments[0] }
+          : null);
+      if (
+        writeSite &&
+        isWrittenByResourceSyncEffect(
+          analysis,
+          context,
+          writeSite,
+          componentFunction,
+          mediaReceiverCache,
+        )
       )
-    ) {
-      return true;
+        return true;
     }
   }
   return false;

@@ -30,7 +30,10 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
-import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
+import {
+  resolveStateWriteSite,
+  type EffectStateWriteSite,
+} from "./collect-effect-state-write-facts.js";
 import { getEffectDepsRefs, getEffectFn, isProp, isState } from "./effect/react.js";
 import { isSubscribeOrObserveCallExpression } from "./is-subscribe-like-call-expression.js";
 
@@ -335,7 +338,8 @@ const isWorkRelatedToWrite = (
     workAnchor = invocationEdge.callExpression;
   }
   if (isNodeOfType(write.setter, "Identifier")) {
-    const setterBinding = getRef(analysis, write.setter)?.resolved;
+    const setterBinding = resolveStateWriteSite(analysis, context, write.node)?.setterReference
+      .resolved;
     if (setterBinding) {
       let writesSameState = false;
       walkAst(workNode, (child) => {
@@ -343,8 +347,8 @@ const isWorkRelatedToWrite = (
         if (
           child !== write.node &&
           isNodeOfType(child, "CallExpression") &&
-          isNodeOfType(child.callee, "Identifier") &&
-          getRef(analysis, child.callee)?.resolved === setterBinding
+          resolveStateWriteSite(analysis, context, child)?.setterReference.resolved ===
+            setterBinding
         ) {
           writesSameState = true;
           return false;
@@ -358,8 +362,8 @@ const isWorkRelatedToWrite = (
           if (child !== writeFunction && isFunctionLike(child)) return false;
           if (
             !isNodeOfType(child, "CallExpression") ||
-            !isNodeOfType(child.callee, "Identifier") ||
-            getRef(analysis, child.callee)?.resolved !== setterBinding
+            resolveStateWriteSite(analysis, context, child)?.setterReference.resolved !==
+              setterBinding
           ) {
             return;
           }

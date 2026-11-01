@@ -204,6 +204,14 @@ describe("no-adjust-state-on-prop-change forwarded setters", () => {
       'let writer = setValue; writer = subscribe; assign(writer, "")',
     ],
     ["a non-setter argument", ASSIGN_HELPER, 'assign(subscribe, "")'],
+    [
+      "a bound helper",
+      `${ASSIGN_HELPER} const bound = assign.bind(null, subscribe);`,
+      'bound(setValue, "")',
+    ],
+    ["an inline bound helper", ASSIGN_HELPER, 'assign.bind(null, subscribe)(setValue, "")'],
+    ["a shifted call receiver", ASSIGN_HELPER, 'assign.call(setValue, subscribe, "")'],
+    ["a shifted apply receiver", ASSIGN_HELPER, 'assign.apply(setValue, [subscribe, ""])'],
   ])("keeps %s quiet", (_scenario, helper, write) => {
     expect(getDiagnosticLines(buildEditableReset(helper, write))).toEqual([]);
   });
@@ -266,5 +274,124 @@ describe("no-adjust-state-on-prop-change forwarded setters", () => {
     `;
     expect(getDiagnosticLines(buildSource("setSelection(null)"))).toEqual([]);
     expect(getDiagnosticLines(buildSource("assign(setSelection, null)"))).toEqual([]);
+  });
+});
+
+describe("forwarded related resource writers", () => {
+  it.each(["setFailed!", "setFailed as (value: boolean) => void"])(
+    "preserves wrapped setters: %s",
+    (setter) => {
+      expect(
+        getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        useEffect(() => { assign(${setter}, false); }, [src]);
+        return <img src={src} onError={() => assign(${setter}, true)} />;
+      }
+    `),
+      ).toEqual([]);
+    },
+  );
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])("preserves image failure latches with reset=%s event=%s", (forwardedReset, forwardedEvent) => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        useEffect(() => { ${forwardedReset ? "assign(setFailed, false)" : "setFailed(false)"}; }, [src]);
+        return <img src={src} onError={() => ${forwardedEvent ? "assign(setFailed, true)" : "setFailed(true)"}} />;
+      }
+    `),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    "preserves async loading latches with reset=%s completion=%s",
+    (forwardedReset, forwardedCompletion) => {
+      expect(
+        getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Loading({ refreshKey }) {
+        const [loading, setLoading] = useState(false);
+        useEffect(() => {
+          ${forwardedReset ? "assign(setLoading, true)" : "setLoading(true)"};
+          fetch("/refresh").then(() => ${forwardedCompletion ? "assign(setLoading, false)" : "setLoading(false)"});
+        }, [refreshKey]);
+        return loading ? <p>Loading</p> : null;
+      }
+    `),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([
+    'import { latch } from "writer";',
+    "const latch = (setter, value) => { if (enabled) setter(value); };",
+    "const latch = (setter, value) => { track(); setter(value); };",
+    "const latch = async (setter, value) => setter(value);",
+    "function* latch(setter, value) { setter(value); }",
+    "const latch = (setter, value) => setter?.(value);",
+    "const latch = (setter, value) => () => setter(value);",
+    "const latch = () => { if (false) setFailed(true); };",
+  ])("does not exempt unsupported lifecycle writers: %s", (helper) => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      ${helper}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        useEffect(() => { assign(setFailed, false); }, [src]);
+        return <img src={src} onError={() => latch(setFailed, true)} />;
+      }
+    `),
+    ).toHaveLength(1);
+  });
+
+  it("keeps different forwarded state writers separate", () => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        const [other, setOther] = useState(false);
+        useEffect(() => { assign(setFailed, false); }, [src]);
+        return <img src={src} onError={() => assign(setOther, true)} data-other={other} />;
+      }
+    `),
+    ).toHaveLength(1);
+  });
+
+  it("does not relate an async completion for another state variable", () => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Loading({ refreshKey }) {
+        const [loading, setLoading] = useState(false);
+        const [other, setOther] = useState(false);
+        useEffect(() => {
+          assign(setLoading, true);
+          fetch("/refresh").then(() => assign(setOther, false));
+        }, [refreshKey]);
+        return loading ? <p>{other}</p> : null;
+      }
+    `),
+    ).toHaveLength(1);
   });
 });

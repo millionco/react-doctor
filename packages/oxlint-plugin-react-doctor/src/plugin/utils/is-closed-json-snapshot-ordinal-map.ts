@@ -698,25 +698,26 @@ const hasSolePopulation = (
     !isNodeOfType(then.callee, "MemberExpression") ||
     getStaticPropertyName(then.callee) !== "then" ||
     !isNodeOfType(then.callee.object, "CallExpression") ||
-    then.callee.object.arguments.length !== 0
+    then.callee.object.arguments.length > 1
   )
     return false;
   const imported = resolveImportedFunction(then.callee.object.callee, module, project);
+  if (!imported) return false;
+  const helperConsumers = getConsumers(project, imported.module, imported.component);
   if (
-    !imported ||
+    !helperConsumers ||
+    helperConsumers.length !== 1 ||
+    helperConsumers[0]?.reference !== then.callee.object.callee ||
     !isClosedJsonSnapshotProvider({
       project,
       module: imported.module,
       helperFunction: imported.component,
       decoderRole,
+      invocation:
+        then.callee.object.arguments.length === 1
+          ? { module, call: then.callee.object }
+          : undefined,
     })
-  )
-    return false;
-  const helperConsumers = getConsumers(project, imported.module, imported.component);
-  if (
-    !helperConsumers ||
-    helperConsumers.length !== 1 ||
-    helperConsumers[0]?.reference !== then.callee.object.callee
   )
     return false;
   const effectCallback = findEnclosingFunction(then);

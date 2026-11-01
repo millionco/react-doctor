@@ -36,6 +36,24 @@ interface ClosedJsonSnapshotProviderInput {
   readonly module: ClosedJsonSnapshotModule;
   readonly helperFunction: EsTreeNode;
   readonly decoderRole: "browser-native-json";
+  readonly invocation?: SnapshotProviderInvocation;
+}
+
+interface SnapshotProviderInvocation {
+  readonly module: ClosedJsonSnapshotModule;
+  readonly call: EsTreeNode;
+}
+
+interface SnapshotRequestArgument {
+  readonly module: ClosedJsonSnapshotModule;
+  readonly parameter: SymbolDescriptor;
+  readonly properties: ReadonlyMap<string, EsTreeNode>;
+  readonly references: Set<EsTreeNode>;
+}
+
+interface SnapshotApprovedRequest {
+  readonly module: ClosedJsonSnapshotModule;
+  readonly call: EsTreeNode;
 }
 
 interface SnapshotClientBinding {
@@ -360,20 +378,45 @@ const isClosedClientIdentifier = (
   );
 };
 
+const getSnapshotRequestArgumentValue = (
+  expression: EsTreeNode,
+  module: ClosedJsonSnapshotModule,
+  argument: SnapshotRequestArgument | undefined,
+): EsTreeNode | null => {
+  if (
+    !argument ||
+    expression.type !== "MemberExpression" ||
+    expression.optional ||
+    expression.computed ||
+    expression.object.type !== "Identifier" ||
+    module.scopes.symbolFor(expression.object) !== argument.parameter
+  )
+    return null;
+  const propertyName = getStaticPropertyName(expression);
+  const value = propertyName ? argument.properties.get(propertyName) : null;
+  if (!value) return null;
+  argument.references.add(expression.object);
+  return value;
+};
+
 const isInertRequestValue = (
   expression: EsTreeNode,
   module: ClosedJsonSnapshotModule,
   depth: number,
   allowContainers = true,
+  argument?: SnapshotRequestArgument,
 ): boolean => {
   if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return false;
   const node = stripParenExpression(expression);
+  const argumentValue = getSnapshotRequestArgumentValue(node, module, argument);
+  if (argumentValue && argument)
+    return isInertRequestValue(argumentValue, argument.module, depth + 1);
   if (node.type === "Literal") {
     return node.value === null || ["string", "number", "boolean"].includes(typeof node.value);
   }
   if (node.type === "TemplateLiteral") return node.expressions.length === 0;
   if (node.type === "UnaryExpression" && ["-", "+", "!"].includes(node.operator)) {
-    return isInertRequestValue(node.argument, module, depth + 1);
+    return isInertRequestValue(node.argument, module, depth + 1, true, argument);
   }
   if (node.type === "Identifier") {
     const symbol = module.scopes.symbolFor(node);
@@ -394,13 +437,14 @@ const isInertRequestValue = (
             "LogicalExpression",
           ].includes(reference.identifier.parent?.type ?? ""),
       ) &&
-      isInertRequestValue(symbol.initializer, module, depth + 1, false),
+      isInertRequestValue(symbol.initializer, module, depth + 1, false, argument),
     );
   }
   if (node.type === "ArrayExpression") {
     if (!allowContainers) return false;
     return node.elements.every(
-      (element) => element && isInertRequestValue(element, module, depth + 1),
+      (element) =>
+        element && isInertRequestValue(element, module, depth + 1, allowContainers, argument),
     );
   }
   if (node.type === "ObjectExpression") {
@@ -412,7 +456,7 @@ const isInertRequestValue = (
         !property.method &&
         getStaticPropertyKeyName(property) !== null &&
         getStaticPropertyKeyName(property) !== "__proto__" &&
-        isInertRequestValue(property.value, module, depth + 1),
+        isInertRequestValue(property.value, module, depth + 1, allowContainers, argument),
     );
   }
   return false;
@@ -469,11 +513,16 @@ const readRequestOptions = (
   module: ClosedJsonSnapshotModule,
   depth = 0,
   allowContainers = true,
+  argument?: SnapshotRequestArgument,
 ): Map<string, EsTreeNode>[] | null => {
   if (depth > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH) return null;
   const node = stripParenExpression(expression);
   if (node.type === "Identifier") {
     const symbol = module.scopes.symbolFor(node);
+    if (argument && symbol === argument.parameter) {
+      argument.references.add(node);
+      return [new Map(argument.properties)];
+    }
     if (
       symbol?.kind !== "const" ||
       symbol.declarationNode.type !== "VariableDeclarator" ||
@@ -502,13 +551,29 @@ const readRequestOptions = (
     ) {
       return null;
     }
-    return readRequestOptions(symbol.initializer, module, depth + 1, false);
+    return readRequestOptions(symbol.initializer, module, depth + 1, false, argument);
   }
   if (node.type === "ConditionalExpression") {
     if (!isInertTransportCondition(node.test, module, depth + 1)) return null;
-    const consequent = readRequestOptions(node.consequent, module, depth + 1, allowContainers);
-    const alternate = readRequestOptions(node.alternate, module, depth + 1, allowContainers);
-    return consequent && alternate ? [...consequent, ...alternate] : null;
+    const consequent = readRequestOptions(
+      node.consequent,
+      module,
+      depth + 1,
+      allowContainers,
+      argument,
+    );
+    const alternate = readRequestOptions(
+      node.alternate,
+      module,
+      depth + 1,
+      allowContainers,
+      argument,
+    );
+    return consequent &&
+      alternate &&
+      (!argument || consequent.length + alternate.length <= CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_DEPTH)
+      ? [...consequent, ...alternate]
+      : null;
   }
   if (node.type !== "ObjectExpression") return null;
   let records: Map<string, EsTreeNode>[] = [new Map()];
@@ -519,6 +584,7 @@ const readRequestOptions = (
         module,
         depth + 1,
         allowContainers,
+        argument,
       );
       if (!spreadRecords) return null;
       const expandedRecords: Map<string, EsTreeNode>[] = [];
@@ -534,8 +600,11 @@ const readRequestOptions = (
     if (property.type !== "Property" || property.kind !== "init" || property.method) return null;
     const propertyName = getStaticPropertyKeyName(property);
     if (!propertyName || !REQUEST_OPTION_NAMES.has(propertyName)) return null;
-    if (!isInertRequestValue(property.value, module, depth + 1, allowContainers)) return null;
-    for (const record of records) record.set(propertyName, property.value);
+    if (!isInertRequestValue(property.value, module, depth + 1, allowContainers, argument))
+      return null;
+    const value =
+      getSnapshotRequestArgumentValue(property.value, module, argument) ?? property.value;
+    for (const record of records) record.set(propertyName, value);
   }
   return records;
 };
@@ -544,8 +613,9 @@ const hasFixedJsonRequestOptions = (
   expression: EsTreeNode,
   module: ClosedJsonSnapshotModule,
   defaultsOnly = false,
+  argument?: SnapshotRequestArgument,
 ): boolean => {
-  const records = readRequestOptions(expression, module);
+  const records = readRequestOptions(expression, module, 0, true, argument);
   return Boolean(
     records &&
     records.every((record) => {
@@ -661,6 +731,7 @@ const isClientRequest = (
   call: EsTreeNode,
   module: ClosedJsonSnapshotModule,
   clients: ReadonlyMap<SymbolDescriptor, SnapshotClientBinding>,
+  argument?: SnapshotRequestArgument,
 ): boolean => {
   if (call.type !== "CallExpression" || call.optional) return false;
   const callee = call.callee;
@@ -671,7 +742,7 @@ const isClientRequest = (
       clients.has(symbol) &&
       call.arguments.length === 1 &&
       call.arguments[0] &&
-      hasFixedJsonRequestOptions(call.arguments[0], module),
+      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument),
     );
   }
   if (callee.type !== "MemberExpression" || callee.object.type !== "Identifier") return false;
@@ -682,21 +753,22 @@ const isClientRequest = (
     return (
       call.arguments.length === 1 &&
       Boolean(call.arguments[0]) &&
-      hasFixedJsonRequestOptions(call.arguments[0], module)
+      hasFixedJsonRequestOptions(call.arguments[0], module, false, argument)
     );
   }
   return (
     method === "get" &&
     call.arguments.length === 2 &&
     Boolean(call.arguments[0] && call.arguments[1]) &&
-    isInertRequestValue(call.arguments[0], module, 0) &&
-    hasFixedJsonRequestOptions(call.arguments[1], module)
+    isInertRequestValue(call.arguments[0], module, 0, true, argument) &&
+    hasFixedJsonRequestOptions(call.arguments[1], module, false, argument)
   );
 };
 
 const hasClosedClientReferences = (
   project: ClosedJsonSnapshotProject,
   clients: ReadonlyMap<SymbolDescriptor, SnapshotClientBinding>,
+  approvedRequest?: SnapshotApprovedRequest,
 ): boolean => {
   for (const { module, symbol, isAxios } of clients.values()) {
     const isPublicModule = isClosedJsonSnapshotPublicEntry({ project, filePath: module.filePath });
@@ -724,14 +796,19 @@ const hasClosedClientReferences = (
       if (
         parent.type === "CallExpression" &&
         parent.callee === identifier &&
-        isClientRequest(parent, module, clients)
+        ((approvedRequest?.module === module && approvedRequest.call === parent) ||
+          isClientRequest(parent, module, clients))
       )
         continue;
       if (parent.type !== "MemberExpression" || parent.object !== identifier) return false;
       const propertyName = getStaticPropertyName(parent);
       const call = parent.parent;
       if (call?.type === "CallExpression" && call.callee === parent) {
-        if (isClientRequest(call, module, clients)) continue;
+        if (
+          (approvedRequest?.module === module && approvedRequest.call === call) ||
+          isClientRequest(call, module, clients)
+        )
+          continue;
         if (
           isAxios &&
           propertyName === "create" &&
@@ -1193,6 +1270,7 @@ export const isClosedJsonSnapshotProvider = ({
   module,
   helperFunction,
   decoderRole,
+  invocation,
 }: ClosedJsonSnapshotProviderInput): boolean => {
   if (decoderRole !== "browser-native-json") return false;
   if (!isFunctionLike(helperFunction) || helperFunction.async || helperFunction.generator)
@@ -1208,13 +1286,52 @@ export const isClosedJsonSnapshotProvider = ({
       hasImplicitEscape = true;
   });
   if (hasImplicitEscape) return false;
+  let argument: SnapshotRequestArgument | undefined;
+  if (invocation) {
+    if (isClosedJsonSnapshotPublicEntry({ project, filePath: module.filePath })) return false;
+    const parameter = helperFunction.params[0];
+    const call = invocation.call;
+    const options = call.type === "CallExpression" ? call.arguments[0] : null;
+    if (
+      helperFunction.params.length !== 1 ||
+      parameter?.type !== "Identifier" ||
+      call.type !== "CallExpression" ||
+      call.optional ||
+      call.arguments.length !== 1 ||
+      options?.type !== "ObjectExpression"
+    )
+      return false;
+    const parameterSymbol = module.scopes.symbolFor(parameter);
+    if (!parameterSymbol) return false;
+    const properties = new Map<string, EsTreeNode>();
+    for (const property of options.properties) {
+      if (
+        property.type !== "Property" ||
+        property.kind !== "init" ||
+        property.method ||
+        property.computed ||
+        property.shorthand ||
+        property.value.type !== "Literal" ||
+        !(
+          property.value.value === null ||
+          ["string", "number", "boolean"].includes(typeof property.value.value)
+        )
+      )
+        return false;
+      const propertyName = getStaticPropertyKeyName(property);
+      if (!propertyName || !REQUEST_OPTION_NAMES.has(propertyName) || properties.has(propertyName))
+        return false;
+      properties.set(propertyName, property.value);
+    }
+    argument = {
+      module: invocation.module,
+      parameter: parameterSymbol,
+      properties,
+      references: new Set(),
+    };
+  }
   const clients = collectClientBindings(project);
-  if (
-    !clients?.size ||
-    !hasClosedClientReferences(project, clients) ||
-    !hasClosedProviderGlobals(project, clients)
-  )
-    return false;
+  if (!clients?.size || !hasClosedProviderGlobals(project, clients)) return false;
   const returned = getSingleReturnExpression(helperFunction);
   if (
     returned?.type !== "NewExpression" ||
@@ -1256,7 +1373,16 @@ export const isClosedJsonSnapshotProvider = ({
     chain.callee.type !== "MemberExpression" ||
     getStaticPropertyName(chain.callee) !== "then" ||
     chain.arguments.length !== 1 ||
-    !isClientRequest(chain.callee.object, module, clients)
+    !isClientRequest(chain.callee.object, module, clients, argument)
+  )
+    return false;
+  const approvedRequest = { module, call: chain.callee.object };
+  if (!hasClosedClientReferences(project, clients, approvedRequest)) return false;
+  if (
+    argument &&
+    getActiveSnapshotReferences(argument.parameter).some(
+      (reference) => reference.flag !== "read" || !argument?.references.has(reference.identifier),
+    )
   )
     return false;
   const successCallback = chain.arguments[0];

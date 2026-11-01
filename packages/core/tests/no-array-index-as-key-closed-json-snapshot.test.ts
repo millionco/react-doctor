@@ -927,6 +927,130 @@ describe("closed imported JSON snapshot ordinal keys", () => {
     expect(runSnapshotLeaf()).toEqual([]);
   });
 
+  it.each([
+    ["{ ...options, responseType: 'json' }", "{ url: '/catalog', method: 'get' }"],
+    [
+      "{ url: options.url, method: options.method, responseType: 'json' }",
+      "{ url: '/catalog', method: 'get' }",
+    ],
+    ["{ responseType: 'json', ...options }", "{ url: '/catalog' }"],
+    ["{ responseType: 'json', ...options }", "{ url: '/catalog', responseType: 'json' }"],
+  ])(
+    "certifies the sole imported helper with fresh primitive options: %s",
+    (requestOptions, argumentSource) => {
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios';
+      export const load = options => new Promise((resolve, reject) => {
+        axios(${requestOptions}).then(response => resolve(response.data)).catch(reject);
+      });`,
+      );
+      replaceSnapshotSource({
+        name: "fresh request options",
+        filename: "src/owner.js",
+        before: "load().then",
+        after: `load(${argumentSource}).then`,
+      });
+      expect(runSnapshotLeaf()).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["an unknown argument", "", "unknown"],
+    ["a caller alias", "const options = { url: '/catalog' };", "options"],
+    [
+      "a published caller alias",
+      "const options = { url: '/catalog' }; publish(options);",
+      "options",
+    ],
+    ["a caller spread", "", "{ ...unknown }"],
+    ["an argument getter", "", "{ get url() { return '/catalog'; } }"],
+    ["an effectful argument", "", "{ url: compute() }"],
+    ["a nested caller record", "", "{ url: '/catalog', headers: {} }"],
+    ["an adapter field", "", "{ url: '/catalog', adapter: custom }"],
+  ])("keeps the ordinal warning for %s", (_description, prefix, argumentSource) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios';
+      export const load = options => new Promise((resolve, reject) => {
+        axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+      });`,
+    );
+    writeSnapshotFile(
+      "src/owner.js",
+      `${prefix}
+${SNAPSHOT_FILES["src/owner.js"].replace("load().then", `load(${argumentSource}).then`)}`,
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "{ responseType: 'json', ...options }",
+    "{ url: options.missing, responseType: 'json' }",
+    "{ url: options['url'], responseType: 'json' }",
+    "{ ...options, responseType: 'json', transformResponse: [JSON.parse] }",
+    "unknown ? { ...options, responseType: 'json' } : externalOptions",
+  ])("keeps the warning for unproved request provenance: %s", (requestOptions) => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios';
+      export const load = options => new Promise((resolve, reject) => {
+        axios(${requestOptions}).then(response => resolve(response.data)).catch(reject);
+      });`,
+    );
+    replaceSnapshotSource({
+      name: "caller override control",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ url: '/catalog', responseType: 'text' }).then",
+    });
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it("refuses public options helpers while preserving public zero-argument provider behavior", () => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios';
+      export const load = options => new Promise((resolve, reject) => {
+        axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+      });`,
+    );
+    replaceSnapshotSource({
+      name: "fresh request options",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ url: '/catalog' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile(
+      "package.json",
+      JSON.stringify({ ...SNAPSHOT_MANIFEST, main: "src/request.js" }),
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+    writeSnapshotFile("src/request.js", SNAPSHOT_FILES["src/request.js"]);
+    writeSnapshotFile("src/owner.js", SNAPSHOT_FILES["src/owner.js"]);
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it("keeps the warning when a fresh-options helper has another active caller", () => {
+    writeSnapshotFile(
+      "src/request.js",
+      `import axios from 'axios';
+      export const load = options => new Promise((resolve, reject) => {
+        axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+      });`,
+    );
+    replaceSnapshotSource({
+      name: "fresh request options",
+      filename: "src/owner.js",
+      before: "load().then",
+      after: "load({ url: '/catalog' }).then",
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+    writeSnapshotFile("src/extra-consumer.js", "import { load } from './request'; load(unknown);");
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
   it("certifies a genuine fixed-locale SDK provider and complete local error boundary root", () => {
     prepareSnapshotPresentationRoot();
     expect(runSnapshotLeaf()).toEqual([]);

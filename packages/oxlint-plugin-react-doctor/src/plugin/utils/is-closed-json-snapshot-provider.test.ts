@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { walkAst } from "./walk-ast.js";
+import type { EsTreeNode } from "./es-tree-node.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 import { isClosedJsonSnapshotProvider } from "./is-closed-json-snapshot-provider.js";
@@ -23,11 +25,14 @@ const checkProvider = (
   sourceText: string,
   otherFiles: Record<string, string> = {},
   knownPublicEntryTargets: ReadonlyArray<string> = [],
+  invocationSource?: string,
 ): boolean => {
   const rootDirectory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "json-provider-")));
   directories.push(rootDirectory);
   const filename = path.join(rootDirectory, "provider.js");
   fs.writeFileSync(filename, sourceText);
+  if (invocationSource !== undefined)
+    fs.writeFileSync(path.join(rootDirectory, "consumer.js"), invocationSource);
   for (const [filePath, content] of Object.entries(otherFiles)) {
     fs.writeFileSync(path.join(rootDirectory, filePath), content);
   }
@@ -47,6 +52,17 @@ const checkProvider = (
   )?.initializer;
   if (!project) return false;
   expect(helperFunction).toBeDefined();
+  const consumer = project.modules.get(normalizeFilename(path.join(rootDirectory, "consumer.js")));
+  let invocationCall: EsTreeNode | undefined;
+  if (consumer)
+    walkAst(consumer.program, (node) => {
+      if (
+        node.type === "CallExpression" &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "load"
+      )
+        invocationCall = node;
+    });
   return Boolean(
     project &&
     module &&
@@ -56,6 +72,8 @@ const checkProvider = (
       module,
       helperFunction,
       decoderRole: "browser-native-json",
+      invocation:
+        consumer && invocationCall ? { module: consumer, call: invocationCall } : undefined,
     }),
   );
 };
@@ -66,6 +84,134 @@ afterEach(() => {
 });
 
 describe("isClosedJsonSnapshotProvider", () => {
+  it.each([
+    "axios({ ...options, responseType: 'json' })",
+    "axios({ url: options.url, method: options.method, responseType: 'json' })",
+    "axios.request({ ...options, responseType: 'json' })",
+    "axios.get(options.url, { responseType: 'json' })",
+  ])("proves one fresh caller literal through the exact parameter: %s", (request) => {
+    const source = `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      ${request}.then(response => resolve(response.data)).catch(reject);
+    });`;
+    expect(
+      checkProvider(
+        source,
+        {},
+        [],
+        "import { load } from './provider'; load({ url: '/catalog', method: 'get' });",
+      ),
+    ).toBe(true);
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it.each([
+    ["{ url: '/catalog' }", true],
+    ["{ url: '/catalog', responseType: 'json' }", true],
+    ["{ url: '/catalog', responseType: 'text' }", false],
+  ])("normalizes JSON mode before the caller spread: %s", (argumentSource, isCertified) => {
+    const source = `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      axios({ responseType: 'json', ...options }).then(response => resolve(response.data)).catch(reject);
+    });`;
+    expect(
+      checkProvider(source, {}, [], `import { load } from './provider'; load(${argumentSource});`),
+    ).toBe(isCertified);
+  });
+
+  it.each([
+    "const unused = sideEffect();",
+    "const unused = { get url() { return '/other'; } };",
+    "const unused = () => options;",
+    "const unused = options;",
+    "const before = after; const after = '/other';",
+    "let transport = { responseType: 'json' };",
+    "options.url = '/other';",
+    "publish(options);",
+  ])("refuses an unproved local prelude: %s", (prelude) => {
+    const source = `import axios from 'axios'; export const load = options => {
+      ${prelude}
+      return new Promise((resolve, reject) => {
+        axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+      });
+    };`;
+    expect(
+      checkProvider(
+        source,
+        {},
+        [],
+        "import { load } from './provider'; load({ url: '/catalog' });",
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    "load(unknown)",
+    "const options = { url: '/catalog' }; load(options)",
+    "const options = { url: '/catalog' }; publish(options); load(options)",
+    "load({ ...unknown })",
+    "load({ url: compute() })",
+    "load({ url: '/catalog', headers: {} })",
+    "load({ get url() { return '/catalog'; } })",
+    "load({ url: '/catalog', url: '/other' })",
+    "load({ ['url']: '/catalog' })",
+    "load({ url: '/catalog', adapter: 'custom' })",
+    "load({ url: '/catalog' }, {})",
+    "load(...[{ url: '/catalog' }])",
+  ])("refuses caller values outside the fresh primitive-literal contract: %s", (consumerSource) => {
+    const source = `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+    });`;
+    expect(
+      checkProvider(source, {}, [], `import { load } from './provider'; ${consumerSource};`),
+    ).toBe(false);
+  });
+
+  it.each([
+    "axios({ responseType: 'json', ...options })",
+    "axios({ url: options.missing, responseType: 'json' })",
+    "axios({ url: options['url'], responseType: 'json' })",
+    "axios(opaque ? { ...options, responseType: 'json' } : unknown)",
+    "axios({ ...options, responseType: 'json', transformResponse: [JSON.parse] })",
+    "axios({ ...options, responseType: 'json' }).then(() => options)",
+  ])("refuses unknown fields, overrides, paths, or consumers: %s", (request) => {
+    const source = `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      ${request}.then(response => resolve(response.data)).catch(reject);
+    });`;
+    expect(
+      checkProvider(
+        source,
+        {},
+        [],
+        "import { load } from './provider'; load({ url: '/catalog', responseType: 'text' });",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps fresh argument provenance private while preserving public zero-argument providers", () => {
+    const source = `import axios from 'axios'; export const load = options => new Promise((resolve, reject) => {
+      axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+    });`;
+    const consumer = "import { load } from './provider'; load({ url: '/catalog' });";
+    expect(checkProvider(source, {}, [], consumer)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"], consumer)).toBe(false);
+    expect(checkProvider(providerSource, {}, ["./provider.js"])).toBe(true);
+  });
+
+  it("does not approve another client request from the candidate argument context", () => {
+    const source = `import axios from 'axios';
+      const other = options => axios(options);
+      export const load = options => new Promise((resolve, reject) => {
+        axios({ ...options, responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+      });`;
+    expect(
+      checkProvider(
+        source,
+        {},
+        [],
+        "import { load } from './provider'; load({ url: '/catalog' });",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps ordinary above-owner class and render usage outside the source ownership proof", () => {
     expect(
       checkProvider(providerSource, {

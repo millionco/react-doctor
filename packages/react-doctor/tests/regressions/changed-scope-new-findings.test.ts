@@ -2,9 +2,14 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  CHANGED_SCOPE_CLI_SCAN_TIMEOUT_MS,
+  CHANGED_SCOPE_THREE_SCAN_TEST_TIMEOUT_MS,
+} from "../constants.js";
 import { commitAll, initGitRepo, writeFile, writeJson } from "./_helpers.js";
 
 const CLI = path.resolve(import.meta.dirname, "../../bin/react-doctor.js");
@@ -56,6 +61,7 @@ const ROWS = (count: number): string =>
   ].join("\n");
 
 const scan = (directory: string, flags: string[] = [], respectInlineDisables = false) => {
+  const scanStartedAtMs = performance.now();
   const result = spawnSync(
     process.execPath,
     [
@@ -75,15 +81,33 @@ const scan = (directory: string, flags: string[] = [], respectInlineDisables = f
     ],
     {
       encoding: "utf-8",
+      timeout: CHANGED_SCOPE_CLI_SCAN_TIMEOUT_MS,
+      killSignal: "SIGKILL",
       env: { ...process.env, CI: "true", REACT_DOCTOR_NO_UPDATE_NOTIFIER: "1" },
     },
   );
-  expect(result.error).toBeUndefined();
-  expect(result.stdout, result.stderr).not.toBe("");
-  return {
-    status: result.status,
-    report: Schema.decodeUnknownSync(JsonReport)(JSON.parse(result.stdout)),
-  };
+  try {
+    expect(result.error).toBeUndefined();
+    expect(result.stdout, result.stderr).not.toBe("");
+    return {
+      status: result.status,
+      report: Schema.decodeUnknownSync(JsonReport)(JSON.parse(result.stdout)),
+    };
+  } catch (error) {
+    console.error("Changed-scope CLI scan failed", {
+      phase: flags.includes("--base")
+        ? "Git comparison"
+        : flags.includes("--baseline")
+          ? "saved comparison"
+          : "full scan",
+      flags,
+      elapsedMs: performance.now() - scanStartedAtMs,
+      status: result.status,
+      signal: result.signal,
+      stderr: result.stderr,
+    });
+    throw error;
+  }
 };
 
 interface ComparisonCase {
@@ -202,51 +226,62 @@ describe("changed scope compares findings through the CLI", () => {
 
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
 
-  it.each(CASES)("$name", (testCase) => {
-    const sourcePath = path.join(directory, "src/app.tsx");
-    writeFile(sourcePath, testCase.baseSource);
-    commitAll(directory, "base findings");
-    writeFile(path.join(directory, "src/untouched.tsx"), EFFECT);
-    commitAll(directory, "unrelated existing finding");
-    const base = scan(directory);
-    expect(base.report.diagnostics.length).toBeGreaterThan(0);
-    writeJson(reportFile, base.report);
-    if (testCase.headSource !== undefined) writeFile(sourcePath, testCase.headSource);
-    if (testCase.rename)
-      execFileSync("git", ["mv", "src/app.tsx", "src/renamed.tsx"], { cwd: directory });
-    if (testCase.untracked || testCase.copy) writeFile(path.join(directory, "src/new.tsx"), EFFECT);
-    if (testCase.copy) execFileSync("git", ["add", "src/new.tsx"], { cwd: directory });
-    if (testCase.deleteFile) fs.rmSync(sourcePath);
-    const flags = testCase.untracked ? ["--include-untracked"] : [];
-    const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD", ...flags]);
-    const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile, ...flags]);
-    for (const result of [gitResult, savedResult]) {
-      expect(result.report.error).toBeNull();
-      expect(result.report.diagnostics).toHaveLength(testCase.expectedCount);
-      expect(result.report.summary.totalDiagnosticCount).toBe(testCase.expectedCount);
-      expect(result.status).toBe(testCase.expectedCount === 0 ? 0 : 1);
-      expect(result.report.schemaVersion).toBe(3);
-      if (result.report.schemaVersion !== 3) throw new Error("Expected schema version 3");
-      expect(result.report.baselineDegraded).not.toBe(true);
-      expect(result.report.baseline?.matchedCount).toBeDefined();
-      if (testCase.expectedRule)
-        expect(result.report.diagnostics[0]?.rule).toBe(testCase.expectedRule);
-      if (testCase.expectedLine)
-        expect(result.report.diagnostics[0]?.line).toBe(testCase.expectedLine);
-    }
-    if (gitResult.report.schemaVersion === 3 && savedResult.report.schemaVersion === 3) {
-      expect(gitResult.report.baseline?.source).toBe("base");
-      expect(savedResult.report.baseline?.source).toBe("baseline");
-      expect(savedResult.report.baseline?.baselineFile).toBe(reportFile);
-      expect(savedResult.report.baseline?.matchedCount).toBe(
-        gitResult.report.baseline?.matchedCount,
-      );
-      expect(savedResult.report.baseline?.fixedCount).toBe(gitResult.report.baseline?.fixedCount);
-      expect(savedResult.report.baseline?.baseTotalCount).toBe(
-        gitResult.report.baseline?.baseTotalCount,
-      );
-    }
-  });
+  it.each(CASES)(
+    "$name",
+    (testCase) => {
+      const sourcePath = path.join(directory, "src/app.tsx");
+      writeFile(sourcePath, testCase.baseSource);
+      commitAll(directory, "base findings");
+      writeFile(path.join(directory, "src/untouched.tsx"), EFFECT);
+      commitAll(directory, "unrelated existing finding");
+      const base = scan(directory);
+      expect(base.report.diagnostics.length).toBeGreaterThan(0);
+      writeJson(reportFile, base.report);
+      if (testCase.headSource !== undefined) writeFile(sourcePath, testCase.headSource);
+      if (testCase.rename)
+        execFileSync("git", ["mv", "src/app.tsx", "src/renamed.tsx"], { cwd: directory });
+      if (testCase.untracked || testCase.copy)
+        writeFile(path.join(directory, "src/new.tsx"), EFFECT);
+      if (testCase.copy) execFileSync("git", ["add", "src/new.tsx"], { cwd: directory });
+      if (testCase.deleteFile) fs.rmSync(sourcePath);
+      const flags = testCase.untracked ? ["--include-untracked"] : [];
+      const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD", ...flags]);
+      const savedResult = scan(directory, [
+        "--scope",
+        "changed",
+        "--baseline",
+        reportFile,
+        ...flags,
+      ]);
+      for (const result of [gitResult, savedResult]) {
+        expect(result.report.error).toBeNull();
+        expect(result.report.diagnostics).toHaveLength(testCase.expectedCount);
+        expect(result.report.summary.totalDiagnosticCount).toBe(testCase.expectedCount);
+        expect(result.status).toBe(testCase.expectedCount === 0 ? 0 : 1);
+        expect(result.report.schemaVersion).toBe(3);
+        if (result.report.schemaVersion !== 3) throw new Error("Expected schema version 3");
+        expect(result.report.baselineDegraded).not.toBe(true);
+        expect(result.report.baseline?.matchedCount).toBeDefined();
+        if (testCase.expectedRule)
+          expect(result.report.diagnostics[0]?.rule).toBe(testCase.expectedRule);
+        if (testCase.expectedLine)
+          expect(result.report.diagnostics[0]?.line).toBe(testCase.expectedLine);
+      }
+      if (gitResult.report.schemaVersion === 3 && savedResult.report.schemaVersion === 3) {
+        expect(gitResult.report.baseline?.source).toBe("base");
+        expect(savedResult.report.baseline?.source).toBe("baseline");
+        expect(savedResult.report.baseline?.baselineFile).toBe(reportFile);
+        expect(savedResult.report.baseline?.matchedCount).toBe(
+          gitResult.report.baseline?.matchedCount,
+        );
+        expect(savedResult.report.baseline?.fixedCount).toBe(gitResult.report.baseline?.fixedCount);
+        expect(savedResult.report.baseline?.baseTotalCount).toBe(
+          gitResult.report.baseline?.baseTotalCount,
+        );
+      }
+    },
+    CHANGED_SCOPE_THREE_SCAN_TEST_TIMEOUT_MS,
+  );
 
   it.each([
     { name: "keeps the HostedCart findings after reformatting", appended: "" },

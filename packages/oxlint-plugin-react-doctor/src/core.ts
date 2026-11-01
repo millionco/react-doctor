@@ -44,6 +44,7 @@ export {
 } from "./react-native-dependency-names.js";
 
 export { atomicWriteFile } from "./plugin/utils/atomic-write-file.js";
+export { getContainedDependencyMajor } from "./plugin/utils/dependency-version/get-contained-dependency-major.js";
 export type { DiagnosticContextIdentity } from "./plugin/utils/get-diagnostic-context-path.js";
 export { getDiagnosticContextPath } from "./plugin/utils/get-diagnostic-context-path.js";
 export type { DiagnosticContextRange } from "./plugin/utils/diagnostic-context-range.js";

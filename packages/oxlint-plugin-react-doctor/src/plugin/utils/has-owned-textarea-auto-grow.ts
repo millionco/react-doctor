@@ -3,6 +3,7 @@ import { HTML_TAGS } from "../constants/html-tags.js";
 import { getInlineStyleExpression } from "../rules/design/utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "../rules/design/utils/get-string-from-class-name-attr.js";
 import { getStylePropertyKey } from "../rules/design/utils/get-style-property-key.js";
+import { getStylePropertyStringValue } from "../rules/design/utils/get-style-property-string-value.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
@@ -134,6 +135,30 @@ const hasHeightConstraint = (node: EsTreeNodeOfType<"JSXOpeningElement">): boole
   );
 };
 
+const hasUnsupportedBoxSizing = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const className = getStringFromClassNameAttr(node);
+  if (
+    splitTailwindClassName(className ?? "")
+      .map(parseTailwindClassNameToken)
+      .some(
+        ({ utility }) =>
+          utility === "box-border" ||
+          (/^\[box-sizing:/i.test(utility) && utility.toLowerCase() !== "[box-sizing:content-box]"),
+      )
+  ) {
+    return true;
+  }
+  const style = findJsxAttribute(node.attributes, "style");
+  const expression = style ? getInlineStyleExpression(style) : null;
+  return Boolean(
+    expression?.properties.some(
+      (property) =>
+        getStylePropertyKey(property) === "boxSizing" &&
+        getStylePropertyStringValue(property)?.toLowerCase() !== "content-box",
+    ),
+  );
+};
+
 const hasStableNativePlacement = (node: EsTreeNode, component: EsTreeNode): boolean => {
   let current: EsTreeNode | null = node.parent ?? null;
   while (current) {
@@ -184,7 +209,7 @@ export const hasOwnedTextareaAutoGrow = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   scopes: ScopeAnalysis,
 ): boolean => {
-  if (hasHeightConstraint(node)) return false;
+  if (hasHeightConstraint(node) || hasUnsupportedBoxSizing(node)) return false;
   const attributeNames = new Set<string>();
   for (const attribute of node.attributes) {
     if (!isNodeOfType(attribute, "JSXAttribute") || !isNodeOfType(attribute.name, "JSXIdentifier"))

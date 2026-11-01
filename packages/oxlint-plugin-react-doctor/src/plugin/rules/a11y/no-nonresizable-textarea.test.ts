@@ -103,6 +103,107 @@ describe("no-nonresizable-textarea", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("keeps reporting border-box growth that omits border height", () => {
+    const result = runRule(
+      noNonresizableTextarea,
+      `import { useRef, useState } from "react";
+      const NoteInput = () => {
+        const [note, setNote] = useState("");
+        const input = useRef(null);
+        const edit = (event) => {
+          setNote(event.currentTarget.value);
+          if (input.current) {
+            input.current.style.height = "auto";
+            input.current.style.height = input.current.scrollHeight + "px";
+          }
+        };
+        return <textarea ref={input} value={note} onChange={edit}
+          style={{ resize: "none", boxSizing: "border-box", border: "20px solid", padding: 0, overflow: "hidden" }} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["legacy sizing", `style={{ resize: "none" }}`, "", 0],
+    [
+      "literal content-box with borders",
+      `style={{ resize: "none", boxSizing: "content-box", border: "20px solid", padding: 0, overflow: "hidden" }}`,
+      "",
+      0,
+    ],
+    ["case-insensitive content-box", `style={{ resize: "none", boxSizing: "CONTENT-BOX" }}`, "", 0],
+    ["unknown inline sizing", `style={{ resize: "none", boxSizing: sizing }}`, "", 1],
+    ["explicit border-box", `style={{ resize: "none", boxSizing: "border-box" }}`, "", 1],
+    ["explicit inherit", `style={{ resize: "none", boxSizing: "inherit" }}`, "", 1],
+    ["explicit unset", `style={{ resize: "none", boxSizing: "unset" }}`, "", 1],
+    ["box-border class", `className="resize-none box-border"`, "", 1],
+    ["important box-border class", `className="resize-none !box-border"`, "", 1],
+    ["trailing important class", `className="resize-none box-border!"`, "", 1],
+    ["responsive box-border class", `className="resize-none md:box-border"`, "", 1],
+    ["responsive important class", `className="resize-none md:!box-border"`, "", 1],
+    ["responsive trailing important class", `className="resize-none md:box-border!"`, "", 1],
+    ["arbitrary border-box", `className="resize-none [box-sizing:border-box]"`, "", 1],
+    [
+      "case-insensitive arbitrary property",
+      `className="resize-none [BOX-SIZING:border-box]"`,
+      "",
+      1,
+    ],
+    [
+      "responsive arbitrary border-box",
+      `className="resize-none md:[box-sizing:border-box]"`,
+      "",
+      1,
+    ],
+    ["important arbitrary border-box", `className="resize-none ![box-sizing:border-box]"`, "", 1],
+    ["unknown arbitrary sizing", `className="resize-none [box-sizing:var(--sizing)]"`, "", 1],
+    ["box-content class", `className="resize-none box-content"`, "", 0],
+    ["arbitrary content-box", `className="resize-none [box-sizing:content-box]"`, "", 0],
+    [
+      "responsive arbitrary content-box",
+      `className="resize-none md:![box-sizing:content-box]"`,
+      "",
+      0,
+    ],
+    [
+      "ancestor-only border-box",
+      `style={{ resize: "none" }}`,
+      `style={{ boxSizing: "border-box" }}`,
+      0,
+    ],
+    [
+      "ancestor-only unknown sizing",
+      `style={{ resize: "none" }}`,
+      `style={{ boxSizing: sizing }}`,
+      0,
+    ],
+    ["ancestor-only box-border class", `className="resize-none"`, `className="md:!box-border"`, 0],
+  ])(
+    "preserves the %s box-model boundary",
+    (_description, attributes, ancestorAttributes, expectedDiagnosticCount) => {
+      const result = runRule(
+        noNonresizableTextarea,
+        `import { useRef, useState } from "react";
+      const NoteInput = () => {
+        const [note, setNote] = useState("");
+        const input = useRef(null);
+        const edit = (event) => {
+          setNote(event.currentTarget.value);
+          if (input.current) {
+            input.current.style.height = "auto";
+            input.current.style.height = input.current.scrollHeight + "px";
+          }
+        };
+        return <div ${ancestorAttributes}><textarea ref={input} value={note} onChange={edit} ${attributes} /></div>;
+      };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expectedDiagnosticCount);
+    },
+  );
+
   it.each([
     ["fixed height", `className="resize-none h-20"`, ""],
     ["maximum height", `className="resize-none md:max-h-40"`, ""],

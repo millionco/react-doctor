@@ -1,5 +1,46 @@
 # eslint-plugin-react-doctor
 
+## 0.9.21
+
+### Patch Changes
+
+- [#2320](https://github.com/millionco/react-doctor/pull/2320) [`5a2c6f5`](https://github.com/millionco/react-doctor/commit/5a2c6f541f9ee031e99fc1704637265d4367b55b) Thanks [@aidenybai](https://github.com/aidenybai)! - Report an unguarded `useReducer` dispatch after `await` or inside a microtask or Promise callback when it goes through a transparent local setter helper, such as `queueMicrotask(() => assign(dispatch, action))`, exactly where the direct dispatch is reported. Only `no-set-state-after-await-in-effect` accepts the forwarded dispatch, because it already counts a direct dispatch. The prop-change rules, which compare writes against `useState` initializers, stay unchanged. Imported, reassigned, asynchronous, deferred and conditional helpers, and reassigned dispatch bindings, stay outside the proof.
+
+- [#2319](https://github.com/millionco/react-doctor/pull/2319) [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823) Thanks [@aidenybai](https://github.com/aidenybai)! - Report `react-hooks-js/set-state-in-effect` when an effect updates state synchronously through a transparent local setter helper, such as `useEffect(() => assign(setValue, next))`, which React Compiler does not follow. A new `forwarded-set-state-in-effect` rule finds the write with the forwarded setter proof, runs only when the compiler rule is enabled, and React Doctor reports its finding under the compiler's rule key, message and docs link, so `react-hooks/set-state-in-effect` disable comments, ignores and scoring treat it like the compiler finding. Compiler-visible synchronous setter calls retain duplicate suppression. Ref-derived measurements and guarded ref writes remain allowed. Imported, reassigned, asynchronous, deferred, conditional and multi-statement forwarding helpers stay outside the proof.
+
+- Updated dependencies [[`5a2c6f5`](https://github.com/millionco/react-doctor/commit/5a2c6f541f9ee031e99fc1704637265d4367b55b), [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823)]:
+  - oxlint-plugin-react-doctor@0.9.21
+
+## 0.9.20
+
+### Patch Changes
+
+- [#2317](https://github.com/millionco/react-doctor/pull/2317) [`2c5d72c`](https://github.com/millionco/react-doctor/commit/2c5d72c6f89e7a5c523fa2db22f73e1927b7daa0) Thanks [@aidenybai](https://github.com/aidenybai)! - Report an unguarded state update after `await` or inside a microtask or Promise callback when it goes through a transparent local setter helper, such as `queueMicrotask(() => assign(setValue, next))`, exactly where the direct setter call is reported. Cleanup guards still protect the forwarded write. Imported, reassigned, asynchronous, deferred, conditional, and multi-statement helpers stay outside the proof. Preserve transparent TypeScript setter arguments and implicit undefined writes, and exclude bound/call/apply argument shifts from the forwarding proof.
+
+  Keep resource lifecycle exemptions when the same setter is forwarded through immutable aliases, and register the deferred-write rule in cross-file cache metadata.
+
+- [#2315](https://github.com/millionco/react-doctor/pull/2315) [`8a7c60a`](https://github.com/millionco/react-doctor/commit/8a7c60aef10140662db12ef22281a50150f93a34) Thanks [@aidenybai](https://github.com/aidenybai)! - Report state adjusted after a prop change through a transparent local setter helper, such as `assign(setValue, "")`, exactly where the direct setter call is reported, including functional updaters and layout effects. Evaluate the forwarded write at its call site for the released object URL, portal mount, request map, resource lifecycle, and external work checks. Imported, reassigned, asynchronous, deferred, conditional, and multi-statement helpers stay outside the proof.
+
+  Preserve resource lifecycle and asynchronous loading exemptions when related event or completion writers also use transparent setter helpers.
+
+- [#2316](https://github.com/millionco/react-doctor/pull/2316) [`b713862`](https://github.com/millionco/react-doctor/commit/b713862d9681855fb861a481d4b4f76b0e371a7e) Thanks [@aidenybai](https://github.com/aidenybai)! - Report an effect that resets all state after a prop change through a transparent local setter helper, such as `assign(setKey, "")`, exactly where the direct reset is reported, including layout effects. A reload forwarded through the same helper from an asynchronous callback now counts as a loading lifecycle, and a handler that writes through the helper keeps the hidden-until-reset exemption. Imported, reassigned, asynchronous, deferred, conditional, and multi-statement helpers stay outside the proof.
+
+  Keep setter identity stable across immutable aliases when counting reset state and recognizing asynchronous reloads. Resource lifecycle handlers retain their exemptions when their writes are forwarded through the same proven helper.
+
+- Updated dependencies [[`2c5d72c`](https://github.com/millionco/react-doctor/commit/2c5d72c6f89e7a5c523fa2db22f73e1927b7daa0), [`8a7c60a`](https://github.com/millionco/react-doctor/commit/8a7c60aef10140662db12ef22281a50150f93a34), [`b713862`](https://github.com/millionco/react-doctor/commit/b713862d9681855fb861a481d4b4f76b0e371a7e)]:
+  - oxlint-plugin-react-doctor@0.9.20
+
+## 0.9.19
+
+### Patch Changes
+
+- [#2311](https://github.com/millionco/react-doctor/pull/2311) [`813bd63`](https://github.com/millionco/react-doctor/commit/813bd634f30eaf611f7b2c54425df85a259fa923) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize synchronous derived-state writes through transparent local helpers that receive a React state setter. Preserve external, deferred, mutable, and independently editable state, including event writes through readonly setter aliases for direct and forwarded effect writes. Compare forwarded values with their existing state initializer. Withhold the forwarding proof for reassigned helpers and parameters whose defaults or destructuring can perform additional work.
+
+- [#2310](https://github.com/millionco/react-doctor/pull/2310) [`3fd747e`](https://github.com/millionco/react-doctor/commit/3fd747e2393613ec914cc565944f43ca84885db8) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect render-time ref.current writes made through Object.assign while preserving predictable guarded initialization and deferred effect or event writes. Keep semantic analysis lazy for unrelated calls. Exclude calls to an overridden Object.assign.
+
+- Updated dependencies [[`9a79847`](https://github.com/millionco/react-doctor/commit/9a79847f0e4086ac06edb552afe9ed754e4b0000), [`813bd63`](https://github.com/millionco/react-doctor/commit/813bd634f30eaf611f7b2c54425df85a259fa923), [`be55f78`](https://github.com/millionco/react-doctor/commit/be55f78c9f32a1bdd0e6d79c18819f45e54f2254), [`e5c7c99`](https://github.com/millionco/react-doctor/commit/e5c7c99b1623e951e724b22338947c6cfa74e40e), [`a4bcd7f`](https://github.com/millionco/react-doctor/commit/a4bcd7f896d454c3e69becc8671786d0e5608819), [`84ad0c8`](https://github.com/millionco/react-doctor/commit/84ad0c8d0df7a3ab7d26946367fae3bc39c100d0), [`95cd1d4`](https://github.com/millionco/react-doctor/commit/95cd1d426118821fc4f0259595d4b71e39bde5eb), [`3fd747e`](https://github.com/millionco/react-doctor/commit/3fd747e2393613ec914cc565944f43ca84885db8), [`a1df4e5`](https://github.com/millionco/react-doctor/commit/a1df4e54f13073acaa1fe72f945f226bb4a75451)]:
+  - oxlint-plugin-react-doctor@0.9.19
+
 ## 0.9.18
 
 ### Patch Changes

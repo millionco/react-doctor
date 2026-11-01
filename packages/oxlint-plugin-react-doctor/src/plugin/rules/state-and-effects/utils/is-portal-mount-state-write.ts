@@ -14,6 +14,7 @@ import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
 
 const requiresMountedState = (
   expression: EsTreeNode,
@@ -30,10 +31,12 @@ const requiresMountedState = (
   );
 };
 
-export const isPortalMountStateWrite = (write: EsTreeNode, context: RuleContext): boolean => {
-  if (!isNodeOfType(write, "CallExpression") || readStaticBoolean(write.arguments[0]) !== true)
-    return false;
-  const pair = resolveReactUseStatePair(write.callee, context.scopes);
+export const isPortalMountStateWrite = (
+  write: EffectStateWriteSite,
+  context: RuleContext,
+): boolean => {
+  if (readStaticBoolean(write.value) !== true) return false;
+  const pair = resolveReactUseStatePair(write.setter, context.scopes);
   if (
     !pair?.stateSymbol ||
     !isNodeOfType(pair.declarator.init, "CallExpression") ||
@@ -41,7 +44,7 @@ export const isPortalMountStateWrite = (write: EsTreeNode, context: RuleContext)
   )
     return false;
   const state = pair.stateSymbol;
-  const callback = findEnclosingFunction(write);
+  const callback = findEnclosingFunction(write.node);
   const component = findEnclosingFunction(pair.declarator);
   if (!callback || !component) return false;
   const discoveredRefs = new Set<SymbolDescriptor>();
@@ -60,7 +63,7 @@ export const isPortalMountStateWrite = (write: EsTreeNode, context: RuleContext)
       !isNodeOfType(callee.object, "Identifier") ||
       callee.object.name !== "document" ||
       !isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes) ||
-      !nodeDominatesNode(node, write, context)
+      !nodeDominatesNode(node, write.node, context)
     )
       return;
     const ref = resolveReactRefCurrentOriginSymbol(node.left, context.scopes);

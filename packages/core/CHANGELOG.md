@@ -1,5 +1,36 @@
 # @react-doctor/core
 
+## 0.9.21
+
+### Patch Changes
+
+- [#2319](https://github.com/millionco/react-doctor/pull/2319) [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823) Thanks [@aidenybai](https://github.com/aidenybai)! - Report `react-hooks-js/set-state-in-effect` when an effect updates state synchronously through a transparent local setter helper, such as `useEffect(() => assign(setValue, next))`, which React Compiler does not follow. A new `forwarded-set-state-in-effect` rule finds the write with the forwarded setter proof, runs only when the compiler rule is enabled, and React Doctor reports its finding under the compiler's rule key, message and docs link, so `react-hooks/set-state-in-effect` disable comments, ignores and scoring treat it like the compiler finding. Compiler-visible synchronous setter calls retain duplicate suppression. Ref-derived measurements and guarded ref writes remain allowed. Imported, reassigned, asynchronous, deferred, conditional and multi-statement forwarding helpers stay outside the proof.
+
+- Updated dependencies [[`5a2c6f5`](https://github.com/millionco/react-doctor/commit/5a2c6f541f9ee031e99fc1704637265d4367b55b), [`39152dc`](https://github.com/millionco/react-doctor/commit/39152dc5abf64d927ceb9c4ce79c7e8ab8a95823)]:
+  - oxlint-plugin-react-doctor@0.9.21
+
+## 0.9.20
+
+### Patch Changes
+
+- Updated dependencies [[`2c5d72c`](https://github.com/millionco/react-doctor/commit/2c5d72c6f89e7a5c523fa2db22f73e1927b7daa0), [`8a7c60a`](https://github.com/millionco/react-doctor/commit/8a7c60aef10140662db12ef22281a50150f93a34), [`b713862`](https://github.com/millionco/react-doctor/commit/b713862d9681855fb861a481d4b4f76b0e371a7e)]:
+  - oxlint-plugin-react-doctor@0.9.20
+
+## 0.9.19
+
+### Patch Changes
+
+- [#2000](https://github.com/millionco/react-doctor/pull/2000) [`9a79847`](https://github.com/millionco/react-doctor/commit/9a79847f0e4086ac06edb552afe9ed754e4b0000) Thanks [@aidenybai](https://github.com/aidenybai)! - Let rules declare the code that owns a finding separately from its diagnostic location. With `--scope contextual`, `exhaustive-deps` now reports existing dependency findings when their hook call or resolved local callback changes. Ownership survives lint-cache replay and stays out of public JSON reports and score requests.
+
+  Add JSX element scope for `alt-text` and `click-events-have-key-events`, and function scope for `rules-of-hooks`. Existing scan defaults and other scopes are unchanged.
+
+- [#1983](https://github.com/millionco/react-doctor/pull/1983) [`a1df4e5`](https://github.com/millionco/react-doctor/commit/a1df4e54f13073acaa1fe72f945f226bb4a75451) Thanks [@skoshx](https://github.com/skoshx)! - Skip .open-next build output in security scan
+
+  The security scan now skips `.open-next/` directories (OpenNext build output) the same way it skips `.next/` and `.vercel/`, preventing false positive security findings from bundled library code.
+
+- Updated dependencies [[`9a79847`](https://github.com/millionco/react-doctor/commit/9a79847f0e4086ac06edb552afe9ed754e4b0000), [`813bd63`](https://github.com/millionco/react-doctor/commit/813bd634f30eaf611f7b2c54425df85a259fa923), [`be55f78`](https://github.com/millionco/react-doctor/commit/be55f78c9f32a1bdd0e6d79c18819f45e54f2254), [`e5c7c99`](https://github.com/millionco/react-doctor/commit/e5c7c99b1623e951e724b22338947c6cfa74e40e), [`a4bcd7f`](https://github.com/millionco/react-doctor/commit/a4bcd7f896d454c3e69becc8671786d0e5608819), [`84ad0c8`](https://github.com/millionco/react-doctor/commit/84ad0c8d0df7a3ab7d26946367fae3bc39c100d0), [`95cd1d4`](https://github.com/millionco/react-doctor/commit/95cd1d426118821fc4f0259595d4b71e39bde5eb), [`3fd747e`](https://github.com/millionco/react-doctor/commit/3fd747e2393613ec914cc565944f43ca84885db8), [`a1df4e5`](https://github.com/millionco/react-doctor/commit/a1df4e54f13073acaa1fe72f945f226bb4a75451)]:
+  - oxlint-plugin-react-doctor@0.9.19
+
 ## 0.9.18
 
 ### Patch Changes

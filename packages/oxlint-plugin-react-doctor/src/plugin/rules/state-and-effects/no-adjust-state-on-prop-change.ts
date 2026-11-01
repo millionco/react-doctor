@@ -1,3 +1,5 @@
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
@@ -34,8 +36,7 @@ const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWrit
   ) {
     return true;
   }
-  if (!isNodeOfType(fact.callExpression, "CallExpression")) return false;
-  const writtenValue = fact.callExpression.arguments?.[0];
+  const writtenValue = fact.writeSite.value;
   if (!writtenValue) return false;
   let currentExpression = stripParenExpression(writtenValue as EsTreeNode);
   if (isFunctionLike(currentExpression) && "body" in currentExpression) {
@@ -79,68 +80,72 @@ export const noAdjustStateOnPropChange = defineRule({
   tags: ["test-noise"],
   recommendation:
     "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
-      const analysis = getProgramAnalysis(node);
-      if (!analysis) return;
-      const dependencyReferences = getEffectDepsRefs(analysis, node);
-      if (!dependencyReferences) return;
-      const hasPropDependency = dependencyReferences
-        .flatMap((reference) =>
-          isState(analysis, reference) ? [] : getUpstreamRefs(analysis, reference),
-        )
-        .some(
-          (reference) =>
-            isProp(analysis, reference) && !isOnlyCalledInEffect(reference, node, analysis),
-        );
-      if (!hasPropDependency) return;
-      const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename);
-      if (hasCleanup(analysis, node)) return;
-      for (const fact of facts) {
-        if (
-          fact.isDeferred ||
-          isOwnedRequestMapReset(fact.callExpression, context) ||
-          isPortalMountStateWrite(fact.callExpression, context) ||
-          isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
-          hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
-        ) {
-          continue;
-        }
-        if (
-          hasResourceLifecycleSetterWriter(
-            analysis,
-            context,
-            fact.setterReference,
-            node,
-            dependencyReferences,
-            fact.matchesStateInitializer,
+  create: (context: RuleContext) => {
+    const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
+        const analysis = getProgramAnalysis(node);
+        if (!analysis) return;
+        const dependencyReferences = getEffectDepsRefs(analysis, node);
+        if (!dependencyReferences) return;
+        const hasPropDependency = dependencyReferences
+          .flatMap((reference) =>
+            isState(analysis, reference) ? [] : getUpstreamRefs(analysis, reference),
           )
-        ) {
-          continue;
+          .some(
+            (reference) =>
+              isProp(analysis, reference) && !isOnlyCalledInEffect(reference, node, analysis),
+          );
+        if (!hasPropDependency) return;
+        const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename, true);
+        if (hasCleanup(analysis, node)) return;
+        for (const fact of facts) {
+          if (
+            fact.isDeferred ||
+            isOwnedRequestMapReset(fact.writeSite, context) ||
+            isPortalMountStateWrite(fact.writeSite, context) ||
+            isReleasedObjectUrlStateWrite(fact.writeSite, context) ||
+            hasDeferredOrExternalEffectWork(analysis, node, context, fact.writeSite)
+          ) {
+            continue;
+          }
+          if (
+            hasResourceLifecycleSetterWriter(
+              analysis,
+              context,
+              fact.setterReference,
+              node,
+              dependencyReferences,
+              fact.matchesStateInitializer,
+              mediaReceiverCache,
+              fact.isForwardedWrite ? fact.writeSite : undefined,
+            )
+          ) {
+            continue;
+          }
+          const isEventOwnedPropDerivedAdjustment =
+            fact.hasIndependentWriter &&
+            fact.readsWrittenState &&
+            writesPropDerivedValue(analysis, fact);
+          if (
+            (!fact.isSynchronousRenderValue && !isEventOwnedPropDerivedAdjustment) ||
+            fact.resetsSourceState
+          ) {
+            continue;
+          }
+          const writtenValueHasPropSource = fact.sourceReferences
+            .flatMap((reference) => getUpstreamRefs(analysis, reference))
+            .some((reference) => isProp(analysis, reference));
+          if (writtenValueHasPropSource && !isEventOwnedPropDerivedAdjustment) {
+            continue;
+          }
+          context.report({
+            node: fact.writeSite.node,
+            message: "Adjusting state in an effect after a prop changes costs an extra render.",
+          });
         }
-        const isEventOwnedPropDerivedAdjustment =
-          fact.hasIndependentWriter &&
-          fact.readsWrittenState &&
-          writesPropDerivedValue(analysis, fact);
-        if (
-          (!fact.isSynchronousRenderValue && !isEventOwnedPropDerivedAdjustment) ||
-          fact.resetsSourceState
-        ) {
-          continue;
-        }
-        const writtenValueHasPropSource = fact.sourceReferences
-          .flatMap((reference) => getUpstreamRefs(analysis, reference))
-          .some((reference) => isProp(analysis, reference));
-        if (writtenValueHasPropSource && !isEventOwnedPropDerivedAdjustment) {
-          continue;
-        }
-        context.report({
-          node: fact.callExpression,
-          message:
-            "This effect adjusts state after a prop changes, so users briefly see the stale value.",
-        });
-      }
-    },
-  }),
+      },
+    };
+  },
 });

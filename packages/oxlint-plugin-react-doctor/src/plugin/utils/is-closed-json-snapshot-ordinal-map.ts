@@ -1,4 +1,6 @@
 import { isClosedJsonSnapshotPublicEntry } from "./is-closed-json-snapshot-public-entry.js";
+import { isClosedJsonSnapshotFragmentOpening } from "./is-closed-json-snapshot-fragment-opening.js";
+import { isClosedJsonSnapshotStateKeyCount } from "./is-closed-json-snapshot-state-key-count.js";
 import { isClosedJsonSnapshotInactiveBranch } from "./is-closed-json-snapshot-inactive-branch.js";
 import { getClassBindingSymbol } from "./get-class-binding-symbol.js";
 import { getClosedJsonSnapshotComponentExportNames } from "./get-closed-json-snapshot-component-export-names.js";
@@ -216,21 +218,7 @@ const isEmptyStateTest = (
         : isNodeOfType(test.left, "Literal") && test.left.value === 0
           ? test.right
           : null;
-    if (!isNodeOfType(count, "MemberExpression") || getStaticPropertyName(count) !== "length")
-      return false;
-    const keys = count.object;
-    if (
-      !isNodeOfType(keys, "CallExpression") ||
-      keys.arguments.length !== 1 ||
-      !isNodeOfType(keys.callee, "MemberExpression") ||
-      getStaticPropertyName(keys.callee) !== "keys" ||
-      !isNodeOfType(keys.callee.object, "Identifier") ||
-      keys.callee.object.name !== "Object" ||
-      !module.scopes.isGlobalReference(keys.callee.object)
-    )
-      return false;
-    const access = readAccess(keys.arguments[0], module);
-    return access?.symbol === state && access.path.length === 0;
+    return Boolean(count && isClosedJsonSnapshotStateKeyCount(count, state, module.scopes));
   }
   if (
     isNodeOfType(test, "CallExpression") &&
@@ -275,7 +263,11 @@ const isEmptinessReference = (
       isNodeOfType(expression, "BinaryExpression") ||
       isNodeOfType(expression, "UnaryExpression"))
   ) {
-    if (isEmptyStateTest(expression, state, module, hasLodashEmptiness)) return true;
+    if (
+      isEmptyStateTest(expression, state, module, hasLodashEmptiness) ||
+      isClosedJsonSnapshotStateKeyCount(expression, state, module.scopes)
+    )
+      return true;
     expression = expression.parent;
   }
   return false;
@@ -292,6 +284,22 @@ const hasEmptyGate = (
   let child: EsTreeNode = route;
   let ancestor = route.parent;
   while (ancestor && ancestor !== owner) {
+    if (
+      (isNodeOfType(ancestor, "ConditionalExpression") || isNodeOfType(ancestor, "IfStatement")) &&
+      ancestor.consequent === child &&
+      isClosedJsonSnapshotStateKeyCount(ancestor.test, state, module.scopes)
+    ) {
+      const alternate =
+        isNodeOfType(ancestor.alternate, "BlockStatement") && ancestor.alternate.body.length === 1
+          ? ancestor.alternate.body[0]
+          : ancestor.alternate;
+      const omitted = isNodeOfType(alternate, "ReturnStatement") ? alternate.argument : alternate;
+      if (
+        (isNodeOfType(ancestor, "IfStatement") && !alternate) ||
+        (isNodeOfType(omitted, "Literal") && (omitted.value === null || omitted.value === false))
+      )
+        return true;
+    }
     if (
       isNodeOfType(ancestor, "ConditionalExpression") &&
       ((ancestor.alternate === child &&
@@ -355,12 +363,29 @@ const isClosedSnapshotCarrierOpening = (
   hasAntdLocaleProvider: boolean,
 ): boolean => {
   if (hasClosedJsonSnapshotNativeAttributes(opening, null, module.scopes)) return true;
+  if (isClosedJsonSnapshotFragmentOpening(opening, module.scopes)) return true;
   if (
     opening.attributes.length === 0 &&
     (isGenuineImport(opening.name, module, "react-router-dom", "BrowserRouter") ||
       isGenuineImport(opening.name, module, "react-router-dom", "Switch"))
   )
     return true;
+  if (
+    opening.attributes.length === 1 &&
+    isGenuineImport(opening.name, module, "react-router-dom", "BrowserRouter")
+  ) {
+    const attribute = opening.attributes[0];
+    if (
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      attribute.name.name === "basename"
+    ) {
+      const value = isNodeOfType(attribute.value, "JSXExpressionContainer")
+        ? attribute.value.expression
+        : attribute.value;
+      if (isNodeOfType(value, "Literal") && typeof value.value === "string") return true;
+    }
+  }
   if (isClosedJsonSnapshotLocaleCarrier({ opening, module, project, hasAntdLocaleProvider }))
     return true;
   if (opening.attributes.length !== 0 || !isNodeOfType(opening.name, "JSXIdentifier")) return false;

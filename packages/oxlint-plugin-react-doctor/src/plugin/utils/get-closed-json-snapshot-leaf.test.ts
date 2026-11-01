@@ -6,8 +6,13 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { parseSourceText } from "./parse-source-file.js";
 import { walkAst } from "./walk-ast.js";
 
-const inspectLeaf = (sourceText: string, hasAntdComponentRole = false, useLastIterator = false) => {
-  const program = parseSourceText({ filename: "leaf.jsx", sourceText });
+const inspectLeaf = (
+  sourceText: string,
+  hasAntdComponentRole = false,
+  useLastIterator = false,
+  filename = "leaf.jsx",
+) => {
+  const program = parseSourceText({ filename, sourceText });
   expect(program).not.toBeNull();
   if (!program) throw new Error("Fixture must parse");
   const scopes = analyzeScopes(program);
@@ -27,6 +32,75 @@ const inspectLeaf = (sourceText: string, hasAntdComponentRole = false, useLastIt
 };
 
 describe("getClosedJsonSnapshotLeaf", () => {
+  it.each([
+    ["import React from 'react';", "React.Fragment"],
+    ["import * as Runtime from 'react';", "Runtime.Fragment"],
+    ["import { Fragment as Group } from 'react';", "Group"],
+  ])("certifies an imported fragment ancestor: %s", (declaration, tagName) => {
+    expect(
+      inspectLeaf(
+        `${declaration} export const Leaf = props => <${tagName}><section>{props.articles.map((article, position) => <p key={position}>{article}</p>)}</section></${tagName}>;`,
+      ),
+    ).not.toBeNull();
+  });
+
+  it.each([
+    ["", "Fragment", ""],
+    ["", "React.Fragment", ""],
+    ["const Fragment = foreign;", "Fragment", ""],
+    ["import { Fragment } from 'react'; const Group = Fragment;", "Group", ""],
+    ["import React from 'react'; publish(React);", "React.Fragment", ""],
+    ["import React from 'react'; React.Fragment = foreign;", "React.Fragment", ""],
+    ["import { Fragment } from 'preact';", "Fragment", ""],
+    ["import { Fragment } from 'react-dom';", "Fragment", ""],
+    ["import { Fragment } from '@wordpress/element';", "Fragment", ""],
+    ["import { Fragment } from 'react';", "Fragment", 'key="fixed"'],
+    ["import { Fragment } from 'react';", "Fragment", "ref={capture}"],
+    ["import { Fragment } from 'react';", "Fragment", "{...attributes}"],
+    ["import { Fragment } from 'react';", "Fragment", "children={foreign}"],
+  ])("declines an opaque or attributed fragment: %s %s %s", (declaration, tagName, attributes) => {
+    expect(
+      inspectLeaf(
+        `${declaration} export const Leaf = props => <${tagName} ${attributes}><section>{props.articles.map((article, position) => <p key={position}>{article}</p>)}</section></${tagName}>;`,
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    "<React.Fragment><section>{props.articles.map((article, position) => <p key={position}>{article}</p>)}</section></React.Fragment>",
+    "<React.Fragment><aside>heading</aside><section>{props.articles.map((article, position) => <p key={position}>{article}</p>)}</section></React.Fragment>",
+  ])("does not flatten a fragment to prove competing branch identity: %s", (selected) => {
+    expect(
+      inspectLeaf(
+        `import React from 'react'; export const Leaf = props => props.heading ? ${selected} : <section>other</section>;`,
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["import type { Fragment } from 'react';", "Fragment"],
+    ["import { type Fragment, useState } from 'react';", "Fragment"],
+    ["import type React from 'react';", "React.Fragment"],
+    ["import type * as Runtime from 'react';", "Runtime.Fragment"],
+  ])("declines an erased fragment import: %s", (declaration, tagName) => {
+    expect(
+      inspectLeaf(
+        `${declaration} export const Leaf = props => <${tagName}><section>{props.articles.map((article, position) => <p key={position}>{article}</p>)}</section></${tagName}>;`,
+        false,
+        false,
+        "leaf.tsx",
+      ),
+    ).toBeNull();
+  });
+
+  it("declines a local binding that shadows an imported Fragment", () => {
+    expect(
+      inspectLeaf(
+        `import { Fragment } from 'react'; export function Leaf(props) { const Fragment = foreign; return <Fragment><section>{props.articles.map((article, position) => <p key={position}>{article}</p>)}</section></Fragment>; }`,
+      ),
+    ).toBeNull();
+  });
+
   it("certifies direct native text with ordinal decoration", () => {
     const certificate = inspectLeaf(`export default function Leaf(props) {
       return <section className="copy">{props.articles.map((article, position) => <p key={position}>{position + 1}. {article}</p>)}</section>;

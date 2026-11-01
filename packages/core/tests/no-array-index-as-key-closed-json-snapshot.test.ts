@@ -670,6 +670,160 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 };
 
 describe("closed imported JSON snapshot ordinal keys", () => {
+  it.each([
+    ['import React from "react";', "React.Fragment"],
+    ['import * as Runtime from "react";', "Runtime.Fragment"],
+    ['import { Fragment as Group } from "react";', "Group"],
+  ])("certifies imported fragment leaf and owner ancestors: %s", (declaration, tagName) => {
+    for (const filename of ["src/leaf.js", "src/owner.js"]) {
+      const original = SNAPSHOT_FILES[filename];
+      const wrapped = original
+        .replace(
+          'import React from "react";',
+          tagName === "React.Fragment" ? declaration : `import React from "react"; ${declaration}`,
+        )
+        .replace(
+          'import React, { useEffect, useState } from "react";',
+          tagName === "React.Fragment"
+            ? 'import React, { useEffect, useState } from "react";'
+            : `import React, { useEffect, useState } from "react"; ${declaration}`,
+        )
+        .replace("return <", `return <${tagName}><`)
+        .replace("</section>;", `</section></${tagName}>;`)
+        .replace("</BrowserRouter>;", `</BrowserRouter></${tagName}>;`);
+      replaceSnapshotSource({
+        name: "imported fragment",
+        filename,
+        before: original,
+        after: wrapped,
+      });
+    }
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it.each([
+    "return Object.keys(settings).length ? ROUTER : null;",
+    "return Object.keys(settings).length ? ROUTER : false;",
+    "if (Object.keys(settings).length) return ROUTER; return null;",
+    "if (Object.keys(settings).length) { return ROUTER; } else { return false; }",
+  ])("certifies a native state-key-count truthiness gate: %s", (statement) => {
+    const router =
+      '<BrowserRouter><Route path="/" render={routeProps => <Leaf {...routeProps} {...settings} />} /></BrowserRouter>';
+    replaceSnapshotSource({
+      name: "native count gate",
+      filename: "src/owner.js",
+      before: `if (Object.keys(settings).length === 0) return null;\n      return ${router};`,
+      after: statement.replace("ROUTER", router),
+    });
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it.each([
+    "Object.keys(settings).length && ROUTER",
+    "Object.keys(settings).length ? null : ROUTER",
+    "Object.keys(settings).length ? ROUTER : <aside>other</aside>",
+    "Object.keys(settings).length ? ROUTER : ROUTER",
+    "Object.keys(settings.heading).length ? ROUTER : null",
+    "Object.keys(other).length ? ROUTER : null",
+    "settings.length ? ROUTER : null",
+    "Object.keys(settings, other).length ? ROUTER : null",
+    "Object.keys?.(settings).length ? ROUTER : null",
+    "Object?.keys(settings).length ? ROUTER : null",
+    "Object.keys(settings)?.length ? ROUTER : null",
+  ])("retains warnings for an unproved count gate: %s", (expression) => {
+    const router =
+      '<BrowserRouter><Route path="/" render={routeProps => <Leaf {...routeProps} {...settings} />} /></BrowserRouter>';
+    replaceSnapshotSource({
+      name: "unproved count gate",
+      filename: "src/owner.js",
+      before: `if (Object.keys(settings).length === 0) return null;\n      return ${router};`,
+      after: `return ${expression.replaceAll("ROUTER", router)};`,
+    });
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    "Object.keys?.(settings).length",
+    "Object?.keys(settings).length",
+    "Object.keys(settings)?.length",
+  ])("preserves refusal for an optional-chain comparator gate: %s", (count) => {
+    replaceSnapshotSource({
+      name: "optional comparator",
+      filename: "src/owner.js",
+      before: "Object.keys(settings).length === 0",
+      after: `${count} === 0`,
+    });
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it.each([
+    ["function Owner()", "function Owner(Object)"],
+    ["return Object.keys", "Object.keys = foreign; return Object.keys"],
+    ["return Object.keys", "setSettings({}); return Object.keys"],
+    ["return Object.keys", "settings.paragraphs.sort(); return Object.keys"],
+  ])("retains count-gate binding and ownership controls: %s", (before, after) => {
+    const router =
+      '<BrowserRouter><Route path="/" render={routeProps => <Leaf {...routeProps} {...settings} />} /></BrowserRouter>';
+    const original = SNAPSHOT_FILES["src/owner.js"];
+    const source = original.replace(
+      `if (Object.keys(settings).length === 0) return null;\n      return ${router};`,
+      `return Object.keys(settings).length ? ${router} : null;`,
+    );
+    expect(source).toContain(before);
+    writeSnapshotFile("src/owner.js", source.replace(before, after));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
+  it("certifies a genuinely aliased BrowserRouter with a fixed basename", () => {
+    const original = SNAPSHOT_FILES["src/owner.js"];
+    writeSnapshotFile(
+      "src/owner.js",
+      original
+        .replace("{ BrowserRouter, Route }", "{ BrowserRouter as Shell, Route }")
+        .replace("<BrowserRouter>", '<Shell basename="/docs">')
+        .replace("</BrowserRouter>", "</Shell>"),
+    );
+    expect(runSnapshotLeaf()).toEqual([]);
+  });
+
+  it.each(['""', '"/docs"', '{"/docs"}'])(
+    "certifies a sole fixed string BrowserRouter basename: %s",
+    (basename) => {
+      replaceSnapshotSource({
+        name: "fixed basename",
+        filename: "src/owner.js",
+        before: "<BrowserRouter>",
+        after: `<BrowserRouter basename=${basename}>`,
+      });
+      expect(runSnapshotLeaf()).toEqual([]);
+    },
+  );
+
+  it.each([
+    "basename={base}",
+    "basename={`/${base}`}",
+    "basename={getBase()}",
+    "basename",
+    "basename={false}",
+    "basename={null}",
+    'basename={{ path: "/" }}',
+    'basename="/" basename="/other"',
+    'basename="/" {...attributes}',
+    'basename="/" key="fixed"',
+    'basename="/" ref={capture}',
+    'basename="/" children={foreign}',
+    'basename="/" getUserConfirmation={confirm}',
+    'basename="/" forceRefresh={false}',
+  ])("retains warnings for an opaque or extra BrowserRouter attribute: %s", (attributes) => {
+    replaceSnapshotSource({
+      name: "opaque basename",
+      filename: "src/owner.js",
+      before: "<BrowserRouter>",
+      after: `<BrowserRouter ${attributes}>`,
+    });
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
   it("reads the project once for multiple eligible maps in one file", () => {
     writeSnapshotFile(
       "package.json",

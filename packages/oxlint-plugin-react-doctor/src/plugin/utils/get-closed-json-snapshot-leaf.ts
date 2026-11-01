@@ -2,6 +2,7 @@ import { hasClosedJsonSnapshotJsxReferences } from "./has-closed-json-snapshot-j
 import { hasClosedJsonSnapshotNativeAttributes } from "./has-closed-json-snapshot-native-attributes.js";
 import { isClosedJsonSnapshotOrdinalPresentation } from "./is-closed-json-snapshot-ordinal-presentation.js";
 import { areStaticPropertyPathsDisjoint } from "./are-static-property-paths-disjoint.js";
+import { isClosedJsonSnapshotFragmentOpening } from "./is-closed-json-snapshot-fragment-opening.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
@@ -220,7 +221,10 @@ const hasSafeRenderAncestors = (
     if (++depth > CLOSED_JSON_SNAPSHOT_LEAF_MAX_DEPTH) return false;
     if (isNodeOfType(ancestor, "ReturnStatement")) selectedReturn = ancestor;
     if (isNodeOfType(ancestor, "JSXElement")) {
-      if (!hasClosedJsonSnapshotNativeAttributes(ancestor.openingElement, null, scopes))
+      if (
+        !hasClosedJsonSnapshotNativeAttributes(ancestor.openingElement, null, scopes) &&
+        !isClosedJsonSnapshotFragmentOpening(ancestor.openingElement, scopes)
+      )
         return false;
     } else if (isNodeOfType(ancestor, "ConditionalExpression")) {
       const alternate =

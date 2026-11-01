@@ -679,7 +679,7 @@ describe("closed imported JSON snapshot ordinal keys", () => {
       export const First = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;
       export const Second = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;`;
     const filename = path.join(temporaryDirectory, "src/leaf.js");
-    const incomingFilename = path.join(temporaryDirectory, "src/index.js");
+    const incomingFilename = normalizeFilename(path.join(temporaryDirectory, "src/index.js"));
     writeSnapshotFile("src/leaf.js", sourceText);
     const readFile = vi.spyOn(filesystem, "readFileSync");
     syncBuiltinESMExports();
@@ -701,7 +701,7 @@ describe("closed imported JSON snapshot ordinal keys", () => {
       export const First = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;
       export const Second = props => <section>{props.paragraphs.map((text, index) => <p key={index}>{index + 1}. {text}</p>)}</section>;`;
     const filename = path.join(temporaryDirectory, "src/leaf.js");
-    const incomingFilename = path.join(temporaryDirectory, "src/index.js");
+    const incomingFilename = normalizeFilename(path.join(temporaryDirectory, "src/index.js"));
     writeSnapshotFile("src/leaf.js", sourceText);
     writeSnapshotFile(
       "src/unresolved.js",

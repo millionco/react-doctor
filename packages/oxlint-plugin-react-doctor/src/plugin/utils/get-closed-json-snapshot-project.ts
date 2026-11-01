@@ -14,6 +14,7 @@ import type { SourceProjectIndex, SourceProjectModule } from "./build-source-pro
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { parseSourceText } from "./parse-source-file.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import type { ClosedJsonSnapshotSourceResolutionPolicy } from "./closed-json-snapshot-config/interfaces.js";
 import { resolveClosedJsonSnapshotWebpackSource } from "./closed-json-snapshot-config/resolve-closed-json-snapshot-webpack-source.js";
 
@@ -55,6 +56,9 @@ export const getClosedJsonSnapshotProject = ({
   knownPublicEntryTargets = [],
 }: ClosedJsonSnapshotProjectInput): ClosedJsonSnapshotProject | null => {
   const absoluteRootDirectory = path.resolve(rootDirectory);
+  const normalizedCurrentFilePath = currentFilePath
+    ? normalizeFilename(path.resolve(currentFilePath))
+    : "";
   if (path.resolve(sourceResolutionPolicy.rootDirectory) !== absoluteRootDirectory) return null;
   const programNode =
     currentProgramNode ??
@@ -79,7 +83,7 @@ export const getClosedJsonSnapshotProject = ({
   try {
     index = buildSourceProjectIndex({
       rootDirectory: absoluteRootDirectory,
-      currentFilePath: currentFilePath ? path.resolve(currentFilePath) : "",
+      currentFilePath: normalizedCurrentFilePath,
       currentProgramNode: programNode,
       currentScopes: currentScopes ?? analyzeScopes(programNode),
       currentSourceText,
@@ -98,8 +102,12 @@ export const getClosedJsonSnapshotProject = ({
     return null;
   }
   if (!index || index.hasOpaqueMdxConsumerSurface) return null;
-  const excludedConfigPaths = new Set(sourceResolutionPolicy.configFilePaths ?? []);
-  if (currentFilePath && excludedConfigPaths.has(path.resolve(currentFilePath))) return null;
+  const excludedConfigPaths = new Set(
+    (sourceResolutionPolicy.configFilePaths ?? []).map((filename) =>
+      normalizeFilename(path.resolve(filename)),
+    ),
+  );
+  if (normalizedCurrentFilePath && excludedConfigPaths.has(normalizedCurrentFilePath)) return null;
   const unresolvedRuntimeSourcesByFilePath = new Map(
     [...index.unresolvedRuntimeSourcesByFilePath].filter(
       ([filename]) => !excludedConfigPaths.has(filename),

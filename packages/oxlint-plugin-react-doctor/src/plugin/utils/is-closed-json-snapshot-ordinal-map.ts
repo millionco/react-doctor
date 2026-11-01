@@ -1,3 +1,4 @@
+import { normalizeFilename } from "./normalize-filename.js";
 import { isClosedJsonSnapshotPublicEntry } from "./is-closed-json-snapshot-public-entry.js";
 import { isClosedJsonSnapshotInactiveBranch } from "./is-closed-json-snapshot-inactive-branch.js";
 import { getClassBindingSymbol } from "./get-class-binding-symbol.js";
@@ -856,7 +857,7 @@ export const isClosedJsonSnapshotOrdinalMap = (
     knownPublicEntryTargets: role.knownPublicEntryTargets,
   });
   if (!project) return false;
-  const module = project.modules.get(context.filename);
+  const module = project.modules.get(normalizeFilename(context.filename));
   if (!module) return false;
   if (
     getClosedJsonSnapshotComponentExportNames(module, leaf.componentFunction).length > 0 &&

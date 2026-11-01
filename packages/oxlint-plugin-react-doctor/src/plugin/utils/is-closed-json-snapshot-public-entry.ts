@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { normalizeFilename } from "./normalize-filename.js";
 import type { ClosedJsonSnapshotProject } from "./get-closed-json-snapshot-project.js";
 
 export interface ClosedJsonSnapshotPublicEntryInput {
@@ -12,20 +13,34 @@ export const isClosedJsonSnapshotPublicEntry = ({
 }: ClosedJsonSnapshotPublicEntryInput): boolean =>
   project.knownPublicEntryTargets.some((target) => {
     const entryPath = path.resolve(project.rootDirectory, target);
-    const extension = path.extname(filePath);
-    const wildcardIndex = entryPath.indexOf("*");
+    const comparableEntryPath = normalizeFilename(entryPath).toLowerCase();
+    const comparableFilePath = normalizeFilename(filePath).toLowerCase();
+    const extension = path.extname(comparableFilePath);
+    const wildcardIndex = comparableEntryPath.indexOf("*");
     if (wildcardIndex !== -1)
       return (
-        filePath.startsWith(entryPath.slice(0, wildcardIndex)) &&
-        filePath.endsWith(entryPath.slice(entryPath.lastIndexOf("*") + 1))
+        comparableFilePath.startsWith(comparableEntryPath.slice(0, wildcardIndex)) &&
+        comparableFilePath.endsWith(
+          comparableEntryPath.slice(comparableEntryPath.lastIndexOf("*") + 1),
+        )
       );
     return (
-      entryPath === filePath ||
-      entryPath === filePath.slice(0, -extension.length) ||
-      (path.basename(filePath, extension) === "index" && path.dirname(filePath) === entryPath) ||
-      project.resolveImport(
-        path.join(project.rootDirectory, "package.json"),
-        target.startsWith(".") || path.isAbsolute(target) ? target : `./${target}`,
-      )?.filePath === filePath
+      comparableEntryPath === comparableFilePath ||
+      comparableEntryPath === comparableFilePath.slice(0, -extension.length) ||
+      (path.basename(comparableFilePath, extension) === "index" &&
+        normalizeFilename(path.dirname(comparableFilePath)).toLowerCase() ===
+          comparableEntryPath) ||
+      project.sourceResolutionPolicy.extensions.some(
+        (configuredExtension) =>
+          comparableFilePath === `${comparableEntryPath}${configuredExtension.toLowerCase()}` ||
+          comparableFilePath ===
+            normalizeFilename(path.join(entryPath, `index${configuredExtension}`)).toLowerCase(),
+      ) ||
+      normalizeFilename(
+        project.resolveImport(
+          path.join(project.rootDirectory, "package.json"),
+          target.startsWith(".") || path.isAbsolute(target) ? target : `./${target}`,
+        )?.filePath ?? "",
+      ).toLowerCase() === comparableFilePath
     );
   });

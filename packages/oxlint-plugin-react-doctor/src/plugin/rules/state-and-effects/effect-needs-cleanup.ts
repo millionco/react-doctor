@@ -1,5 +1,9 @@
+import { hasRuntimeValueBinding } from "../../utils/has-runtime-value-binding.js";
+import { NATIVE_INTERVAL_OBSERVER_CONSTRUCTION_COUNT } from "./utils/native-interval-observer/constants.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
 import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
 import {
@@ -82,7 +86,7 @@ import {
 } from "../../utils/is-synchronous-iterator-callback.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 const CLEANUP_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
 const IMPORTED_CLEANUP_EFFECT_WRAPPER_NAMES = new Set([
@@ -6511,6 +6515,133 @@ const hasOwnedObserverHelperCleanup = (
   });
 };
 
+interface NativeIntervalObserverProgramFacts {
+  program: EsTreeNode;
+  hasUnsupportedChannel: boolean;
+  constructions: ReadonlySet<EsTreeNode>;
+}
+
+const nativeIntervalObserverProgramFactsByScopes = new WeakMap<
+  ScopeAnalysis,
+  NativeIntervalObserverProgramFacts
+>();
+
+const isNativeCleanupGlobalReference = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (scopes.isGlobalReference(identifier)) return true;
+  const symbol = scopes.symbolFor(identifier);
+  return Boolean(
+    symbol &&
+    (symbol.kind === "ts-interface" || symbol.kind === "ts-type-alias") &&
+    !hasRuntimeValueBinding(symbol),
+  );
+};
+
+const isNativeIntervalObserverConstruction = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isNodeOfType(node, "NewExpression") &&
+  isNodeOfType(node.callee, "Identifier") &&
+  node.callee.name === "ResizeObserver" &&
+  isNativeCleanupGlobalReference(node.callee, scopes);
+
+const getNativeIntervalObserverProgramFacts = (
+  program: EsTreeNode,
+  context: RuleContext,
+): NativeIntervalObserverProgramFacts | null => {
+  if (context.scopes.rootScope.node !== program) return null;
+  const cachedFacts = nativeIntervalObserverProgramFactsByScopes.get(context.scopes);
+  if (cachedFacts?.program === program) return cachedFacts;
+  let hasUnsupportedChannel = false;
+  const constructions = new Set<EsTreeNode>();
+  walkAst(program, (child) => {
+    if (hasUnsupportedChannel || constructions.size > NATIVE_INTERVAL_OBSERVER_CONSTRUCTION_COUNT)
+      return false;
+    if (
+      isNodeOfType(child, "WithStatement") ||
+      isNodeOfType(child, "ImportExpression") ||
+      isNodeOfType(child, "MetaProperty")
+    )
+      hasUnsupportedChannel = true;
+    if (
+      isNodeOfType(child, "MemberExpression") ||
+      (isNodeOfType(child, "Property") && isNodeOfType(child.parent, "ObjectPattern"))
+    ) {
+      const selector = getResolvedStaticPropertyName(child, context.scopes, {
+        stringifyNonStringLiterals: true,
+      });
+      if (selector === "constructor" || (child.computed && selector === null)) {
+        hasUnsupportedChannel = true;
+      }
+    }
+    if (
+      isNodeOfType(child, "ImportDeclaration") &&
+      child.importKind !== "type" &&
+      (child.specifiers.length === 0 ||
+        child.specifiers.some(
+          (specifier) =>
+            !isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind !== "type",
+        ))
+    ) {
+      const provider = child.source.value;
+      if (
+        provider === "module" ||
+        provider === "node:module" ||
+        provider === "process" ||
+        provider === "node:process" ||
+        provider === "vm" ||
+        provider === "node:vm" ||
+        provider === "repl" ||
+        provider === "node:repl" ||
+        provider === "inspector" ||
+        provider === "node:inspector" ||
+        provider === "inspector/promises" ||
+        provider === "node:inspector/promises"
+      )
+        hasUnsupportedChannel = true;
+    }
+    if (!isNodeOfType(child, "Identifier") || !context.scopes.referenceFor(child)) return;
+    if (
+      child.name === "eval" ||
+      child.name === "Function" ||
+      child.name === "require" ||
+      child.name === "module" ||
+      child.name === "process" ||
+      child.name === "globalThis" ||
+      child.name === "window" ||
+      child.name === "self" ||
+      child.name === "Reflect" ||
+      child.name === "Object"
+    )
+      hasUnsupportedChannel = true;
+    if (!isNativeCleanupGlobalReference(child, context.scopes)) return;
+    if (child.name === "ResizeObserver") {
+      const parent = child.parent;
+      if (
+        !(
+          (isNodeOfType(parent, "NewExpression") && parent.callee === child) ||
+          (isNodeOfType(parent, "UnaryExpression") && parent.operator === "typeof")
+        ) ||
+        isWithinAssignmentTarget(child)
+      ) {
+        hasUnsupportedChannel = true;
+      } else if (isNodeOfType(parent, "NewExpression")) {
+        constructions.add(parent);
+      }
+    }
+    if (child.name === "setInterval" || child.name === "clearInterval") {
+      const parent = child.parent;
+      if (
+        !isNodeOfType(parent, "CallExpression") ||
+        parent.callee !== child ||
+        parent.optional ||
+        isWithinAssignmentTarget(child)
+      )
+        hasUnsupportedChannel = true;
+    }
+  });
+  const facts = { program, hasUnsupportedChannel, constructions };
+  nativeIntervalObserverProgramFactsByScopes.set(context.scopes, facts);
+  return facts;
+};
+
 const hasReturnedObserverDisconnect = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6579,6 +6710,200 @@ const hasReturnedObserverDisconnect = (
         isGlobalObserverConstruction(stripParenExpression(receiverSymbol.initializer), context),
       ) &&
       doNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context)
+    );
+  }
+  if (
+    receiverSymbol.kind === "const" &&
+    receiverSymbol.initializer &&
+    (isGlobalObserverConstruction(stripParenExpression(receiverSymbol.initializer), context) ||
+      isNativeIntervalObserverConstruction(
+        stripParenExpression(receiverSymbol.initializer),
+        context.scopes,
+      ))
+  ) {
+    const construction = stripParenExpression(receiverSymbol.initializer);
+    const observerDeclaration = receiverSymbol.declarationNode;
+    const observerStatement = observerDeclaration.parent;
+    const observerCallback = isNodeOfType(construction, "NewExpression")
+      ? construction.arguments[0]
+      : null;
+    const scheduler = usageFunction.parent;
+    const timerDeclaration = scheduler?.parent;
+    const timerStatement = timerDeclaration?.parent;
+    if (
+      callback.async ||
+      callback.generator ||
+      !isNodeOfType(usage.node, "CallExpression") ||
+      !isNodeOfType(usage.node.callee, "MemberExpression") ||
+      !isNodeOfType(construction, "NewExpression") ||
+      !isNodeOfType(construction.callee, "Identifier") ||
+      construction.callee.name !== "ResizeObserver" ||
+      !isNodeOfType(observerDeclaration, "VariableDeclarator") ||
+      !isNodeOfType(observerStatement, "VariableDeclaration") ||
+      observerStatement.kind !== "const" ||
+      !isNodeOfType(observerCallback, "ArrowFunctionExpression") ||
+      observerCallback.async ||
+      !isFunctionLike(usageFunction) ||
+      usageFunction.async ||
+      usageFunction.generator ||
+      usageFunction.params.length !== 0 ||
+      !isNodeOfType(usageFunction.body, "BlockStatement") ||
+      !isNodeOfType(scheduler, "CallExpression") ||
+      scheduler.optional ||
+      !isNodeOfType(scheduler.callee, "Identifier") ||
+      scheduler.callee.name !== "setInterval" ||
+      !isNativeCleanupGlobalReference(scheduler.callee, context.scopes) ||
+      scheduler.arguments[0] !== usageFunction ||
+      findEnclosingFunction(scheduler) !== callback ||
+      !isNodeOfType(timerDeclaration, "VariableDeclarator") ||
+      timerDeclaration.init !== scheduler ||
+      !isNodeOfType(timerDeclaration.id, "Identifier") ||
+      !isNodeOfType(timerStatement, "VariableDeclaration") ||
+      timerStatement.kind !== "const" ||
+      timerStatement.parent !== observerStatement.parent ||
+      !isNodeOfType(observerStatement.parent, "BlockStatement") ||
+      !nodeDominatesNode(construction, scheduler, context)
+    )
+      return false;
+    const [observerEntry, ...otherObserverParameters] = observerCallback.params;
+    const [onlyObserverDeclaration, ...otherObserverDeclarations] = observerStatement.declarations;
+    const [onlyTimerDeclaration, ...otherTimerDeclarations] = timerStatement.declarations;
+    if (
+      (observerEntry && !isNodeOfType(observerEntry, "Identifier")) ||
+      otherObserverParameters.length ||
+      onlyObserverDeclaration !== observerDeclaration ||
+      otherObserverDeclarations.length ||
+      onlyTimerDeclaration !== timerDeclaration ||
+      otherTimerDeclarations.length
+    )
+      return false;
+    let allocationAncestor: EsTreeNode | null = observerStatement.parent;
+    while (allocationAncestor && allocationAncestor !== callback) {
+      if (
+        !isNodeOfType(allocationAncestor, "BlockStatement") &&
+        !isNodeOfType(allocationAncestor, "IfStatement")
+      )
+        return false;
+      allocationAncestor = allocationAncestor.parent ?? null;
+    }
+    if (allocationAncestor !== callback) return false;
+    const timerSymbol = context.scopes.symbolFor(timerDeclaration.id);
+    const [cleanupReturn, ...otherCleanupReturns] = matchingCleanupReturns;
+    const cleanup = isNodeOfType(cleanupReturn, "ReturnStatement") ? cleanupReturn.argument : null;
+    if (
+      !timerSymbol ||
+      timerSymbol.kind !== "const" ||
+      timerSymbol.declarationNode !== timerDeclaration ||
+      otherCleanupReturns.length ||
+      !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+      !isNodeOfType(cleanup, "ArrowFunctionExpression") ||
+      cleanup.async ||
+      cleanup.params.length !== 0 ||
+      !isNodeOfType(cleanup.body, "BlockStatement")
+    )
+      return false;
+    const [cancelStatement, disconnectStatement, ...otherCleanupStatements] = cleanup.body.body;
+    if (
+      otherCleanupStatements.length ||
+      !isNodeOfType(cancelStatement, "ExpressionStatement") ||
+      !isNodeOfType(disconnectStatement, "ExpressionStatement")
+    )
+      return false;
+    const cancel = cancelStatement.expression;
+    const disconnect = disconnectStatement.expression;
+    const observeMember = usage.node.callee;
+    if (
+      !isNodeOfType(cancel, "CallExpression") ||
+      cancel.optional ||
+      !isNodeOfType(cancel.callee, "Identifier") ||
+      cancel.callee.name !== "clearInterval" ||
+      !isNativeCleanupGlobalReference(cancel.callee, context.scopes) ||
+      !isNodeOfType(disconnect, "CallExpression") ||
+      disconnect.optional ||
+      disconnect.arguments.length !== 0 ||
+      !isNodeOfType(disconnect.callee, "MemberExpression") ||
+      disconnect.callee.optional ||
+      disconnect.callee.computed ||
+      !isNodeOfType(disconnect.callee.property, "Identifier") ||
+      disconnect.callee.property.name !== "disconnect" ||
+      !isNodeOfType(disconnect.callee.object, "Identifier") ||
+      context.scopes.symbolFor(disconnect.callee.object) !== receiverSymbol ||
+      observeMember.optional ||
+      observeMember.computed ||
+      !isNodeOfType(observeMember.object, "Identifier") ||
+      !isNodeOfType(observeMember.property, "Identifier") ||
+      observeMember.property.name !== "observe" ||
+      usage.node.optional ||
+      !doNodesCoverEveryPathAfterNode(construction, [scheduler], context) ||
+      !doNodesCoverEveryPathAfterNode(scheduler, [cleanupReturn], context) ||
+      !nodeDominatesNode(cancel, disconnect, context)
+    )
+      return false;
+    const [cancelledTimer, ...otherCancelArguments] = cancel.arguments;
+    if (
+      otherCancelArguments.length ||
+      !isNodeOfType(cancelledTimer, "Identifier") ||
+      context.scopes.symbolFor(cancelledTimer) !== timerSymbol
+    )
+      return false;
+    const observerReceivers = new Set<EsTreeNode>([observeMember.object, disconnect.callee.object]);
+    if (
+      !receiverSymbol.references.every(
+        (reference) =>
+          reference.flag === "read" &&
+          !isWithinAssignmentTarget(reference.identifier) &&
+          observerReceivers.has(reference.identifier),
+      ) ||
+      !timerSymbol.references.every((reference) => {
+        const call = reference.identifier.parent;
+        const owner = findEnclosingFunction(reference.identifier);
+        return (
+          reference.flag === "read" &&
+          !isWithinAssignmentTarget(reference.identifier) &&
+          isNodeOfType(call, "CallExpression") &&
+          !call.optional &&
+          call.arguments[0] === reference.identifier &&
+          call.arguments.every((argument) => argument === reference.identifier) &&
+          isNodeOfType(call.callee, "Identifier") &&
+          call.callee.name === "clearInterval" &&
+          isNativeCleanupGlobalReference(call.callee, context.scopes) &&
+          (owner === usageFunction || owner === cleanup)
+        );
+      })
+    )
+      return false;
+    const allowedFunctions = new Set<EsTreeNode>([
+      callback,
+      observerCallback,
+      usageFunction,
+      cleanup,
+    ]);
+    let hasUnsupportedChannel = false;
+    walkAst(callback, (child) => {
+      if (hasUnsupportedChannel) return false;
+      if (
+        (isFunctionLike(child) && !allowedFunctions.has(child)) ||
+        isNodeOfType(child, "AwaitExpression") ||
+        isNodeOfType(child, "YieldExpression") ||
+        isNodeOfType(child, "ThisExpression") ||
+        (isNodeOfType(child, "Identifier") && child.name === "arguments") ||
+        (isNodeOfType(child, "NewExpression") && child !== construction) ||
+        (isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "Identifier") &&
+          isNativeTimerIdentifier(child.callee, context.scopes) &&
+          child !== scheduler)
+      )
+        hasUnsupportedChannel = true;
+    });
+    if (hasUnsupportedChannel) return false;
+    const program = findProgramRoot(callback);
+    if (!program) return false;
+    const programFacts = getNativeIntervalObserverProgramFacts(program, context);
+    return Boolean(
+      programFacts &&
+      !programFacts.hasUnsupportedChannel &&
+      programFacts.constructions.size === NATIVE_INTERVAL_OBSERVER_CONSTRUCTION_COUNT &&
+      programFacts.constructions.has(construction),
     );
   }
   if (
@@ -7872,7 +8197,10 @@ const doesReleaseCallMatchUsage = (
       !(usage.registrationVerbName === "requestAnimationFrame"
         ? callee.name === "cancelAnimationFrame"
         : TIMER_CLEANUP_CALLEE_NAMES.has(callee.name)) ||
-      !context.scopes.isGlobalReference(callee)
+      !(
+        context.scopes.isGlobalReference(callee) ||
+        (callee.name === "clearInterval" && isNativeCleanupGlobalReference(callee, context.scopes))
+      )
     ) {
       return false;
     }

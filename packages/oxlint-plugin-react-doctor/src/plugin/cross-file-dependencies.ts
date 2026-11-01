@@ -585,6 +585,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["no-ref-current-in-render", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],

@@ -942,3 +942,47 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+describe("no-ref-current-in-render collector", () => {
+  it("records a relative factory through a barrel", () => {
+    const factoryPath = writeFixtureFile(
+      "factory.ts",
+      `export const makeValue = (compute) => compute();`,
+    );
+    const barrelPath = writeFixtureFile("index.ts", `export { makeValue } from "./factory";`);
+    const callerPath = writeFixtureFile(
+      "Panel.tsx",
+      `import { useRef } from "react";
+      import { makeValue } from "./index";
+      const Panel = ({ value }) => { const valueRef = useRef();
+        return makeValue(() => { valueRef.current = value; return value; }); };`,
+    );
+    const trace = collectFor(callerPath, ["no-ref-current-in-render"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.has(factoryPath)).toBe(true);
+    expect(trace?.contentPaths.has(barrelPath)).toBe(true);
+  });
+
+  it("records missing factory candidates before the helper exists", () => {
+    const callerPath = writeFixtureFile(
+      "Panel.tsx",
+      `import { makeValue } from "./missing";
+      const Panel = () => makeValue(() => 0);`,
+    );
+    const trace = collectFor(callerPath, ["no-ref-current-in-render"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.existencePaths.has(fixturePath("missing.ts"))).toBe(true);
+  });
+
+  it("keeps files without imported calls independent of other source files", () => {
+    const callerPath = writeFixtureFile(
+      "Panel.tsx",
+      `import { useRef } from "react";
+      const Panel = ({ value }) => { const valueRef = useRef(); valueRef.current = value; return null; };`,
+    );
+    const trace = collectFor(callerPath, ["no-ref-current-in-render"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.size).toBe(0);
+    expect(trace?.existencePaths.size).toBe(0);
+  });
+});

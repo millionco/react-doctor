@@ -256,15 +256,38 @@ const isFunctionSynchronouslyInvokedBefore = (
   ).length > 0;
 
 const isMemberWriteTarget = (memberExpression: EsTreeNode): boolean => {
-  const parent = memberExpression.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "AssignmentExpression")) return parent.left === memberExpression;
-  if (isNodeOfType(parent, "UpdateExpression")) return parent.argument === memberExpression;
-  return (
-    isNodeOfType(parent, "UnaryExpression") &&
-    parent.operator === "delete" &&
-    parent.argument === memberExpression
-  );
+  let currentNode = findTransparentExpressionRoot(memberExpression);
+  while (currentNode.parent) {
+    const parentNode = currentNode.parent;
+    if (isNodeOfType(parentNode, "AssignmentExpression")) {
+      return parentNode.left === currentNode;
+    }
+    if (
+      isNodeOfType(parentNode, "UpdateExpression") ||
+      (isNodeOfType(parentNode, "UnaryExpression") && parentNode.operator === "delete")
+    ) {
+      return parentNode.argument === currentNode;
+    }
+    if (isNodeOfType(parentNode, "ForInStatement") || isNodeOfType(parentNode, "ForOfStatement")) {
+      return parentNode.left === currentNode;
+    }
+    if (isNodeOfType(parentNode, "Property")) {
+      if (parentNode.value !== currentNode || !isNodeOfType(parentNode.parent, "ObjectPattern")) {
+        return false;
+      }
+    } else if (isNodeOfType(parentNode, "AssignmentPattern")) {
+      if (parentNode.left !== currentNode) return false;
+    } else if (isNodeOfType(parentNode, "RestElement")) {
+      if (parentNode.argument !== currentNode) return false;
+    } else if (
+      !isNodeOfType(parentNode, "ArrayPattern") &&
+      !isNodeOfType(parentNode, "ObjectPattern")
+    ) {
+      return false;
+    }
+    currentNode = findTransparentExpressionRoot(parentNode);
+  }
+  return false;
 };
 
 const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {

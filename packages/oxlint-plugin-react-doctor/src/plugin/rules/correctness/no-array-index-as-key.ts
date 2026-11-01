@@ -1,3 +1,4 @@
+import { isClosedJsonSnapshotOrdinalMap } from "../../utils/is-closed-json-snapshot-ordinal-map.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -1971,7 +1972,8 @@ export const noArrayIndexAsKey = defineRule({
         if (!indexUse) return;
         if (
           indexUse.binding.iteratorCall &&
-          (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
+          (isClosedJsonSnapshotOrdinalMap(indexUse.binding.iteratorCall, context) ||
+            isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
             isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
         )
           return;

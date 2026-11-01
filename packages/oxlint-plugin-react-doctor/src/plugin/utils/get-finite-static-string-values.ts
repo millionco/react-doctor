@@ -3,16 +3,27 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { getDirectUnreassignedInitializer } from "./get-direct-unreassigned-initializer.js";
 import { getStaticStringExpression } from "./get-static-string-expression.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import type { RuleContext } from "./rule-context.js";
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+
+interface StaticStringValueContext {
+  readonly scopes: ScopeAnalysis;
+  readonly maximumExpressions?: number;
+}
 
 const collectFiniteStaticStringValues = (
   expression: EsTreeNode | null | undefined,
-  context: RuleContext,
+  context: StaticStringValueContext,
   values: Set<string>,
   visitedExpressions: Set<EsTreeNode>,
 ): void => {
-  if (!expression || values.size >= STATIC_STRING_VALUE_LIMIT) return;
+  if (
+    !expression ||
+    values.size >= STATIC_STRING_VALUE_LIMIT ||
+    (context.maximumExpressions !== undefined &&
+      visitedExpressions.size >= context.maximumExpressions)
+  )
+    return;
   const unwrappedExpression = stripParenExpression(expression);
   if (visitedExpressions.has(unwrappedExpression)) return;
   visitedExpressions.add(unwrappedExpression);
@@ -88,7 +99,7 @@ const collectFiniteStaticStringValues = (
 
 export const getFiniteStaticStringValues = (
   expression: EsTreeNode | null | undefined,
-  context: RuleContext,
+  context: StaticStringValueContext,
 ): ReadonlySet<string> => {
   const values = new Set<string>();
   collectFiniteStaticStringValues(expression, context, values, new Set());

@@ -44,6 +44,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "client-passive-event-listeners",
   "effect-needs-cleanup",
   "effect-listener-cleanup-reference-mismatch",
+  "no-array-index-as-key",
   "anchor-target-exists",
   "exhaustive-deps",
   "no-barrel-import",

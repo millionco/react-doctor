@@ -181,4 +181,57 @@ describe("parseOxlintOutput engine diagnostics", () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({ plugin: "TS", rule: "1039" });
   });
+
+  it.each([
+    [
+      "stale suppressions",
+      {
+        message: "There are suppressions that do not occur anymore.",
+        severity: "error",
+        help: "Run `oxlint --prune-suppressions` to remove unused suppressions.",
+        filename: "",
+        labels: [],
+      },
+    ],
+    [
+      "new violations not covered",
+      {
+        message: "There are new violations not covered by the suppressions file.",
+        severity: "error",
+        help: "Run `oxlint --suppress-all` to regenerate the suppressions file.",
+        filename: "",
+        labels: [],
+      },
+    ],
+  ])(
+    "silently filters suppressions file diagnostic and keeps healthy siblings: %s",
+    (_description, diagnostic) => {
+      const diagnostics = parseOxlintOutput(
+        buildOutput([HEALTHY_DIAGNOSTIC, diagnostic]),
+        buildProject(),
+        TEST_ROOT_DIRECTORY,
+      );
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].rule).toBe("no-array-index-as-key");
+    },
+  );
+
+  it("does not treat suppressions file diagnostic as an engine failure", () => {
+    expect(() =>
+      parseOxlintOutput(
+        buildOutput([
+          {
+            message: "There are suppressions that do not occur anymore.",
+            severity: "error",
+            help: "Run `oxlint --prune-suppressions` to remove unused suppressions.",
+            filename: "",
+            labels: [],
+          },
+        ]),
+        buildProject(),
+        TEST_ROOT_DIRECTORY,
+      ),
+    ).not.toThrow();
+  });
 });

@@ -278,6 +278,45 @@ describe("no-adjust-state-on-prop-change forwarded setters", () => {
 });
 
 describe("forwarded related resource writers", () => {
+  it.each([
+    ["const writer = setFailed;", "writer", "writer"],
+    ["const writer = setFailed; const alias = writer;", "alias", "alias"],
+    ["const writer = setFailed!;", "writer", "writer"],
+    ["const writer = setFailed;", "setFailed", "writer"],
+  ])("preserves immutable lifecycle aliases: %s", (declaration, resetSetter, eventSetter) => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        ${declaration}
+        useEffect(() => { assign(${resetSetter}, false); }, [src]);
+        return <img src={src} onError={() => assign(${eventSetter}, true)} />;
+      }
+    `),
+    ).toEqual([]);
+  });
+
+  it.each(["let writer = setFailed;", "const writer = setOther;"])(
+    "does not treat an unsupported or unrelated alias as the resource writer: %s",
+    (declaration) => {
+      expect(
+        getDiagnosticLines(`
+        import { useEffect, useState } from "react";
+        ${ASSIGN_HELPER}
+        function Image({ src }) {
+          const [failed, setFailed] = useState(false);
+          const [other, setOther] = useState(false);
+          ${declaration}
+          useEffect(() => { assign(setFailed, false); }, [src]);
+          return <img src={src} onError={() => assign(writer, true)} data-other={other} />;
+        }
+      `),
+      ).toHaveLength(1);
+    },
+  );
+
   it.each(["setFailed!", "setFailed as (value: boolean) => void"])(
     "preserves wrapped setters: %s",
     (setter) => {

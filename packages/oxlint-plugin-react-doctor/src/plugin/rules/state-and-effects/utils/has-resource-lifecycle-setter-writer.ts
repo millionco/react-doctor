@@ -1,8 +1,9 @@
-import type { Reference } from "eslint-scope";
+import type { Reference, Variable } from "eslint-scope";
 import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../../constants/dom-property-tags.js";
 import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { collectConstAliasSymbols } from "../../../utils/collect-const-alias-symbols.js";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
@@ -20,6 +21,7 @@ import type { RuleContext } from "../../../utils/rule-context.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { getCallExpr, getRef, getUpstreamRefs } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
+import { resolveStateSetterReference } from "./effect/react.js";
 import { hasDeferredOrExternalEffectWork } from "./has-deferred-or-external-effect-work.js";
 import { isMediaElementRefReceiver } from "./is-media-element-ref-receiver.js";
 import {
@@ -30,6 +32,8 @@ import {
   resolveStateWriteSite,
   type EffectStateWriteSite,
 } from "./collect-effect-state-write-facts.js";
+
+const resourceLifecycleSetterReferencesByVariable = new WeakMap<Variable, readonly Reference[]>();
 
 const RESOURCE_LIFECYCLE_EVENT_NAMES: ReadonlySet<string> = new Set([
   "onAbort",
@@ -261,7 +265,8 @@ export const hasResourceLifecycleSetterWriter = (
   mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
   forwardedResetWrite?: EffectStateWriteSite,
 ): boolean => {
-  if (!setterReference.resolved) return false;
+  const stateSetterReference = resolveStateSetterReference(analysis, setterReference);
+  if (!stateSetterReference?.resolved) return false;
   const componentFunction = findEnclosingFunction(effectNode);
   if (!componentFunction || !isFunctionLike(componentFunction)) return false;
   const dependencyVariables = new Set(
@@ -314,7 +319,32 @@ export const hasResourceLifecycleSetterWriter = (
     componentFunction,
   );
 
-  for (const reference of setterReference.resolved.references) {
+  let setterReferences = resourceLifecycleSetterReferencesByVariable.get(
+    stateSetterReference.resolved,
+  );
+  if (!setterReferences) {
+    const setterSymbol = context.scopes.symbolFor(
+      stateSetterReference.identifier as unknown as EsTreeNode,
+    );
+    setterReferences = setterSymbol
+      ? collectConstAliasSymbols(setterSymbol, context.scopes).flatMap((symbol) => {
+          if (symbol.references.some((reference) => reference.flag !== "read")) return [];
+          return symbol.references.flatMap((reference) => {
+            const setterRead = getRef(analysis, reference.identifier);
+            return setterRead &&
+              resolveStateSetterReference(analysis, setterRead)?.resolved ===
+                stateSetterReference.resolved
+              ? [setterRead]
+              : [];
+          });
+        })
+      : stateSetterReference.resolved.references;
+    resourceLifecycleSetterReferencesByVariable.set(
+      stateSetterReference.resolved,
+      setterReferences,
+    );
+  }
+  for (const reference of setterReferences) {
     if (reference.init) continue;
     const identifier = reference.identifier as unknown as EsTreeNode;
     const referenceCall = getCallExpr(reference);
@@ -322,7 +352,10 @@ export const hasResourceLifecycleSetterWriter = (
     const invocation = directCall ? null : findTransparentExpressionRoot(identifier).parent;
     const write = invocation ? resolveStateWriteSite(analysis, context, invocation) : null;
     if (
-      (!directCall && (!write || write.setterReference.resolved !== setterReference.resolved)) ||
+      (!directCall &&
+        (!write ||
+          resolveStateSetterReference(analysis, write.setterReference)?.resolved !==
+            stateSetterReference.resolved)) ||
       !writesFailureLatch(
         analysis,
         directCall ? directCall.arguments[0] : write?.value,
@@ -343,7 +376,7 @@ export const hasResourceLifecycleSetterWriter = (
       isNodeOfType(bindingIdentifier, "Identifier") &&
       (isSetterWiredToJsxHandler(
         componentFunction,
-        setterReference.identifier.name,
+        stateSetterReference.identifier.name,
         matchesAttribute,
       ) ||
         isFunctionTransitivelyWiredToResourceHandler(

@@ -659,3 +659,5 @@ export const READINESS_INACTIVE_IFRAME_CONTAINERS: ReadonlySet<string> = new Set
   "textarea",
   "title",
 ]);
+export const MAX_EFFECT_SETTER_ALIAS_COUNT = 64;
+export const MAX_EFFECT_SETTER_ALIAS_REFERENCE_COUNT = 256;

@@ -19,6 +19,10 @@ const potentiallyAliasedSymbolsByAnalysis = new WeakMap<
   ScopeAnalysis,
   Map<number, SymbolDescriptor[]>
 >();
+const possibleStaticPropertyMutationsOrEscapesByAnalysis = new WeakMap<
+  ScopeAnalysis,
+  Map<number, Map<string, boolean>>
+>();
 
 const getDirectAliasSourceSymbol = (
   expression: EsTreeNode,
@@ -406,10 +410,23 @@ export const hasPossibleStaticPropertyMutationOrEscape = (
   scopes: ScopeAnalysis,
 ): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
-  if (hasPossibleStaticPropertyWrite(identifier, propertyName, scopes)) return true;
-  return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
-    symbol.references.some((reference) => !isStableStaticPropertyReference(reference.identifier)),
-  );
+  const rootSymbol = resolveConstIdentifierAlias(identifier, scopes);
+  if (!rootSymbol) return false;
+  const mutationsBySymbol =
+    possibleStaticPropertyMutationsOrEscapesByAnalysis.get(scopes) ??
+    new Map<number, Map<string, boolean>>();
+  possibleStaticPropertyMutationsOrEscapesByAnalysis.set(scopes, mutationsBySymbol);
+  const mutationsByProperty = mutationsBySymbol.get(rootSymbol.id) ?? new Map<string, boolean>();
+  mutationsBySymbol.set(rootSymbol.id, mutationsByProperty);
+  const cachedResult = mutationsByProperty.get(propertyName);
+  if (cachedResult !== undefined) return cachedResult;
+  const result =
+    hasPossibleStaticPropertyWrite(identifier, propertyName, scopes) ||
+    getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
+      symbol.references.some((reference) => !isStableStaticPropertyReference(reference.identifier)),
+    );
+  mutationsByProperty.set(propertyName, result);
+  return result;
 };
 
 export const hasPossibleStaticPropertyMutationOrEscapeBefore = (

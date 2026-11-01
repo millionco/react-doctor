@@ -1,9 +1,10 @@
-import type { Reference } from "eslint-scope";
+import type { Reference, Variable } from "eslint-scope";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import { collectPossibleAssignedExpressions } from "../../../utils/collect-possible-assigned-expressions.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { getCallbackStatements } from "../../../utils/get-callback-statements.js";
 import { functionReturnsMatchingExpression } from "../../../utils/function-returns-matching-expression.js";
 import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../../utils/has-static-property-write-before.js";
@@ -17,7 +18,9 @@ import { isSynchronousIteratorCall } from "../../../utils/is-synchronous-iterato
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { resolveCrossFileFunctionExport } from "../../../utils/resolve-cross-file-function-export.js";
+import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
+import { unwrapDiscardedExpression } from "../../../utils/unwrap-discarded-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { walkSynchronousCallbackFlow } from "../../../utils/walk-synchronous-callback-flow.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
@@ -30,10 +33,13 @@ import {
   isProp,
   isState,
   isStateSetter,
+  isGenuineReactHookDeclarator,
+  resolveStateSetterReference,
 } from "./effect/react.js";
 import { isConsumedStateAccumulator } from "./is-consumed-state-accumulator.js";
 import { hasReturnedStateSetter } from "./has-returned-state-setter.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
+import { getEffectSetterAliasEvidence } from "./get-effect-setter-alias-evidence.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
 import { createNativeMediaCapabilityPredicate } from "./create-native-media-capability-predicate.js";
 
@@ -1577,8 +1583,12 @@ export const collectRenderValueEvidence = (
   };
 };
 
+const forwardingHelperWritesByBinding = new WeakMap<Variable, boolean>();
+
 const findStateSetterReference = (
   analysis: ProgramAnalysis,
+  context: RuleContext,
+  frame: EffectExecutionFrame,
   callExpression: EsTreeNode,
 ): Reference | null => {
   if (!isNodeOfType(callExpression, "CallExpression")) return null;
@@ -1586,6 +1596,75 @@ const findStateSetterReference = (
   if (!isNodeOfType(callee, "Identifier")) return null;
   const reference = getRef(analysis, callee);
   if (!reference) return null;
+  const substitution = frame.substitutions.get(reference.resolved);
+  if (substitution) {
+    const invocation = frame.invocation;
+    if (
+      !isNodeOfType(invocation, "CallExpression") ||
+      invocation.optional ||
+      callExpression.optional
+    ) {
+      return null;
+    }
+    if (invocation.arguments.some((argument) => isNodeOfType(argument, "SpreadElement")))
+      return null;
+    if (resolveExactLocalFunction(invocation.callee, context.scopes) !== frame.functionNode)
+      return null;
+    if (isAsyncOrGeneratorFunction(frame.functionNode)) return null;
+    if (
+      !getFunctionParameters(frame.functionNode).every((parameter) =>
+        isNodeOfType(parameter, "Identifier"),
+      )
+    )
+      return null;
+    const invocationCallee = stripParenExpression(invocation.callee);
+    const invocationReference = isNodeOfType(invocationCallee, "Identifier")
+      ? getRef(analysis, invocationCallee)
+      : null;
+    const helperBinding = invocationReference?.resolved;
+    if (helperBinding) {
+      let hasHelperWrite = forwardingHelperWritesByBinding.get(helperBinding);
+      if (hasHelperWrite === undefined) {
+        hasHelperWrite = helperBinding.references.some(
+          (candidate) => candidate.isWrite() && !candidate.init,
+        );
+        forwardingHelperWritesByBinding.set(helperBinding, hasHelperWrite);
+      }
+      if (hasHelperWrite) return null;
+    }
+    if (!isNodeReachableWithinFunction(invocation, context)) return null;
+    if (reference.resolved?.references.some((candidate) => candidate.isWrite())) return null;
+    const statements = getCallbackStatements(frame.functionNode);
+    const onlyStatement = statements[0];
+    const forwardedExpression = isNodeOfType(onlyStatement, "ReturnStatement")
+      ? onlyStatement.argument
+      : onlyStatement;
+    if (
+      statements.length !== 1 ||
+      !forwardedExpression ||
+      unwrapDiscardedExpression(forwardedExpression) !== callExpression
+    ) {
+      return null;
+    }
+    const argument = stripParenExpression(substitution.expression);
+    if (!isNodeOfType(argument, "Identifier")) return null;
+    const argumentReference = getRef(analysis, argument);
+    if (!argumentReference) return null;
+    const setterReference = resolveStateSetterReference(analysis, argumentReference);
+    if (!setterReference) return null;
+    if (
+      setterReference.resolved?.references.some(
+        (candidate) => candidate.isWrite() && !candidate.init,
+      )
+    ) {
+      return null;
+    }
+    const stateDeclarator = getUseStateDecl(analysis, setterReference);
+    if (!stateDeclarator || !isGenuineReactHookDeclarator(analysis, stateDeclarator, "useState")) {
+      return null;
+    }
+    return setterReference;
+  }
   if (resolveToFunction(reference)) return null;
   if (isStateSetter(analysis, reference)) return reference;
   return (
@@ -1624,15 +1703,20 @@ const isSameSimpleValue = (
 
 const matchesStateInitializer = (
   analysis: ProgramAnalysis,
+  frame: EffectExecutionFrame,
   callExpression: EsTreeNode,
   stateDeclarator: EsTreeNode,
 ): boolean => {
   if (!isNodeOfType(callExpression, "CallExpression")) return false;
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator")) return false;
   if (!isNodeOfType(stateDeclarator.init, "CallExpression")) return false;
-  const writtenValue = callExpression.arguments?.[0];
+  const writtenExpression = callExpression.arguments?.[0];
+  if (!writtenExpression) return false;
+  const substitution = frame.substitutions.get(
+    getIdentifierBindingIdentity(analysis, stripParenExpression(writtenExpression)),
+  );
+  const writtenValue = substitution?.expression ?? writtenExpression;
   const initializerValue = stateDeclarator.init.arguments?.[0];
-  if (!writtenValue) return false;
   if (!initializerValue) {
     const unwrappedWrittenValue = stripParenExpression(writtenValue as EsTreeNode);
     return (
@@ -1791,13 +1875,14 @@ const getFunctionalUpdaterIndexedMemberRootReference = (
 
 const collectFrameSetterCalls = (
   analysis: ProgramAnalysis,
+  context: RuleContext,
   frame: EffectExecutionFrame,
 ): ReadonlyArray<{ callExpression: EsTreeNode; setterReference: Reference }> => {
   const calls: Array<{ callExpression: EsTreeNode; setterReference: Reference }> = [];
   walkAst(frame.functionNode, (child: EsTreeNode): boolean | void => {
     if (child !== frame.functionNode && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
-    const setterReference = findStateSetterReference(analysis, child);
+    const setterReference = findStateSetterReference(analysis, context, frame, child);
     if (setterReference) calls.push({ callExpression: child, setterReference });
   });
   return calls;
@@ -2204,13 +2289,32 @@ export const collectEffectStateWriteFacts = (
   const facts: CollectedEffectStateWriteFact[] = [];
 
   for (const frame of frames) {
-    for (const { callExpression, setterReference } of collectFrameSetterCalls(analysis, frame)) {
+    for (const { callExpression, setterReference } of collectFrameSetterCalls(
+      analysis,
+      context,
+      frame,
+    )) {
       if (!isNodeOfType(callExpression, "CallExpression")) continue;
       if ((callExpression.arguments ?? []).length !== 1) continue;
       const writtenValue = callExpression.arguments?.[0] as EsTreeNode | undefined;
       if (!writtenValue) continue;
       const stateDeclarator = getUseStateDecl(analysis, setterReference);
       if (!stateDeclarator) continue;
+      const setterAliasEvidence = getEffectSetterAliasEvidence({
+        analysis,
+        context,
+        stateDeclarator,
+        invocation: isNodeOfType(frame.invocation, "CallExpression")
+          ? frame.invocation
+          : callExpression,
+        effectFunction: frames[0].functionNode,
+        writeFunction: frame.functionNode,
+      });
+      const callee = stripParenExpression(callExpression.callee);
+      const usesForwardedSetter = frame.substitutions.has(
+        getIdentifierBindingIdentity(analysis, callee),
+      );
+      if (usesForwardedSetter && !setterAliasEvidence.isComplete) continue;
       const remainingValueCallFrames = frame === frames[0] ? 1 : 0;
       let valueEvidence: EffectValueEvidence;
       if (isFunctionLike(writtenValue)) {
@@ -2264,10 +2368,12 @@ export const collectEffectStateWriteFacts = (
         (sourceReference) => getUseStateDecl(analysis, sourceReference) !== stateDeclarator,
       );
       const hasIndependentWriter =
+        setterAliasEvidence.hasIndependentWriter ||
         hasUserInputSetterWriter(analysis, context, setterReference, effectNode, true) ||
         hasReturnedStateSetter(context, stateDeclarator);
       const doesMatchStateInitializer = matchesStateInitializer(
         analysis,
+        frame,
         callExpression,
         stateDeclarator,
       );

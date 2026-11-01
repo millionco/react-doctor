@@ -104,6 +104,8 @@ export const REACT_COMPILER_SET_STATE_IN_EFFECT_DESCRIPTION =
 
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
 
+export const REDUCER_HOOK_NAMES: ReadonlySet<string> = new Set(["useReducer"]);
+
 // React's own built-in hooks — the complement of "custom hook" when a
 // callee name already matches the hook naming convention
 // (`isReactHookName`). Includes the bare `use(...)` hook from React 19,

@@ -1,5 +1,6 @@
-import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getDirectConstInitializer } from "../../../utils/get-direct-const-initializer.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
@@ -14,10 +15,15 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 export const isMediaElementRefReceiver = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
+  receiverCache?: WeakMap<SymbolDescriptor, boolean>,
 ): boolean => {
   const refSymbol = resolveReactRefCurrentOriginSymbol(expression, scopes);
-  const initializer = refSymbol ? getDirectConstInitializer(refSymbol) : null;
-  if (!refSymbol || !initializer) return false;
+  if (!refSymbol) return false;
+  const cachedResult = receiverCache?.get(refSymbol);
+  if (cachedResult !== undefined) return cachedResult;
+  receiverCache?.set(refSymbol, false);
+  const initializer = getDirectConstInitializer(refSymbol);
+  if (!initializer) return false;
   const refCall = stripParenExpression(initializer);
   if (!isNodeOfType(refCall, "CallExpression")) return false;
   const initialValue = refCall.arguments[0];
@@ -62,6 +68,69 @@ export const isMediaElementRefReceiver = (
     ) {
       return false;
     }
+    const ownerFunction = findEnclosingFunction(refSymbol.declarationNode);
+    const mediaElement = openingElement.parent;
+    if (!ownerFunction || !isNodeOfType(mediaElement, "JSXElement")) return false;
+    const pendingRenderValues: EsTreeNode[] = [mediaElement];
+    const visitedRenderValues = new Set<EsTreeNode>();
+    let isReturnedMedia = false;
+    while (pendingRenderValues.length > 0) {
+      const pendingRenderValue = pendingRenderValues.pop();
+      if (!pendingRenderValue) return false;
+      const renderValue = findTransparentExpressionRoot(pendingRenderValue);
+      if (visitedRenderValues.has(renderValue)) continue;
+      visitedRenderValues.add(renderValue);
+      const renderParent = renderValue.parent;
+      if (
+        isNodeOfType(renderParent, "ReturnStatement") &&
+        renderParent.argument === renderValue &&
+        findEnclosingFunction(renderParent) === ownerFunction
+      ) {
+        isReturnedMedia = true;
+        continue;
+      }
+      if (
+        (isNodeOfType(renderParent, "ConditionalExpression") &&
+          (renderParent.consequent === renderValue || renderParent.alternate === renderValue)) ||
+        (isNodeOfType(renderParent, "LogicalExpression") &&
+          (renderParent.right === renderValue || renderParent.operator !== "&&")) ||
+        (isNodeOfType(renderParent, "ArrayExpression") &&
+          renderParent.elements.some((element) => element === renderValue))
+      ) {
+        pendingRenderValues.push(renderParent);
+        continue;
+      }
+      const container = isNodeOfType(renderParent, "JSXExpressionContainer")
+        ? renderParent
+        : renderValue;
+      const containingElement = container.parent;
+      if (
+        (isNodeOfType(containingElement, "JSXFragment") ||
+          (isNodeOfType(containingElement, "JSXElement") &&
+            isProvenIntrinsicJsxElement(containingElement.openingElement, scopes))) &&
+        containingElement.children.some((child) => child === container)
+      ) {
+        pendingRenderValues.push(containingElement);
+        continue;
+      }
+      if (
+        isNodeOfType(renderParent, "VariableDeclarator") &&
+        renderParent.init === renderValue &&
+        isNodeOfType(renderParent.id, "Identifier")
+      ) {
+        const renderSymbol = scopes.symbolFor(renderParent.id);
+        if (
+          !renderSymbol ||
+          getDirectConstInitializer(renderSymbol) !== renderValue ||
+          renderSymbol.references.length !== 1 ||
+          renderSymbol.references[0]?.flag !== "read"
+        ) {
+          return false;
+        }
+        pendingRenderValues.push(renderSymbol.references[0].identifier);
+      }
+    }
+    if (!isReturnedMedia) return false;
     hasMediaAttachment = true;
   }
   if (!hasMediaAttachment) return false;
@@ -103,5 +172,6 @@ export const isMediaElementRefReceiver = (
       pendingElementValues.push(reference.identifier);
     }
   }
+  receiverCache?.set(refSymbol, true);
   return true;
 };

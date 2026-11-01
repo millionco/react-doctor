@@ -1,4 +1,5 @@
 import type { Reference } from "eslint-scope";
+import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../../constants/dom-property-tags.js";
 import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
@@ -173,6 +174,7 @@ const isWrittenByResourceSyncEffect = (
   context: RuleContext,
   setterReference: Reference,
   componentFunction: EsTreeNode,
+  mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
 ): boolean => {
   const identifier = setterReference.identifier as unknown as EsTreeNode;
   let cursor: EsTreeNode | null | undefined = identifier;
@@ -207,7 +209,7 @@ const isWrittenByResourceSyncEffect = (
       methodName &&
       RESOURCE_SYNC_METHOD_NAMES.has(methodName) &&
       (isProvenBrowserApiReceiver(callee.object, "dom-event-target", context.scopes) ||
-        isMediaElementRefReceiver(callee.object, context.scopes))
+        isMediaElementRefReceiver(callee.object, context.scopes, mediaReceiverCache))
     ) {
       didFindResourceSync = true;
       return false;
@@ -253,6 +255,7 @@ export const hasResourceLifecycleSetterWriter = (
   effectNode: EsTreeNode,
   dependencyReferences: readonly Reference[],
   matchesStateInitializer: boolean,
+  mediaReceiverCache?: WeakMap<SymbolDescriptor, boolean>,
 ): boolean => {
   if (!setterReference.resolved) return false;
   const componentFunction = findEnclosingFunction(effectNode);
@@ -336,7 +339,13 @@ export const hasResourceLifecycleSetterWriter = (
     }
     if (
       hasMatchingResourceIdentity &&
-      isWrittenByResourceSyncEffect(analysis, context, reference, componentFunction)
+      isWrittenByResourceSyncEffect(
+        analysis,
+        context,
+        reference,
+        componentFunction,
+        mediaReceiverCache,
+      )
     ) {
       return true;
     }

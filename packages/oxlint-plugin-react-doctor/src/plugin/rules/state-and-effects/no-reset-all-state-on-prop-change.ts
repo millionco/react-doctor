@@ -1237,6 +1237,7 @@ const findPropUsedToResetAllState = (
   depsRefs: Reference[],
   useEffectNode: EsTreeNode,
   effectFn: EsTreeNode,
+  mediaReceiverCache: WeakMap<SymbolDescriptor, boolean>,
 ): Reference | null => {
   // A setter that only runs inside a listener / observer / subscription
   // callback fires on that event, not when the prop changes — only
@@ -1260,6 +1261,7 @@ const findPropUsedToResetAllState = (
         useEffectNode,
         depsRefs,
         true,
+        mediaReceiverCache,
       ),
     )
   ) {
@@ -1319,32 +1321,37 @@ export const noResetAllStateOnPropChange = defineRule({
   tags: ["test-noise"],
   recommendation:
     "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in an effect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
-      const analysis = getProgramAnalysis(node);
-      if (!analysis) return;
-      const effectFnRefs = getEffectFnRefs(analysis, node);
-      const depsRefs = getEffectDepsRefs(analysis, node);
-      if (!effectFnRefs || !depsRefs) return;
-      const containing = findContainingNode(analysis, node);
-      if (containing && isCustomHook(containing)) return;
-      const effectFn = getEffectFn(analysis, node);
-      if (!effectFn) return;
+  create: (context: RuleContext) => {
+    const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
+        const analysis = getProgramAnalysis(node);
+        if (!analysis) return;
+        const effectFnRefs = getEffectFnRefs(analysis, node);
+        const depsRefs = getEffectDepsRefs(analysis, node);
+        if (!effectFnRefs || !depsRefs) return;
+        const containing = findContainingNode(analysis, node);
+        if (containing && isCustomHook(containing)) return;
+        const effectFn = getEffectFn(analysis, node);
+        if (!effectFn) return;
 
-      const propUsedToReset = findPropUsedToResetAllState(
-        analysis,
-        context,
-        effectFnRefs,
-        depsRefs,
-        node,
-        effectFn,
-      );
-      if (!propUsedToReset) return;
-      context.report({
-        node,
-        message: "This effect clears all state after a prop changes, which costs an extra render.",
-      });
-    },
-  }),
+        const propUsedToReset = findPropUsedToResetAllState(
+          analysis,
+          context,
+          effectFnRefs,
+          depsRefs,
+          node,
+          effectFn,
+          mediaReceiverCache,
+        );
+        if (!propUsedToReset) return;
+        context.report({
+          node,
+          message:
+            "This effect clears all state after a prop changes, which costs an extra render.",
+        });
+      },
+    };
+  },
 });

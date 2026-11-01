@@ -1,4 +1,4 @@
-import type { Reference } from "eslint-scope";
+import type { Reference, Variable } from "eslint-scope";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import { collectPossibleAssignedExpressions } from "../../../utils/collect-possible-assigned-expressions.js";
@@ -1579,6 +1579,8 @@ export const collectRenderValueEvidence = (
   };
 };
 
+const forwardingHelperWritesByBinding = new WeakMap<Variable, boolean>();
+
 const findStateSetterReference = (
   analysis: ProgramAnalysis,
   context: RuleContext,
@@ -1605,6 +1607,27 @@ const findStateSetterReference = (
     if (resolveExactLocalFunction(invocation.callee, context.scopes) !== frame.functionNode)
       return null;
     if (isAsyncOrGeneratorFunction(frame.functionNode)) return null;
+    if (
+      !getFunctionParameters(frame.functionNode).every((parameter) =>
+        isNodeOfType(parameter, "Identifier"),
+      )
+    )
+      return null;
+    const invocationCallee = stripParenExpression(invocation.callee);
+    const invocationReference = isNodeOfType(invocationCallee, "Identifier")
+      ? getRef(analysis, invocationCallee)
+      : null;
+    const helperBinding = invocationReference?.resolved;
+    if (helperBinding) {
+      let hasHelperWrite = forwardingHelperWritesByBinding.get(helperBinding);
+      if (hasHelperWrite === undefined) {
+        hasHelperWrite = helperBinding.references.some(
+          (candidate) => candidate.isWrite() && !candidate.init,
+        );
+        forwardingHelperWritesByBinding.set(helperBinding, hasHelperWrite);
+      }
+      if (hasHelperWrite) return null;
+    }
     if (!isNodeReachableWithinFunction(invocation, context)) return null;
     if (reference.resolved?.references.some((candidate) => candidate.isWrite())) return null;
     const statements = getCallbackStatements(frame.functionNode);

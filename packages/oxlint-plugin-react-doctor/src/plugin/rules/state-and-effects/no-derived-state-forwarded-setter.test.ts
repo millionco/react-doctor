@@ -130,6 +130,26 @@ for (const rule of [noDerivedState, noDerivedStateEffect]) {
         "assign(setValue, source)",
       ],
       [
+        "a subscription in a default parameter",
+        "const assign = (setter, value, registration = subscribe(next => setter(next))) => setter(value);",
+        "assign(setValue, source)",
+      ],
+      [
+        "a subscription in a destructuring default",
+        "const assign = (setter, value, { registration = subscribe(next => setter(next)) } = {}) => setter(value);",
+        "assign(setValue, source)",
+      ],
+      [
+        "a reassigned const helper",
+        "const assign = (setter, value) => setter(value); assign = subscribe;",
+        "assign(setValue, source)",
+      ],
+      [
+        "a reassigned helper alias",
+        "const assign = (setter, value) => setter(value); const forward = assign; forward = subscribe;",
+        "forward(setValue, source)",
+      ],
+      [
         "a shadowed setter",
         "const assign = (setter, value) => { const setValue = subscribe; setValue(value); };",
         "assign(setValue, source)",

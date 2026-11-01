@@ -263,3 +263,93 @@ describe("no-reset-all-state-on-prop-change forwarded setters", () => {
     expect(getDiagnosticLines(source)).toEqual([]);
   });
 });
+
+describe("forwarded reset resource ownership", () => {
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])("preserves image latch reset=%s event=%s", (forwardedReset, forwardedEvent) => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        useEffect(() => { ${forwardedReset ? "assign(setFailed, false)" : "setFailed(false)"}; }, [src]);
+        return <img src={src} alt={failed ? "failed" : "image"} onError={() => ${forwardedEvent ? "assign(setFailed, true)" : "setFailed(true)"}} />;
+      }
+    `),
+    ).toEqual([]);
+  });
+
+  it("does not transfer another state variable's resource latch", () => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Image({ src }) {
+        const [failed, setFailed] = useState(false);
+        const [other, setOther] = useState(false);
+        useEffect(() => { assign(setFailed, false); assign(setOther, false); }, [src]);
+        return <img src={src} alt={failed ? "failed" : String(other)} onError={() => assign(setOther, true)} />;
+      }
+    `),
+    ).toHaveLength(1);
+  });
+});
+
+describe("forwarded reset setter identity", () => {
+  it("counts two immutable aliases of one setter as one state variable", () => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Editor({ recordId }) {
+        const [draft, setDraft] = useState("");
+        const [note, setNote] = useState("");
+        const first = setDraft;
+        const second = setDraft;
+        useEffect(() => { assign(first, ""); assign(second, ""); }, [recordId]);
+        return <><input value={draft} onChange={(event) => setDraft(event.target.value)} /><input value={note} onChange={(event) => setNote(event.target.value)} /></>;
+      }
+    `),
+    ).toEqual([]);
+  });
+});
+
+describe("forwarded reset value and reload compatibility", () => {
+  it("reports a zero-argument setter helper like its direct equivalent", () => {
+    const buildSource = (write: string): string => `
+      import { useEffect, useState } from "react";
+      const clear = (setter) => setter();
+      function Editor({ recordId }) {
+        const [draft, setDraft] = useState();
+        useEffect(() => { ${write}; }, [recordId]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      }
+    `;
+    expect(getDiagnosticLines(buildSource("setDraft()"))).toHaveLength(1);
+    expect(getDiagnosticLines(buildSource("clear(setDraft)"))).toHaveLength(1);
+  });
+
+  it("preserves async reloads through another immutable alias", () => {
+    expect(
+      getDiagnosticLines(`
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Editor({ recordId }) {
+        const [draft, setDraft] = useState("");
+        const resetDraft = setDraft;
+        const reloadDraft = setDraft;
+        useEffect(() => {
+          assign(resetDraft, "");
+          Promise.resolve(recordId).then((value) => assign(reloadDraft, value));
+        }, [recordId]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      }
+    `),
+    ).toEqual([]);
+  });
+});

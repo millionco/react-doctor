@@ -41,8 +41,8 @@ import {
   resolveStateSetterReference,
 } from "./utils/effect/react.js";
 import {
-  getForwardedStateSetterWrite,
-  type ForwardedStateSetterWrite,
+  resolveStateWriteSite,
+  type ResolvedStateWriteSite,
 } from "./utils/collect-effect-state-write-facts.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
@@ -772,7 +772,7 @@ const getForwardedSetterWrite = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   setterRef: Reference,
-): ForwardedStateSetterWrite | null => {
+): ResolvedStateWriteSite | null => {
   const identifier = setterRef.identifier as unknown as EsTreeNode;
   const invocation = identifier.parent;
   if (
@@ -782,20 +782,22 @@ const getForwardedSetterWrite = (
   ) {
     return null;
   }
-  const forwardedWrite = getForwardedStateSetterWrite(analysis, context, invocation);
-  return forwardedWrite?.setterExpression === identifier ? forwardedWrite : null;
+  const forwardedWrite = resolveStateWriteSite(analysis, context, invocation);
+  return forwardedWrite?.isForwardedWrite && forwardedWrite.setter === identifier
+    ? forwardedWrite
+    : null;
 };
 
 const isSetStateToInitialValue = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   setterRef: Reference,
-  forwardedWrite: ForwardedStateSetterWrite | undefined,
+  forwardedWrite: ResolvedStateWriteSite | undefined,
 ): boolean => {
   const callExpr = getCallExpr(setterRef);
   if (!forwardedWrite && !isNodeOfType(callExpr, "CallExpression")) return false;
   const setStateToValue: EsTreeNode | undefined = forwardedWrite
-    ? forwardedWrite.writtenValue
+    ? forwardedWrite.value
     : isNodeOfType(callExpr, "CallExpression")
       ? (callExpr.arguments?.[0] as EsTreeNode | undefined)
       : undefined;
@@ -1276,7 +1278,13 @@ const findPropUsedToResetAllState = (
   // A setter that only runs inside a listener / observer / subscription
   // callback fires on that event, not when the prop changes — only
   // synchronous setter calls are the reset-on-prop-change shape.
-  const forwardedWritesByReference = new Map<Reference, ForwardedStateSetterWrite>();
+  const stateSetterVariablesByReference = new Map<Reference, Reference["resolved"]>(
+    effectFnRefs.map((reference) => [
+      reference,
+      resolveStateSetterReference(analysis, reference)?.resolved ?? null,
+    ]),
+  );
+  const forwardedWritesByReference = new Map<Reference, ResolvedStateWriteSite>();
   for (const ref of effectFnRefs) {
     const forwardedWrite = getForwardedSetterWrite(analysis, context, ref);
     if (forwardedWrite) forwardedWritesByReference.set(ref, forwardedWrite);
@@ -1318,7 +1326,8 @@ const findPropUsedToResetAllState = (
       effectFnRefs.some(
         (otherRef) =>
           otherRef !== setterRef &&
-          otherRef.resolved === setterRef.resolved &&
+          stateSetterVariablesByReference.get(otherRef) ===
+            stateSetterVariablesByReference.get(setterRef) &&
           (Boolean(getCallExpr(otherRef)) || forwardedWritesByReference.has(otherRef)) &&
           !isSyncSetterWrite(otherRef),
       ) ||
@@ -1330,7 +1339,9 @@ const findPropUsedToResetAllState = (
   // Distinct state VARIABLES reset — two call sites of one setter must not
   // satisfy a two-useState component (freecut inline-composition-preview,
   // delta audit).
-  const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
+  const resetStateVariables = new Set(
+    stateSetterRefs.map((setterRef) => stateSetterVariablesByReference.get(setterRef)),
+  );
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
 
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;

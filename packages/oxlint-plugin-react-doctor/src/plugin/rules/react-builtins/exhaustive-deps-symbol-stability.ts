@@ -129,6 +129,13 @@ export const symbolHasStableHookOrigin = (
 };
 
 export const getFunctionValueNode = (symbol: SymbolDescriptor): EsTreeNode | null => {
+  if (symbol.kind === "parameter") return null;
+  if (
+    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+    symbol.declarationNode.id !== symbol.bindingIdentifier
+  ) {
+    return null;
+  }
   if (symbol.kind === "function" && isNodeOfType(symbol.declarationNode, "FunctionDeclaration")) {
     return symbol.declarationNode;
   }

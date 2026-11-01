@@ -333,4 +333,31 @@ describe("ref writes through Object.assign during render", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(diagnosticCount);
   });
+  it.each([
+    ["Object.assign(valueRef, { current: value });", "update();", 1],
+    ["Object.assign(valueRef, { current: value });", "useEffect(update, [value]);", 0],
+    ["Object.assign(valueRef, { current: value });", "return <button onClick={update} />;", 0],
+    ["Object.assign(valueRef, { current: value });", "", 0],
+    [
+      "if (valueRef.current === null) Object.assign(valueRef, { current: new Map() });",
+      "update();",
+      0,
+    ],
+  ])(
+    "composes Object.assign with memoized callback ownership: %s %s",
+    (write, invocation, diagnosticCount) => {
+      const result = runRule(
+        noRefCurrentInRender,
+        `import { useCallback, useEffect, useRef } from "react";
+       const Panel = ({ value }) => {
+         const valueRef = useRef(null);
+         const update = useCallback(() => { ${write} }, [value]);
+         ${invocation}
+         return null;
+       };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(diagnosticCount);
+    },
+  );
 });

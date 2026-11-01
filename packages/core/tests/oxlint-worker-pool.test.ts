@@ -380,7 +380,7 @@ describe("createOxlintWorkerPool", () => {
       workerScriptPath,
       oxlintPackageDirectory: temporaryDirectory,
       pluginPath: null,
-      environment: { ...process.env },
+      environment: { ...process.env, FAKE_WORKER_VARIANT: "prespawn-only" },
     });
     prespawnOxlintWorkers(spec, 1);
     const pool = createPool();

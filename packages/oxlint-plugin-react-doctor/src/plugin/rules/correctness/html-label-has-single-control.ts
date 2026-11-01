@@ -1,3 +1,4 @@
+import { hasImportedNativeButtonControlPair } from "./utils/has-imported-native-button-control-pair.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
@@ -27,7 +28,11 @@ export const htmlLabelHasSingleControl = defineRule({
       const controls = getStaticJsxDescendantOpeningElements(node).filter((descendant) =>
         LABELABLE_TAG_NAMES.has(resolveJsxElementType(descendant)),
       );
-      if (controls.length < 2) return;
+      if (
+        controls.length < 2 &&
+        !hasImportedNativeButtonControlPair(node, context, LABELABLE_TAG_NAMES)
+      )
+        return;
       context.report({
         node: node.openingElement,
         message:

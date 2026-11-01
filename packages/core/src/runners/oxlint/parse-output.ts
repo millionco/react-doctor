@@ -275,6 +275,7 @@ const buildRelatedLocations = (
   labels: OxlintOutput["diagnostics"][number]["labels"],
   filePath: string,
   sourceBuffer: Buffer | null,
+  newlineOffsetsBySource: WeakMap<Buffer, ReadonlyArray<number>>,
 ): DiagnosticRelatedLocation[] => {
   if (labels.length <= 1) return [];
   const related: DiagnosticRelatedLocation[] = [];
@@ -286,7 +287,7 @@ const buildRelatedLocations = (
       line:
         sourceBuffer === null
           ? (label.span.line ?? 0)
-          : lineOfUtf8Offset(sourceBuffer, label.span.offset),
+          : lineOfUtf8Offset(sourceBuffer, label.span.offset, newlineOffsetsBySource),
       column:
         sourceBuffer === null
           ? (label.span.column ?? 0)
@@ -406,6 +407,7 @@ export const parseOxlintOutput = (
   // discovery-time size gate. Cached so each file is read at most once.
   const minifiedFileCache = new Map<string, boolean>();
   const sourceBufferCache = new Map<string, Buffer | null>();
+  const newlineOffsetsBySource = new WeakMap<Buffer, ReadonlyArray<number>>();
   const sourceLinesCache = new Map<string, string[] | null>();
   const resolveAbsolutePath = (filename: string): string =>
     path.isAbsolute(filename) ? filename : path.resolve(rootDirectory || ".", filename);
@@ -512,13 +514,14 @@ export const parseOxlintOutput = (
         diagnostic.labels,
         normalizedFilePath,
         mappedSourceFilename === undefined ? null : sourceBuffer,
+        newlineOffsetsBySource,
       );
       const category = resolveDiagnosticCategory(plugin, rule);
       const matchByOccurrence = resolveMatchByOccurrence(rule, category);
       const sourceLines = primarySpan ? readSourceLines(diagnostic.filename) : null;
       const primaryLineNumber =
         primarySpan && mappedSourceFilename !== undefined && sourceBuffer !== null
-          ? lineOfUtf8Offset(sourceBuffer, primarySpan.offset)
+          ? lineOfUtf8Offset(sourceBuffer, primarySpan.offset, newlineOffsetsBySource)
           : (primarySpan?.line ?? 0);
       const primaryColumnNumber =
         primarySpan && mappedSourceFilename !== undefined && sourceBuffer !== null
@@ -540,6 +543,7 @@ export const parseOxlintOutput = (
             ? lineOfUtf8Offset(
                 sourceBuffer,
                 primarySpan.offset + Math.max(primarySpan.length - 1, 0),
+                newlineOffsetsBySource,
               )
             : undefined;
       return {

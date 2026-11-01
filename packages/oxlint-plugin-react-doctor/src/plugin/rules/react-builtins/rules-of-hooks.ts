@@ -22,10 +22,13 @@ import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-eve
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
+import { isReactMarkdownComponentFunction } from "../../utils/is-react-markdown-component-function.js";
+import { isTanstackFileRouteComponent } from "../../utils/is-tanstack-file-route-component.js";
 import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getPlainClassHookFieldName } from "../../utils/get-plain-class-hook-field-name.js";
 import {
   hasPossibleStaticPropertyMutationOrEscape,
   hasPossibleStaticPropertyWriteBefore,
@@ -603,7 +606,9 @@ const getCallExpressionCalleeName = (
 // Best-effort name inference: looks at the function's parent for a
 // VariableDeclarator / AssignmentExpression / Property / CallExpression
 // that gives the function a usable name.
-const inferFunctionName = (functionNode: EsTreeNode): string | null => {
+const inferFunctionName = (functionNode: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+  const classHookFieldName = getPlainClassHookFieldName(functionNode, scopes);
+  if (classHookFieldName !== null) return classHookFieldName;
   if (
     (isNodeOfType(functionNode, "FunctionDeclaration") ||
       isNodeOfType(functionNode, "FunctionExpression")) &&
@@ -839,7 +844,7 @@ const findEnclosingFunctionInfo = (
       isNodeOfType(current, "FunctionExpression") ||
       isNodeOfType(current, "ArrowFunctionExpression")
     ) {
-      const resolvedName = inferFunctionName(current);
+      const resolvedName = inferFunctionName(current, scopes);
       const displayName = resolvedName ?? "anonymous";
       return {
         node: current,
@@ -848,6 +853,8 @@ const findEnclosingFunctionInfo = (
         isAsync: Boolean(current.async),
         isComponentOrHook:
           isReactHocCallbackArgument(current, scopes) ||
+          isReactMarkdownComponentFunction(current, scopes) ||
+          isTanstackFileRouteComponent(current, scopes) ||
           (resolvedName === null ? false : isComponentOrHookDisplayName(displayName, current)),
       };
     }
@@ -917,8 +924,13 @@ const findEnclosingComponentOrHookFunction = (
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
-      if (isReactHocCallbackArgument(current, scopes)) return current;
-      const resolvedName = inferFunctionName(current);
+      if (
+        isReactHocCallbackArgument(current, scopes) ||
+        isReactMarkdownComponentFunction(current, scopes) ||
+        isTanstackFileRouteComponent(current, scopes)
+      )
+        return current;
+      const resolvedName = inferFunctionName(current, scopes);
       if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
         return current;
       }
@@ -1072,7 +1084,10 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (isInsideClassComponent(node)) {
+        if (
+          isInsideClassComponent(node) &&
+          getPlainClassHookFieldName(enclosing.node, context.scopes) === null
+        ) {
           if (
             isPackageImportedNonReactHookCallee(node) ||
             isDefaultImportedClassApiMemberCallee(node)

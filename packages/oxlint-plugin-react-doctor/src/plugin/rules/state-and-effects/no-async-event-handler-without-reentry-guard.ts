@@ -1,8 +1,15 @@
+import { getImportedRequestActionEvidence } from "../../utils/get-imported-request-action-evidence.js";
+import type { ImportedRequestActionEvidence } from "../../utils/get-imported-request-action-evidence.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -13,11 +20,20 @@ import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-funct
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { resolveLocalHostPropHandler } from "./utils/resolve-local-host-prop-handler.js";
+import { getAwaitedRequestFulfillmentSetter } from "./utils/get-awaited-request-fulfillment-setter.js";
+import { hasClosedHandlerStateSetters } from "./utils/has-closed-handler-state-setters.js";
 
 const MESSAGE =
   "This async handler awaits a mutating request and only flips state after the await, so a fast double-click or double Enter fires the request twice. Add a leading `if (busy) return` guard (or set a flag before the await and disable the control) to close the re-entry window.";
 
 const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit"]);
+const INACTIVE_IMPORTED_HANDLER_ATTRIBUTE_NAMES = new Set([
+  "disabled",
+  "inert",
+  "hidden",
+  "aria-disabled",
+]);
 const MUTATING_REQUEST_METHOD_NAMES = new Set([
   "post",
   "put",
@@ -101,6 +117,7 @@ const isMutatingFetchCall = (
 const awaitedExpressionIsMutatingNetworkOp = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
+  allowChainedCalls = true,
 ): boolean => {
   if (!expression) return false;
   const stripped = stripParenExpression(expression);
@@ -113,9 +130,9 @@ const awaitedExpressionIsMutatingNetworkOp = (
       if (methodName === "mutate" && (stripped.arguments?.length ?? 0) === 0) {
         return false;
       }
-      let receiverBase: EsTreeNode = callee.object as EsTreeNode;
+      let receiverBase = stripParenExpression(callee.object);
       while (isNodeOfType(receiverBase, "MemberExpression")) {
-        receiverBase = receiverBase.object as EsTreeNode;
+        receiverBase = stripParenExpression(receiverBase.object);
       }
       if (
         isNodeOfType(receiverBase, "Identifier") &&
@@ -126,10 +143,22 @@ const awaitedExpressionIsMutatingNetworkOp = (
       if (targetsNonMutatingEndpoint(stripped)) return false;
       return true;
     }
-    return awaitedExpressionIsMutatingNetworkOp(callee.object as EsTreeNode, context);
+    return (
+      allowChainedCalls &&
+      awaitedExpressionIsMutatingNetworkOp(callee.object as EsTreeNode, context)
+    );
   }
   return false;
 };
+
+const fulfillmentSetterForAwait = (node: EsTreeNode, context: RuleContext): EsTreeNode | null =>
+  getAwaitedRequestFulfillmentSetter({
+    awaitExpression: node,
+    context,
+    matchesRequestCall: (candidate) =>
+      awaitedExpressionIsMutatingNetworkOp(candidate, context, false),
+    matchesStateSetterCall: (candidate) => isStateSetterCall(candidate, context),
+  });
 
 const unwrapUseCallback = (expression: EsTreeNode, context: RuleContext): EsTreeNode => {
   const stripped = stripParenExpression(expression);
@@ -246,11 +275,19 @@ const expressionWritesReentryGuard = (expression: EsTreeNode, context: RuleConte
   );
 };
 
-const collectOrderedHandlerEvents = (root: EsTreeNode, context: RuleContext): EsTreeNode[] => {
+const collectOrderedHandlerEvents = (
+  root: EsTreeNode,
+  context: RuleContext,
+  evidence: ImportedRequestActionEvidence,
+): EsTreeNode[] => {
   const events: EsTreeNode[] = [];
   walkAst(root, (child: EsTreeNode) => {
     if (child !== root && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "AwaitExpression") || isStateSetterCall(child, context)) {
+    if (
+      isNodeOfType(child, "AwaitExpression") ||
+      isStateSetterCall(child, context) ||
+      evidence.stateActions.has(child)
+    ) {
       events.push(child);
     }
   });
@@ -291,6 +328,8 @@ const analyzeHandlerStatements = (
   statements: EsTreeNode[],
   initialStates: HandlerPathState[],
   context: RuleContext,
+  fulfillmentAwaits: ReadonlySet<EsTreeNode>,
+  evidence: ImportedRequestActionEvidence,
 ): { states: HandlerPathState[]; unsafeAwait: EsTreeNode | null } => {
   let states = initialStates;
   for (const statement of statements) {
@@ -300,7 +339,13 @@ const analyzeHandlerStatements = (
       continue;
     }
     if (isNodeOfType(statement, "BlockStatement")) {
-      const nested = analyzeHandlerStatements(statement.body as EsTreeNode[], states, context);
+      const nested = analyzeHandlerStatements(
+        statement.body as EsTreeNode[],
+        states,
+        context,
+        fulfillmentAwaits,
+        evidence,
+      );
       if (nested.unsafeAwait) return nested;
       states = nested.states;
       continue;
@@ -320,6 +365,8 @@ const analyzeHandlerStatements = (
           : [statement.consequent as EsTreeNode],
         states.map((state) => ({ ...state })),
         context,
+        fulfillmentAwaits,
+        evidence,
       );
       if (consequent.unsafeAwait) return consequent;
       const alternate = statement.alternate
@@ -329,6 +376,8 @@ const analyzeHandlerStatements = (
               : [statement.alternate as EsTreeNode],
             states.map((state) => ({ ...state })),
             context,
+            fulfillmentAwaits,
+            evidence,
           )
         : { states: states.map((state) => ({ ...state })), unsafeAwait: null };
       if (alternate.unsafeAwait) return alternate;
@@ -343,6 +392,8 @@ const analyzeHandlerStatements = (
           collectSwitchPathStatements(statement.cases, caseIndex),
           states.map((state) => ({ ...state })),
           context,
+          fulfillmentAwaits,
+          evidence,
         );
         if (switched.unsafeAwait) return switched;
         switchStates.push(...switched.states);
@@ -354,13 +405,21 @@ const analyzeHandlerStatements = (
       continue;
     }
     if (isNodeOfType(statement, "TryStatement")) {
-      const tried = analyzeHandlerStatements(statement.block.body as EsTreeNode[], states, context);
+      const tried = analyzeHandlerStatements(
+        statement.block.body as EsTreeNode[],
+        states,
+        context,
+        fulfillmentAwaits,
+        evidence,
+      );
       if (tried.unsafeAwait) return tried;
       const caught = statement.handler
         ? analyzeHandlerStatements(
             statement.handler.body.body as EsTreeNode[],
             tried.states.map((state) => ({ ...state })),
             context,
+            fulfillmentAwaits,
+            evidence,
           )
         : { states: [], unsafeAwait: null };
       if (caught.unsafeAwait) return caught;
@@ -371,21 +430,26 @@ const analyzeHandlerStatements = (
           statement.finalizer.body as EsTreeNode[],
           states,
           context,
+          fulfillmentAwaits,
+          evidence,
         );
         if (finalized.unsafeAwait) return finalized;
         states = finalized.states;
       }
       continue;
     }
-    const events = collectOrderedHandlerEvents(statement, context);
+    const events = collectOrderedHandlerEvents(statement, context, evidence);
     for (const event of events) {
       if (isNodeOfType(event, "AwaitExpression")) {
-        if (awaitedExpressionIsMutatingNetworkOp(event.argument, context)) {
+        if (
+          awaitedExpressionIsMutatingNetworkOp(event.argument, context) ||
+          evidence.mutatingAwaits.has(event)
+        ) {
           states = states.map((state) =>
             state.hasReentryGuard ? state : { ...state, mutatingAwait: event },
           );
         }
-        continue;
+        if (!fulfillmentAwaits.has(event)) continue;
       }
       if (
         states.some(
@@ -417,15 +481,46 @@ const analyzeHandlerStatements = (
   return { states, unsafeAwait: null };
 };
 
-const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
+const analyzeAsyncHandler = (
+  context: RuleContext,
+  functionNode: EsTreeNode,
+  canUseImportedEvidence: boolean,
+): void => {
   if (!isFunctionLike(functionNode)) return;
   if (!(functionNode as { async?: boolean }).async) return;
   if (!isNodeOfType(functionNode.body, "BlockStatement")) return;
+
+  const fulfillmentAwaits = new Set<EsTreeNode>();
+  const owner = findEnclosingFunction(functionNode);
+  if (
+    owner &&
+    isFunctionLike(owner) &&
+    !owner.async &&
+    !owner.generator &&
+    isComponentFunction(owner) &&
+    hasClosedHandlerStateSetters({
+      handler: functionNode,
+      owner,
+      context,
+      stateHookNames: STATE_DISPATCHER_HOOK_NAMES,
+      matchesStateSetterCall: (candidate) => isStateSetterCall(candidate, context),
+      fulfillmentSetterForAwait: (candidate) => fulfillmentSetterForAwait(candidate, context),
+    })
+  ) {
+    walkAst(functionNode, (node) => {
+      if (node !== functionNode && isFunctionLike(node)) return false;
+      if (fulfillmentSetterForAwait(node, context)) fulfillmentAwaits.add(node);
+    });
+  }
 
   const analysis = analyzeHandlerStatements(
     functionNode.body.body as EsTreeNode[],
     [{ hasReentryGuard: false, mutatingAwait: null }],
     context,
+    fulfillmentAwaits,
+    canUseImportedEvidence
+      ? getImportedRequestActionEvidence(functionNode, context)
+      : { mutatingAwaits: new Set<EsTreeNode>(), stateActions: new Set<EsTreeNode>() },
   );
   if (analysis.unsafeAwait) context.report({ node: analysis.unsafeAwait, message: MESSAGE });
 };
@@ -453,10 +548,46 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         }
         const value = node.value;
         if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return;
-        const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode, context);
+        const handlerFunction =
+          resolveHandlerFunction(value.expression as EsTreeNode, context) ??
+          resolveLocalHostPropHandler({
+            attribute: node,
+            context,
+            eventHandlerNames: REENTRY_GUARDED_EVENT_HANDLER_NAMES,
+            stateHookNames: STATE_DISPATCHER_HOOK_NAMES,
+            matchesStateSetterCall: (candidate) => isStateSetterCall(candidate, context),
+            fulfillmentSetterForAwait: (candidate) => fulfillmentSetterForAwait(candidate, context),
+          });
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
-        analyzeAsyncHandler(context, handlerFunction);
+        const eventName = node.name.name;
+        let canUseImportedEvidence =
+          getAuthoritativeJsxAttribute(openingElement.attributes, eventName) === node &&
+          !hasJsxSpreadAttribute(openingElement.attributes) &&
+          !openingElement.attributes.some(
+            (attribute) =>
+              attribute !== node &&
+              isNodeOfType(attribute, "JSXAttribute") &&
+              getJsxAttributeName(attribute.name) === eventName,
+          );
+        for (
+          let ancestor: EsTreeNode | null | undefined = openingElement.parent;
+          canUseImportedEvidence && ancestor;
+          ancestor = ancestor.parent
+        ) {
+          if (!isNodeOfType(ancestor, "JSXElement")) continue;
+          if (
+            ancestor.openingElement.attributes.some(
+              (attribute) =>
+                isNodeOfType(attribute, "JSXAttribute") &&
+                INACTIVE_IMPORTED_HANDLER_ATTRIBUTE_NAMES.has(
+                  getJsxAttributeName(attribute.name) ?? "",
+                ),
+            )
+          )
+            canUseImportedEvidence = false;
+        }
+        analyzeAsyncHandler(context, handlerFunction, canUseImportedEvidence);
       },
     };
   },

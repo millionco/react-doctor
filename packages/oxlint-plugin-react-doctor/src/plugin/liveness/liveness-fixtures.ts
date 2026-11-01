@@ -192,6 +192,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "design-no-vague-button-label": {
     code: "const El = () => <button>Click here</button>;",
   },
+  "region-has-accessible-name": {
+    code: 'const Overview = () => <section role="region"><h2>Overview</h2></section>;',
+  },
   "dialog-has-accessible-name": {
     code: "const M = () => <dialog open><p>Body</p></dialog>;",
   },

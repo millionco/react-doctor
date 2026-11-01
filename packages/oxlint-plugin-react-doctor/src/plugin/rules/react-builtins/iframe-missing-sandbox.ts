@@ -1,3 +1,4 @@
+import { hasKnownUnsandboxedIframeCaller } from "../../utils/has-known-unsandboxed-iframe-caller.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -88,6 +89,10 @@ export const iframeMissingSandbox = defineRule({
   matchByOccurrence: true,
   create: skipNonProductionFiles((context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (hasKnownUnsandboxedIframeCaller(node, context)) {
+        context.report({ node: node.name, message: MISSING_MESSAGE });
+        return;
+      }
       if (resolveJsxElementType(node) !== "iframe") return;
       const sandboxAttr = hasJsxPropIgnoreCase(node.attributes, "sandbox");
       if (!sandboxAttr) {

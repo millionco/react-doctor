@@ -1,3 +1,5 @@
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isConstructorPropCallback } from "../../utils/is-constructor-prop-callback.js";
 import type { Reference } from "eslint-scope";
 import { COMPONENT_HOC_WRAPPER_NAMES, REACT_HOC_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
@@ -379,6 +381,24 @@ export const noPropCallbackInRender = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isResultDiscardedCall(node)) return;
       if (isPreservedThroughConciseArrow(node, context.scopes)) return;
+      if (
+        isConstructorPropCallback({
+          call: node,
+          scopes: context.scopes,
+          filename: context.filename ?? "",
+          sourceText: context.sourceCode?.getText?.() ?? null,
+        })
+      ) {
+        const constructorOwner = context.cfg.enclosingFunction(node);
+        const constructorCfg = constructorOwner ? context.cfg.cfgFor(constructorOwner) : null;
+        if (!constructorCfg?.blockOf(node) || !isNodeReachableWithinFunction(node, context)) return;
+        context.report({
+          node,
+          message:
+            "This prop callback runs during construction. React can replay or discard construction work, so the callback can fire before the component commits.",
+        });
+        return;
+      }
       const renderPhaseOwner = findRenderPhaseComponentOrHook(node, context.scopes);
       if (!renderPhaseOwner) return;
       const renderPhaseOwnerName = componentOrHookDisplayNameForFunction(renderPhaseOwner);

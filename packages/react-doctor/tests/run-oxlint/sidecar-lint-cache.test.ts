@@ -335,3 +335,127 @@ export const Panel = ({ children }) => <Text>{children}</Text>;
     ).toBe(false);
   });
 });
+
+describe("OIDC native-storage facade dependency cache", () => {
+  it("matches cache-off after same-size provider edits and SDK alias creation/deletion", async () => {
+    const providerSource = `import {UserManager,WebStorageStateStore} from "oidc-client";
+const settings={userStore:new WebStorageStateStore({store:window.localStorage})};
+export const manager=new UserManager(settings);
+`;
+    const customSource = `import {UserManager,WebStorageStateStore} from "oidc-client";
+const settings={userStore:{get:()=>Promise.resolve(null)}};
+export const manager=new UserManager(settings);
+`;
+    const projectDir = setupReactProject(tempRoot, "oidc-storage-facade", {
+      files: {
+        "src/AccountPanel.tsx": `import {useEffect,useState} from "react";
+import {manager} from "./session";
+export const AccountPanel=()=>{const [user,setUser]=useState(null);useEffect(()=>{manager.getUser().then(setUser)},[]);return <output>{user?.name}</output>};
+`,
+        "src/session.ts": providerSource,
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { baseUrl: ".", paths: { "oidc-client": ["./sdk"] } },
+        }),
+      },
+    });
+    fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+    const scanAccount = (cached: boolean) =>
+      runOxlint({
+        rootDirectory: projectDir,
+        project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+        userConfig: {
+          rules: { "react-doctor/no-promise-then-side-effect-in-effect-without-catch": "warn" },
+        },
+        perFileLintCacheEnabled: cached,
+        sidecarLintCacheEnabled: cached,
+      });
+    const assertPhase = async (expectedCount: number) => {
+      const incremental = await scanAccount(true);
+      const full = await scanAccount(false);
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(
+        ruleHitsOn(
+          full,
+          "no-promise-then-side-effect-in-effect-without-catch",
+          "src/AccountPanel.tsx",
+        ),
+      ).toHaveLength(expectedCount);
+    };
+    const providerPath = path.join(projectDir, "src/session.ts");
+    const fixedTime = new Date("2025-01-01T00:00:00.000Z");
+    fs.utimesSync(providerPath, fixedTime, fixedTime);
+    await assertPhase(1);
+    await scanAccount(true);
+    const originalStat = fs.statSync(providerPath);
+    expect(customSource.length).toBeLessThan(providerSource.length);
+    fs.writeFileSync(providerPath, customSource.padEnd(providerSource.length, " "));
+    fs.utimesSync(providerPath, originalStat.atime, originalStat.mtime);
+    expect(fs.statSync(providerPath).size).toBe(originalStat.size);
+    expect(fs.statSync(providerPath).mtimeMs).toBe(originalStat.mtimeMs);
+    await assertPhase(0);
+    fs.writeFileSync(providerPath, providerSource);
+    fs.utimesSync(providerPath, originalStat.atime, originalStat.mtime);
+    await assertPhase(1);
+    const remapPath = path.join(projectDir, "sdk.ts");
+    writeFile(remapPath, "export class UserManager {};\n");
+    await assertPhase(0);
+    fs.unlinkSync(remapPath);
+    await assertPhase(1);
+    const consumerPath = path.join(projectDir, "src/AccountPanel.tsx");
+    const unchangedAliasConsumer =
+      fs.readFileSync(consumerPath, "utf8") +
+      'import {alternate} from "./alias"; const readAlias=()=>alternate.getUser();';
+    fs.writeFileSync(consumerPath, unchangedAliasConsumer);
+    await assertPhase(1);
+    await scanAccount(true);
+    const aliasPath = path.join(projectDir, "src/alias.ts");
+    writeFile(aliasPath, 'export {manager as alternate} from "./session";\n');
+    await assertPhase(0);
+    fs.unlinkSync(aliasPath);
+    await assertPhase(1);
+    expect(fs.readFileSync(consumerPath, "utf8")).toBe(unchangedAliasConsumer);
+  });
+});
+
+describe("constructor React provider cache", () => {
+  it("invalidates an unchanged constructor when a React remap target appears and disappears", async () => {
+    const projectDir = setupReactProject(tempRoot, "constructor-react-remap", {
+      files: {
+        "src/Notice.tsx": `import React from "react";
+export class Notice extends React.Component {
+  constructor(props) { super(props); const {notifyReady} = props; if (true) notifyReady(); }
+  render() { return <output/>; }
+}`,
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { jsx: "react-jsx", baseUrl: ".", paths: { react: ["./replacement"] } },
+        }),
+      },
+    });
+    fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+    const replacementPath = path.join(projectDir, "replacement.ts");
+    const scanNotice = (cacheEnabled: boolean): Promise<Diagnostic[]> =>
+      runOxlint({
+        rootDirectory: projectDir,
+        project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+        userConfig: { rules: { "react-doctor/no-prop-callback-in-render": "error" } },
+        perFileLintCacheEnabled: cacheEnabled,
+        sidecarLintCacheEnabled: cacheEnabled,
+      });
+    for (const phase of [
+      { replacement: null, expected: 1 },
+      { replacement: "export default {Component: class {}};", expected: 0 },
+      { replacement: null, expected: 1 },
+    ]) {
+      if (phase.replacement === null) fs.rmSync(replacementPath, { force: true });
+      else writeFile(replacementPath, phase.replacement);
+      const incremental = await scanNotice(true);
+      const full = await scanNotice(false);
+      const warm = await scanNotice(true);
+      expect(serialize(incremental)).toBe(serialize(full));
+      expect(serialize(warm)).toBe(serialize(full));
+      expect(ruleHitsOn(full, "no-prop-callback-in-render", "src/Notice.tsx")).toHaveLength(
+        phase.expected,
+      );
+    }
+  });
+});

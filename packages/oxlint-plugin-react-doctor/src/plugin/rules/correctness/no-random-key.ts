@@ -7,6 +7,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { getLocalResourceKeyFreshDescription } from "./utils/get-local-resource-key-fresh-description.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 // Direct-callee names that produce a fresh value every call. The
@@ -211,7 +212,9 @@ export const noRandomKey = defineRule({
       if (inner.type === "JSXEmptyExpression") return;
 
       const freshDescription =
-        findFreshCallInSubtree(inner) ?? looksLikeFreshUpdateExpression(inner);
+        findFreshCallInSubtree(inner) ??
+        looksLikeFreshUpdateExpression(inner) ??
+        getLocalResourceKeyFreshDescription(inner, context);
       if (!freshDescription) return;
 
       context.report({

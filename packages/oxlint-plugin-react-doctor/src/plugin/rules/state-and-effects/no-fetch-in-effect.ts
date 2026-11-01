@@ -2,6 +2,7 @@ import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../../constants/librar
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
+import { resolveEffectInvokedNativeCallback } from "./utils/resolve-effect-invoked-native-callback.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -82,6 +83,7 @@ const resolveLocalFunction = (
 const collectEffectAnalysisFunctions = (
   effectCallback: EsTreeNode,
   context: RuleContext,
+  effectCall: EsTreeNode,
 ): Set<EsTreeNode> => {
   const analysisFunctions = new Set<EsTreeNode>();
   const pendingFunctions: EsTreeNode[] = [];
@@ -101,7 +103,9 @@ const collectEffectAnalysisFunctions = (
       if (child !== currentFunction && isFunctionLike(child)) return false;
       if (!isNodeOfType(child, "CallExpression")) return;
 
-      const calledFunction = resolveLocalFunction(child.callee, context);
+      const calledFunction =
+        resolveLocalFunction(child.callee, context) ??
+        resolveEffectInvokedNativeCallback(child, effectCall, effectCallback, context);
       if (calledFunction) enqueueFunction(calledFunction);
       for (const callArgument of child.arguments ?? []) {
         const callbackFunction = resolveLocalFunction(callArgument, context);
@@ -517,7 +521,7 @@ export const noFetchInEffect = defineRule({
       const callback = getEffectCallback(node, context.scopes);
       if (!callback) return;
 
-      const analysisFunctions = collectEffectAnalysisFunctions(callback, context);
+      const analysisFunctions = collectEffectAnalysisFunctions(callback, context, node);
       const requests = collectNodesFromAnalysisFunctions(analysisFunctions, isNetworkRequest);
       if (requests.length === 0) return;
 

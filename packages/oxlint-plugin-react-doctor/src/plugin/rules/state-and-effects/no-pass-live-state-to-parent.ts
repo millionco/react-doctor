@@ -46,6 +46,9 @@ import {
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
+import { isTemplateGetterResultConsumedByLocalStateSetter } from "./utils/is-template-getter-result-consumed-by-local-state-setter.js";
+import { isDirectReactCallbackStateForwarder } from "./utils/is-direct-react-callback-state-forwarder.js";
+
 const SETTER_NAMED_CALLBACK_PATTERN = /^set[A-Z]/;
 const DATA_FETCHING_CALLBACK_PATTERN = /^(fetch|refetch|load|query|request)([A-Z_]|$)/;
 
@@ -562,6 +565,8 @@ export const noPassLiveStateToParent = defineRule({
         // chain receiver (`load().catch(...)`), an initializer — still hands
         // live state up to the parent.
         if (isCallResultConsumedAsArgument(callExpr)) continue;
+        if (isTemplateGetterResultConsumedByLocalStateSetter(callExpr, analysis, context.scopes))
+          continue;
 
         // Skip JS prototype / observer / promise methods — see
         // `no-pass-data-to-parent` for the full rationale — except when
@@ -591,7 +596,14 @@ export const noPassLiveStateToParent = defineRule({
         }
 
         const stateArgRefs =
-          transparentPropReference || notificationCallbackPropNames
+          transparentPropReference ||
+          notificationCallbackPropNames ||
+          isDirectReactCallbackStateForwarder(
+            callExpr,
+            directLocalEffectHelper,
+            propCallbackRefs,
+            context,
+          )
             ? collectDirectCallStateRefs(analysis, callExpr, context.scopes)
             : callGraphReferences.flatMap((callGraphReference) =>
                 collectPropCallbackBoundStateRefs(

@@ -6,6 +6,8 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { isClosedEffectDeclarationSubscription } from "./utils/is-closed-effect-declaration-subscription.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -110,6 +112,7 @@ const findSubscriptionCall = (effectBodyStatements: EsTreeNode[]): SubscriptionC
 const getSubscriptionHandlerArgument = (
   subscribeCall: EsTreeNode,
   effectBodyStatements: EsTreeNode[],
+  scopes: ScopeAnalysis,
 ): EsTreeNode | null => {
   if (!isNodeOfType(subscribeCall, "CallExpression")) return null;
   for (const argument of subscribeCall.arguments ?? []) {
@@ -134,6 +137,16 @@ const getSubscriptionHandlerArgument = (
           }
         }
       }
+    }
+  }
+  for (const argument of subscribeCall.arguments ?? []) {
+    if (!isNodeOfType(argument, "Identifier")) continue;
+    const declaration = resolveExactLocalFunction(argument, scopes);
+    if (
+      isNodeOfType(declaration, "FunctionDeclaration") &&
+      effectBodyStatements.includes(declaration)
+    ) {
+      return declaration;
     }
   }
   return null;
@@ -400,7 +413,9 @@ const getModuleStoreSnapshotName = (
   storeIndex: ModuleScopeStoreIndex,
 ): string | null => {
   if (!isNodeOfType(useStateCall, "CallExpression")) return null;
-  let initialArgument = stripParenExpression(useStateCall.arguments?.[0]);
+  const initializerArgument = useStateCall.arguments[0];
+  if (!initializerArgument) return null;
+  let initialArgument = stripParenExpression(initializerArgument);
   if (
     initialArgument &&
     isFunctionLike(initialArgument) &&
@@ -556,7 +571,11 @@ export const preferUseSyncExternalStore = defineRule({
         const subscription = findSubscriptionCall(effectBodyStatements);
         if (!subscription) continue;
 
-        const handler = getSubscriptionHandlerArgument(subscription.call, effectBodyStatements);
+        const handler = getSubscriptionHandlerArgument(
+          subscription.call,
+          effectBodyStatements,
+          context.scopes,
+        );
         if (!handler) continue;
 
         const setterPayload = getSingleSetterCallFromHandler(handler);
@@ -582,6 +601,25 @@ export const preferUseSyncExternalStore = defineRule({
 
         if (isTrivialLiteralExpression(setterPayload.setterArgument)) continue;
 
+        const matchingBinding = useStateBindings.find((binding) => binding.valueName === valueName);
+        if (
+          isNodeOfType(handler, "FunctionDeclaration") &&
+          (!matchingBinding ||
+            !isClosedEffectDeclarationSubscription({
+              handler,
+              effectCall,
+              effectBodyStatements,
+              subscriptionCall: subscription.call,
+              stateDeclarator: matchingBinding.declarator,
+              initializer: useStateInitializer,
+              setterArgument: setterPayload.setterArgument,
+              scopes: context.scopes,
+            }) ||
+            !cleanupRemovesEventListener(effectBodyStatements, subscription.call, context.scopes))
+        ) {
+          continue;
+        }
+
         if (
           !cleanupReleasesSubscription(
             effectBodyStatements,
@@ -595,7 +633,6 @@ export const preferUseSyncExternalStore = defineRule({
           continue;
         }
 
-        const matchingBinding = useStateBindings.find((binding) => binding.valueName === valueName);
         context.report({
           node: matchingBinding?.declarator ?? effectCall,
           message: `Your users can see stale or torn values because useState "${valueName}" syncs an outside store through a useEffect.`,

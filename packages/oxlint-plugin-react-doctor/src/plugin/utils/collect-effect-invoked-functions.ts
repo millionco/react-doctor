@@ -44,30 +44,40 @@ const collectInvokedFunctions = (
   scopes?: ScopeAnalysis,
 ): Set<EsTreeNode> => {
   const invokedFunctions = new Set<EsTreeNode>([effectCallback]);
-  const localFunctionBindings = new Map<string, EsTreeNode>();
-  const calledBindingNames = new Set<string>();
-  const reassignedBindingNames = new Set<string>();
+  const localFunctionBindings = new Map<string | EsTreeNode, EsTreeNode>();
+  const calledBindingKeys = new Set<string | EsTreeNode>();
+  const reassignedBindingKeys = new Set<string | EsTreeNode>();
   const pendingFunctions: EsTreeNode[] = [effectCallback];
-  const getBindingKey = (identifier: EsTreeNode): string | null => {
+  const getBindingKey = (identifier: EsTreeNode): string | EsTreeNode | null => {
     if (identifier.type !== "Identifier") return null;
     const symbol = scopes?.symbolFor(identifier);
+    if (symbol?.kind === "function") return symbol.declarationNode;
     return symbol ? `symbol:${String(symbol.id)}` : `name:${identifier.name}`;
   };
 
   const enqueue = (candidate: EsTreeNode | null | undefined): void => {
     const strippedCandidate = candidate ? stripParenExpression(candidate) : candidate;
-    if (!isFunctionLike(strippedCandidate) || invokedFunctions.has(strippedCandidate)) return;
+    if (
+      !isFunctionLike(strippedCandidate) ||
+      strippedCandidate.generator ||
+      invokedFunctions.has(strippedCandidate)
+    )
+      return;
     invokedFunctions.add(strippedCandidate);
     pendingFunctions.push(strippedCandidate);
   };
 
   while (pendingFunctions.length > 0) {
     const currentFunction = pendingFunctions.pop();
-    if (!currentFunction) break;
+    if (!isFunctionLike(currentFunction)) continue;
 
     walkAst(currentFunction, (child) => {
       if (child !== currentFunction && isFunctionLike(child)) {
-        if (child.type === "FunctionDeclaration" && child.id?.type === "Identifier") {
+        if (
+          child.type === "FunctionDeclaration" &&
+          (!scopes || child.parent === currentFunction.body) &&
+          child.id?.type === "Identifier"
+        ) {
           const bindingKey = getBindingKey(child.id);
           if (bindingKey) localFunctionBindings.set(bindingKey, child);
         }
@@ -87,7 +97,7 @@ const collectInvokedFunctions = (
         const assignedTarget = stripParenExpression(child.left);
         if (assignedTarget.type === "Identifier") {
           const bindingKey = getBindingKey(assignedTarget);
-          if (bindingKey) reassignedBindingNames.add(bindingKey);
+          if (bindingKey) reassignedBindingKeys.add(bindingKey);
         }
         return;
       }
@@ -103,7 +113,7 @@ const collectInvokedFunctions = (
 
       if (callee.type === "Identifier") {
         const bindingKey = getBindingKey(callee);
-        if (bindingKey) calledBindingNames.add(bindingKey);
+        if (bindingKey) calledBindingKeys.add(bindingKey);
         return;
       }
 
@@ -114,9 +124,9 @@ const collectInvokedFunctions = (
       }
     });
 
-    for (const calledName of calledBindingNames) {
-      if (reassignedBindingNames.has(calledName)) continue;
-      enqueue(localFunctionBindings.get(calledName));
+    for (const calledBindingKey of calledBindingKeys) {
+      if (reassignedBindingKeys.has(calledBindingKey)) continue;
+      enqueue(localFunctionBindings.get(calledBindingKey));
     }
   }
 

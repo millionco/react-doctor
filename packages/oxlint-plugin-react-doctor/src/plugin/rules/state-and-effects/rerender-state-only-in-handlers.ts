@@ -17,6 +17,7 @@ import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-rend
 import { createExternalLocationInvalidationChecker } from "./utils/create-external-location-invalidation-checker.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { hasPairedRenderRefNotification } from "./utils/has-paired-render-ref-notification.js";
 import { getComponentRenderDependencyAnalysis } from "./utils/get-component-render-dependency-analysis.js";
 
 interface EffectDependencyInfo {
@@ -345,6 +346,7 @@ export const rerenderStateOnlyInHandlers = defineRule({
         // shapes render-phase control flow, so it is NOT write-only and a
         // `useRef` swap would break the adjustment. Skip it.
         if (isSetterCalledDuringRender(componentBody, binding.setterName)) continue;
+        if (hasPairedRenderRefNotification(binding, componentBody, context)) continue;
 
         context.report({
           node: binding.declarator,

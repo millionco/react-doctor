@@ -1,3 +1,4 @@
+import { VOID_DOM_ELEMENTS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
@@ -5,25 +6,6 @@ import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
-
-const VOID_DOM_ELEMENTS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "keygen",
-  "link",
-  "menuitem",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
-]);
 
 const buildMessage = (tag: string): string =>
   `React errors when \`<${tag}>\` has children because it's a void element.`;

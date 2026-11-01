@@ -142,7 +142,8 @@ export const noAdjustStateOnPropChange = defineRule({
           }
           context.report({
             node: fact.callExpression,
-            message: "Adjusting state in an effect after a prop changes costs an extra render.",
+            message:
+              "Updating state in an effect after a prop changes can trigger another render and show stale values.",
           });
         }
       },

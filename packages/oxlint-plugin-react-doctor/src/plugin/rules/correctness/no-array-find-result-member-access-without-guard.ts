@@ -1,8 +1,14 @@
+import { hasNonrepeatableNativeFindPredicate } from "./utils/has-nonrepeatable-native-find-predicate.js";
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { FIND_METHOD_NAMES } from "./utils/native-array-find/constants.js";
+import { isClosedNativeArrayFindReceiver } from "./utils/is-closed-native-array-find-receiver.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getClosedFindResultAliasReads } from "./utils/get-closed-find-result-alias-reads.js";
+import { isFindResultAliasGuarded } from "./utils/is-find-result-alias-guarded.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -18,11 +24,6 @@ import { walkAst } from "../../utils/walk-ast.js";
 const MESSAGE =
   "`find` returns `undefined` when nothing matches, so reading from its result here throws `Cannot read properties of undefined` — use optional chaining (`?.`) or guard the result before you use it.";
 
-const FIND_METHOD_NAMES = new Set(["find", "findLast"]);
-// A PascalCase identifier names a class / model / component, never array data.
-// It rules out `User.find(...)` (an ORM static) as a RECEIVER and
-// `wrapper.find(Component)` (an enzyme/RTL component-selector query) as the
-// ARGUMENT — neither result is an array element that can be `undefined`.
 const PASCAL_CASE_IDENTIFIER_PATTERN = /^[A-Z]/;
 // Capitalized globals that are real element predicates (`values.find(Boolean)`),
 // not component selectors — exempt from the PascalCase argument bail.
@@ -144,10 +145,12 @@ const isArrayFindCall = (
   const callee = node.callee;
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (!FIND_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")) return false;
-  // `User.find(...)` / `Model.find(...)`: a capitalized receiver is a
-  // class/model static method, not an array instance method.
   const receiver = stripParenExpression(callee.object as EsTreeNode);
-  if (isNodeOfType(receiver, "Identifier") && PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name)) {
+  if (
+    isNodeOfType(receiver, "Identifier") &&
+    PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name) &&
+    !isClosedNativeArrayFindReceiver(receiver, context)
+  ) {
     return false;
   }
   let resolvedReceiver = receiver;
@@ -233,7 +236,10 @@ const isInlineJsxFunction = (functionNode: EsTreeNode): boolean => {
 // return, else branch, ternary alternate after `!x` / `=== undefined`) and
 // the `some(pred)`-before-`find(pred)` equivalence: the find expression is
 // proven non-undefined before the dereference, so the access cannot throw.
-const isGuardedByRepeatedFindTest = (findCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+const isGuardedByRepeatedFindTest = (
+  findCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
   const findCallee = findCall.callee as EsTreeNodeOfType<"MemberExpression">;
   const isIdenticalFindCall = (candidate: EsTreeNode): boolean =>
     isNodeOfType(candidate, "CallExpression") && areNodesStructurallyIdentical(candidate, findCall);
@@ -251,6 +257,7 @@ const isGuardedByRepeatedFindTest = (findCall: EsTreeNodeOfType<"CallExpression"
   const predicateIsStable = (candidate: EsTreeNodeOfType<"CallExpression">): boolean => {
     const predicate = candidate.arguments?.[0];
     if (!predicate) return false;
+    if (hasNonrepeatableNativeFindPredicate(candidate, findCall, context)) return false;
     if (isNodeOfType(predicate, "Identifier") || isNodeOfType(predicate, "MemberExpression")) {
       return true;
     }
@@ -434,6 +441,24 @@ export const noArrayFindResultMemberAccessWithoutGuard = defineRule({
         consumer = consumer.parent ?? null;
       }
       if (!consumer) return;
+      if (
+        isNodeOfType(consumer, "VariableDeclarator") &&
+        consumer.init === consumed &&
+        isNodeOfType(consumer.id, "Identifier")
+      ) {
+        const symbol = context.scopes.symbolFor(consumer.id);
+        if (!symbol || getDirectConstInitializer(symbol) !== consumer.init) return;
+        if (isBooleanFindOverTruthyArrayLiteral(node) || isGuardedByRepeatedFindTest(node, context))
+          return;
+        const reads = getClosedFindResultAliasReads(symbol, context.scopes);
+        if (!reads) return;
+        for (const access of reads) {
+          if (!isFindResultAliasGuarded(access, symbol, context.scopes)) {
+            context.report({ node: access, message: MESSAGE });
+          }
+        }
+        return;
+      }
 
       // An intervening `!` token (TSNonNullExpression) hands the finding to
       // the existing no-non-null-assertion rule, so only a bare, non-optional
@@ -448,7 +473,7 @@ export const noArrayFindResultMemberAccessWithoutGuard = defineRule({
         !consumer.optional;
       if (!isUnguardedMemberRead && !isUnguardedCall) return;
       if (isBooleanFindOverTruthyArrayLiteral(node)) return;
-      if (isGuardedByRepeatedFindTest(node)) return;
+      if (isGuardedByRepeatedFindTest(node, context)) return;
       context.report({ node, message: MESSAGE });
     },
   }),

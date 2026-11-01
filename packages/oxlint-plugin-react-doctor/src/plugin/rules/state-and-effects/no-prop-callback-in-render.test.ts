@@ -1,3 +1,8 @@
+import {
+  PROVIDER_PROOF_SMALL_COMPONENT_COUNT,
+  PROVIDER_PROOF_LARGE_COMPONENT_COUNT,
+  PROVIDER_PROOF_MAX_GROWTH_RATIO,
+} from "../../../test-utils/constants.js";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noPropCallbackInRender } from "./no-prop-callback-in-render.js";
@@ -1077,5 +1082,442 @@ describe("no-prop-callback-in-render", () => {
     const result = run(sourceCode);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(expectedDiagnosticCount);
+  });
+});
+
+describe("no-prop-callback-in-render constructor callbacks", () => {
+  it.each([
+    {
+      label: "default-runtime-react",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; onReady(); } render() { return <output/>; } }',
+      expected: 1,
+    },
+    {
+      label: "pure-component",
+      code: 'import React from "react";\n\nexport class Panel extends React.PureComponent { constructor(props) { super(props); const {onReady}=props; if(true) onReady(); } render() { return <output/>; } }',
+      expected: 1,
+    },
+    {
+      label: "namespace-runtime-react",
+      code: 'import * as React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; onReady(); } render() { return <output/>; } }',
+      expected: 1,
+    },
+    {
+      label: "named-renamed-component",
+      code: 'import {Component as Base} from "react";\n\nexport class Panel extends Base { constructor(props) { super(props); const {onReady}=props; onReady(); } render() { return <output/>; } }',
+      expected: 1,
+    },
+    {
+      label: "renamed-property",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady: notify}=props; if(true) notify(); } render() { return <output/>; } }',
+      expected: 1,
+    },
+    {
+      label: "explicit-discard",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; void onReady(); } render() { return <output/>; } }',
+      expected: 1,
+    },
+    {
+      label: "consumed-output",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {createValue}=props; this.state={output:createValue()}; } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "stored-local-result",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {createValue}=props; const value=createValue(); this.state={value}; } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "nested-deferred-closure",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; this.onClick=()=>{onReady();}; } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "nested-iife-outside-v1",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; (()=>{onReady();})(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "mount-notification",
+      code: 'import React from "react"; export class Panel extends React.Component {componentDidMount(){this.props.onReady();} render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "ordinary-class",
+      code: "export class Panel {constructor(props){const {onReady}=props;onReady();}}",
+      expected: 0,
+    },
+    {
+      label: "local-callback-homonym",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const onReady=()=>{}; onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "imported-callback",
+      code: 'import React from "react";\nimport {onReady} from "./callbacks";\nexport class Panel extends React.Component { constructor(props) { super(props); onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "type-only-react",
+      code: 'import type React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "shadowed-react",
+      code: 'import React from "react"; function make(React){return class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}}}',
+      expected: 0,
+    },
+    {
+      label: "parameter-reassignment",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); props={onReady:()=>{}};const {onReady}=props;onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "callback-binding-write",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props; ({onReady}=other); onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "fallback-not-proven-prop",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady=()=>{}}=props; onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "further-local-alias",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props;const notify=onReady;notify(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "direct-this-props-outside-v1",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component { constructor(props) { super(props); this.props.onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "provider-mutation",
+      code: 'import React from "react";\nReact.Component=class {};\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props;onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "secondary-provider-mutation",
+      code: 'import React from "react";\nimport OtherReact from "react"; OtherReact.Component=class {};\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props;onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "provider-extraction",
+      code: 'import React from "react";\nconst provider=React; mutate(provider);\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props;onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "reflective-provider-replacement",
+      code: 'import React from "react";\nObject.defineProperty(React,"Component",{get:()=>class {}});\nexport class Panel extends React.Component { constructor(props) { super(props); const {onReady}=props;onReady(); } render() { return <output/>; } }',
+      expected: 0,
+    },
+    {
+      label: "existing-function-render-positive",
+      code: "export function Panel({onReady}){onReady();return <output/>;}",
+      expected: 1,
+    },
+    {
+      label: "manual-module-construction",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}\nnew Panel({onReady(){}});',
+      expected: 0,
+    },
+    {
+      label: "manual-event-construction",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}\nexport const launch=()=>new Panel({onReady(){}});',
+      expected: 0,
+    },
+    {
+      label: "manual-alias-construction",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}\nconst Build=Panel;new Build({onReady(){}});',
+      expected: 0,
+    },
+    {
+      label: "unrelated-new-is-conservative",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}\nconst data=new Map();',
+      expected: 0,
+    },
+    {
+      label: "missing-super-props",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super({});const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "before-binding-initialization",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);onReady();const {onReady}=props;}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "optional-callback-outside-v1",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady?.();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "props-escape-before-extraction",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);install(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "props-property-write",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);props.onReady=()=>{};const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "selected-computed-binding",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {["onReady"]:onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "ambient-loader-runtime-use",
+      code: 'import React from "react";declare function require(name:string):any; require("react").Component=class {};export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "runtime-type-only-provider-alias",
+      code: 'import React from "react";\nimport type OtherReact from "react";OtherReact.Component=class {};\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "eval-provider-replacement",
+      code: 'import React from "react";\neval("replaceReact()");\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "dynamic-provider-import",
+      code: 'import React from "react";\nimport("react").then(replaceReact);\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "runtime-typescript-parameter",
+      code: 'import React from "react";\nclass Other {constructor(public marker=replaceReact()){}}\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "pragma-nonreact-construction",
+      code: '/** @jsxImportSource custom-jsx */\nimport React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "props-read-outside-v1",
+      code: 'import React from "react";\n\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;if(props)onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "class-prototype-provider-extraction",
+      code: 'import React from "react";\nconst {prototype:provider}=React.Component; mutate(provider);\nexport class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "runtime-react-reexport",
+      code: 'import React from "react";export {Component as ExternalComponent} from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "runtime-react-star-reexport",
+      code: 'import React from "react";export * from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "default-as-runtime-react",
+      code: 'import {default as React} from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 1,
+    },
+    {
+      label: "nested-class-factory-outside-v1",
+      code: 'import React from "react"; export const createPanel=()=>{ class Panel extends React.Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}};return Panel;};',
+      expected: 0,
+    },
+    {
+      label: "arguments-props-mutation",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);arguments[0].onReady=()=>{};const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "this-props-mutation-before-extraction",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);this.props.onReady=()=>{};const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "this-escape-before-extraction",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);install(this);const {onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "sibling-default-mutation",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {ignored=(this.props.onReady=()=>{}),onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "sibling-computed-mutation",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {[replaceProps()]:ignored,onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+    {
+      label: "prior-declarator-mutation",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const ignored=(this.props.onReady=()=>{}),{onReady}=props;onReady();}render(){return <output/>;}}',
+      expected: 0,
+    },
+  ])("$label", ({ code, expected }) => {
+    const result = run(code);
+    expect(result.parseErrors).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("no-prop-callback-in-render constructor initialization boundary", () => {
+  it.each([
+    {
+      label: "instance-field-replaces-prop",
+      code: 'import React from "react";export class Panel extends React.Component{replacement=(this.props.onReady=()=>{});constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "instance-field-without-initializer",
+      code: 'import React from "react";export class Panel extends React.Component{replacement;constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "declared-typescript-field",
+      code: 'import React from "react";export class Panel extends React.Component{declare replacement: unknown;constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "props-setter-replaces-prop",
+      code: 'import React from "react";export class Panel extends React.Component{set props(value){value.onReady=()=>{};}constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "props-getter-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{get props(){return {onReady:()=>{}};}constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "static-field-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{static replacement=0;constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "static-block-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{static {}constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "computed-method-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{["other"](){}constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "method-decorator-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{@decorate other(){}constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "auto-accessor-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{accessor replacement=0;constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "static-method-conservative-boundary",
+      code: 'import React from "react";export class Panel extends React.Component{static other(){}constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "class-decorator-boundary",
+      code: 'import React from "react";@decorate export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>;}}',
+    },
+  ])("$label", ({ code }) => {
+    const result = run(code);
+    expect(result.parseErrors).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("no-prop-callback-in-render constructor reachability", () => {
+  it.each([
+    {
+      label: "literal-false-if",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;if(false)onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "literal-true-else",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;if(true){}else onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "literal-false-conditional",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;false?onReady():null;}render(){return <output/>;}}',
+    },
+    {
+      label: "literal-true-alternate",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;true?null:onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "false-logical-right",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;false&&onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "true-logical-right",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;true||onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "nullish-value-outside-v1",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;true??onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "unary-dead-if",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;if(!true)onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "constant-alias-dead-if",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;const enabled=false;if(enabled)onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "preceding-return",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;return;onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "preceding-throw",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;throw "stop";onReady();}render(){return <output/>;}}',
+    },
+    {
+      label: "constant-if-return",
+      code: 'import React from "react";export class Panel extends React.Component{constructor(props){super(props);const {onReady}=props;if(true)return;onReady();}render(){return <output/>;}}',
+    },
+  ])("$label", ({ code }) => {
+    const result = run(code);
+    expect(result.parseErrors).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("program provider proof growth", () => {
+  it("checks stable provider imports once as sibling components grow", () => {
+    const results = [
+      PROVIDER_PROOF_SMALL_COMPONENT_COUNT,
+      PROVIDER_PROOF_LARGE_COMPONENT_COUNT,
+    ].map((size) => {
+      const source =
+        'import {Component} from "react";' +
+        Array.from(
+          { length: size },
+          (_, index) =>
+            `export class Panel${index} extends Component {constructor(props){super(props);const {onReady}=props;onReady();}render(){return <output/>}}`,
+        ).join("\n");
+      let symbolVisits = 0;
+      const measuredRule = {
+        ...noPropCallbackInRender,
+        create: (context: Parameters<typeof noPropCallbackInRender.create>[0]) => {
+          const symbols = new Proxy(context.scopes.rootScope.symbols, {
+            get: (target, property, receiver) => {
+              if (typeof property === "string" && /^\d+$/.test(property)) symbolVisits += 1;
+              return Reflect.get(target, property, receiver);
+            },
+          });
+          const rootScope = new Proxy(context.scopes.rootScope, {
+            get: (target, property, receiver) =>
+              property === "symbols" ? symbols : Reflect.get(target, property, receiver),
+          });
+          const scopes = new Proxy(context.scopes, {
+            get: (target, property, receiver) =>
+              property === "rootScope" ? rootScope : Reflect.get(target, property, receiver),
+          });
+          return noPropCallbackInRender.create({ ...context, scopes });
+        },
+      };
+      const result = runRule(measuredRule, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(size);
+      return symbolVisits;
+    });
+    expect(results[0]).toBeGreaterThan(0);
+    expect(results[1]).toBeLessThanOrEqual(results[0] * PROVIDER_PROOF_MAX_GROWTH_RATIO);
   });
 });

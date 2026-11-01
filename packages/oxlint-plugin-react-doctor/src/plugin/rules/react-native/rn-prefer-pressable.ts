@@ -14,10 +14,6 @@ const TOUCHABLE_COMPONENTS = new Set([
 
 const TOUCHABLE_SOURCES = new Set(["react-native", "react-native-gesture-handler"]);
 
-// HACK: TouchableOpacity / TouchableHighlight / TouchableWithoutFeedback /
-// TouchableNativeFeedback are legacy and feature-frozen. Pressable is the
-// modern, more configurable, more accessible replacement that works the
-// same on iOS, Android, and Fabric.
 export const rnPreferPressable = defineRule({
   id: "rn-prefer-pressable",
   defaultEnabled: false,
@@ -26,7 +22,7 @@ export const rnPreferPressable = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `<Pressable>` because Touchable* components are frozen and lack Pressable's state-based feedback and accessibility behavior.",
+    "Consider `Pressable` only when press feedback, callbacks, gestures, accessibility, and layout can be preserved; otherwise keep the existing Touchable.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
@@ -39,7 +35,7 @@ export const rnPreferPressable = defineRule({
         if (!importedName || !TOUCHABLE_COMPONENTS.has(importedName)) continue;
         context.report({
           node: specifier,
-          message: `Your users miss <Pressable>'s flexible press feedback when you use ${importedName}, which is old & frozen.`,
+          message: `This value import of ${importedName} is a candidate for Pressable migration. Confirm that interaction and accessibility behavior can be preserved.`,
         });
       }
     },

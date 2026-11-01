@@ -1,4 +1,4 @@
-import * as path from "node:path";
+import { resolveLang } from "../plugin/utils/resolve-lang.js";
 import { parseSync } from "oxc-parser";
 import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
 
@@ -15,22 +15,6 @@ export interface ParseFixtureResult {
   program: EsTreeNode;
   errors: ReadonlyArray<{ message: string }>;
 }
-
-const FILENAME_TO_LANG: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
-  ".ts": "ts",
-  ".tsx": "tsx",
-  ".js": "js",
-  ".jsx": "jsx",
-  ".mjs": "js",
-  ".cjs": "js",
-  ".mts": "ts",
-  ".cts": "ts",
-};
-
-const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
-  const extension = path.extname(filename).toLowerCase();
-  return FILENAME_TO_LANG[extension] ?? "tsx";
-};
 
 // Parses a code fixture using oxc-parser (the same engine oxlint uses at
 // runtime) with `astType: "ts"` so the returned AST is TSESTree-shaped —

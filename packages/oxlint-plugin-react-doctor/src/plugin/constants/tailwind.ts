@@ -6,3 +6,6 @@ export const TAILWIND_BREAKPOINT_RANKS: ReadonlyMap<string, number> = new Map(
     breakpointIndex,
   ]),
 );
+
+export const CLOSED_CLASS_TEMPLATE_EXPRESSION_COUNT = 1;
+export const CLOSED_CLASS_TEMPLATE_QUASI_COUNT = 2;

@@ -1,5 +1,9 @@
+import { HTML_JSON_STRINGIFY_LOOKAHEAD_CHARS } from "../../constants/security-scan.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
+import { collectJsxAttributeRanges } from "./utils/collect-jsx-attribute-ranges.js";
+import type { JsxAttributeRange } from "./utils/collect-jsx-attribute-ranges.js";
+import { findOwnJsxAttributeJsonCallEnd } from "./utils/find-own-jsx-attribute-json-call-end.js";
 import { findMatchingBracket } from "./utils/find-matching-bracket.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
@@ -12,8 +16,12 @@ import { getScannableContent } from "./utils/scan-by-pattern.js";
 // `JSON.stringify` does NOT HTML-escape, so a value containing `</script>`,
 // `<`, or U+2028/U+2029 breaks out of the markup — the classic SSR
 // data-hydration XSS that `dangerous-html-sink` does not treat as tainted.
+const HTML_ATTRIBUTE_START_PATTERN = /dangerouslySetInnerHTML\s*=\s*\{\{\s*__html\s*:/i;
 const SINK_JSON_STRINGIFY_PATTERNS = [
-  /dangerouslySetInnerHTML\s*=\s*\{\{\s*__html\s*:[\s\S]{0,300}?\bJSON\.stringify\s*\(/gi,
+  new RegExp(
+    String.raw`${HTML_ATTRIBUTE_START_PATTERN.source}[\s\S]{0,${HTML_JSON_STRINGIFY_LOOKAHEAD_CHARS}}?\bJSON\.stringify\s*\(`,
+    "gi",
+  ),
   /<script\b[^>]*>(?:(?!<\/script>)[\s\S]){0,300}?\bJSON\.stringify\s*\(/gi,
 ];
 const INLINE_SCRIPT_PATTERN_INDEX = 1;
@@ -70,11 +78,39 @@ export const unsafeJsonInHtml = defineRule({
     const content = getScannableContent(file);
     if (!content.includes("JSON.stringify")) return [];
 
+    let jsxAttributes: Map<number, JsxAttributeRange> | undefined;
     const findings: ScanFinding[] = [];
     const seenIndices = new Set<number>();
     for (const [patternIndex, pattern] of SINK_JSON_STRINGIFY_PATTERNS.entries()) {
       pattern.lastIndex = 0;
       for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
+        if (patternIndex !== INLINE_SCRIPT_PATTERN_INDEX) {
+          jsxAttributes ??= collectJsxAttributeRanges(file);
+          const matchedAttribute = jsxAttributes.get(match.index);
+          if (matchedAttribute !== undefined) {
+            const matchEndIndex = match.index + match[0].length;
+            if (matchEndIndex > matchedAttribute.endIndex) {
+              pattern.lastIndex = matchedAttribute.endIndex;
+              continue;
+            }
+            const nestedOwner = matchedAttribute.nestedAttributes.find(
+              (attribute) =>
+                attribute.startIndex < matchEndIndex && attribute.endIndex >= matchEndIndex,
+            );
+            if (nestedOwner !== undefined) {
+              pattern.lastIndex = matchedAttribute.nestedAttributes[0].startIndex;
+              const prefixLength = HTML_ATTRIBUTE_START_PATTERN.exec(match[0])?.[0].length;
+              if (prefixLength === undefined) continue;
+              const ownCallEndIndex = findOwnJsxAttributeJsonCallEnd({
+                content,
+                attribute: matchedAttribute,
+                startIndex: matchedAttribute.startIndex + prefixLength,
+              });
+              if (ownCallEndIndex === undefined) continue;
+              match[0] = content.slice(match.index, ownCallEndIndex);
+            }
+          }
+        }
         // An escape/serializer helper wrapping the call escapes the output.
         const beforeStringify = match[0].replace(JSON_STRINGIFY_TOKEN_PATTERN, "");
         if (ESCAPE_WRAPPER_PATTERN.test(beforeStringify)) continue;

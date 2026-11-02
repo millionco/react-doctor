@@ -31,6 +31,43 @@ function subscribePushState(listener) {
 `;
 
 describe("prefer-use-sync-external-store — module-scope store shape", () => {
+  it.each(["pushStateListeners", "(pushStateListeners as any)", "(pushStateListeners!)"])(
+    "preserves a module subscription through transparent call receivers: %s",
+    (receiver) => {
+      const preamble = MODULE_STORE_PREAMBLE.replaceAll(
+        "pushStateListeners.add(listener)",
+        `${receiver}.add(listener)`,
+      ).replaceAll("pushStateListeners.delete(listener)", `${receiver}.delete(listener)`);
+      const result = run(`${preamble}
+export const SnapshotLabel = () => {
+  const [snapshot, setSnapshot] = useState(sharedPushState);
+  useEffect(() => subscribePushState(setSnapshot), []);
+  return <span>{snapshot}</span>;
+};`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    "(pushStateListeners || otherListeners).add(listener)",
+    "(pushStateListeners.add || registerListener)(listener)",
+    "(pushStateListeners as any).add(otherListener)",
+  ])("keeps unsupported registration roles conservative: %s", (registration) => {
+    const preamble = MODULE_STORE_PREAMBLE.replace(
+      "pushStateListeners.add(listener)",
+      registration,
+    );
+    const result = run(`${preamble}
+export const SnapshotLabel = () => {
+  const [snapshot, setSnapshot] = useState(sharedPushState);
+  useEffect(() => subscribePushState(setSnapshot), []);
+  return <span>{snapshot}</span>;
+};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a subscription callback is received as a custom-hook parameter", () => {
     const result = run(
       `import { useEffect, useState } from "react";

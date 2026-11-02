@@ -335,8 +335,9 @@ const functionRegistersParameterIntoCollection = (
     if (registersListener) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "MemberExpression")) return;
-    if (!isNodeOfType(child.callee.object, "Identifier")) return;
-    if (!listenerCollectionNames.has(child.callee.object.name)) return;
+    const listenerCollection = stripParenExpression(child.callee.object);
+    if (!isNodeOfType(listenerCollection, "Identifier")) return;
+    if (!listenerCollectionNames.has(listenerCollection.name)) return;
     if (!isNodeOfType(child.callee.property, "Identifier")) return;
     if (child.callee.property.name !== "add" && child.callee.property.name !== "push") return;
     const registeredArgument = child.arguments?.[0];

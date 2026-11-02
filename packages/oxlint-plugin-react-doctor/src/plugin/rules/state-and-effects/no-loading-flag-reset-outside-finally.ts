@@ -2,6 +2,7 @@ import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-
 import { collectLoadingLifecycleResets } from "../../utils/collect-loading-lifecycle-resets.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
@@ -2498,6 +2499,184 @@ const findOwnershipClaim = (
       (statement) => statement === writeEntry.entry,
     );
     if (writeIndex === -1) return { safety: "unknown", hasContextualRestart: false };
+    const getTransferRefCurrent = (expression: EsTreeNode): EsTreeNode | null => {
+      const refCurrent = getReactRefCurrent(expression, context);
+      if (!refCurrent) return null;
+      const symbol = context.scopes.symbolFor(stripParenExpression(refCurrent.object));
+      return symbol?.kind === "const" &&
+        symbol.references.every((reference) => {
+          const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+          const member = referenceRoot.parent;
+          const operation = member ? findTransparentExpressionRoot(member).parent : null;
+          return (
+            isNodeOfType(member, "MemberExpression") &&
+            member.object === referenceRoot &&
+            getStaticPropertyName(member) === "current" &&
+            !(isNodeOfType(operation, "UnaryExpression") && operation.operator === "delete")
+          );
+        })
+        ? refCurrent
+        : null;
+    };
+    const isNumericTransferValue = (expression: EsTreeNode): boolean => {
+      const value = stripParenExpression(expression);
+      if (isNodeOfType(value, "Literal")) return typeof value.value === "number";
+      const refCurrent = getTransferRefCurrent(value);
+      if (isNodeOfType(refCurrent, "MemberExpression")) {
+        const receiver = stripParenExpression(refCurrent.object);
+        const symbol = context.scopes.symbolFor(receiver);
+        const initializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+        const initialValue = isNodeOfType(initializer, "CallExpression")
+          ? initializer.arguments[0]
+          : null;
+        if (
+          !symbol ||
+          !isNodeOfType(initialValue, "Literal") ||
+          typeof initialValue.value !== "number" ||
+          !symbol.references.every((reference) => {
+            const member = findTransparentExpressionRoot(reference.identifier).parent;
+            if (!isNodeOfType(member, "MemberExpression")) return false;
+            const target = findTransparentExpressionRoot(member);
+            if (!isWithinAssignmentTarget(target)) return true;
+            const operation = target.parent;
+            if (isNodeOfType(operation, "UpdateExpression") && operation.argument === target)
+              return true;
+            if (!isNodeOfType(operation, "AssignmentExpression") || operation.left !== target)
+              return false;
+            const assignedValue = stripParenExpression(operation.right);
+            return (
+              operation.operator === "=" &&
+              isNodeOfType(assignedValue, "Literal") &&
+              typeof assignedValue.value === "number"
+            );
+          })
+        )
+          return false;
+        return true;
+      }
+      if (!isNodeOfType(value, "Identifier")) return false;
+      const symbol = context.scopes.symbolFor(value);
+      return Boolean(
+        symbol &&
+        isNodeOfType(symbol.initializer, "Literal") &&
+        typeof symbol.initializer.value === "number" &&
+        symbol.declarationNode.range[1] < value.range[0] &&
+        symbol.references.every(
+          (reference) =>
+            reference.flag === "read" ||
+            (isNodeOfType(reference.identifier.parent, "UpdateExpression") &&
+              reference.identifier.parent.argument === reference.identifier),
+        ),
+      );
+    };
+    const isSupportedTransferOperation = (
+      candidate: EsTreeNode,
+      visitedFunctions = new Set<EsTreeNode>(),
+    ): boolean => {
+      if (isNodeOfType(candidate, "Identifier")) {
+        const reference = context.scopes.referenceFor(candidate);
+        if (!reference) return true;
+        const symbol = reference.resolvedSymbol;
+        const member = candidate.parent;
+        const parentCall = isNodeOfType(member, "MemberExpression") ? member.parent : member;
+        if (
+          !symbol &&
+          isNodeOfType(parentCall, "CallExpression") &&
+          (parentCall.callee === candidate || parentCall.callee === member) &&
+          isProvenNonThrowingBuiltInCall(parentCall, context.scopes)
+        )
+          return true;
+        return Boolean(
+          symbol &&
+          (symbol.kind === "var" ||
+            symbol.kind === "function" ||
+            symbol.kind === "parameter" ||
+            symbol.kind === "catch-clause-parameter" ||
+            symbol.declarationNode.range[1] < candidate.range[0]),
+        );
+      }
+      if (isNodeOfType(candidate, "MemberExpression")) {
+        return (
+          Boolean(getTransferRefCurrent(candidate)) ||
+          (isNodeOfType(candidate.parent, "CallExpression") &&
+            candidate.parent.callee === candidate &&
+            isProvenNonThrowingBuiltInCall(candidate.parent, context.scopes))
+        );
+      }
+      if (isNodeOfType(candidate, "CallExpression")) {
+        if (!isProvenNonThrowingSynchronousCall(candidate, context)) return false;
+        const callee = stripParenExpression(candidate.callee);
+        if (
+          isProvenNonThrowingBuiltInCall(candidate, context.scopes) ||
+          isReactHookResultReference(callee, STATE_HOOK_NAMES, 1, context.scopes)
+        )
+          return true;
+        const helper = resolveExactLocalFunction(callee, context.scopes);
+        if (!isFunctionLike(helper) || helper.params.length > 0 || visitedFunctions.has(helper))
+          return false;
+        const nextVisitedFunctions = new Set(visitedFunctions).add(helper);
+        let isSupported = true;
+        walkOwnFunctionScope(helper, (child) => {
+          if (!isSupported) return false;
+          if (!isSupportedTransferOperation(child, nextVisitedFunctions)) isSupported = false;
+        });
+        return isSupported;
+      }
+      if (isNodeOfType(candidate, "BinaryExpression")) {
+        return (
+          candidate.operator === "===" ||
+          candidate.operator === "!==" ||
+          (candidate.operator !== "in" &&
+            candidate.operator !== "instanceof" &&
+            isNumericTransferValue(candidate.left) &&
+            isNumericTransferValue(candidate.right))
+        );
+      }
+      if (isNodeOfType(candidate, "UnaryExpression"))
+        return (
+          candidate.operator === "!" ||
+          candidate.operator === "void" ||
+          candidate.operator === "typeof"
+        );
+      if (isNodeOfType(candidate, "UpdateExpression"))
+        return isNumericTransferValue(candidate.argument);
+      if (isNodeOfType(candidate, "AssignmentExpression")) {
+        const target = stripParenExpression(candidate.left);
+        const symbol = isNodeOfType(target, "Identifier") ? context.scopes.symbolFor(target) : null;
+        return (
+          candidate.operator === "=" &&
+          Boolean(getTransferRefCurrent(target) || symbol?.kind === "let" || symbol?.kind === "var")
+        );
+      }
+      if (isNodeOfType(candidate, "Property"))
+        return !candidate.computed || isNodeOfType(stripParenExpression(candidate.key), "Literal");
+      if (isNodeOfType(candidate, "TemplateLiteral")) return candidate.expressions.length === 0;
+      if (isNodeOfType(candidate, "VariableDeclarator"))
+        return isNodeOfType(candidate.id, "Identifier");
+      if (isNodeOfType(candidate, "VariableDeclaration"))
+        return candidate.kind !== "using" && candidate.kind !== "await using";
+      if (
+        isNodeOfType(candidate, "SpreadElement") ||
+        isNodeOfType(candidate, "ObjectPattern") ||
+        isNodeOfType(candidate, "ArrayPattern") ||
+        isNodeOfType(candidate, "ForOfStatement") ||
+        isNodeOfType(candidate, "ForInStatement") ||
+        isNodeOfType(candidate, "ClassDeclaration") ||
+        isNodeOfType(candidate, "JSXElement") ||
+        isNodeOfType(candidate, "JSXFragment") ||
+        isNodeOfType(candidate, "WithStatement")
+      )
+        return false;
+      return (
+        !candidate.type.endsWith("Expression") ||
+        isFunctionLike(candidate) ||
+        isNodeOfType(candidate, "LogicalExpression") ||
+        isNodeOfType(candidate, "ConditionalExpression") ||
+        isNodeOfType(candidate, "SequenceExpression") ||
+        isNodeOfType(candidate, "ObjectExpression") ||
+        isNodeOfType(candidate, "ArrayExpression")
+      );
+    };
     const canReachSynchronously = (
       statement: EsTreeNode,
       boundary: EsTreeNode = writeFunction,
@@ -2506,6 +2685,7 @@ const findOwnershipClaim = (
       let canBypass = false;
       walkAst(statement, (candidate) => {
         if (isFunctionLike(candidate)) return false;
+        if (!isSupportedTransferOperation(candidate)) canBypass = true;
         if (
           isNodeOfType(candidate, "ReturnStatement") ||
           isNodeOfType(candidate, "AwaitExpression") ||
@@ -2624,6 +2804,7 @@ const findOwnershipClaim = (
         let hasUnsafePrefix = false;
         walkAst(finalizer, (candidate) => {
           if (candidate.range[0] >= resetCall.range[0] || isFunctionLike(candidate)) return false;
+          if (!isSupportedTransferOperation(candidate)) hasUnsafePrefix = true;
           if (isNodeOfType(candidate, "ReturnStatement")) {
             const branch = isNodeOfType(candidate.parent, "BlockStatement")
               ? candidate.parent
@@ -2684,7 +2865,17 @@ const findOwnershipClaim = (
         if (
           !isFunctionLike(successorFunction) ||
           !successorFunction.async ||
-          !isNodeOfType(successorFunction.body, "BlockStatement")
+          successorFunction.generator ||
+          !isNodeOfType(successorFunction.body, "BlockStatement") ||
+          !successorFunction.params.every(
+            (parameter) =>
+              isNodeOfType(parameter, "Identifier") ||
+              (isNodeOfType(parameter, "RestElement") &&
+                isNodeOfType(parameter.argument, "Identifier")) ||
+              (isNodeOfType(parameter, "AssignmentPattern") &&
+                isNodeOfType(parameter.left, "Identifier") &&
+                isNodeOfType(stripParenExpression(parameter.right), "Literal")),
+          )
         )
           return;
         const entry = getDirectBlockEntry(candidate, writeFunction);

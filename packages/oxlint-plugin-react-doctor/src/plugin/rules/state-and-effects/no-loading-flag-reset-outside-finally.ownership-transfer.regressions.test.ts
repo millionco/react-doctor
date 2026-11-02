@@ -4,6 +4,153 @@ import { noLoadingFlagResetOutsideFinally } from "./no-loading-flag-reset-outsid
 
 describe("loading ownership transfer discharge", () => {
   it.each([
+    ["", 0],
+    ["unused", 0],
+    ["...unused", 0],
+    ["unused = 0", 0],
+    ["unused = fail()", 1],
+    ["{ unused }", 1],
+    ["[unused]", 1],
+  ])("checks called successor parameter initialization: %s", (parameters, expectedCount) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Panel = ({ request, fail }) => {
+         const generation = useRef(0);
+         const [, setLoading] = useState(false);
+         const run = async (${parameters}) => {
+           const ticket = ++generation.current;
+           setLoading(true);
+           try { await request(); }
+           finally { if (generation.current === ticket) setLoading(false); }
+         };
+         useEffect(() => { generation.current++; setLoading(true); run(); }, []);
+         return run;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+
+  it.each([
+    ["source.value;", 1],
+    ["const value = source.value;", 1],
+    ["const value = null; value.missing;", 1],
+    ["const { value } = source;", 1],
+    ["const value = { ...source };", 1],
+    ["const value = [...source];", 1],
+    ["for (const value of source) {}", 1],
+    ["const value = +coercible;", 1],
+    ["const value = `${coercible}`;", 1],
+    ["const value = coercible + 1;", 1],
+    ["const value = later; const later = 0;", 1],
+    ["class Value extends 0 {}", 1],
+    ["const current = generation.current;", 0],
+    ["const value = {};", 0],
+    ["Math.round(0);", 0],
+    ["", 0],
+  ])("checks throwing successor finalizer expressions: %s", (prefix, expectedCount) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Panel = ({ request }) => {
+         const generation = useRef(0);
+         const [, setLoading] = useState(false);
+         const source = { get value() { throw new Error(); } };
+         const coercible = { [Symbol.toPrimitive]() { throw new Error(); } };
+         const first = async () => {
+           const ticket = ++generation.current;
+           setLoading(true);
+           try { await request(); }
+           finally { if (generation.current === ticket) setLoading(false); }
+         };
+         const second = async () => {
+           const ticket = ++generation.current;
+           setLoading(true);
+           try { await request(); }
+           finally { ${prefix} if (generation.current === ticket) setLoading(false); }
+         };
+         return { first, second };
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    if (expectedCount === 0) expect(result.diagnostics).toHaveLength(0);
+    else expect(result.diagnostics.length).toBeGreaterThanOrEqual(expectedCount);
+  });
+
+  it("does not certify a conditional claim in a called successor", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Panel = ({ request, enabled }) => {
+         const generation = useRef(0);
+         const [, setLoading] = useState(false);
+         const run = async () => {
+           let ticket;
+           if (enabled) ticket = ++generation.current;
+           setLoading(true);
+           try { await request(); }
+           finally { if (generation.current === ticket) setLoading(false); }
+         };
+         useEffect(() => { generation.current++; setLoading(true); run(); }, []);
+         return run;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it.each([
+    ["generation.current++;", "0", "const run = async () =>", 0],
+    ["generation.current = coercible;", "0", "const run = async () =>", 1],
+    [
+      "({ value: generation.current } = { value: coercible }); generation.current++;",
+      "0",
+      "const run = async () =>",
+      1,
+    ],
+    [
+      "for (generation.current of [coercible]) {} generation.current++;",
+      "0",
+      "const run = async () =>",
+      1,
+    ],
+    [
+      "delete (generation.current as any); generation.current++;",
+      "0",
+      "const run = async () =>",
+      1,
+    ],
+    ["generation.current++;", "coercible", "const run = async () =>", 1],
+    ["escape(generation); generation.current++;", "0", "const run = async () =>", 1],
+    ["generation.current++;", "0", "async function* run()", 1],
+  ])(
+    "requires an immediate numeric successor: %s %s %s",
+    (invalidation, initialValue, declaration, expectedCount) => {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `import { useEffect, useRef, useState } from "react";
+       const Panel = ({ request, escape }) => {
+         const coercible = { [Symbol.toPrimitive]() { throw new Error(); } };
+         const generation = useRef(${initialValue});
+         const [, setLoading] = useState(false);
+         ${declaration} {
+           const ticket = ++generation.current;
+           setLoading(true);
+           try { await request(); }
+           finally { if (generation.current === ticket) setLoading(false); }
+         };
+         useEffect(() => { ${invalidation} setLoading(true); run(); }, []);
+         return run;
+       };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      if (expectedCount === 0) expect(result.diagnostics).toHaveLength(0);
+      else expect(result.diagnostics.length).toBeGreaterThanOrEqual(expectedCount);
+    },
+  );
+
+  it.each([
     ["setLoading(true);", 1],
     ["setLoading(false); setLoading(true);", 1],
     ["setOtherLoading(false);", 1],

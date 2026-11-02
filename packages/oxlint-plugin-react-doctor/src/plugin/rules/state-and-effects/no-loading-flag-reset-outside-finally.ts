@@ -2558,6 +2558,11 @@ const findOwnershipClaim = (
       const symbol = context.scopes.symbolFor(value);
       return Boolean(
         symbol &&
+        ["const", "let", "var"].includes(symbol.kind) &&
+        isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+        isNodeOfType(symbol.declarationNode.id, "Identifier") &&
+        symbol.declarationNode.id === symbol.bindingIdentifier &&
+        symbol.declarationNode.init === symbol.initializer &&
         isNodeOfType(symbol.initializer, "Literal") &&
         typeof symbol.initializer.value === "number" &&
         symbol.declarationNode.range[1] < value.range[0] &&

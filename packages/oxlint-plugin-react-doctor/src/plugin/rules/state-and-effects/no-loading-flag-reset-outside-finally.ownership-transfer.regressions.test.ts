@@ -3,6 +3,38 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noLoadingFlagResetOutsideFinally } from "./no-loading-flag-reset-outside-finally.js";
 
 describe("loading ownership transfer discharge", () => {
+  it.each(["local", "parameter", "destructured"])(
+    "requires an initialized numeric variable rather than a fallback: %s",
+    (bindingKind) => {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `import { useRef, useState } from "react";
+         const Panel = ({ request, input }) => {
+           const generation = useRef(0);
+           const [, setLoading] = useState(false);
+           ${bindingKind === "destructured" ? "const { count = 0 } = input;" : ""}
+           const first = async () => {
+             const ticket = ++generation.current;
+             setLoading(true);
+             try { await request(); }
+             finally { if (generation.current === ticket) setLoading(false); }
+           };
+           const second = async (${bindingKind === "parameter" ? "count = 0" : ""}) => {
+             ${bindingKind === "local" ? "let count = 0;" : ""}
+             const ticket = ++generation.current;
+             setLoading(true);
+             try { await request(); }
+             finally { const next = count + 1; if (generation.current === ticket) setLoading(false); }
+           };
+           return { first, second };
+         };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      if (bindingKind === "local") expect(result.diagnostics).toEqual([]);
+      else expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    },
+  );
+
   it.each([
     ["", 0],
     ["unused", 0],

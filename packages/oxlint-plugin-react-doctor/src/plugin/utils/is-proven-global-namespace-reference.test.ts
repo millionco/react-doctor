@@ -13,6 +13,62 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
 describe("native namespace runtime bindings", () => {
+  it.each([
+    [
+      "outside before and after a merged namespace",
+      "Reflect; namespace Container { export declare function Reflect(): unknown; } namespace Container { Reflect; } Reflect;",
+      [true, false, true],
+      [
+        { scopeType: null, hasGlobalProvider: false },
+        { scopeType: "TSModuleDeclaration", hasGlobalProvider: false },
+        { scopeType: null, hasGlobalProvider: false },
+      ],
+    ],
+    [
+      "outside after a merged namespace",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container { Reflect; } Reflect;",
+      [false, true],
+      [
+        { scopeType: "TSModuleDeclaration", hasGlobalProvider: false },
+        { scopeType: null, hasGlobalProvider: false },
+      ],
+    ],
+    [
+      "global augmentations across namespace boundaries",
+      "export {}; declare global { function Reflect(): unknown; } Reflect; namespace Container { Reflect; } Reflect;",
+      [false, false, false],
+      [
+        { scopeType: "Program", hasGlobalProvider: true },
+        { scopeType: "Program", hasGlobalProvider: true },
+        { scopeType: "Program", hasGlobalProvider: true },
+      ],
+    ],
+  ])("preserves providers %s", (_, source, expectedProofs, expectedProviders) => {
+    const parsed = parseFixture(source);
+    expect(parsed.errors).toEqual([]);
+    attachParentReferences(parsed.program);
+    const scopes = analyzeScopes(parsed.program);
+    const proofs: boolean[] = [];
+    const providers: namespaceValueHelpers.NamespaceValueProvider[] = [];
+    walkAst(parsed.program, (node) => {
+      if (!isNodeOfType(node, "ExpressionStatement")) return;
+      providers.push(
+        namespaceValueHelpers.getNamespaceValueProvider(
+          scopes.scopeFor(node.expression),
+          "Reflect",
+        ),
+      );
+      proofs.push(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes));
+    });
+    expect(proofs).toEqual(expectedProofs);
+    expect(
+      providers.map((provider) => ({
+        scopeType: provider.scope?.node.type ?? null,
+        hasGlobalProvider: provider.hasGlobalProvider,
+      })),
+    ).toEqual(expectedProviders);
+  });
+
   it("keeps outer lexical providers after absent namespace export groups", () => {
     const parsed = parseFixture(`
       namespace Parent {
@@ -490,6 +546,21 @@ describe("ambient value visibility", () => {
       true,
     ],
     [
+      "external module does not merge with an identifier namespace",
+      'declare module "Container" { function Reflect(): unknown; } namespace Container { Reflect; }',
+      true,
+    ],
+    [
+      "identifier namespace does not merge with an external module",
+      'namespace Container { export declare function Reflect(): unknown; } declare module "Container" { Reflect; }',
+      true,
+    ],
+    [
+      "unrelated runtime exports do not populate erased namespace exports",
+      "namespace Source { export const Reflect = custom; } namespace Target { export interface TypeOnly {} } namespace Target { Reflect; }",
+      true,
+    ],
+    [
       "reopened external module",
       'declare module "container" { function Reflect(): unknown; } declare module "container" { Reflect; }',
       false,
@@ -557,6 +628,11 @@ describe("ambient value visibility", () => {
     [
       "global namespace differs from local namespace",
       "export {}; declare global { namespace Container { function Reflect(): unknown; } } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "global augmentation does not merge with an identifier named global",
+      "export {}; namespace global { export declare function Reflect(): unknown; } declare global { Reflect; }",
       true,
     ],
   ])("%s", (_, source, expectedProof) => {

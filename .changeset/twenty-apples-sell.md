@@ -7,4 +7,4 @@ Detect native `Reflect.set` writes to React refs during render, tracking an expl
 
 Native aliases may use lexical const bindings and ordinary ES-module exports. Variables exported from TypeScript namespaces remain outside the proof because they emit mutable namespace properties.
 
-Reuse indexed scope lookups and avoid revisiting absent namespace export groups during native-provider checks.
+Reuse indexed scope lookups and avoid revisiting absent namespace export groups during native-provider checks. Build namespace export groups only when the lookup scope can see them. Collect ordinary scope bindings directly, reuse temporary namespace declaration storage, and avoid serialized identifier keys when building the index.

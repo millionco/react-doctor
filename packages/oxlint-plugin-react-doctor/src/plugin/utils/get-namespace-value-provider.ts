@@ -15,15 +15,11 @@ interface NamespaceValueGroup {
 
 interface NamespaceValueProviderIndex {
   readonly rootScope: ScopeDescriptor;
+  readonly hasNamespaceGroups: boolean;
   readonly globalNames: Set<string>;
   readonly localNamesByScope: Map<ScopeDescriptor, Set<string>>;
   readonly namespaceGroupsByScope: Map<ScopeDescriptor, NamespaceValueGroup>;
   readonly providersByScope: Map<ScopeDescriptor, Map<string, NamespaceValueProvider>>;
-}
-
-interface NamespacePathSegment {
-  readonly key: string;
-  readonly name: string | null;
 }
 
 interface NamespaceExportAlias {
@@ -61,6 +57,13 @@ const getScopeStatements = (scope: ScopeDescriptor): ReadonlyArray<EsTreeNode> =
 };
 
 const collectValueDeclarationNames = (declaration: EsTreeNode, names: Set<string>): void => {
+  if (
+    declaration.type === "ExportNamedDeclaration" ||
+    declaration.type === "ExportDefaultDeclaration"
+  ) {
+    if (declaration.declaration) collectValueDeclarationNames(declaration.declaration, names);
+    return;
+  }
   if (declaration.type === "VariableDeclaration") {
     for (const declarator of declaration.declarations) collectPatternNames(declarator.id, names);
     return;
@@ -94,22 +97,39 @@ const collectValueDeclarationNames = (declaration: EsTreeNode, names: Set<string
 
 const buildNamespaceValueProviderIndex = (
   rootScope: ScopeDescriptor,
+  includeNamespaceGroups: boolean,
 ): NamespaceValueProviderIndex => {
   const index: NamespaceValueProviderIndex = {
     rootScope,
+    hasNamespaceGroups: includeNamespaceGroups,
     globalNames: new Set(),
     localNamesByScope: new Map(),
     namespaceGroupsByScope: new Map(),
     providersByScope: new Map(),
   };
+  if (!includeNamespaceGroups) {
+    const pendingGlobalScopes = [rootScope];
+    while (pendingGlobalScopes.length > 0) {
+      const scope = pendingGlobalScopes.pop();
+      if (!scope) break;
+      if (scope.node.type === "TSModuleDeclaration" && scope.node.global) {
+        for (const statement of getScopeStatements(scope)) {
+          collectValueDeclarationNames(statement, index.globalNames);
+        }
+      }
+      for (const childScope of scope.children) pendingGlobalScopes.push(childScope);
+    }
+    return index;
+  }
   const namespaceGroupsByOwner = new Map<
     ScopeDescriptor | NamespaceValueGroup,
-    Map<string, NamespaceValueGroup>
+    Map<string | null, NamespaceValueGroup>
   >();
   const pendingScopes: NamespaceScopeFrame[] = [
     { scope: rootScope, isAmbient: false, hasImplicitExports: false },
   ];
   const exportAliases: NamespaceExportAlias[] = [];
+  const declarationNames = new Set<string>();
   while (pendingScopes.length > 0) {
     const frame = pendingScopes.pop();
     if (!frame) break;
@@ -126,41 +146,41 @@ const buildNamespaceValueProviderIndex = (
       let parentGroup = index.namespaceGroupsByScope.get(scope.parent) ?? null;
       let groupOwner: ScopeDescriptor | NamespaceValueGroup =
         isExported && parentGroup ? parentGroup : scope.parent;
-      const namespaceSegments: NamespacePathSegment[] = [];
+      let namespaceSegments: EsTreeNode[] | undefined;
       let namespaceIdentifier: EsTreeNode = owner.id;
       while (namespaceIdentifier.type === "TSQualifiedName") {
-        namespaceSegments.unshift({
-          key: JSON.stringify(["Identifier", namespaceIdentifier.right.name]),
-          name: namespaceIdentifier.right.name,
-        });
+        (namespaceSegments ??= []).push(namespaceIdentifier.right);
         namespaceIdentifier = namespaceIdentifier.left;
       }
-      if (namespaceIdentifier.type === "Identifier") {
-        namespaceSegments.unshift({
-          key: JSON.stringify([owner.global ? "global" : "Identifier", namespaceIdentifier.name]),
-          name: owner.global ? null : namespaceIdentifier.name,
-        });
-      } else if (namespaceIdentifier.type === "Literal") {
-        namespaceSegments.unshift({
-          key: JSON.stringify(["Literal", namespaceIdentifier.value]),
-          name: null,
-        });
-      }
+      let namespaceSegment: EsTreeNode | undefined = namespaceIdentifier;
       let isExportedMember = isExported;
-      for (const segment of namespaceSegments) {
-        if (segment.name !== null) {
-          localNames.add(segment.name);
-          if (parentGroup && isExportedMember) parentGroup.exportedNames.add(segment.name);
+      while (namespaceSegment) {
+        const segment = namespaceSegment;
+        namespaceSegment = namespaceSegments?.pop();
+        let namespaceName: string | null;
+        let namespaceKey: string | null;
+        if (segment.type === "Identifier") {
+          namespaceName = owner.global && segment === namespaceIdentifier ? null : segment.name;
+          namespaceKey = namespaceName;
+        } else if (segment.type === "Literal") {
+          namespaceName = null;
+          namespaceKey = JSON.stringify(["Literal", segment.value]);
+        } else {
+          continue;
+        }
+        if (namespaceName !== null) {
+          localNames.add(namespaceName);
+          if (parentGroup && isExportedMember) parentGroup.exportedNames.add(namespaceName);
         }
         let groupsByName = namespaceGroupsByOwner.get(groupOwner);
         if (!groupsByName) {
           groupsByName = new Map();
           namespaceGroupsByOwner.set(groupOwner, groupsByName);
         }
-        namespaceGroup = groupsByName.get(segment.key);
+        namespaceGroup = groupsByName.get(namespaceKey);
         if (!namespaceGroup) {
           namespaceGroup = { exportedNames: new Set(), parent: parentGroup };
-          groupsByName.set(segment.key, namespaceGroup);
+          groupsByName.set(namespaceKey, namespaceGroup);
         }
         parentGroup = namespaceGroup;
         groupOwner = namespaceGroup;
@@ -183,7 +203,11 @@ const buildNamespaceValueProviderIndex = (
           ? statement.declaration
           : statement;
       if (!declaration) continue;
-      const declarationNames = new Set<string>();
+      if (!namespaceGroup && !(isNamespace && owner.global)) {
+        collectValueDeclarationNames(declaration, localNames);
+        continue;
+      }
+      declarationNames.clear();
       collectValueDeclarationNames(declaration, declarationNames);
       for (const name of declarationNames) {
         localNames.add(name);
@@ -266,13 +290,18 @@ export const getNamespaceValueProvider = (
   let index = indexesByScope.get(initialScope);
   if (!index) {
     let rootScope = initialScope;
-    while (rootScope.parent) rootScope = rootScope.parent;
+    let hasNamespaceScope = rootScope.node.type === "TSModuleDeclaration";
+    while (rootScope.parent) {
+      rootScope = rootScope.parent;
+      if (rootScope.node.type === "TSModuleDeclaration") hasNamespaceScope = true;
+    }
     index = indexesByScope.get(rootScope);
-    if (!index) {
-      index = buildNamespaceValueProviderIndex(rootScope);
+    if (!index || (hasNamespaceScope && !index.hasNamespaceGroups)) {
+      index = buildNamespaceValueProviderIndex(rootScope, hasNamespaceScope);
       for (const indexedScope of index.localNamesByScope.keys()) {
         indexesByScope.set(indexedScope, index);
       }
+      indexesByScope.set(rootScope, index);
     }
     indexesByScope.set(initialScope, index);
   }
@@ -288,7 +317,16 @@ export const getNamespaceValueProvider = (
   let providerScope: ScopeDescriptor | null = null;
   let scope: ScopeDescriptor | null = initialScope;
   while (scope) {
-    if (index.localNamesByScope.get(scope)?.has(name)) {
+    let localNames = index.localNamesByScope.get(scope);
+    if (!localNames && !index.hasNamespaceGroups) {
+      localNames = new Set();
+      for (const statement of getScopeStatements(scope)) {
+        collectValueDeclarationNames(statement, localNames);
+      }
+      index.localNamesByScope.set(scope, localNames);
+      indexesByScope.set(scope, index);
+    }
+    if (localNames?.has(name)) {
       providerScope = scope;
       break;
     }

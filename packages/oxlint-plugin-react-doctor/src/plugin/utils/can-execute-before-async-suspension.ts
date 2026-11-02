@@ -1,3 +1,4 @@
+import type { BasicBlock, FunctionCfg } from "../semantic/control-flow-graph.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findImmediatelyInvokedCallExpression } from "./find-immediately-invoked-call-expression.js";
 import { getRangeStart } from "./get-range-start.js";
@@ -11,6 +12,8 @@ import { walkAst } from "./walk-ast.js";
 export interface CanExecuteBeforeAsyncSuspensionOptions {
   suspensionNodes?: Iterable<EsTreeNode>;
 }
+
+const suspensionBlocksByFunctionCfg = new WeakMap<FunctionCfg, Map<BasicBlock, EsTreeNode[]>>();
 
 const collectSuspensionNodes = (
   functionNode: EsTreeNode,
@@ -102,13 +105,21 @@ export const canExecuteBeforeAsyncSuspension = (
   const functionCfg = context.cfg.cfgFor(functionNode);
   const targetBlock = functionCfg?.blockOf(executionNode);
   if (!functionCfg || !targetBlock) return false;
-  const suspensionsByBlock = new Map<typeof targetBlock, EsTreeNode[]>();
-  for (const suspensionNode of collectSuspensionNodes(functionNode, options)) {
-    const suspensionBlock = functionCfg.blockOf(suspensionBlockNode(suspensionNode));
-    if (!suspensionBlock) continue;
-    const blockSuspensions = suspensionsByBlock.get(suspensionBlock) ?? [];
-    blockSuspensions.push(suspensionNode);
-    suspensionsByBlock.set(suspensionBlock, blockSuspensions);
+  let suspensionsByBlock = options.suspensionNodes
+    ? undefined
+    : suspensionBlocksByFunctionCfg.get(functionCfg);
+  if (!suspensionsByBlock) {
+    suspensionsByBlock = new Map<BasicBlock, EsTreeNode[]>();
+    for (const suspensionNode of collectSuspensionNodes(functionNode, options)) {
+      const suspensionBlock = functionCfg.blockOf(suspensionBlockNode(suspensionNode));
+      if (!suspensionBlock) continue;
+      const blockSuspensions = suspensionsByBlock.get(suspensionBlock) ?? [];
+      blockSuspensions.push(suspensionNode);
+      suspensionsByBlock.set(suspensionBlock, blockSuspensions);
+    }
+    if (!options.suspensionNodes) {
+      suspensionBlocksByFunctionCfg.set(functionCfg, suspensionsByBlock);
+    }
   }
   const visitedBlocks = new Set<typeof targetBlock>();
   const pendingBlocks = [functionCfg.entry];

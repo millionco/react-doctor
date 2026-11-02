@@ -10,7 +10,7 @@ const ASYNC_USE_MEMO_REASON = "useMemo() callbacks may not be async or generator
 const ASYNC_USE_MEMO_DETAIL =
   "useMemo() callbacks are called once and must synchronously return a value";
 const GENERIC_COMPILER_MESSAGE =
-  "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.";
+  "React Compiler flagged this code during analysis. Review the compiler's reason before changing the code.";
 
 describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", () => {
   it("weaves the reason summary into the message and leaves the elaboration in help", () => {
@@ -20,7 +20,7 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     );
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
 
-    expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
+    expect(diagnostic.message).toContain("React Compiler flagged this code during analysis");
     expect(diagnostic.message).toContain(ASYNC_USE_MEMO_REASON);
     expect(diagnostic.help).toBe(ASYNC_USE_MEMO_DETAIL);
   });
@@ -55,7 +55,7 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     const stdout = buildOxlintStdout("react-hooks-js(use-memo)", `Error: ${ASYNC_USE_MEMO_REASON}`);
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
 
-    expect(diagnostic.message).toContain(`: ${ASYNC_USE_MEMO_REASON}. Rewrite`);
+    expect(diagnostic.message).toContain(`: ${ASYNC_USE_MEMO_REASON}. Review`);
     expect(diagnostic.message).not.toContain("Error:");
     expect(diagnostic.help).not.toContain("Error:");
   });
@@ -64,7 +64,7 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     const stdout = buildOxlintStdout("react-hooks-js(purity)", "  Warning: This value is impure");
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
 
-    expect(diagnostic.message).toContain(": This value is impure. Rewrite");
+    expect(diagnostic.message).toContain(": This value is impure. Review");
     expect(diagnostic.message).not.toContain("Warning:");
   });
 
@@ -72,7 +72,7 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     const stdout = buildOxlintStdout("react-hooks-js(purity)", "This value is impure.");
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
 
-    expect(diagnostic.message).toContain(": This value is impure. Rewrite");
+    expect(diagnostic.message).toContain(": This value is impure. Review");
   });
 
   it("gives incompatible-library a library-specific action, not the generic 'rewrite it' copy", () => {

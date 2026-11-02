@@ -314,6 +314,8 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  'class Setup { constructor(public value = Function("Array.prototype.find = () => ({ name: \'custom\' })")()) {} }\nnew Setup();\nconst ITEMS = [{ name: "first", enabled: false }];\nexport const read = () => ITEMS.find((item) => item.enabled).name;\n',
+  'interface Function {}\nFunction("Array.prototype.find = () => ({ name: \'custom\' })")();\nconst ITEMS = [{ name: "first", enabled: false }];\nexport const read = () => ITEMS.find((item) => item.enabled).name;\n',
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

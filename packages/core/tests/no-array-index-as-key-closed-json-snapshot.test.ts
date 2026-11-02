@@ -671,6 +671,24 @@ const prepareSnapshotLodashGate = (declaration: string | null): void => {
 };
 
 describe("closed imported JSON snapshot ordinal keys", () => {
+  it("equates a certified local const URL with the inline whole-rule request and refuses module URL cells", () => {
+    for (const url of ["url", "'/catalog'"]) {
+      writeSnapshotFile(
+        "src/request.js",
+        `import axios from 'axios'; export const load = () => {
+        const url = '/catalog';
+        return new Promise((resolve, reject) => { axios.get(${url}, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+      };`,
+      );
+      expect(runSnapshotLeaf()).toEqual([]);
+    }
+    writeSnapshotFile(
+      "src/request.js",
+      "import axios from 'axios'; const url = '/catalog'; export const load = () => new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });",
+    );
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+
   it.each([
     ["let unused = '/catalog';", "const requestOptions = { responseType: 'json' };"],
     ["let timeout = 100;", "let requestOptions = { timeout, responseType: 'json' };"],

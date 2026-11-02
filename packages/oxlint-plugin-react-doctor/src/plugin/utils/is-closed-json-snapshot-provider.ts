@@ -57,6 +57,8 @@ interface SnapshotRequestArgument {
 interface SnapshotApprovedRequest {
   readonly module: ClosedJsonSnapshotModule;
   readonly call: EsTreeNode;
+  readonly preludeLetSymbols?: ReadonlySet<SymbolDescriptor>;
+  readonly urlRead?: EsTreeNode;
 }
 
 interface SnapshotClientBinding {
@@ -710,17 +712,38 @@ const hasClosedSnapshotRequestOptions = (
   );
 };
 
-const getClosedSnapshotProviderPreludeLetSymbols = (
+const getClosedSnapshotProviderPreludeRequest = (
   declarations: ReadonlyArray<EsTreeNode>,
   request: EsTreeNode,
   module: ClosedJsonSnapshotModule,
   owners: ReadonlyArray<EsTreeNode>,
+  clients: ReadonlyMap<SymbolDescriptor, SnapshotClientBinding>,
   argument?: SnapshotRequestArgument,
-): ReadonlySet<SymbolDescriptor> | null => {
+): SnapshotApprovedRequest | null => {
   const preludeLetSymbols = new Set<SymbolDescriptor>();
-  if (declarations.length === 0) return preludeLetSymbols;
+  if (declarations.length === 0) return { module, call: request, preludeLetSymbols };
   if (declarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT)
     return null;
+  const requestMember = request.type === "CallExpression" ? request.callee : null;
+  const clientSymbol =
+    requestMember?.type === "MemberExpression" && requestMember.object.type === "Identifier"
+      ? module.scopes.symbolFor(requestMember.object)
+      : null;
+  const urlRead =
+    request.type === "CallExpression" &&
+    !request.optional &&
+    requestMember?.type === "MemberExpression" &&
+    !requestMember.optional &&
+    !requestMember.computed &&
+    getStaticPropertyName(requestMember) === "get" &&
+    clientSymbol &&
+    clients.has(clientSymbol) &&
+    request.arguments.length === 2 &&
+    request.arguments[0]?.type === "Identifier"
+      ? request.arguments[0]
+      : null;
+  const urlSymbol = urlRead && module.scopes.symbolFor(urlRead);
+  let approvedUrlRead: EsTreeNode | undefined;
   const recordBySymbol = new Map<SymbolDescriptor, boolean>();
   const approvedReferences = new Set<EsTreeNode>();
   const isPrimitive = (expression: EsTreeNode, depth = 0): boolean => {
@@ -746,13 +769,21 @@ const getClosedSnapshotProviderPreludeLetSymbols = (
     const symbol = module.scopes.symbolFor(declaration.id);
     if (!symbol || symbol.bindingIdentifier !== declaration.id) return null;
     const statement = declaration.parent;
-    if (statement?.type === "VariableDeclaration" && statement.kind === "let") {
+    const isUrlBinding =
+      symbol === urlSymbol &&
+      symbol.kind === "const" &&
+      statement?.type === "VariableDeclaration" &&
+      statement.kind === "const" &&
+      declaration.init?.type === "Literal" &&
+      typeof declaration.init.value === "string" &&
+      isSnapshotPrimitiveLiteral(declaration.init);
+    if (statement?.type === "VariableDeclaration" && (statement.kind === "let" || isUrlBinding)) {
       const body = statement.parent;
       const owner = body?.parent;
       const scope = owner && module.scopes.ownScopeFor(owner);
       const sameNameSymbols = scope?.symbols.filter((candidate) => candidate.name === symbol.name);
       if (
-        symbol.kind !== "let" ||
+        symbol.kind !== statement.kind ||
         symbol.declarationNode !== declaration ||
         symbol.name !== declaration.id.name ||
         symbol.initializer !== declaration.init ||
@@ -778,6 +809,15 @@ const getClosedSnapshotProviderPreludeLetSymbols = (
       )
         return null;
     } else if (symbol.kind !== "const") return null;
+    if (isUrlBinding) {
+      const references = getActiveSnapshotReferences(symbol);
+      if (
+        references.length !== 1 ||
+        references[0]?.flag !== "read" ||
+        references[0].identifier !== urlRead
+      )
+        return null;
+    }
     const initializer = declaration.init && stripParenExpression(declaration.init);
     if (!initializer || initializer.type === "Identifier") return null;
     const isRecord = initializer.type === "ObjectExpression";
@@ -816,17 +856,20 @@ const getClosedSnapshotProviderPreludeLetSymbols = (
     } else if (!isPrimitive(initializer)) return null;
     recordBySymbol.set(symbol, isRecord);
     if (symbol.kind === "let") preludeLetSymbols.add(symbol);
+    if (isUrlBinding && urlRead) approvedUrlRead = urlRead;
   }
   walkAst(request, (node) => {
     approvedReferences.add(node);
   });
-  return [...recordBySymbol.keys()].every((symbol) =>
-    getActiveSnapshotReferences(symbol).every(
-      (reference) => reference.flag === "read" && approvedReferences.has(reference.identifier),
-    ),
+  if (
+    ![...recordBySymbol.keys()].every((symbol) =>
+      getActiveSnapshotReferences(symbol).every(
+        (reference) => reference.flag === "read" && approvedReferences.has(reference.identifier),
+      ),
+    )
   )
-    ? preludeLetSymbols
-    : null;
+    return null;
+  return { module, call: request, preludeLetSymbols, urlRead: approvedUrlRead };
 };
 
 const getImportSource = (symbol: SymbolDescriptor): string | null => {
@@ -937,9 +980,14 @@ const isClientRequest = (
   argument?: SnapshotRequestArgument,
   boundAlternatives = false,
   allowsDefaultResponse = false,
-  preludeLetSymbols?: ReadonlySet<SymbolDescriptor>,
+  approvedRequest?: SnapshotApprovedRequest,
 ): boolean => {
   if (call.type !== "CallExpression" || call.optional) return false;
+  const requestContext =
+    approvedRequest?.module === module && approvedRequest.call === call
+      ? approvedRequest
+      : undefined;
+  const preludeLetSymbols = requestContext?.preludeLetSymbols;
   const callee = call.callee;
   if (callee.type === "Identifier") {
     const symbol = module.scopes.symbolFor(callee);
@@ -982,7 +1030,8 @@ const isClientRequest = (
     method === "get" &&
     call.arguments.length === 2 &&
     Boolean(call.arguments[0] && call.arguments[1]) &&
-    isInertRequestValue(call.arguments[0], module, 0, true, argument, preludeLetSymbols) &&
+    (requestContext?.urlRead === call.arguments[0] ||
+      isInertRequestValue(call.arguments[0], module, 0, true, argument, preludeLetSymbols)) &&
     hasClosedSnapshotRequestOptions(
       call.arguments[1],
       module,
@@ -1679,15 +1728,16 @@ export const isClosedJsonSnapshotProvider = ({
     preludeDeclarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT
   )
     return false;
-  const preludeLetSymbols = getClosedSnapshotProviderPreludeLetSymbols(
+  const preludeRequest = getClosedSnapshotProviderPreludeRequest(
     preludeDeclarations.filter((declaration) => declaration !== forwardingDeclaration),
     chain.callee.object,
     module,
     [helperFunction, executor],
+    clients,
     argument,
   );
   if (
-    !preludeLetSymbols ||
+    !preludeRequest ||
     !isClientRequest(
       chain.callee.object,
       module,
@@ -1695,7 +1745,7 @@ export const isClosedJsonSnapshotProvider = ({
       argument,
       Boolean(helperBody?.declarations.length || executorBody?.declarations.length),
       allowsAxiosDefaultResponseSnapshot,
-      preludeLetSymbols,
+      preludeRequest,
     )
   )
     return false;

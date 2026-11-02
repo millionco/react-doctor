@@ -106,6 +106,124 @@ afterEach(() => {
 });
 
 describe("isClosedJsonSnapshotProvider", () => {
+  it("equates the retained local const string URL with its inline literal", () => {
+    for (const placement of ["helper", "executor"])
+      for (const url of ["url", "'/catalog'"]) {
+        const source = `import axios from 'axios'; export const load = () => {
+          ${placement === "helper" ? "const url = '/catalog';" : ""}
+          return new Promise((resolve, reject) => {
+            ${placement === "executor" ? "const url = '/catalog';" : ""}
+            axios.get(${url}, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject);
+          });
+        };`;
+        expect(checkProvider(source)).toBe(true);
+      }
+  });
+
+  it("retains let option and const catch proofs with the exact URL request context", () => {
+    const source = `import axios from 'axios'; export const load = options => {
+      const endpoint = '/catalog';
+      let requestOptions = { ...options, responseType: 'json' };
+      return new Promise((resolve, reject) => {
+        const onFailure = error => reject(error);
+        axios.get(endpoint, requestOptions).then(response => resolve(response.data)).catch(onFailure);
+      });
+    };`;
+    const caller = "import { load } from './provider'; load({ timeout: 100 });";
+    expect(checkProvider(source, {}, [], caller)).toBe(true);
+    expect(checkProvider(source, {}, ["./provider.js"], caller)).toBe(false);
+  });
+
+  it.each([
+    "var url = '/catalog';",
+    "const baseUrl = '/catalog'; const url = baseUrl;",
+    "const url = 42;",
+    "const url = `/catalog`;",
+    "const url = runtimeUrl;",
+    "const url = makeUrl();",
+    "const before = { url }; const url = '/catalog';",
+    "const url = '/catalog'; const unused = { url };",
+    "const url = '/catalog'; publish(url);",
+    "const url = '/catalog'; const capture = () => url;",
+    "const url = '/catalog'; url = '/other';",
+  ])("refuses nonliteral, forward, written, captured or extra URL uses: %s", (prelude) => {
+    const source = `import axios from 'axios'; export const load = () => {
+      ${prelude}
+      return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(checkProvider(source)).toBe(false);
+  });
+
+  it("keeps exact URL and client binding identity under shadowing", () => {
+    const source = `import axios from 'axios'; const url = '/outer'; export const load = () => {
+      const url = '/catalog';
+      return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(checkProvider(source)).toBe(true);
+    expect(checkProvider(source.replace("const url = '/catalog'", "let url = '/catalog'"))).toBe(
+      false,
+    );
+    expect(checkProvider(source.replace("load = ()", "load = (axios)"))).toBe(false);
+  });
+
+  it("requires authoritative unique const URL scope evidence", () => {
+    const source = `import axios from 'axios'; export const load = () => {
+      const url = '/catalog';
+      return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(checkProvider(source)).toBe(true);
+    for (const mutation of ["duplicate", "wrong-index"])
+      expect(
+        checkProvider(source, {}, [], undefined, false, false, (module, helperFunction) => {
+          const scope = module.scopes.ownScopeFor(helperFunction);
+          const symbol = scope?.symbols.find((candidate) => candidate.name === "url");
+          expect(scope).toBeDefined();
+          expect(symbol).toBeDefined();
+          if (!scope || !symbol) return;
+          if (mutation === "duplicate") scope.symbols.push({ ...symbol, kind: "parameter" });
+          if (mutation === "wrong-index")
+            scope.symbolsByName.set(symbol.name, { ...symbol, kind: "parameter" });
+        }),
+      ).toBe(false);
+  });
+
+  it("does not transfer the URL witness to another module or call", () => {
+    const source = `import axios from 'axios'; export const load = () => {
+      const url = '/catalog';
+      return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(
+      checkProvider(source, {
+        "other.js": "import axios from 'axios'; axios.get('/other', { responseType: 'json' });",
+      }),
+    ).toBe(true);
+    expect(
+      checkProvider(source, {
+        "other.js":
+          "import axios from 'axios'; const url = '/other'; axios.get(url, { responseType: 'json' });",
+      }),
+    ).toBe(false);
+    expect(checkProvider(source.replace(".get(url,", ".request(url,"))).toBe(false);
+  });
+
+  it("retains simple-owner, initialization-order and response-mode boundaries for URL witnesses", () => {
+    const source = `import axios from 'axios'; export const load = (unused = null) => {
+      const url = '/catalog';
+      return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); });
+    };`;
+    expect(checkProvider(source)).toBe(false);
+    expect(checkProvider(source.replace(".get(url,", ".get('/catalog',"))).toBe(true);
+    const late =
+      "import axios from 'axios'; export const load = () => new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); const url = '/catalog'; });";
+    expect(checkProvider(late)).toBe(false);
+    const plain = source.replace("load = (unused = null)", "load = ()");
+    expect(checkProvider(plain.replace("'json'", "'arraybuffer'"))).toBe(false);
+    expect(checkProvider(plain.replace("'json'", "'text'"))).toBe(false);
+    expect(checkProvider(plain.replace("'json'", "'text'"), {}, [], undefined, false, true)).toBe(
+      true,
+    );
+  });
+
   it.each([
     [
       "let timeout = 100;",
@@ -1045,13 +1163,9 @@ describe("isClosedJsonSnapshotProvider", () => {
   it.each([
     "const outside = '/catalog'; export const load = () => { const url = outside; return new Promise((resolve, reject) => { axios({ url, responseType: 'json' }).then(response => resolve(response.data)).catch(reject); }); };",
     "const outside = { url: '/catalog' }; export const load = () => { const requestOptions = { ...outside, responseType: 'json' }; return new Promise((resolve, reject) => { axios(requestOptions).then(response => resolve(response.data)).catch(reject); }); };",
-    "export const load = () => { const url = '/catalog'; return new Promise((resolve, reject) => { axios.get(url, { responseType: 'json' }).then(response => resolve(response.data)).catch(reject); }); };",
-  ])(
-    "keeps module inputs and unsupported local URL aliases outside the prelude proof: %s",
-    (declaration) => {
-      expect(checkProvider(`import axios from 'axios'; ${declaration}`)).toBe(false);
-    },
-  );
+  ])("keeps module inputs outside the prelude proof: %s", (declaration) => {
+    expect(checkProvider(`import axios from 'axios'; ${declaration}`)).toBe(false);
+  });
 
   it("retains the local-record refusal for a cross-module imported client", () => {
     expect(

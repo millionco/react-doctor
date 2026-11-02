@@ -580,6 +580,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
       collectInkVersionDependencies,
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
+    ["class-component-missing-component-will-unmount-teardown", collectImportedValueDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],

@@ -514,7 +514,7 @@ export const buttonHasType = defineRule({
   title: "Button missing explicit type",
   severity: "warn",
   recommendation:
-    'Set an explicit button `type` so plain buttons do not submit forms by accident: `type="button"`, `"submit"`, or `"reset"`.',
+    'Set `type="button"` for non-submit controls, or `"submit"`/`"reset"` for form actions. Curated React Doctor scans check missing types only with a source-visible form association; upstream plugin mode has no form-owner restriction. Both modes check explicit invalid types.',
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);

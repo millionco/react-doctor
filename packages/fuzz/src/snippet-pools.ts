@@ -576,6 +576,7 @@ export const JSX_ATTRIBUTE_POOL = [
   `onChange={handleChange}`,
   `onMouseEnter={() => setIsOpen(true)}`,
   `ref={(node) => () => handle(node)}`,
+  `ref={(node) => { if (node) containerRef.current.set("tile", node); else containerRef.current.delete("tile"); return () => containerRef.current.delete("tile"); }}`,
   `style="color: red"`,
   `style={{ color: "red" }}`,
   `style={{ width: state }}`,

@@ -52,6 +52,7 @@ interface RandomErrorProseAnalysis {
   providerCandidates: EsTreeNode[];
   catchClauses: EsTreeNode[];
   providerContradictions: Map<EsTreeNode | null, boolean>;
+  returnedValuesByOwner: WeakMap<EsTreeNode, EsTreeNode | null>;
   scopes: ScopeAnalysis;
 }
 
@@ -360,53 +361,54 @@ const hasEnclosingSecurityName = (
 
 const hasSecurityOutputConsumer = (
   call: EsTreeNode,
-  scopes: ScopeAnalysis,
+  analysis: RandomErrorProseAnalysis,
   contextPattern: RegExp,
   sourceText: string,
 ): boolean => {
+  const { scopes, returnedValuesByOwner } = analysis;
   const owner = findEnclosingFunction(call);
   const consumers: EsTreeNode[] = [];
-  const bodyStatements =
-    owner && isFunctionLike(owner) && owner.body.type === "BlockStatement" ? owner.body.body : [];
-  const lastStatement = bodyStatements.at(-1);
-  const returnExpression = owner
-    ? (getSingleReturnExpression(owner) ??
-      (lastStatement?.type === "ReturnStatement" ? lastStatement.argument : null))
-    : null;
-  const returnedSymbols = new Set<SymbolDescriptor>();
-  let returnedValue = returnExpression && stripParenExpression(returnExpression);
-  while (returnedValue?.type === "Identifier") {
-    const symbol = scopes.symbolFor(returnedValue);
-    if (
-      !symbol ||
-      symbol.kind !== "const" ||
-      !symbol.initializer ||
-      returnedSymbols.has(symbol) ||
-      symbol.references.some((reference) => reference.flag !== "read") ||
-      findEnclosingFunction(symbol.bindingIdentifier) !== owner
-    )
-      break;
-    returnedSymbols.add(symbol);
-    returnedValue = stripParenExpression(symbol.initializer);
+  if (owner && !returnedValuesByOwner.has(owner)) {
+    const bodyStatements =
+      isFunctionLike(owner) && owner.body.type === "BlockStatement" ? owner.body.body : [];
+    const lastStatement = bodyStatements.at(-1);
+    const returnExpression =
+      getSingleReturnExpression(owner) ??
+      (lastStatement?.type === "ReturnStatement" ? lastStatement.argument : null);
+    const returnedSymbols = new Set<SymbolDescriptor>();
+    let returnedValue = returnExpression && stripParenExpression(returnExpression);
+    while (returnedValue?.type === "Identifier") {
+      const symbol = scopes.symbolFor(returnedValue);
+      if (
+        !symbol ||
+        symbol.kind !== "const" ||
+        !symbol.initializer ||
+        returnedSymbols.has(symbol) ||
+        symbol.references.some((reference) => reference.flag !== "read") ||
+        findEnclosingFunction(symbol.bindingIdentifier) !== owner
+      )
+        break;
+      returnedSymbols.add(symbol);
+      returnedValue = stripParenExpression(symbol.initializer);
+    }
+    const hasSupportedReturn =
+      isFunctionLike(owner) &&
+      !owner.async &&
+      !owner.generator &&
+      owner.params.every((parameter) => parameter.type === "Identifier") &&
+      bodyStatements.every(
+        (bodyStatement) =>
+          bodyStatement === lastStatement ||
+          (bodyStatement.type === "VariableDeclaration" &&
+            bodyStatement.kind === "const" &&
+            bodyStatement.declarations.every((declaration) => {
+              const symbol = scopes.symbolFor(declaration.id);
+              return symbol !== null && returnedSymbols.has(symbol);
+            })),
+      );
+    returnedValuesByOwner.set(owner, hasSupportedReturn ? returnedValue : null);
   }
-  if (
-    owner &&
-    isFunctionLike(owner) &&
-    !owner.async &&
-    !owner.generator &&
-    owner.params.every((parameter) => parameter.type === "Identifier") &&
-    returnedValue === call &&
-    bodyStatements.every(
-      (bodyStatement) =>
-        bodyStatement === lastStatement ||
-        (bodyStatement.type === "VariableDeclaration" &&
-          bodyStatement.kind === "const" &&
-          bodyStatement.declarations.every((declaration) => {
-            const symbol = scopes.symbolFor(declaration.id);
-            return symbol !== null && returnedSymbols.has(symbol);
-          })),
-    )
-  ) {
+  if (owner && returnedValuesByOwner.get(owner) === call) {
     for (const symbol of getFunctionBindingSymbols(owner, scopes)) {
       if (!symbol.initializer || stripParenExpression(symbol.initializer) !== owner) continue;
       const aliasSymbols = collectConstAliasSymbols(symbol, scopes);
@@ -479,6 +481,9 @@ const hasSecurityOutputConsumer = (
     })
   ) {
     const aliasSymbols = collectConstAliasSymbols(classSymbol, scopes);
+    const aliasBindingIdentifiers = new Set(
+      aliasSymbols.map((aliasSymbol) => aliasSymbol.bindingIdentifier),
+    );
     const classConsumers: EsTreeNode[] = [];
     const hasUnsupportedClassUse = aliasSymbols.some((aliasSymbol) =>
       aliasSymbol.references.some((reference) => {
@@ -487,7 +492,7 @@ const hasSecurityOutputConsumer = (
         const parent = referenceRoot.parent;
         if (parent?.type === "ExportSpecifier" && parent.local === referenceRoot) return false;
         if (parent?.type === "VariableDeclarator" && parent.init === referenceRoot)
-          return !aliasSymbols.some((alias) => alias.bindingIdentifier === parent.id);
+          return !aliasBindingIdentifiers.has(parent.id);
         if (parent?.type !== "NewExpression" || parent.callee !== referenceRoot) return true;
         const constructionRoot = findTransparentExpressionRoot(parent);
         const member = constructionRoot.parent;
@@ -685,6 +690,7 @@ export const createRandomErrorProseFilter = ({
             providerCandidates,
             catchClauses,
             providerContradictions: new Map(),
+            returnedValuesByOwner: new WeakMap(),
             scopes: {
               ...scopeAnalysis,
               isGlobalReference: (identifier) => {
@@ -740,7 +746,7 @@ export const createRandomErrorProseFilter = ({
         !randomOwner ||
         !statement ||
         hasEnclosingSecurityName(call, contextPattern, sourceText) ||
-        hasSecurityOutputConsumer(call, scopes, contextPattern, sourceText)
+        hasSecurityOutputConsumer(call, analysis, contextPattern, sourceText)
       )
         return false;
       const evidence = collectOutputEvidence(call, scopes);

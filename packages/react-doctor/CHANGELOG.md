@@ -1,5 +1,16 @@
 # react-doctor
 
+## 0.9.22
+
+### Patch Changes
+
+- [#2327](https://github.com/millionco/react-doctor/pull/2327) [`49ee624`](https://github.com/millionco/react-doctor/commit/49ee624f171fce1a6cf479489a4125ea385898ab) Thanks [@aidenybai](https://github.com/aidenybai)! - Pin `eslint-plugin-react-hooks` to 7.1.1, the version the lockfile resolves, so `react-hooks-js/*` diagnostics do not change when a new plugin release ships.
+
+- [#2328](https://github.com/millionco/react-doctor/pull/2328) [`13ff2a0`](https://github.com/millionco/react-doctor/commit/13ff2a07484b71dc6f155d829189bd8d37a15326) Thanks [@aidenybai](https://github.com/aidenybai)! - `--scope changed --include-untracked` now treats a tracked file that was deleted and recreated at an untracked path as a rename, so its existing findings match the base instead of being reported as new and fixed.
+
+- Updated dependencies [[`ad51b5a`](https://github.com/millionco/react-doctor/commit/ad51b5a6b1a67106fce8015439f868940cc884f4)]:
+  - oxlint-plugin-react-doctor@0.9.22
+
 ## 0.9.21
 
 ### Patch Changes

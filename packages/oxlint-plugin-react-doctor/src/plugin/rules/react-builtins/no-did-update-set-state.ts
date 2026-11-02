@@ -1,3 +1,4 @@
+import { hasEmptyRecordComparatorConvergence } from "./utils/has-empty-record-comparator-convergence.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { collectMutationReceiverKinds } from "../../utils/collect-mutation-receiver-kinds.js";
@@ -394,6 +395,77 @@ const isPreviousCurrentComparatorGuard = (
           haveMatchingStateSourcePaths(path, candidate),
       ),
   );
+};
+
+const isEmptyRecordComparatorGuard = (
+  test: EsTreeNode,
+  setStateCall: EsTreeNode,
+  previousSourcePaths: ReadonlyMap<number, StateSourcePath>,
+  scopes: ScopeAnalysis,
+  isTruthfulBranch: boolean,
+): boolean => {
+  let expression = stripParenExpression(test);
+  let expectsEqual = isTruthfulBranch;
+  while (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    expectsEqual = !expectsEqual;
+    expression = stripParenExpression(expression.argument);
+  }
+  if (
+    expectsEqual ||
+    !isNodeOfType(expression, "CallExpression") ||
+    expression.arguments.length !== 2
+  )
+    return false;
+  const [first, second] = expression.arguments;
+  if (
+    !first ||
+    !second ||
+    isNodeOfType(first, "SpreadElement") ||
+    isNodeOfType(second, "SpreadElement")
+  )
+    return false;
+  const firstPath = getStateSourcePath(first, previousSourcePaths, scopes);
+  const secondPath = getStateSourcePath(second, previousSourcePaths, scopes);
+  const fieldName = firstPath?.members[0];
+  if (
+    !firstPath ||
+    !secondPath ||
+    firstPath.domain !== "state" ||
+    firstPath.source === secondPath.source ||
+    firstPath.members.length !== 1 ||
+    !fieldName ||
+    !haveMatchingStateSourcePaths(firstPath, secondPath)
+  )
+    return false;
+  const previousPropsPaths = new Map(
+    [...previousSourcePaths].filter(([, path]) => path.domain === "props"),
+  );
+  return hasEmptyRecordComparatorConvergence({
+    comparison: expression,
+    fieldName,
+    setStateCall,
+    scopes,
+    isPropsTransitionUpdate: (call) => {
+      const owner = findEnclosingLifecycleFunction(call);
+      let child = call;
+      for (
+        let ancestor = child.parent;
+        ancestor && ancestor !== owner;
+        ancestor = ancestor.parent
+      ) {
+        if (
+          isNodeOfType(ancestor, "IfStatement") &&
+          child === ancestor.consequent &&
+          collectTruthfulGuardBranches(ancestor.test, scopes).every((branch) =>
+            isHistoricalToCurrentTransitionGuard(branch.terms, previousPropsPaths, scopes),
+          )
+        )
+          return true;
+        child = ancestor;
+      }
+      return false;
+    },
+  });
 };
 
 const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
@@ -1153,6 +1225,9 @@ const isTruthfulGuardTest = (
       branch.terms.some((term) =>
         isPreviousCurrentComparatorGuard(term, previousSourcePaths, scopes, true),
       ) ||
+      branch.terms.some((term) =>
+        isEmptyRecordComparatorGuard(term, setStateCall, previousSourcePaths, scopes, true),
+      ) ||
       isHistoricalToCurrentTransitionGuard(branch.terms, previousSourcePaths, scopes) ||
       branch.terms.some((term) =>
         isConvergentExactGuard(
@@ -1268,6 +1343,13 @@ const isInsideDiffGuard = (setStateCall: EsTreeNode, scopes: ScopeAnalysis): boo
           )
         : isDiffGuardTest(guardTest, paramNames, derivedNames, false) ||
           isPreviousCurrentComparatorGuard(guardTest, previousSourcePaths, scopes, false) ||
+          isEmptyRecordComparatorGuard(
+            guardTest,
+            setStateCall,
+            previousSourcePaths,
+            scopes,
+            false,
+          ) ||
           isConvergentExactGuard(
             guardTest,
             setStateCall,

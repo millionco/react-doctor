@@ -24,7 +24,7 @@ interface ParsedEffectSource {
   index: EffectSourceIndex;
 }
 
-const REFLECTION_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
+const REFLECTION_NAMES: ReadonlySet<string> = new Set([
   "eval",
   "require",
   "Function",
@@ -35,6 +35,13 @@ const REFLECTION_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
   "global",
   "window",
   "self",
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
 ]);
 
 const collectEffectSourceIndex = (sourceFile: ts.SourceFile): EffectSourceIndex => {
@@ -49,14 +56,26 @@ const collectEffectSourceIndex = (sourceFile: ts.SourceFile): EffectSourceIndex 
       const sameNameIdentifiers = identifiers.get(node.text) ?? new Set<ts.Identifier>();
       sameNameIdentifiers.add(node);
       identifiers.set(node.text, sameNameIdentifiers);
-      if (REFLECTION_IDENTIFIER_NAMES.has(node.text)) hasReflection = true;
+      if (REFLECTION_NAMES.has(node.text)) hasReflection = true;
     }
-    const memberName = ts.isPropertyAccessExpression(node)
-      ? node.name.text
-      : ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression)
-        ? node.argumentExpression.text
-        : null;
-    if (memberName === "constructor" || memberName === "prototype") hasReflection = true;
+    let memberName: string | undefined;
+    if (ts.isPropertyAccessExpression(node)) {
+      memberName = node.name.text;
+    } else if (ts.isElementAccessExpression(node)) {
+      const memberArgument = unwrapTypescriptExpression(node.argumentExpression);
+      if (ts.isStringLiteral(memberArgument)) memberName = memberArgument.text;
+      else hasReflection = true;
+    } else if (
+      ts.isBindingElement(node) &&
+      node.propertyName &&
+      ts.isStringLiteral(node.propertyName)
+    ) {
+      memberName = node.propertyName.text;
+    } else if (ts.isPropertyAssignment(node) && ts.isStringLiteral(node.name)) {
+      memberName = node.name.text;
+    }
+    if (memberName && REFLECTION_NAMES.has(memberName)) hasReflection = true;
+    if (ts.isComputedPropertyName(node)) hasReflection = true;
     if (ts.isWithStatement(node)) hasReflection = true;
     if (ts.isCallExpression(node)) {
       calls.push(node);

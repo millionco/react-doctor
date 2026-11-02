@@ -38,6 +38,25 @@ export const Example = () => {
 };
 `;
 
+const UNSAFE_REFLECTION_SOURCES = [
+  [
+    "legacy prototype getter",
+    '(async () => 0)().__proto__.__defineGetter__("constructor", () => { throw "synthetic"; });',
+  ],
+  [
+    "computed prototype getter",
+    '(async () => 0)()["__pro" + "to__"].__defineGetter__("constructor", () => { throw "synthetic"; });',
+  ],
+  [
+    "computed getter method",
+    '(async () => 0)().__proto__["__define" + "Getter__"]("constructor", () => { throw "synthetic"; });',
+  ],
+  [
+    "quoted destructuring assignment",
+    'let inherited, defineGetter; ({ "__proto__": inherited } = (async () => 0)()); ({ "__defineGetter__": defineGetter } = inherited); defineGetter.call(inherited, "constructor", () => { throw "synthetic"; });',
+  ],
+].map(([name, prefix]) => [name, `${prefix}\n${buildSource()}`]);
+
 const diagnosticAt = (source: string, needle = "refresh();") => {
   const prefix = source.slice(0, source.lastIndexOf(needle));
   return {
@@ -70,6 +89,9 @@ describe("shouldSuppressDeferredEffectStateDiagnostic", () => {
     ["positive numeric fallback", buildSource().replace("setValue(-1)", "setValue(+1)")],
     ["string literal producer", buildSource('async () => "ready"')],
     ["boolean producer", buildSource("async () => false")],
+    ["reflection name as an inert value", buildSource('async () => "__proto__"')],
+    ["ordinary static member", buildSource() + 'const unused = provider["label"];'],
+    ["wrapped static member", buildSource() + 'const unused = provider[("label" as string)];'],
     [
       "transparent expressions",
       buildSource().replace("setValue(await read())", "(setValue)((await (read)()) as number)"),
@@ -92,6 +114,7 @@ describe("shouldSuppressDeferredEffectStateDiagnostic", () => {
   });
 
   it.each([
+    ...UNSAFE_REFLECTION_SOURCES,
     ["nonasync producer", buildSource("() => { throw new Error('synthetic'); }")],
     ["producer with a synchronous setter", buildSource("async () => { setValue(7); return 1; }")],
     ["opaque producer call", buildSource("async () => notify()")],
@@ -196,6 +219,23 @@ describe("shouldSuppressDeferredEffectStateDiagnostic", () => {
     ["computed global reflection", buildSource() + "const unused = globalThis['Promise'];"],
     ["prototype access", buildSource() + "const unused = provider.prototype;"],
     ["computed constructor access", buildSource() + "const unused = provider['constructor'];"],
+    [
+      "wrapped constructor access",
+      buildSource() + 'const unused = provider[("constructor" as string)];',
+    ],
+    [
+      "destructured prototype access",
+      buildSource() + 'const { "__proto__": inherited } = provider;',
+    ],
+    ["dynamic member access", buildSource() + "const unused = provider[key];"],
+    ["template member access", buildSource() + "const unused = provider[`constructor`];"],
+    ["computed property name", buildSource() + "const unused = { [key]: 1 };"],
+    ...["__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"].map(
+      (memberName) => [
+        `legacy ${memberName} access`,
+        buildSource() + `const unused = provider["${memberName}"];`,
+      ],
+    ),
     ["unknown require provider", buildSource() + "const unused = () => require('react');"],
     ["optional helper call", buildSource().replace("void refresh();", "void refresh?.();")],
     ["optional producer call", buildSource().replace("await read()", "await read?.()")],
@@ -331,5 +371,14 @@ describe("shouldSuppressDeferredEffectStateDiagnostic", () => {
       number_of_rules: 1,
     });
     expect(parseOxlintOutput(unsafeStdout, buildProject(), temporaryRoot)).toHaveLength(1);
+    for (const [, reflectionSource] of UNSAFE_REFLECTION_SOURCES) {
+      fs.writeFileSync(path.join(temporaryRoot, "example.tsx"), reflectionSource);
+      const reflectionStdout = JSON.stringify({
+        diagnostics: [{ ...diagnostic, ...diagnosticAt(reflectionSource) }],
+        number_of_files: 1,
+        number_of_rules: 1,
+      });
+      expect(parseOxlintOutput(reflectionStdout, buildProject(), temporaryRoot)).toHaveLength(1);
+    }
   });
 });

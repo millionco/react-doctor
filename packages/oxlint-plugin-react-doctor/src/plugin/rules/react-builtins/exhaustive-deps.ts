@@ -2,6 +2,7 @@ import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import { findLiteralIndexDependencyCoverage } from "../../utils/find-literal-index-dependency-coverage.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
@@ -2456,14 +2457,23 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (isCoveredByDeclared) continue;
           missingCaptureKeys.push(captureKey);
         }
+        const literalIndexCoverage = findLiteralIndexDependencyCoverage({
+          callback: callbackToAnalyze ?? callbackArgument,
+          dependencies: depsArgument,
+          missingCaptureKeys,
+          scopes: context.scopes,
+        });
+        const reportableMissingCaptureKeys = missingCaptureKeys.filter(
+          (captureKey) => !literalIndexCoverage.has(captureKey),
+        );
         const shouldGroupMissingDeps = !hasLiteralDepElement;
-        if (missingCaptureKeys.length > 0 && shouldGroupMissingDeps) {
+        if (reportableMissingCaptureKeys.length > 0 && shouldGroupMissingDeps) {
           report({
             node: depsArgument,
-            message: buildMissingDepMessage(hookName, missingCaptureKeys.join(", ")),
+            message: buildMissingDepMessage(hookName, reportableMissingCaptureKeys.join(", ")),
           });
         } else {
-          for (const missingCaptureKey of missingCaptureKeys) {
+          for (const missingCaptureKey of reportableMissingCaptureKeys) {
             report({
               node: depsArgument,
               message: buildMissingDepMessage(hookName, missingCaptureKey),

@@ -5,6 +5,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { collectBindingAliases } from "./collect-binding-aliases.js";
+import { collectConstAliasSymbols } from "./collect-const-alias-symbols.js";
 import {
   isProvenGlobalNamespaceReference,
   isProvenGlobalObjectReference,
@@ -17,6 +18,7 @@ import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
 import { getNodeEndIndex } from "./get-node-end-index.js";
 import { getNodeStartIndex } from "./get-node-start-index.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
+import { getSingleReturnExpression } from "./get-single-return-expression.js";
 import { isAstDescendant } from "./is-ast-descendant.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isTypeScriptTypePosition } from "./is-typescript-type-position.js";
@@ -103,7 +105,9 @@ const findConsumingStatement = (node: EsTreeNode): EsTreeNode | null => {
       return current;
     current = current.parent;
   }
-  return null;
+  return current?.type === "ArrowFunctionExpression" && current.body.type !== "BlockStatement"
+    ? current.body
+    : null;
 };
 
 const collectOutputEvidence = (call: EsTreeNode, scopes: ScopeAnalysis): RandomOutputEvidence => {
@@ -354,6 +358,194 @@ const hasEnclosingSecurityName = (
   return false;
 };
 
+const hasSecurityOutputConsumer = (
+  call: EsTreeNode,
+  scopes: ScopeAnalysis,
+  contextPattern: RegExp,
+  sourceText: string,
+): boolean => {
+  const owner = findEnclosingFunction(call);
+  const consumers: EsTreeNode[] = [];
+  const bodyStatements =
+    owner && isFunctionLike(owner) && owner.body.type === "BlockStatement" ? owner.body.body : [];
+  const lastStatement = bodyStatements.at(-1);
+  const returnExpression = owner
+    ? (getSingleReturnExpression(owner) ??
+      (lastStatement?.type === "ReturnStatement" ? lastStatement.argument : null))
+    : null;
+  const returnedSymbols = new Set<SymbolDescriptor>();
+  let returnedValue = returnExpression && stripParenExpression(returnExpression);
+  while (returnedValue?.type === "Identifier") {
+    const symbol = scopes.symbolFor(returnedValue);
+    if (
+      !symbol ||
+      symbol.kind !== "const" ||
+      !symbol.initializer ||
+      returnedSymbols.has(symbol) ||
+      symbol.references.some((reference) => reference.flag !== "read") ||
+      findEnclosingFunction(symbol.bindingIdentifier) !== owner
+    )
+      break;
+    returnedSymbols.add(symbol);
+    returnedValue = stripParenExpression(symbol.initializer);
+  }
+  if (
+    owner &&
+    isFunctionLike(owner) &&
+    !owner.async &&
+    !owner.generator &&
+    owner.params.every((parameter) => parameter.type === "Identifier") &&
+    returnedValue === call &&
+    bodyStatements.every(
+      (bodyStatement) =>
+        bodyStatement === lastStatement ||
+        (bodyStatement.type === "VariableDeclaration" &&
+          bodyStatement.kind === "const" &&
+          bodyStatement.declarations.every((declaration) => {
+            const symbol = scopes.symbolFor(declaration.id);
+            return symbol !== null && returnedSymbols.has(symbol);
+          })),
+    )
+  ) {
+    for (const symbol of getFunctionBindingSymbols(owner, scopes)) {
+      if (!symbol.initializer || stripParenExpression(symbol.initializer) !== owner) continue;
+      const aliasSymbols = collectConstAliasSymbols(symbol, scopes);
+      if (
+        aliasSymbols.some((aliasSymbol) =>
+          aliasSymbol.references.some((reference) => reference.flag !== "read"),
+        )
+      )
+        continue;
+      for (const aliasSymbol of aliasSymbols) {
+        for (const reference of aliasSymbol.references) {
+          const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+          const invocation = referenceRoot.parent;
+          if (invocation?.type === "CallExpression" && invocation.callee === referenceRoot)
+            consumers.push(invocation);
+        }
+      }
+    }
+  }
+  const selectedClass = findEnclosingClass(call);
+  const statement = findConsumingStatement(call);
+  const assignment =
+    statement?.type === "ExpressionStatement" ? stripParenExpression(statement.expression) : null;
+  const target =
+    assignment?.type === "AssignmentExpression" &&
+    assignment.operator === "=" &&
+    stripParenExpression(assignment.right) === call
+      ? assignment.left
+      : null;
+  const propertyName =
+    target?.type === "MemberExpression" && target.object.type === "ThisExpression"
+      ? getStaticPropertyKeyName(target, { allowComputedString: true })
+      : null;
+  const classSymbol = selectedClass?.id && scopes.symbolFor(selectedClass.id);
+  if (
+    classSymbol &&
+    propertyName !== null &&
+    propertyName !== "__proto__" &&
+    owner?.parent?.type === "MethodDefinition" &&
+    owner.parent.kind === "constructor" &&
+    isFunctionLike(owner) &&
+    owner.body.type === "BlockStatement" &&
+    owner.body.body.every((constructorStatement) => constructorStatement === statement) &&
+    owner.params.every((parameter) => parameter.type === "Identifier") &&
+    findEnclosingClass(owner) === selectedClass &&
+    selectedClass !== null &&
+    !selectedClass.superClass &&
+    selectedClass.decorators.length === 0 &&
+    selectedClass.body.body.some(
+      (element) =>
+        element.type === "PropertyDefinition" &&
+        !element.static &&
+        !element.declare &&
+        getStaticPropertyKeyName(element, { allowComputedString: true }) === propertyName,
+    ) &&
+    selectedClass.body.body.every((element) => {
+      if (element.type !== "MethodDefinition" && element.type !== "PropertyDefinition")
+        return false;
+      if (
+        element.decorators.length > 0 ||
+        getStaticPropertyKeyName(element, { allowComputedString: true }) === null
+      )
+        return false;
+      if (element.type === "PropertyDefinition")
+        return element.value === null || element.value.type === "Literal";
+      return (
+        (element.kind !== "get" && element.kind !== "set") ||
+        getStaticPropertyKeyName(element, { allowComputedString: true }) !== propertyName
+      );
+    })
+  ) {
+    const aliasSymbols = collectConstAliasSymbols(classSymbol, scopes);
+    const classConsumers: EsTreeNode[] = [];
+    const hasUnsupportedClassUse = aliasSymbols.some((aliasSymbol) =>
+      aliasSymbol.references.some((reference) => {
+        if (reference.flag !== "read") return true;
+        const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+        const parent = referenceRoot.parent;
+        if (parent?.type === "ExportSpecifier" && parent.local === referenceRoot) return false;
+        if (parent?.type === "VariableDeclarator" && parent.init === referenceRoot)
+          return !aliasSymbols.some((alias) => alias.bindingIdentifier === parent.id);
+        if (parent?.type !== "NewExpression" || parent.callee !== referenceRoot) return true;
+        const constructionRoot = findTransparentExpressionRoot(parent);
+        const member = constructionRoot.parent;
+        if (
+          member?.type !== "MemberExpression" ||
+          member.object !== constructionRoot ||
+          getStaticPropertyKeyName(member, { allowComputedString: true }) !== propertyName ||
+          isWithinAssignmentTarget(member)
+        )
+          return true;
+        classConsumers.push(member);
+        return false;
+      }),
+    );
+    if (!hasUnsupportedClassUse) consumers.push(...classConsumers);
+  }
+  return consumers.some((consumer) => {
+    const consumerRoot = findTransparentExpressionRoot(consumer);
+    const parent = consumerRoot.parent;
+    let nameNode: EsTreeNode | null = null;
+    if (
+      parent?.type === "VariableDeclarator" &&
+      parent.init === consumerRoot &&
+      parent.id.type === "Identifier"
+    )
+      nameNode = parent.id;
+    if (parent?.type === "AssignmentExpression" && parent.right === consumerRoot) {
+      if (parent.left.type === "Identifier") nameNode = parent.left;
+      if (
+        parent.left.type === "MemberExpression" &&
+        getStaticPropertyKeyName(parent.left, { allowComputedString: true }) !== null
+      )
+        nameNode = parent.left.property;
+    }
+    if (
+      parent?.type === "Property" &&
+      parent.value === consumerRoot &&
+      getStaticPropertyKeyName(parent, { allowComputedString: true }) !== null
+    )
+      nameNode = parent.key;
+    if (
+      parent?.type === "CallExpression" &&
+      parent.arguments.some((argument) => argument === consumerRoot)
+    ) {
+      if (parent.callee.type === "Identifier") nameNode = parent.callee;
+      if (
+        parent.callee.type === "MemberExpression" &&
+        getStaticPropertyKeyName(parent.callee, { allowComputedString: true }) !== null
+      )
+        nameNode = parent.callee.property;
+    }
+    return Boolean(
+      nameNode &&
+      contextPattern.test(sourceText.slice(getNodeStartIndex(nameNode), getNodeEndIndex(nameNode))),
+    );
+  });
+};
+
 const hasErrorProviderContradiction = (
   nodes: EsTreeNode[],
   lexicalOwner: EsTreeNode | null,
@@ -380,13 +572,16 @@ const hasErrorProviderContradiction = (
       }
       return isRelevantOwner && hasMissingRuntimeReference(node, scopes);
     }
-    if (
-      isRelevantOwner &&
-      node.type === "MemberExpression" &&
-      getStaticPropertyKeyName(node, { allowComputedString: true }) === "Error" &&
-      isWithinAssignmentTarget(node)
-    )
-      return true;
+    if (isRelevantOwner && node.type === "MemberExpression" && isWithinAssignmentTarget(node)) {
+      const propertyName = getStaticPropertyKeyName(node, { allowComputedString: true });
+      if (
+        propertyName === "Error" ||
+        (node.computed &&
+          propertyName === null &&
+          isProvenGlobalObjectReference(node.object, scopes))
+      )
+        return true;
+    }
     if (node.type === "CallExpression" || node.type === "NewExpression") {
       const callee = stripParenExpression(node.callee);
       if (
@@ -477,7 +672,8 @@ export const createRandomErrorProseFilter = ({
                 ERROR_PROVIDER_IDENTIFIER_NAMES.has(node.id.name)) ||
               (node.type === "Identifier" && ERROR_PROVIDER_IDENTIFIER_NAMES.has(node.name)) ||
               (node.type === "MemberExpression" &&
-                getStaticPropertyKeyName(node, { allowComputedString: true }) === "Error")
+                (getStaticPropertyKeyName(node, { allowComputedString: true }) === "Error" ||
+                  (node.computed && isWithinAssignmentTarget(node))))
             )
               providerCandidates.push(node);
           });
@@ -540,7 +736,12 @@ export const createRandomErrorProseFilter = ({
         return false;
       const randomOwner = findEnclosingFunction(call);
       const statement = findConsumingStatement(call);
-      if (!randomOwner || !statement || hasEnclosingSecurityName(call, contextPattern, sourceText))
+      if (
+        !randomOwner ||
+        !statement ||
+        hasEnclosingSecurityName(call, contextPattern, sourceText) ||
+        hasSecurityOutputConsumer(call, scopes, contextPattern, sourceText)
+      )
         return false;
       const evidence = collectOutputEvidence(call, scopes);
       if (evidence.hasUnsupportedDirectOutput) return false;

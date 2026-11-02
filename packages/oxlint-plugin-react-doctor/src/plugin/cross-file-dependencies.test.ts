@@ -942,3 +942,27 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+it("records Next Pages package, routing configuration and root-pages probes", () => {
+  const manifest = writeFixtureFile(
+    "package.json",
+    JSON.stringify({ dependencies: { next: "16.0.0" } }),
+  );
+  const page = writeFixtureFile(
+    "src/pages/index.tsx",
+    'import { useState } from "react"; const home = () => { useState(0); return <main />; }; export default home;',
+  );
+  const trace = collectFor(page, ["rules-of-hooks"]);
+  expect(trace?.contentPaths).toContain(manifest);
+  for (const filename of [
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.cjs",
+    "next.config.ts",
+    "next.config.mts",
+    "next.config.cts",
+    "pages",
+  ]) {
+    expect(trace?.existencePaths).toContain(fixturePath(filename));
+  }
+});

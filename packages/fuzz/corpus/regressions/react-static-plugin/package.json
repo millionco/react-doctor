@@ -1,0 +1,9 @@
+{
+  "name": "react-doctor-synthetic-static-plugin-regression",
+  "private": true,
+  "main": "browser.api.js",
+  "peerDependencies": {
+    "react": "^17.0.0",
+    "react-static": "^7.6.2"
+  }
+}

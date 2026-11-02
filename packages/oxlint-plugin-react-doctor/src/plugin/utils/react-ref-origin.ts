@@ -15,21 +15,13 @@ interface ResolveReactRefSymbolOptions {
 
 const REACT_REF_API_NAMES: ReadonlySet<string> = new Set(["createRef", "useRef"]);
 
-export const resolveReactRefSymbol = (
-  memberExpression: EsTreeNode,
+export const resolveReactRefObjectSymbol = (
+  node: EsTreeNode,
   scopes: ScopeAnalysis,
   options: ResolveReactRefSymbolOptions = {},
 ): SymbolDescriptor | null => {
-  const receiver = isNodeOfType(memberExpression, "MemberExpression")
-    ? stripParenExpression(memberExpression.object)
-    : null;
-  if (
-    !isNodeOfType(memberExpression, "MemberExpression") ||
-    getStaticPropertyName(memberExpression) !== "current" ||
-    !isNodeOfType(receiver, "Identifier")
-  ) {
-    return null;
-  }
+  const receiver = stripParenExpression(node);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
   const symbol = resolveConstIdentifierAlias(receiver, scopes);
   if (!symbol?.initializer) return null;
   const initializer = stripParenExpression(symbol.initializer);
@@ -46,6 +38,20 @@ export const resolveReactRefSymbol = (
   )
     ? symbol
     : null;
+};
+
+export const resolveReactRefSymbol = (
+  memberExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  options: ResolveReactRefSymbolOptions = {},
+): SymbolDescriptor | null => {
+  if (
+    !isNodeOfType(memberExpression, "MemberExpression") ||
+    getStaticPropertyName(memberExpression) !== "current"
+  ) {
+    return null;
+  }
+  return resolveReactRefObjectSymbol(memberExpression.object, scopes, options);
 };
 
 export const resolveReactRefCurrentOriginSymbol = (

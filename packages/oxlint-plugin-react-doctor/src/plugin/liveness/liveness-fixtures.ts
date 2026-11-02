@@ -255,6 +255,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     settings: { "react-doctor": { forbidElements: { forbid: ["button"] } } },
     forceJsx: true,
   },
+  "forwarded-set-state-in-effect": {
+    code: 'import { useEffect, useState } from "react"; const assign = (setter, next) => setter(next); const C = ({ id }) => { const [value, setValue] = useState(null); useEffect(() => { assign(setValue, id); }, [id]); return value; };',
+  },
   "forward-ref-uses-ref": {
     code: "\n\t\t\t        import { forwardRef } from 'react'\n\t\t\t        forwardRef((props) => {\n\t\t\t          return null;\n\t\t\t        });\n\t\t\t      ",
     forceJsx: true,

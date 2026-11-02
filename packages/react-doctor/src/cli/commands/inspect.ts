@@ -551,7 +551,11 @@ export const inspectAction = async (
       baselineRef ??
       (savedBaseline?.schemaVersion === 3 ? savedBaseline.sourceRevision : undefined);
     const baselineDiffPlan = comparisonPlanRef
-      ? await getBaselineDiffPlan(resolvedDirectory, comparisonPlanRef)
+      ? await getBaselineDiffPlan(
+          resolvedDirectory,
+          comparisonPlanRef,
+          includeUntracked ? diffInfo?.changedFiles : undefined,
+        )
       : null;
 
     // `--scope lines`: per-file changed line ranges (repo-relative). Working-tree

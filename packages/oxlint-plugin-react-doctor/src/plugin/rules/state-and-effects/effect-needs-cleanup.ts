@@ -1,7 +1,7 @@
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
-import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
+import { getNativeTimerCalleeName } from "../../utils/get-native-timer-callee-name.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
@@ -71,6 +71,7 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -199,7 +200,7 @@ interface EffectRetainedInvocation {
 }
 
 interface FileReleaseCallIndex {
-  identifierCallsByName: Map<string, EsTreeNode[]>;
+  timerCleanupCallsByName: Map<string, EsTreeNode[]>;
   potentialNonTimerCalls: EsTreeNode[];
 }
 
@@ -1533,10 +1534,7 @@ const collectEffectOwnedResourceCallbackFunctions = (
       if (child !== ownerFunction.body && isFunctionLike(child)) return false;
       if (!isNodeOfType(child, "CallExpression")) return;
       let callbackArgument: EsTreeNode | null = null;
-      if (
-        isNodeOfType(child.callee, "Identifier") &&
-        isNativeTimerIdentifier(child.callee, context.scopes)
-      ) {
+      if (getNativeTimerCalleeName(child.callee, context.scopes) !== null) {
         const timerCallback = child.arguments?.[0];
         callbackArgument = timerCallback && isAstNode(timerCallback) ? timerCallback : null;
       } else {
@@ -1612,12 +1610,10 @@ const findSubscribeLikeUsages = (
 
     if (!isNodeOfType(child, "CallExpression")) return;
 
-    if (
-      isNodeOfType(child.callee, "Identifier") &&
-      isNativeTimerIdentifier(child.callee, context.scopes)
-    ) {
+    const timerCalleeName = getNativeTimerCalleeName(child.callee, context.scopes);
+    if (timerCalleeName !== null) {
       if (
-        child.callee.name === "setTimeout" &&
+        timerCalleeName === "setTimeout" &&
         (isDeferredTeardownTimer(child) || isShortInertRefTimer(child, context))
       ) {
         return;
@@ -1625,10 +1621,10 @@ const findSubscribeLikeUsages = (
       usages.push({
         kind: "timer",
         node: child,
-        resourceName: child.callee.name,
+        resourceName: timerCalleeName,
         handleKey: findAssignedResourceKey(child, context, true),
         receiverKey: null,
-        registrationVerbName: child.callee.name,
+        registrationVerbName: timerCalleeName,
         eventKey: null,
         handlerKey: null,
       });
@@ -3112,9 +3108,10 @@ const isDirectExhaustiveTimerCollectionCleanup = (
     cleanupCallee.computed ||
     !isNodeOfType(cleanupCallee.property, "Identifier") ||
     cleanupCallee.property.name !== "forEach" ||
-    !isNodeOfType(cleanupCallback, "Identifier") ||
-    !TIMER_CLEANUP_CALLEE_NAMES.has(cleanupCallback.name) ||
-    !context.scopes.isGlobalReference(cleanupCallback) ||
+    !cleanupCallback ||
+    !isAstNode(cleanupCallback) ||
+    getNativeTimerCalleeName(cleanupCallback, context.scopes, TIMER_CLEANUP_CALLEE_NAMES) ===
+      null ||
     retainedCollectionKey === null ||
     retainedCollectionKey !== resolveExpressionKey(cleanupCallee.object, context)
   ) {
@@ -5479,19 +5476,17 @@ const getOwnedFunctionReference = (
   if (
     !isNodeOfType(schedulerCall, "CallExpression") ||
     !schedulerCall.arguments.some((argument) => argument === referenceRoot) ||
-    !isNodeOfType(schedulerCall.callee, "Identifier") ||
-    schedulerCall.callee.name !== "setTimeout" ||
-    !context.scopes.isGlobalReference(schedulerCall.callee)
+    getNativeTimerCalleeName(schedulerCall.callee, context.scopes) !== "setTimeout"
   ) {
     return null;
   }
   const schedulerUsage: SubscribeLikeUsage = {
     kind: "timer",
     node: schedulerCall,
-    resourceName: schedulerCall.callee.name,
+    resourceName: "setTimeout",
     handleKey: findAssignedResourceKey(schedulerCall, context),
     receiverKey: null,
-    registrationVerbName: schedulerCall.callee.name,
+    registrationVerbName: "setTimeout",
     eventKey: null,
     handlerKey: null,
   };
@@ -5592,6 +5587,25 @@ const hasGuardedDeferredCleanup = (
   ) {
     return false;
   }
+  if (usage.kind === "subscribe") {
+    const promiseCallee = isNodeOfType(promiseChainCall, "CallExpression")
+      ? stripParenExpression(promiseChainCall.callee)
+      : null;
+    if (
+      findEnclosingFunction(promiseChainCall) !== callback ||
+      !isNodeOfType(promiseCallee, "MemberExpression") ||
+      !isSubscriptionPromise(promiseCallee.object, context.scopes)
+    ) {
+      return false;
+    }
+    const callbackBinding = isNodeOfType(usageFunction, "FunctionExpression")
+      ? usageFunction.id
+      : null;
+    if (callbackBinding) {
+      const callbackSymbol = context.scopes.symbolFor(callbackBinding);
+      if (!callbackSymbol || callbackSymbol.references.length > 0) return false;
+    }
+  }
   const usageExpression = findTransparentExpressionRoot(usage.node);
   const usageAssignment = usageExpression.parent;
   if (
@@ -5666,7 +5680,18 @@ const hasGuardedDeferredCleanup = (
           });
           if (!hasDirectHandleOperand) return;
         }
-        let releaseAnchor: EsTreeNode = handleGuard ?? child;
+        const isEarlyHandleExit =
+          usage.kind === "subscribe" &&
+          handleGuard !== null &&
+          !isAstDescendant(child, handleGuard.consequent);
+        if (isEarlyHandleExit && handleGuard) {
+          globalReleaseProofs.push({
+            anchor: handleGuard.consequent,
+            call: child,
+            handleGuard: null,
+          });
+        }
+        let releaseAnchor: EsTreeNode = isEarlyHandleExit ? child : (handleGuard ?? child);
         if (
           !handleGuard &&
           usage.kind === "subscribe" &&
@@ -5680,7 +5705,7 @@ const hasGuardedDeferredCleanup = (
         globalReleaseProofs.push({
           anchor: releaseAnchor,
           call: child,
-          handleGuard,
+          handleGuard: isEarlyHandleExit ? null : handleGuard,
         });
       }
     });
@@ -5755,7 +5780,10 @@ const hasGuardedDeferredCleanup = (
     return false;
   }
   let usageAncestor: EsTreeNode | null | undefined = usage.node.parent;
-  while (usageAncestor && usageAncestor !== usageFunction) {
+  while (
+    usageAncestor &&
+    usageAncestor !== (usage.kind === "subscribe" ? callback : usageFunction)
+  ) {
     if (
       isNodeOfType(usageAncestor, "ForStatement") ||
       isNodeOfType(usageAncestor, "ForInStatement") ||
@@ -7917,11 +7945,11 @@ const doesReleaseCallMatchUsage = (
 
   if (usage.kind === "timer") {
     if (
-      !isNodeOfType(callee, "Identifier") ||
-      !(usage.registrationVerbName === "requestAnimationFrame"
-        ? callee.name === "cancelAnimationFrame"
-        : TIMER_CLEANUP_CALLEE_NAMES.has(callee.name)) ||
-      !context.scopes.isGlobalReference(callee)
+      usage.registrationVerbName === "requestAnimationFrame"
+        ? !isNodeOfType(callee, "Identifier") ||
+          callee.name !== "cancelAnimationFrame" ||
+          !context.scopes.isGlobalReference(callee)
+        : getNativeTimerCalleeName(callee, context.scopes, TIMER_CLEANUP_CALLEE_NAMES) === null
     ) {
       return false;
     }
@@ -8755,7 +8783,7 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   }
   let releaseCallIndex = indexesByProgram.get(programNode);
   if (!releaseCallIndex) {
-    const identifierCallsByName = new Map<string, EsTreeNode[]>();
+    const timerCleanupCallsByName = new Map<string, EsTreeNode[]>();
     const potentialNonTimerCalls: EsTreeNode[] = [];
     walkAst(programNode, (child: EsTreeNode) => {
       const callNode = isNodeOfType(child, "ChainExpression") ? child.expression : child;
@@ -8763,22 +8791,29 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
       const callee = isNodeOfType(callNode.callee, "ChainExpression")
         ? callNode.callee.expression
         : callNode.callee;
-      if (isNodeOfType(callee, "Identifier")) {
-        const namedCalls = identifierCallsByName.get(callee.name) ?? [];
+      const timerCleanupName = getNativeTimerCalleeName(
+        callee,
+        context.scopes,
+        TIMER_CLEANUP_CALLEE_NAMES,
+      );
+      if (timerCleanupName !== null) {
+        const namedCalls = timerCleanupCallsByName.get(timerCleanupName) ?? [];
         namedCalls.push(child);
-        identifierCallsByName.set(callee.name, namedCalls);
+        timerCleanupCallsByName.set(timerCleanupName, namedCalls);
+      }
+      if (isNodeOfType(callee, "Identifier")) {
         potentialNonTimerCalls.push(child);
       } else if (getReleaseVerbName(child)) {
         potentialNonTimerCalls.push(child);
       }
     });
-    releaseCallIndex = { identifierCallsByName, potentialNonTimerCalls };
+    releaseCallIndex = { timerCleanupCallsByName, potentialNonTimerCalls };
     indexesByProgram.set(programNode, releaseCallIndex);
   }
   let candidates: ReadonlyArray<EsTreeNode>;
   if (usage.kind === "timer") {
     candidates = [...TIMER_CLEANUP_CALLEE_NAMES].flatMap(
-      (cleanupName) => releaseCallIndex.identifierCallsByName.get(cleanupName) ?? [],
+      (cleanupName) => releaseCallIndex.timerCleanupCallsByName.get(cleanupName) ?? [],
     );
   } else {
     candidates = releaseCallIndex.potentialNonTimerCalls;
@@ -10360,10 +10395,10 @@ const findRetainedFunctionLeak = (
 
     if (!isNodeOfType(child, "CallExpression")) return;
 
+    const timerCalleeName = getNativeTimerCalleeName(child.callee, context.scopes);
     if (
-      isNodeOfType(child.callee, "Identifier") &&
-      isNativeTimerIdentifier(child.callee, context.scopes) &&
-      (child.callee.name === "setInterval" || options?.includeOneShotTimers === true) &&
+      timerCalleeName !== null &&
+      (timerCalleeName === "setInterval" || options?.includeOneShotTimers === true) &&
       (options?.allowReturnedTimerEscape === false ||
         !doesResourceResultEscape(child, true, allowReturnedResourceEscape, context)) &&
       !isDeferredTeardownTimer(child) &&
@@ -10372,10 +10407,10 @@ const findRetainedFunctionLeak = (
       const timerUsage: SubscribeLikeUsage = {
         kind: "timer",
         node: child,
-        resourceName: child.callee.name,
+        resourceName: timerCalleeName,
         handleKey: findAssignedResourceKey(child, context, true),
         receiverKey: null,
-        registrationVerbName: child.callee.name,
+        registrationVerbName: timerCalleeName,
         eventKey: null,
         handlerKey: null,
       };

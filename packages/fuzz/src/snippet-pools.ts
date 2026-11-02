@@ -314,6 +314,8 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `module["require"]("axios").post = async () => ({ data: null });`,
+  `type FuzzErasedCapability = ({ Function: nestedFunction }: { Function: string }) => void; const fuzzInertCapabilityLabels = { Function: "description", constructor: "description", React: "description" };`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,
@@ -734,6 +736,7 @@ export const JSX_LEAF_POOL = [
 // Rare-but-parseable weirdness kept from the original generator, plus
 // trace-mined oddities (unicode, globalThis gymnastics, labels).
 export const EDGE_CASE_STATEMENT_POOL = [
+  `const FuzzNativeWrite = () => {const [,setSaved]=useState(false);const submit=async()=>{await api.post("/records.commit",{});setSaved(true)};return <button onClick={submit}/>};`,
   `const contextCallback = config.onSelect; const effectiveCallback = onSelect ?? contextCallback; const derivedHandler = useCallback(() => effectiveCallback?.(), [effectiveCallback]);`,
   `const membershipCandidates = [1, 2, 3, 4, 5, 6, 7, 8, 9]; const membershipValues = [1, 2, 3, 4, 5, 6, 7, 8, 9]; for (const membershipCandidate of membershipCandidates) { membershipValues.includes(membershipCandidate); }`,
   `const numericMembershipValues: number[] = []; const numericMembershipAllowed: number[] = []; numericMembershipValues.reduce((count, value) => numericMembershipAllowed.indexOf(value) !== -1 ? count + 1 : count, 0);`,

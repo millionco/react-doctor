@@ -599,6 +599,8 @@ export const JSX_ATTRIBUTE_POOL = [
 // JSX leaves — conditional renders (incl. the leaked-0 shape), controlled
 // inputs, radios, providers, portals, list keys.
 export const JSX_LEAF_POOL = [
+  `<section style={{ height: 96 }}>{condition ? <img src="/sample.png" alt="Sample" /> : null}</section>`,
+  `<section>{condition ? <img src="/sample.png" alt="Sample" /> : null}</section>`,
   `{state}`,
   `{items.map((item, index) => <li key={index}>{item}</li>)}`,
   `{items.map((item, index) => <Row key={item.id ?? index} item={item} />)}`,

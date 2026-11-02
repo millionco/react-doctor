@@ -578,6 +578,11 @@ export const displayName = defineRule({
         // Anonymous arrow assigned to a PascalCase var binding or
         // declared as a default export → name is inferable; skip.
         while (parent) {
+          if (
+            shouldUseCuratedBehavior &&
+            (isNodeOfType(parent, "ObjectExpression") || isNodeOfType(parent, "ArrayExpression"))
+          )
+            break;
           if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
             if (isReactComponentName(parent.id.name) && ignoreNamed) return;
             break;

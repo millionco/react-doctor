@@ -283,6 +283,9 @@ describe("ref writes through Object.assign during render", () => {
     "const Panel = () => Object.keys(value);",
     "const Panel = () => value?.render();",
     "const Panel = () => (render as typeof render)(value);",
+    'const Panel = () => map.set("current", value);',
+    'const Panel = () => object["set"](ref, "current", value);',
+    'const Panel = () => Reflect[methodName](ref, "current", value);',
   ])("keeps scopes lazy for unrelated calls: %s", (source) => {
     const parsed = parseFixture(source);
     expect(parsed.errors).toEqual([]);

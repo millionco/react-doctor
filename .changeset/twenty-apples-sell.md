@@ -1,0 +1,6 @@
+---
+"oxlint-plugin-react-doctor": patch
+"eslint-plugin-react-doctor": patch
+---
+
+Detect native `Reflect.set` writes to React refs during render, tracking an explicit React-ref receiver as the write destination and preserving predictable guarded initialization.

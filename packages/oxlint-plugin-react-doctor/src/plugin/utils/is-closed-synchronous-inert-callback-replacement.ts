@@ -21,7 +21,7 @@ export const isClosedSynchronousInertCallbackReplacement = ({
     !isFunctionLike(helperFunction) ||
     helperFunction.async ||
     helperFunction.generator ||
-    helperFunction.params.length !== 1 ||
+    helperFunction.params.length === 0 ||
     !isNodeOfType(helperFunction.body, "BlockStatement") ||
     (helperFunction.body.body.length !== 3 && helperFunction.body.body.length !== 4)
   ) {
@@ -32,6 +32,41 @@ export const isClosedSynchronousInertCallbackReplacement = ({
   const parameterSymbol = context.scopes.symbolFor(parameter);
   if (!parameterSymbol || context.scopes.symbolFor(writeIdentifier)?.id !== parameterSymbol.id) {
     return false;
+  }
+  const parameterNames = new Set([parameter.name]);
+  for (let parameterIndex = 1; parameterIndex < helperFunction.params.length; parameterIndex += 1) {
+    const extraParameter = helperFunction.params[parameterIndex];
+    const extraIdentifier = isNodeOfType(extraParameter, "AssignmentPattern")
+      ? extraParameter.left
+      : extraParameter;
+    if (!isNodeOfType(extraIdentifier, "Identifier") || parameterNames.has(extraIdentifier.name)) {
+      return false;
+    }
+    const extraSymbol = context.scopes.symbolFor(extraIdentifier);
+    if (
+      !extraSymbol ||
+      extraSymbol.kind !== "parameter" ||
+      extraSymbol.bindingIdentifier !== extraIdentifier ||
+      extraSymbol.declarationNode !== extraParameter ||
+      extraSymbol.references.length !== 0
+    ) {
+      return false;
+    }
+    if (isNodeOfType(extraParameter, "AssignmentPattern")) {
+      const defaultExpression = extraParameter.right;
+      const isScalarLiteral =
+        isNodeOfType(defaultExpression, "Literal") &&
+        !("regex" in defaultExpression) &&
+        (defaultExpression.value === null ||
+          typeof defaultExpression.value === "boolean" ||
+          typeof defaultExpression.value === "number" ||
+          typeof defaultExpression.value === "string" ||
+          typeof defaultExpression.value === "bigint");
+      if (!isScalarLiteral && !isParameterlessLiteralReturningFunction(defaultExpression)) {
+        return false;
+      }
+    }
+    parameterNames.add(extraIdentifier.name);
   }
   const statements = helperFunction.body.body;
   const replacementDeclaration = statements.at(-3);

@@ -66,7 +66,7 @@ describe("context provider callback body initializers", () => {
     [
       "an uncalled nested restoration",
       "const original = render; var render = () => null; function restore() { render = original; } return render();",
-      1,
+      0,
     ],
     [
       "a replacement forwarding through an alias",
@@ -113,7 +113,7 @@ describe("context provider callback body initializers", () => {
     [
       "a replacement before a bare redeclaration",
       "var render = () => null; var render; return render();",
-      1,
+      0,
     ],
     [
       "a nested function parameter",
@@ -143,14 +143,14 @@ describe("context provider callback body initializers", () => {
     [
       "a later declarator after initialization",
       "var render = () => null, result = render(); return result;",
-      1,
+      0,
     ],
     [
       "a replacement after a bare redeclaration",
       "var render; var render = () => null; return render();",
-      1,
+      0,
     ],
-    ["an unconditional block var initializer", "{ var render = () => null; } return render();", 1],
+    ["an unconditional block var initializer", "{ var render = () => null; } return render();", 0],
     [
       "a conditional var initializer",
       "if (enabled) { var render = () => null; } return render();",
@@ -178,6 +178,87 @@ describe("context provider callback body initializers", () => {
       "{ function render() { return null; } } return render();",
       1,
     ],
+    [
+      "a separately declared replacement result",
+      "var render = () => null; var result = render(); return result;",
+      0,
+    ],
+    [
+      "nested unconditional var blocks",
+      "{ var render; { var render = () => null; } } var render; return render();",
+      0,
+    ],
+    [
+      "pure aliases captured by uncalled declarations",
+      "const original = render, alias = original; var render = () => null; function restore() { render = alias; } return render();",
+      0,
+    ],
+    [
+      "an uncalled restoration after the result declaration",
+      "const original = render; var render = () => null, result = render(); function restore() { render = original; } return result;",
+      0,
+    ],
+    [
+      "a bare result redeclaration",
+      "var result, render = () => null, result = render(); var result; return result;",
+      0,
+    ],
+    [
+      "a forwarding replacement through a second alias",
+      "const original = render, alias = original; var render = () => alias(); return render();",
+      1,
+    ],
+    [
+      "a callback restored from a second alias",
+      "const original = render, alias = original; var render = () => null; var render = alias; return render();",
+      1,
+    ],
+    [
+      "a mutable forwarding alias",
+      "let original = render; var render = () => original(); return render();",
+      1,
+    ],
+    [
+      "the preserved external guard after escaped restoration",
+      "const original = render; var render = () => null; function restore() { render = original; } const restoreAlias = restore; restoreAlias(); return render();",
+      0,
+    ],
+    [
+      "a getter-derived forwarding alias",
+      "const original = render; const alias = ({ get callback() { return original; } }).callback; var render = () => alias(); return render();",
+      1,
+    ],
+    [
+      "an original call in another declarator",
+      "const original = render; var result = original(), render = () => null; return [result, render()];",
+      1,
+    ],
+    [
+      "callback argument evaluation and sibling output",
+      "const original = render; var render = () => null; return [render(original()), original()];",
+      1,
+    ],
+    [
+      "a conditionally preserved initializer",
+      "var render = enabled ? () => null : render; return render();",
+      1,
+    ],
+    ["a same-name block binding", "{ const render = () => null; } return render();", 1],
+    [
+      "a result before an unconditional block replacement",
+      "var result = render(); { var render = () => null; } return result;",
+      1,
+    ],
+    [
+      "a callback restored in an unconditional block",
+      "const original = render; var render = () => null; { var render = original; } return render();",
+      1,
+    ],
+    [
+      "a returned original beside an inert result local",
+      "const original = render; var render = () => null, result = render(); return [original(), result, render()];",
+      1,
+    ],
   ])("handles %s", (_name, helperBody, diagnosticCount) => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -200,6 +281,8 @@ describe("context provider callback body initializers", () => {
     "const renderNow = function renderNow(render) { var render; return render(); };",
     "function renderNow(render, another = null) { var render; return render(); }",
     "function renderNow(render, original = render) { function render() { return original(); } return render(); }",
+    "function renderNow(render, original = render) { function render() { return original(); } var render; return render(); }",
+    "function renderNow(render, original = render) { var render = () => original(); return render(); }",
   ])("preserves the parameter in %s", (helperDeclaration) => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
@@ -211,6 +294,32 @@ describe("context provider callback body initializers", () => {
            const value = {};
            return <ThemeContext.Provider value={value} />;
          });
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves output rendered by an inherited property setter", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       let renderedOutput;
+       Object.defineProperty(Function.prototype, "current", {
+         set(value) { renderedOutput = value(); }
+       });
+       function renderNow(render) {
+         const original = render;
+         var render = () => null;
+         render.current = original;
+         return render();
+       }
+       function App() {
+         return [renderNow(() => {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         }), renderedOutput];
        }`,
     );
     expect(result.parseErrors).toEqual([]);

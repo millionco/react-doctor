@@ -15,16 +15,17 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
-import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
+import { isClosedSynchronousInertCallbackReplacement } from "../../utils/is-closed-synchronous-inert-callback-replacement.js";
 import { isDescendantWithoutFunctionBoundary } from "../../utils/is-descendant-without-function-boundary.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isParameterlessLiteralReturningFunction } from "../../utils/is-parameterless-literal-returning-function.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
@@ -253,62 +254,107 @@ const isKnownJsxCallbackArgument = (
   );
 };
 
-const isParameterlessLiteralReturningFunction = (expression: EsTreeNode): boolean => {
-  const functionNode = stripParenExpression(expression);
-  if (!isFunctionLike(functionNode) || functionNode.params.length !== 0) return false;
-  const returnedExpression = getSingleReturnExpression(functionNode);
-  return Boolean(
-    returnedExpression && isNodeOfType(stripParenExpression(returnedExpression), "Literal"),
-  );
-};
-
-const isReplacedParameterOnlyOutput = (
+const getReplacedParameterOutputCall = (
   functionNode: EsTreeNode,
   parameterName: string,
-  parameterCall: EsTreeNodeOfType<"CallExpression">,
-): boolean => {
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression"> | null => {
   if (
     !isFunctionLike(functionNode) ||
     functionNode.params.length !== 1 ||
-    !isNodeOfType(functionNode.body, "BlockStatement") ||
-    functionNode.body.body.length !== 2 ||
-    parameterCall.arguments.length !== 0
+    !isNodeOfType(functionNode.body, "BlockStatement")
   ) {
-    return false;
+    return null;
   }
-  const [firstStatement, secondStatement] = functionNode.body.body;
-  if (!firstStatement || !secondStatement) return false;
-  const isReturnFirst = isNodeOfType(firstStatement, "ReturnStatement");
-  const returnStatement = isReturnFirst ? firstStatement : secondStatement;
-  const replacement = isReturnFirst ? secondStatement : firstStatement;
-  if (
-    !isNodeOfType(returnStatement, "ReturnStatement") ||
-    !returnStatement.argument ||
-    stripParenExpression(returnStatement.argument) !== parameterCall
-  ) {
-    return false;
-  }
-  if (isNodeOfType(replacement, "FunctionDeclaration")) {
+  const parameterSymbol = context.scopes
+    .ownScopeFor(functionNode)
+    ?.symbolsByName.get(parameterName);
+  if (!parameterSymbol) return null;
+  const isParameterCall = (
+    expression: EsTreeNode,
+  ): expression is EsTreeNodeOfType<"CallExpression"> => {
+    if (!isNodeOfType(expression, "CallExpression") || expression.arguments.length !== 0)
+      return false;
+    const callee = stripParenExpression(expression.callee);
     return (
-      replacement.id?.name === parameterName && isParameterlessLiteralReturningFunction(replacement)
+      isNodeOfType(callee, "Identifier") && context.scopes.symbolFor(callee) === parameterSymbol
     );
+  };
+  const [firstStatement, secondStatement] = functionNode.body.body;
+  if (firstStatement && secondStatement && functionNode.body.body.length === 2) {
+    const isReturnFirst = isNodeOfType(firstStatement, "ReturnStatement");
+    const returnStatement = isReturnFirst ? firstStatement : secondStatement;
+    const replacement = isReturnFirst ? secondStatement : firstStatement;
+    if (
+      isNodeOfType(returnStatement, "ReturnStatement") &&
+      returnStatement.argument &&
+      isNodeOfType(replacement, "FunctionDeclaration") &&
+      replacement.id?.name === parameterName &&
+      isParameterlessLiteralReturningFunction(replacement)
+    ) {
+      const returnedExpression = stripParenExpression(returnStatement.argument);
+      return isParameterCall(returnedExpression) ? returnedExpression : null;
+    }
   }
-  if (
-    isReturnFirst ||
-    !isNodeOfType(replacement, "VariableDeclaration") ||
-    replacement.kind !== "var"
-  ) {
-    return false;
+  const returnStatement = functionNode.body.body.at(-1);
+  if (!isNodeOfType(returnStatement, "ReturnStatement") || !returnStatement.argument) return null;
+  const aliasSymbolIds = new Set([parameterSymbol.id]);
+  let hasInertReplacement = false;
+  let outputCall: EsTreeNodeOfType<"CallExpression"> | null = null;
+  let resultSymbolId: number | null = null;
+  const pendingStatements = functionNode.body.body.slice(0, -1).toReversed();
+  while (pendingStatements.length > 0) {
+    const statement = pendingStatements.pop();
+    if (!statement) continue;
+    if (isNodeOfType(statement, "BlockStatement")) {
+      for (const blockStatement of statement.body.toReversed()) {
+        pendingStatements.push(blockStatement);
+      }
+      continue;
+    }
+    const isTopLevelStatement = statement.parent === functionNode.body;
+    if (isNodeOfType(statement, "FunctionDeclaration")) {
+      if (!isTopLevelStatement || statement.id?.name === parameterName) return null;
+      continue;
+    }
+    if (!isNodeOfType(statement, "VariableDeclaration")) return null;
+    if (statement.kind !== "var" && !(isTopLevelStatement && statement.kind === "const"))
+      return null;
+    for (const declaration of statement.declarations) {
+      if (!isNodeOfType(declaration.id, "Identifier")) return null;
+      const declarationScope = context.scopes.symbolFor(declaration.id)?.scope;
+      const declaredSymbol = declarationScope?.symbolsByName.get(declaration.id.name);
+      if (!declaredSymbol) return null;
+      const initializer = declaration.init && stripParenExpression(declaration.init);
+      if (!initializer) {
+        if (statement.kind !== "var") return null;
+        continue;
+      }
+      if (statement.kind === "const") {
+        if (!isNodeOfType(initializer, "Identifier")) return null;
+        const sourceSymbol = context.scopes.symbolFor(initializer);
+        if (!sourceSymbol || !aliasSymbolIds.has(sourceSymbol.id)) return null;
+        aliasSymbolIds.add(declaredSymbol.id);
+        continue;
+      }
+      if (declaredSymbol === parameterSymbol) {
+        if (!isParameterlessLiteralReturningFunction(initializer)) return null;
+        hasInertReplacement = true;
+        continue;
+      }
+      if (!hasInertReplacement || outputCall || !isParameterCall(initializer)) return null;
+      outputCall = initializer;
+      resultSymbolId = declaredSymbol.id;
+    }
   }
-  const [declaration] = replacement.declarations;
-  return Boolean(
-    declaration &&
-    replacement.declarations.length === 1 &&
-    isNodeOfType(declaration.id, "Identifier") &&
-    declaration.id.name === parameterName &&
-    declaration.init &&
-    isParameterlessLiteralReturningFunction(declaration.init),
-  );
+  const returnedExpression = stripParenExpression(returnStatement.argument);
+  if (isParameterCall(returnedExpression)) {
+    return hasInertReplacement && !outputCall ? returnedExpression : null;
+  }
+  return isNodeOfType(returnedExpression, "Identifier") &&
+    context.scopes.symbolFor(returnedExpression)?.id === resultSymbolId
+    ? outputCall
+    : null;
 };
 
 const isArgumentRenderedSynchronously = (
@@ -332,6 +378,11 @@ const isArgumentRenderedSynchronously = (
   const parameterSymbol = context.scopes
     .ownScopeFor(calledFunction)
     ?.symbolsByName.get(parameter.name);
+  const replacedParameterOutputCall = getReplacedParameterOutputCall(
+    calledFunction,
+    parameter.name,
+    context,
+  );
   const doesReturnSynchronousArgumentResult = Boolean(
     parameterSymbol?.references.some((reference) => {
       const callee = findTransparentExpressionRoot(reference.identifier);
@@ -344,7 +395,7 @@ const isArgumentRenderedSynchronously = (
         isNodeOnUnconditionalPath(parameterCall, calledFunction) &&
         context.cfg.isUnconditionalFromEntry(parameterCall) &&
         doesCallResultReachFunctionOutput(parameterCall, calledFunction, context) &&
-        !isReplacedParameterOnlyOutput(calledFunction, parameter.name, parameterCall) &&
+        parameterCall !== replacedParameterOutputCall &&
         !parameterSymbol.references.some((writeReference) => {
           const writeTarget = findTransparentExpressionRoot(writeReference.identifier);
           const writeParent = writeTarget.parent;
@@ -396,7 +447,18 @@ const isArgumentRenderedSynchronously = (
                       assignmentNode = assignmentNode.parent;
                     }
                   }
-                  return canExecuteBeforeAsyncSuspension(executionNode, executionOwner, context);
+                  if (canExecuteBeforeAsyncSuspension(executionNode, executionOwner, context)) {
+                    return true;
+                  }
+                  return (
+                    executionNode === writeReference.identifier &&
+                    isClosedSynchronousInertCallbackReplacement({
+                      helperFunction: calledFunction,
+                      writeIdentifier: writeReference.identifier,
+                      callbackCall: parameterCall,
+                      context,
+                    })
+                  );
                 },
               },
             ).length > 0

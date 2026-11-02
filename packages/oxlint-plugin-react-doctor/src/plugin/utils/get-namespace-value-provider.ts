@@ -47,7 +47,11 @@ const getScopeStatements = (scope: ScopeDescriptor): ReadonlyArray<EsTreeNode> =
   if (owner.type === "Program" || owner.type === "BlockStatement" || owner.type === "StaticBlock") {
     return owner.body;
   }
-  if (isFunctionLike(owner) && owner.body.type === "BlockStatement") return owner.body.body;
+  if (isFunctionLike(owner) && owner.body.type === "BlockStatement") {
+    return scope.children.some((childScope) => childScope.node === owner.body)
+      ? []
+      : owner.body.body;
+  }
   if (owner.type === "TSModuleDeclaration" && owner.body?.type === "TSModuleBlock") {
     return owner.body.body;
   }

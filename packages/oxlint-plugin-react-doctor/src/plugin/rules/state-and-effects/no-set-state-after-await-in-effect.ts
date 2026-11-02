@@ -1,3 +1,4 @@
+import { isEffectLocalCancellationGuard } from "../../utils/is-effect-local-cancellation-guard.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -700,6 +701,7 @@ const doesBooleanExpressionForceValue = (
   resolveAtomicValue: (candidate: EsTreeNode, expectedAtomicValue: boolean) => boolean,
   context: RuleContext,
   visitedPredicates = new Set<EsTreeNode>(),
+  canShortCircuitLeft?: (candidate: EsTreeNode) => boolean,
 ): boolean => {
   const candidate = stripParenExpression(expression);
   const aliasInitializer = getUninterruptedConstInitializer(candidate, context);
@@ -720,6 +722,7 @@ const doesBooleanExpressionForceValue = (
       resolveAtomicValue,
       context,
       visitedPredicates,
+      undefined,
     );
     visitedPredicates.delete(transparentExpression);
     return doesValueForceGuard;
@@ -731,23 +734,34 @@ const doesBooleanExpressionForceValue = (
       resolveAtomicValue,
       context,
       visitedPredicates,
+      canShortCircuitLeft,
     );
   }
   if (isNodeOfType(candidate, "LogicalExpression")) {
-    if (!isSideEffectFreeGuardExpression(candidate, context)) return false;
     const leftForcesValue = doesBooleanExpressionForceValue(
       candidate.left,
       expectedValue,
       resolveAtomicValue,
       context,
       visitedPredicates,
+      canShortCircuitLeft,
     );
+    if (
+      leftForcesValue &&
+      canShortCircuitLeft?.(candidate.left) &&
+      isSideEffectFreeGuardExpression(candidate.left, context) &&
+      ((candidate.operator === "&&" && !expectedValue) ||
+        (candidate.operator === "||" && expectedValue))
+    )
+      return true;
+    if (!isSideEffectFreeGuardExpression(candidate, context)) return false;
     const rightForcesValue = doesBooleanExpressionForceValue(
       candidate.right,
       expectedValue,
       resolveAtomicValue,
       context,
       visitedPredicates,
+      canShortCircuitLeft,
     );
     if (candidate.operator === "&&") {
       return expectedValue
@@ -769,6 +783,7 @@ const doesBooleanExpressionForceValue = (
       resolveAtomicValue,
       context,
       visitedPredicates,
+      undefined,
     );
     visitedPredicates.delete(localPredicate.predicate);
     return doesPredicateForceValue;
@@ -791,6 +806,15 @@ const doesCleanupForceGuardValue = (
       return cleanupValue === expectedAtomicValue;
     },
     context,
+    new Set(),
+    (candidate) => {
+      const containingFunction = findEnclosingFunction(test);
+      const effectCallback =
+        containingFunction && findContainingEffectCallback(containingFunction, context);
+      return Boolean(
+        effectCallback && isEffectLocalCancellationGuard(candidate, effectCallback, context),
+      );
+    },
   );
 
 interface SequenceSnapshot {

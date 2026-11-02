@@ -243,14 +243,14 @@ export class Git extends Context.Service<
       input: GitDiffSelectionInput,
     ) => Effect.Effect<GitDiffSelection | null, ReactDoctorError>;
     /**
-     * Side-aware paths between `ref` and the worktree. Rename and copy
-     * detection is disabled so path identity never depends on Git heuristics:
-     * a rename is represented as one base deletion plus one head addition.
+     * Side-aware paths between `ref` and the worktree, including detected renames.
+     * Untracked rename detection only considers explicitly selected paths.
      * Returns `null` for unmerged or otherwise unsupported diff states.
      */
     readonly baselineDiffPlan: (input: {
       readonly directory: string;
       readonly ref: string;
+      readonly untrackedRenamePaths?: ReadonlyArray<string>;
     }) => Effect.Effect<GitBaselineDiffPlan | null, ReactDoctorError>;
     /**
      * Files staged for commit (null-separated, `--diff-filter=ACMR`);
@@ -473,6 +473,8 @@ export class Git extends Context.Service<
               const intentToAdd = yield* runCommand({
                 command: "git",
                 args: [
+                  "-c",
+                  "core.splitIndex=false",
                   "--literal-pathspecs",
                   "add",
                   "--intent-to-add",
@@ -778,11 +780,12 @@ export class Git extends Context.Service<
             ]);
             if (untracked.status !== 0) return null;
             const untrackedFiles = splitNullSeparated(untracked.stdout);
+            const untrackedRenamePaths = new Set(input.untrackedRenamePaths);
             const untrackedRenamedFiles = yield* findUntrackedRenames(
               input.directory,
               diffArgs,
               plan,
-              untrackedFiles,
+              untrackedFiles.filter((filePath) => untrackedRenamePaths.has(filePath)),
             );
             const renamedFiles = { ...plan.renamedFiles, ...untrackedRenamedFiles };
             return {

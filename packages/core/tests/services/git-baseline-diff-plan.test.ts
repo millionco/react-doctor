@@ -21,11 +21,11 @@ const commitAll = (directory: string, message: string): string => {
   return runGit(directory, ["rev-parse", "HEAD"]);
 };
 
-const readPlan = (directory: string, ref: string) =>
+const readPlan = (directory: string, ref: string, untrackedRenamePaths?: ReadonlyArray<string>) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Git;
-      return yield* git.baselineDiffPlan({ directory, ref });
+      return yield* git.baselineDiffPlan({ directory, ref, untrackedRenamePaths });
     }).pipe(Effect.provide(Git.layerNode)),
   );
 
@@ -60,7 +60,7 @@ describe("Git.baselineDiffPlan", () => {
     });
   });
 
-  it("records a rename whose destination is untracked", async () => {
+  it.each([false, true])("records an untracked rename with split index %s", async (splitIndex) => {
     writeFile(
       directory,
       "src/old-name.tsx",
@@ -73,18 +73,44 @@ describe("Git.baselineDiffPlan", () => {
       "src/new-name.tsx",
       "export const first = 1;\nexport const second = 2;\nexport const third = 3;\nexport const fourth = 5;\n",
     );
+    if (splitIndex) runGit(directory, ["update-index", "--split-index"]);
     const indexBefore = fs.readFileSync(path.join(directory, ".git/index"));
+    const sharedIndexesBefore = fs
+      .readdirSync(path.join(directory, ".git"))
+      .filter((name) => name.startsWith("sharedindex."));
 
-    await expect(readPlan(directory, baseRef)).resolves.toEqual({
+    await expect(readPlan(directory, baseRef, ["src/new-name.tsx"])).resolves.toEqual({
       baseFiles: ["src/old-name.tsx"],
       headFiles: [],
       renamedFiles: { "src/old-name.tsx": "src/new-name.tsx" },
       untrackedFiles: ["src/new-name.tsx"],
     });
     expect(fs.readFileSync(path.join(directory, ".git/index"))).toEqual(indexBefore);
+    expect(
+      fs
+        .readdirSync(path.join(directory, ".git"))
+        .filter((name) => name.startsWith("sharedindex.")),
+    ).toEqual(sharedIndexesBefore);
     expect(runGit(directory, ["status", "--porcelain"])).toBe(
       "D src/old-name.tsx\n?? src/new-name.tsx",
     );
+  });
+
+  it("does not pair an untracked path unless it is selected for scanning", async () => {
+    writeFile(directory, "src/old.tsx", "export const value = 1;\n");
+    const baseRef = commitAll(directory, "base");
+    fs.renameSync(path.join(directory, "src/old.tsx"), path.join(directory, "src/new.tsx"));
+
+    await expect(readPlan(directory, baseRef)).resolves.toEqual({
+      baseFiles: ["src/old.tsx"],
+      headFiles: [],
+      untrackedFiles: ["src/new.tsx"],
+    });
+    await expect(readPlan(directory, baseRef, ["src/unrelated.tsx"])).resolves.toEqual({
+      baseFiles: ["src/old.tsx"],
+      headFiles: [],
+      untrackedFiles: ["src/new.tsx"],
+    });
   });
 
   it("keeps an unrelated untracked file head-only when a tracked file is deleted", async () => {
@@ -93,7 +119,7 @@ describe("Git.baselineDiffPlan", () => {
     fs.rmSync(path.join(directory, "src/deleted.tsx"));
     writeFile(directory, "src/unrelated.tsx", "export const Unrelated = () => null;\n");
 
-    await expect(readPlan(directory, baseRef)).resolves.toEqual({
+    await expect(readPlan(directory, baseRef, ["src/unrelated.tsx"])).resolves.toEqual({
       baseFiles: ["src/deleted.tsx"],
       headFiles: [],
       untrackedFiles: ["src/unrelated.tsx"],

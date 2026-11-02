@@ -4,6 +4,7 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { isNonrenderingEventCallback } from "./utils/is-nonrendering-event-callback.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -103,6 +104,7 @@ export const noNestedComponentDefinition = defineRule({
               isAstDescendant(element.node, candidate.enclosingNode),
           );
           if (!isRenderedInEnclosingComponent) continue;
+          if (isNonrenderingEventCallback(candidate.reportNode, context.scopes)) continue;
           context.report({
             node: candidate.reportNode,
             message: `Your users lose all state in "${candidate.name}" on every render because it's defined inside "${candidate.enclosingName}", so move it out to the top of the file.`,

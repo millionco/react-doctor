@@ -7,6 +7,14 @@ const run = (source: string) => runRule(noRefCurrentInRender, source);
 describe("stored callable ref initialization", () => {
   it.each([
     [
+      "module metadata",
+      "import {useRef} from 'react'; type Action=()=>string; const useCached=()=>{const actionRef=useRef<Action>();if(!actionRef.current)actionRef.current=()=>import.meta.url;return actionRef.current;};",
+    ],
+    [
+      "module metadata in a nested arrow",
+      "import {useRef} from 'react'; type Action=()=>()=>string; const useCached=()=>{const actionRef=useRef<Action>();if(!actionRef.current)actionRef.current=()=>()=>import.meta.url;return actionRef.current;};",
+    ],
+    [
       "a local callable alias",
       `import { useRef } from "react";
        type Action = () => number;
@@ -234,6 +242,18 @@ describe("stored callable ref initialization", () => {
     [
       "outer new target",
       "function useCached() { const actionRef=useRef<unknown>(); if(!actionRef.current) actionRef.current=()=>new.target; return actionRef.current; }",
+    ],
+    [
+      "new target alongside module metadata",
+      "function useCached() { const actionRef=useRef<unknown>(); if(!actionRef.current) actionRef.current=()=>[import.meta.url,new.target]; return actionRef.current; }",
+    ],
+    [
+      "render receiver alongside module metadata",
+      "function useCached(this: {value:number}) { const actionRef=useRef<unknown>(); if(!actionRef.current) actionRef.current=()=>[import.meta.url,this.value]; return actionRef.current; }",
+    ],
+    [
+      "implicit arguments alongside module metadata",
+      "function useCached() { const actionRef=useRef<unknown>(); if(!actionRef.current) actionRef.current=()=>[import.meta.url,arguments[0]]; return actionRef.current; }",
     ],
     [
       "outer super receiver",

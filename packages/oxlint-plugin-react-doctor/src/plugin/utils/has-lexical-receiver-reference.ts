@@ -23,7 +23,7 @@ export const hasLexicalReceiverReference = (
     if (
       isNodeOfType(node, "ThisExpression") ||
       isNodeOfType(node, "Super") ||
-      isNodeOfType(node, "MetaProperty")
+      (isNodeOfType(node, "MetaProperty") && node.meta.name === "new")
     ) {
       hasReceiver = true;
       return false;

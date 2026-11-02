@@ -85,6 +85,10 @@ class SemanticRuleContext implements RuleContext {
     return this.baseContext.filename ?? this.baseContext.getFilename?.();
   }
 
+  get sourceCode(): BaseRuleContext["sourceCode"] {
+    return this.baseContext.sourceCode;
+  }
+
   get scopes(): ScopeAnalysis {
     const programRoot = this.programRoot;
     if (!programRoot) return buildFallbackScopes();

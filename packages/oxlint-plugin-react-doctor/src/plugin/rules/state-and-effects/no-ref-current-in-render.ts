@@ -23,6 +23,7 @@ import {
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isStoredFunctionLocalBinding } from "./utils/is-stored-function-local-binding.js";
 
 interface RefCurrentWrite {
   node: EsTreeNode;
@@ -414,6 +415,7 @@ const isInitializationInputIndependent = (
   renderOwner: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
+  initializationRoot: EsTreeNode = node,
 ): boolean => {
   let isInputIndependent = true;
   walkAst(node, (child: EsTreeNode): boolean | void => {
@@ -424,6 +426,12 @@ const isInitializationInputIndependent = (
     if (!symbol) return;
     if (symbol.kind === "import") return false;
     if (symbol.kind === "let" || symbol.kind === "var" || symbol.kind === "using") {
+      if (
+        symbol.kind !== "using" &&
+        isStoredFunctionLocalBinding(child, symbol, initializationRoot)
+      ) {
+        return;
+      }
       isInputIndependent = false;
       return false;
     }
@@ -439,7 +447,13 @@ const isInitializationInputIndependent = (
     if (visitedSymbolIds.has(symbol.id)) return false;
     visitedSymbolIds.add(symbol.id);
     if (
-      !isInitializationInputIndependent(symbol.initializer, renderOwner, scopes, visitedSymbolIds)
+      !isInitializationInputIndependent(
+        symbol.initializer,
+        renderOwner,
+        scopes,
+        visitedSymbolIds,
+        initializationRoot,
+      )
     ) {
       isInputIndependent = false;
     }

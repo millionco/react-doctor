@@ -2,6 +2,7 @@ import {
   componentOrHookDisplayNameForFunction,
   findComponentHocExpressionRoot,
 } from "../../utils/component-or-hook-display-name.js";
+import { canExecuteBeforeAsyncSuspension } from "../../utils/can-execute-before-async-suspension.js";
 import { collectContextBindings } from "../../utils/collect-context-bindings.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -20,9 +21,11 @@ import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
+import { isDescendantWithoutFunctionBoundary } from "../../utils/is-descendant-without-function-boundary.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -268,12 +271,13 @@ const isReplacedParameterOnlyOutput = (
     !isFunctionLike(functionNode) ||
     functionNode.params.length !== 1 ||
     !isNodeOfType(functionNode.body, "BlockStatement") ||
+    functionNode.body.body.length !== 2 ||
     parameterCall.arguments.length !== 0
   ) {
     return false;
   }
-  const [firstStatement, secondStatement, ...remainingStatements] = functionNode.body.body;
-  if (!firstStatement || !secondStatement || remainingStatements.length > 0) return false;
+  const [firstStatement, secondStatement] = functionNode.body.body;
+  if (!firstStatement || !secondStatement) return false;
   const isReturnFirst = isNodeOfType(firstStatement, "ReturnStatement");
   const returnStatement = isReturnFirst ? firstStatement : secondStatement;
   const replacement = isReturnFirst ? secondStatement : firstStatement;
@@ -296,10 +300,10 @@ const isReplacedParameterOnlyOutput = (
   ) {
     return false;
   }
-  const [declaration, ...remainingDeclarations] = replacement.declarations;
+  const [declaration] = replacement.declarations;
   return Boolean(
     declaration &&
-    remainingDeclarations.length === 0 &&
+    replacement.declarations.length === 1 &&
     isNodeOfType(declaration.id, "Identifier") &&
     declaration.id.name === parameterName &&
     declaration.init &&
@@ -340,7 +344,64 @@ const isArgumentRenderedSynchronously = (
         isNodeOnUnconditionalPath(parameterCall, calledFunction) &&
         context.cfg.isUnconditionalFromEntry(parameterCall) &&
         doesCallResultReachFunctionOutput(parameterCall, calledFunction, context) &&
-        !isReplacedParameterOnlyOutput(calledFunction, parameter.name, parameterCall),
+        !isReplacedParameterOnlyOutput(calledFunction, parameter.name, parameterCall) &&
+        !parameterSymbol.references.some((writeReference) => {
+          const writeTarget = findTransparentExpressionRoot(writeReference.identifier);
+          const writeParent = writeTarget.parent;
+          const isBindingTarget =
+            isNodeOfType(writeParent, "ArrayPattern") ||
+            (isNodeOfType(writeParent, "Property") &&
+              writeParent.value === writeTarget &&
+              isNodeOfType(writeParent.parent, "ObjectPattern")) ||
+            ((isNodeOfType(writeParent, "AssignmentPattern") ||
+              isNodeOfType(writeParent, "AssignmentExpression")) &&
+              writeParent.left === writeTarget) ||
+            (isNodeOfType(writeParent, "RestElement") && writeParent.argument === writeTarget);
+          return (
+            (writeReference.flag !== "read" ||
+              (isBindingTarget && isWithinAssignmentTarget(writeTarget))) &&
+            getSymbolWriteExecutionPathsBefore(
+              writeReference.identifier,
+              parameterCall,
+              context.scopes,
+              {
+                isSynchronousNode: (executionNode) => {
+                  const executionOwner = findEnclosingFunction(executionNode);
+                  if (
+                    !executionOwner ||
+                    !isFunctionLike(executionOwner) ||
+                    !executionOwner.async ||
+                    !isDescendantWithoutFunctionBoundary(executionNode, executionOwner.body)
+                  ) {
+                    return true;
+                  }
+                  if (executionNode === writeReference.identifier) {
+                    let assignmentNode = executionNode.parent;
+                    while (assignmentNode && assignmentNode !== executionOwner) {
+                      if (
+                        isNodeOfType(assignmentNode, "AssignmentExpression") ||
+                        isNodeOfType(assignmentNode, "ForOfStatement") ||
+                        isNodeOfType(assignmentNode, "ForInStatement")
+                      ) {
+                        if (
+                          isNodeOfType(
+                            stripParenExpression(assignmentNode.right),
+                            "AwaitExpression",
+                          )
+                        ) {
+                          return false;
+                        }
+                        break;
+                      }
+                      assignmentNode = assignmentNode.parent;
+                    }
+                  }
+                  return canExecuteBeforeAsyncSuspension(executionNode, executionOwner, context);
+                },
+              },
+            ).length > 0
+          );
+        }),
       );
     }),
   );

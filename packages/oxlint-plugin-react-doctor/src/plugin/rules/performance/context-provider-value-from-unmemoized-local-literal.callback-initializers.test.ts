@@ -14,9 +14,9 @@ describe("context provider callback body initializers", () => {
       1,
     ],
     [
-      "an incoming callback restored by assignment",
+      "the existing conservative guard after assignment restoration",
       "const original = render; var render = () => null; render = original; return render();",
-      1,
+      0,
     ],
     [
       "an incoming callback restored by initialization",
@@ -29,24 +29,24 @@ describe("context provider callback body initializers", () => {
       1,
     ],
     [
-      "an incoming callback restored by destructuring assignment",
+      "the existing conservative guard after destructuring assignment restoration",
       "const original = render; var render = () => null; [render] = [original]; return render();",
-      1,
+      0,
     ],
     [
-      "an incoming callback restored by object assignment",
+      "the existing conservative guard after object assignment restoration",
       "const original = render; var render = () => null; ({ render } = { render: original }); return render();",
-      1,
+      0,
     ],
     [
-      "an incoming callback restored by a nested helper",
+      "the existing conservative guard after a nested helper restoration",
       "const original = render; var render = () => null; function restore() { render = original; } restore(); return render();",
-      1,
+      0,
     ],
     [
-      "an incoming callback restored by a loop",
+      "the existing conservative guard after a loop restoration",
       "const original = render; var render = () => null; for (render of [original]) {} return render();",
-      1,
+      0,
     ],
     [
       "an incoming callback restored by a loop declaration",

@@ -7,6 +7,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -935,7 +936,7 @@ const isSynchronouslyInvokedLocalFunction = (
       : findEnclosingFunction(bindingIdentifier);
   if (bindingOwner !== callerFunction) return false;
   const symbol = isNodeOfType(functionNode, "FunctionDeclaration")
-    ? scopes.ownScopeFor(callerFunction)?.symbolsByName.get(bindingIdentifier.name)
+    ? getFunctionBindingSymbols(functionNode, scopes)[0]
     : scopes.symbolFor(bindingIdentifier);
   return Boolean(
     symbol &&

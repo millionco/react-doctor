@@ -8,9 +8,8 @@ const computeClosureCaptures = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): ReadonlyArray<ReferenceDescriptor> => {
-  // Use the function's OWN scope (the body scope) so references in
-  // the body whose binding is in an outer (enclosing) scope are
-  // counted as captured. `scopeFor(fnNode)` returns the parent scope.
+  // The function's own scope contains its parameters and encloses any
+  // separate body scope. `scopeFor(fnNode)` returns the parent scope.
   const functionScope = scopes.ownScopeFor(functionNode) ?? scopes.scopeFor(functionNode);
   const out: ReferenceDescriptor[] = [];
   const seen = new Set<number>();

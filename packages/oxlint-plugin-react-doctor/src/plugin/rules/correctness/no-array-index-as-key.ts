@@ -1,3 +1,4 @@
+import { isPrimitiveStringTokenSplitChild } from "./utils/is-primitive-string-token-split-child.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -2035,10 +2036,21 @@ export const noArrayIndexAsKey = defineRule({
                     keyTemplate,
                     itemNames,
                   );
+                const selectedIteratorCall = indexUse.binding.iteratorCall;
                 const isStateful =
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||
                   containsStatefulDescendant(jsxElement, {
+                    primitiveChild:
+                      selectedIteratorCall && primitiveItemNames === itemNames
+                        ? (expression) =>
+                            isPrimitiveStringTokenSplitChild(
+                              expression,
+                              selectedIteratorCall,
+                              jsxElement,
+                              context.scopes,
+                            )
+                        : undefined,
                     memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
                     bareIdentifierNames:
                       primitiveItemNames.size > 0

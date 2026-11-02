@@ -5,6 +5,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveReadonlyLocalJsxHandler } from "../../utils/resolve-readonly-local-jsx-handler.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -127,10 +128,14 @@ export const noFloatingThenInJsxHandler = defineRule({
       }
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-      const handler = stripParenExpression(node.value.expression as EsTreeNode);
+      const expression = stripParenExpression(node.value.expression as EsTreeNode);
+      const handler = isNodeOfType(expression, "Identifier")
+        ? resolveReadonlyLocalJsxHandler(expression, node, context.scopes)
+        : expression;
       if (
-        !isNodeOfType(handler, "ArrowFunctionExpression") &&
-        !isNodeOfType(handler, "FunctionExpression")
+        !handler ||
+        (!isNodeOfType(handler, "ArrowFunctionExpression") &&
+          !isNodeOfType(handler, "FunctionExpression"))
       ) {
         return;
       }

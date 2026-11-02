@@ -1,3 +1,7 @@
+import { isSplideOwnedListenerDisposed } from "../../utils/is-splide-owned-listener-disposed.js";
+import { getEnclosingClassMember } from "../../utils/get-enclosing-class-member.js";
+import { getClassMemberName } from "../../utils/get-class-member-name.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -270,13 +274,6 @@ const getTimerCalleeName = (node: EsTreeNode, scopes: ScopeAnalysis): string | n
   return getStaticPropertyName(callee);
 };
 
-const getClassMemberName = (member: EsTreeNode): string | null => {
-  if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
-    return "constructor";
-  }
-  return getStaticPropertyKeyName(member, { allowComputedString: true });
-};
-
 interface ClassInstanceWrite {
   readonly node: EsTreeNode;
   readonly enclosingMemberName: string | null;
@@ -290,12 +287,6 @@ interface ClassBodyIndex {
 }
 
 const classBodyIndexCache = new WeakMap<EsTreeNode, ClassBodyIndex>();
-
-const getEnclosingClassMember = (node: EsTreeNode, classBody: EsTreeNode): EsTreeNode | null => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current && current.parent !== classBody) current = current.parent;
-  return current ?? null;
-};
 
 const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
   const cachedIndex = classBodyIndexCache.get(classBody);
@@ -1755,6 +1746,13 @@ const isMountHazard = (
       !receiverIsRefOwnedNode &&
       !receiverIsRefOwnedD3Selection;
     if (!isHazard) return null;
+    if (
+      methodName === "on" &&
+      !isCalledAfterSuspension &&
+      !isAfterAwaitInEnclosingFunction(node, context) &&
+      isSplideOwnedListenerDisposed(node, classBody, context)
+    )
+      return null;
     const returnedReferenceKey = storedCallResultReferenceKey(node, scopes, classBody);
     const originalReceiver = stripParenExpression(callee.object);
     const importedReactNativeReceiverName = isNodeOfType(originalReceiver, "Identifier")

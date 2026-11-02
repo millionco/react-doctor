@@ -604,6 +604,7 @@ export const JSX_LEAF_POOL = [
   `{items.map((item, index) => <Row key={item.id ?? index} item={item} />)}`,
   `{items.map((item) => <li key={item.id}>{item.name}</li>)}`,
   `{Array.from({ length: 4 }).map((_, index) => <div key={index}>{index}</div>)}`,
+  `{Array.apply(0, Array(4)).map((unused, index) => <Tile key={index} position={index} />)}`,
   `{Array(3).fill(null).map((cell) => <td key={cell}>{cell}</td>)}`,
   `text content`,
   `{condition ? <span>yes</span> : null}`,

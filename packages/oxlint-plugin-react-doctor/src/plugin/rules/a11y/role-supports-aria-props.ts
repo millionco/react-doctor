@@ -13,6 +13,7 @@ import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isAriaPropertySupportedByRole } from "../../utils/is-aria-property-supported-by-role.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { isSingleSelectAutocompleteNone } from "./utils/is-single-select-autocomplete-none.js";
 
 const buildMessageDefault = (roles: ReadonlyArray<string>, propName: string): string => {
   const roleList = roles.map((role) => `\`${role}\``).join(" / ");
@@ -103,6 +104,12 @@ export const roleSupportsAriaProps = defineRule({
             continue;
           }
           if (roleCandidates.some((role) => isAriaPropertySupportedByRole(role, propName)))
+            continue;
+          if (
+            shouldUseCuratedBehavior &&
+            propName === "aria-autocomplete" &&
+            isSingleSelectAutocompleteNone(node)
+          )
             continue;
           context.report({
             node: attribute,

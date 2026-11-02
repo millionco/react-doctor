@@ -140,6 +140,57 @@ describe("frozen literal imports in accumulator folds", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("preserves reports after a destructured prototype write", () => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        const { constructor: { prototype: arrayPrototype } } = [];
+        ({ reduce: arrayPrototype.reduce } = {
+          reduce(callback, seed) {
+            for (const item of externalItems) seed = callback(seed, item);
+            return seed;
+          },
+        });
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    "[arrayPrototype.reduce] = reducers;",
+    "({ methods: [arrayPrototype.reduce] } = replacement);",
+    "({ reduce: arrayPrototype.reduce = customReduce } = replacement);",
+    "[...arrayPrototype.reduce] = reducers;",
+    "({ ...arrayPrototype.reduce } = replacement);",
+    "for (arrayPrototype.reduce of reducers) {}",
+    "for ({ reduce: arrayPrototype.reduce } of replacements) {}",
+    "for (arrayPrototype.reduce in replacements) {}",
+  ])("preserves reports for nested assignment targets: %s", (assignment) => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        const { constructor: { prototype: arrayPrototype } } = [];
+        ${assignment}
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    "const { name } = record.value;",
+    "const { nested: { name = record.value } } = input;",
+    "({ nested: { name = record.value } } = input);",
+    "({ [record.key]: name } = input);",
+    "[name = record.value] = input;",
+    "for ({ name = record.value } of input) {}",
+    "const { constructor: { prototype: arrayPrototype } } = [];",
+  ])("keeps safe destructuring reads quiet: %s", (read) => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        ${read}
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toEqual([]);
+  });
+
   it("preserves reports for a shadowed enumeration and unsafe object shapes", () => {
     writeProvider(FROZEN_OBJECT_PROVIDER);
     expect(

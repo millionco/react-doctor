@@ -6,6 +6,7 @@ import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symb
 import { getImportedName } from "./get-imported-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isWithinAssignmentTarget } from "./is-within-assignment-target.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { resolveRelativeImportPath } from "./resolve-relative-import-path.js";
 import type { RuleContext } from "./rule-context.js";
@@ -75,7 +76,16 @@ export const createFrozenImportedCollectionChecker = (
         PROTOTYPE_PROPERTY_NAMES.has(getStaticPropertyName(node) ?? "") ||
         (isNodeOfType(consumer, "AssignmentExpression") && consumer.left === memberRoot) ||
         (isNodeOfType(consumer, "UpdateExpression") && consumer.argument === memberRoot) ||
-        (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "delete")
+        (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "delete") ||
+        ((isNodeOfType(consumer, "ArrayPattern") ||
+          (isNodeOfType(consumer, "Property") &&
+            consumer.value === memberRoot &&
+            isNodeOfType(consumer.parent, "ObjectPattern")) ||
+          (isNodeOfType(consumer, "AssignmentPattern") && consumer.left === memberRoot) ||
+          (isNodeOfType(consumer, "RestElement") && consumer.argument === memberRoot) ||
+          ((isNodeOfType(consumer, "ForInStatement") || isNodeOfType(consumer, "ForOfStatement")) &&
+            consumer.left === memberRoot)) &&
+          isWithinAssignmentTarget(memberRoot))
       ) {
         canUseIntrinsics = false;
       }

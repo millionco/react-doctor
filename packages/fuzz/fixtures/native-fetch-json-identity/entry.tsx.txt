@@ -1,0 +1,16 @@
+// rule: no-promise-then-side-effect-in-effect-without-catch
+// verdict: pass
+// weakness: cross-file, promise-assimilation
+// source: synthetic native fetch JSON identity-catch profile
+import { useEffect, useState } from "react";
+import endpoints from "./endpoints";
+export const ProfilePanel = () => {
+  const [profile, setProfile] = useState(null);
+  useEffect(() => {
+    fetch(endpoints.profile, { method: "GET" })
+      .then((response) => response.json())
+      .then((value) => setProfile(value))
+      .catch((error) => error);
+  }, []);
+  return <output>{profile?.name}</output>;
+};

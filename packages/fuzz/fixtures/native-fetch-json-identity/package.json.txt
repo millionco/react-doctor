@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "17.0.2"
+  }
+}

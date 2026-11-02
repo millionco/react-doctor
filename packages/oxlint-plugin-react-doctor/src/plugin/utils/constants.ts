@@ -1,3 +1,5 @@
+import { FAST_REFRESH_CONFIG_FILENAMES } from "../constants/fast-refresh.js";
+
 export const SOURCE_PROJECT_FINGERPRINT_MAX_ENTRY_COUNT = 65536;
 export const SOURCE_PROJECT_FINGERPRINT_MAX_FILE_COUNT = 2048;
 export const SOURCE_PROJECT_FINGERPRINT_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
@@ -72,3 +74,73 @@ export const OBJECT_PROTOTYPE_PROPERTY_NAMES: ReadonlySet<string> = new Set([
   "toString",
   "valueOf",
 ]);
+
+export const NATIVE_FETCH_IDENTITY_SINGLE_VALUE_COUNT = 1;
+export const NATIVE_FETCH_IDENTITY_MAX_ARGUMENT_COUNT = 2;
+export const NATIVE_FETCH_IDENTITY_PRODUCER_STATEMENT_COUNT = 2;
+export const NATIVE_FETCH_IDENTITY_REFUSED_MEMBER_NAMES = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+export const NATIVE_FETCH_IDENTITY_REFUSED_GLOBAL_NAMES = new Set([
+  "eval",
+  "Function",
+  "Reflect",
+  "require",
+]);
+export const NATIVE_FETCH_IDENTITY_ERROR_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "SyntaxError",
+  "DOMException",
+]);
+export const NATIVE_FETCH_IDENTITY_PROVIDER_NAMES = new Set([
+  "fetch",
+  "Promise",
+  "Response",
+  ...NATIVE_FETCH_IDENTITY_ERROR_NAMES,
+]);
+export const NATIVE_FETCH_IDENTITY_PASSIVE_OBJECT_METHOD_NAMES = new Set([
+  "keys",
+  "entries",
+  "values",
+  "is",
+  "hasOwn",
+]);
+export const NATIVE_FETCH_IDENTITY_REFUSED_MODULE_SOURCES = new Set([
+  "module",
+  "node:module",
+  "vm",
+  "node:vm",
+]);
+
+export const NATIVE_FETCH_IDENTITY_ACTIVE_HTML_PATTERN =
+  /<script\b|\bon[a-z]+\s*=|javascript\s*:/iu;
+
+export const NATIVE_FETCH_IDENTITY_BUILD_CONFIG_FILE_NAMES = new Set([
+  ...FAST_REFRESH_CONFIG_FILENAMES,
+  "webpack.config.cts",
+  "webpack.config.mts",
+]);
+export const NATIVE_FETCH_IDENTITY_CRA_COMMANDS = new Set([
+  "react-scripts start",
+  "react-scripts build",
+  "react-scripts test",
+  "react-scripts eject",
+]);
+export const NATIVE_FETCH_IDENTITY_REFUSED_MANIFEST_FIELDS = [
+  "babel",
+  "browser",
+  "overrides",
+  "pnpm",
+  "alias",
+];
+export const NATIVE_FETCH_IDENTITY_PROVIDER_RESOLUTION_PATTERN =
+  /(?:^|\/)(?:react|react-dom|react-scripts)(?:$|@|\/)/u;
+export const NATIVE_FETCH_IDENTITY_RESOLUTION_GLOB_PATTERN = /[?*{]|\[/u;
+export const NATIVE_FETCH_IDENTITY_CRA_MAJOR_VERSION = 5;

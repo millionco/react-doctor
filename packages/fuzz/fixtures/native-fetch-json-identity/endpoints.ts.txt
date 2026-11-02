@@ -1,0 +1,2 @@
+const endpoints = { profile: "/api/profile" };
+export default endpoints;

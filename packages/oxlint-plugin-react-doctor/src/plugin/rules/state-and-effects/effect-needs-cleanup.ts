@@ -71,6 +71,7 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -5569,7 +5570,7 @@ const hasGuardedDeferredCleanup = (
   const usageFunction = findEnclosingFunction(usage.node);
   const promiseChainCall = usageFunction ? getPromiseChainCallForCallback(usageFunction) : null;
   if (
-    usage.kind !== "timer" ||
+    (usage.kind !== "subscribe" && usage.kind !== "timer") ||
     usage.handleKey === null ||
     !usageFunction ||
     !isFunctionLike(usageFunction) ||
@@ -5577,13 +5578,33 @@ const hasGuardedDeferredCleanup = (
     usageFunction.async ||
     usageFunction.generator ||
     !isNodeOfType(usage.node, "CallExpression") ||
-    !isNodeOfType(usage.node.callee, "Identifier") ||
-    !context.scopes.isGlobalReference(usage.node.callee) ||
+    (usage.kind === "timer" &&
+      (!isNodeOfType(usage.node.callee, "Identifier") ||
+        !context.scopes.isGlobalReference(usage.node.callee))) ||
     !promiseChainCall ||
     !collectEffectInvokedFunctions(callback, context.scopes).has(usageFunction) ||
     !doMatchingNodesCoverEveryPathAfterUsage(promiseChainCall, cleanupReturns, context)
   ) {
     return false;
+  }
+  if (usage.kind === "subscribe") {
+    const promiseCallee = isNodeOfType(promiseChainCall, "CallExpression")
+      ? stripParenExpression(promiseChainCall.callee)
+      : null;
+    if (
+      findEnclosingFunction(promiseChainCall) !== callback ||
+      !isNodeOfType(promiseCallee, "MemberExpression") ||
+      !isSubscriptionPromise(promiseCallee.object, context.scopes)
+    ) {
+      return false;
+    }
+    const callbackBinding = isNodeOfType(usageFunction, "FunctionExpression")
+      ? usageFunction.id
+      : null;
+    if (callbackBinding) {
+      const callbackSymbol = context.scopes.symbolFor(callbackBinding);
+      if (!callbackSymbol || callbackSymbol.references.length > 0) return false;
+    }
   }
   const usageExpression = findTransparentExpressionRoot(usage.node);
   const usageAssignment = usageExpression.parent;
@@ -5618,15 +5639,73 @@ const hasGuardedDeferredCleanup = (
       if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
       if (
         isNodeOfType(child, "CallExpression") &&
-        isNodeOfType(child.callee, "Identifier") &&
-        context.scopes.isGlobalReference(child.callee) &&
+        (usage.kind === "subscribe" || isNodeOfType(child.callee, "Identifier")) &&
+        (usage.kind === "subscribe" || context.scopes.isGlobalReference(child.callee)) &&
         doesReleaseCallMatchUsage(child, usage, context)
       ) {
+        const releaseCallee = stripParenExpression(child.callee);
+        const releasedHandle = stripParenExpression(
+          isNodeOfType(releaseCallee, "MemberExpression") ? releaseCallee.object : releaseCallee,
+        );
+        if (
+          usage.kind === "subscribe" &&
+          (!isNodeOfType(releasedHandle, "Identifier") ||
+            context.scopes.symbolFor(releasedHandle)?.id !== handleSymbol.id)
+        ) {
+          return;
+        }
         const handleGuard = findDirectHandleGuardForRelease(child, cleanupFunction, usage, context);
+        const releaseExpression = findTransparentExpressionRoot(child);
+        const logicalGuard = releaseExpression.parent;
+        const logicalReleaseGuard =
+          isNodeOfType(logicalGuard, "LogicalExpression") &&
+          logicalGuard.operator === "&&" &&
+          logicalGuard.right === releaseExpression
+            ? logicalGuard
+            : null;
+        const guardTest = handleGuard?.test ?? logicalReleaseGuard?.left;
+        if (usage.kind === "subscribe" && guardTest) {
+          const availabilityTest = stripParenExpression(guardTest);
+          const availabilityOperands = isNodeOfType(availabilityTest, "BinaryExpression")
+            ? [availabilityTest.left, availabilityTest.right]
+            : isNodeOfType(availabilityTest, "UnaryExpression")
+              ? [availabilityTest.argument]
+              : [availabilityTest];
+          const hasDirectHandleOperand = availabilityOperands.some((operand) => {
+            const availabilityOperand = stripParenExpression(operand);
+            return (
+              isNodeOfType(availabilityOperand, "Identifier") &&
+              context.scopes.symbolFor(availabilityOperand)?.id === handleSymbol.id
+            );
+          });
+          if (!hasDirectHandleOperand) return;
+        }
+        const isEarlyHandleExit =
+          usage.kind === "subscribe" &&
+          handleGuard !== null &&
+          !isAstDescendant(child, handleGuard.consequent);
+        if (isEarlyHandleExit && handleGuard) {
+          globalReleaseProofs.push({
+            anchor: handleGuard.consequent,
+            call: child,
+            handleGuard: null,
+          });
+        }
+        let releaseAnchor: EsTreeNode = isEarlyHandleExit ? child : (handleGuard ?? child);
+        if (
+          !handleGuard &&
+          usage.kind === "subscribe" &&
+          usage.handleKey !== null &&
+          logicalReleaseGuard &&
+          doesTestRequireLiveExpressionKey(logicalReleaseGuard.left, usage.handleKey, context)
+        ) {
+          releaseAnchor = logicalReleaseGuard;
+        }
+
         globalReleaseProofs.push({
-          anchor: handleGuard ?? child,
+          anchor: releaseAnchor,
           call: child,
-          handleGuard,
+          handleGuard: isEarlyHandleExit ? null : handleGuard,
         });
       }
     });
@@ -5648,7 +5727,7 @@ const hasGuardedDeferredCleanup = (
     (handleAssignment) =>
       findTransparentExpressionRoot(handleAssignment.identifier).parent === usageAssignment,
   );
-  const timerArguments = usage.node.arguments;
+  const timerArguments = usage.kind === "timer" ? usage.node.arguments : [];
   const hasUnsafeHandleAssignment = handleAssignments.some((handleAssignment) => {
     const assignmentTarget = findTransparentExpressionRoot(handleAssignment.identifier);
     const assignment = assignmentTarget.parent;
@@ -5669,6 +5748,7 @@ const hasGuardedDeferredCleanup = (
     if (!isNullishReset) return true;
     const assignmentFunction = findEnclosingFunction(assignment);
     const isResetInOwnCallback =
+      usage.kind === "timer" &&
       assignmentFunction &&
       isFunctionLike(assignmentFunction) &&
       timerArguments.some((argument) => {
@@ -5700,7 +5780,10 @@ const hasGuardedDeferredCleanup = (
     return false;
   }
   let usageAncestor: EsTreeNode | null | undefined = usage.node.parent;
-  while (usageAncestor && usageAncestor !== usageFunction) {
+  while (
+    usageAncestor &&
+    usageAncestor !== (usage.kind === "subscribe" ? callback : usageFunction)
+  ) {
     if (
       isNodeOfType(usageAncestor, "ForStatement") ||
       isNodeOfType(usageAncestor, "ForInStatement") ||

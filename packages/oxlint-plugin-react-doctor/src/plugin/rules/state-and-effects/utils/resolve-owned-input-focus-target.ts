@@ -1,3 +1,5 @@
+import { isReactHookDependencyRead } from "./is-react-hook-dependency-read.js";
+import { getReactUseCallbackCall } from "../../../utils/get-react-use-callback-call.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 import { isOwnedObjectCallbackDataConsumer } from "./is-owned-object-callback-data-consumer.js";
 import { collectOwnedForeignContainsUses } from "./collect-owned-foreign-contains-uses.js";
@@ -513,13 +515,56 @@ const hasVisibleOwnedInputPoison = (
       return;
     const argument = node.arguments[OWNED_INPUT_SINGLE_COUNT];
     const value = argument ? stripParenExpression(argument) : null;
-    const callback =
+    const callbackFactory =
+      value && isNodeOfType(value, "Identifier")
+        ? getReactUseCallbackCall(value, module.scopes)
+        : null;
+    let callback =
       value &&
       (isFunctionLike(value)
         ? value
         : isNodeOfType(value, "Identifier")
           ? resolveExactLocalFunction(value, module.scopes)
           : null);
+    let factoryOrigin: SymbolDescriptor | null = null;
+    if (callbackFactory) {
+      const [factoryCallback, dependencies, ...extraArguments] = callbackFactory.arguments;
+      const factoryRoot = findTransparentExpressionRoot(callbackFactory);
+      const declaration = factoryRoot.parent;
+      if (
+        callbackFactory.optional ||
+        !isProvenUnmodifiedReactApiCall(callbackFactory, "useCallback", module.scopes) ||
+        hasReactDefaultProviderMutation("useCallback", module.scopes) ||
+        !factoryCallback ||
+        isNodeOfType(factoryCallback, "SpreadElement") ||
+        !isNodeOfType(dependencies, "ArrayExpression") ||
+        dependencies.elements.some(
+          (element) => !element || isNodeOfType(element, "SpreadElement"),
+        ) ||
+        extraArguments.length ||
+        !isNodeOfType(declaration, "VariableDeclarator") ||
+        declaration.init !== factoryRoot ||
+        !isNodeOfType(declaration.id, "Identifier") ||
+        !isNodeOfType(declaration.parent, "VariableDeclaration") ||
+        declaration.parent.kind !== "const"
+      ) {
+        unsupportedListener = true;
+        return;
+      }
+      callback = stripParenExpression(factoryCallback);
+      factoryOrigin = module.scopes.symbolFor(declaration.id);
+      if (
+        !isFunctionLike(callback) ||
+        callback.async ||
+        callback.generator ||
+        !factoryOrigin ||
+        factoryOrigin.kind !== "const" ||
+        !hasReadonlyCompleteReferences(factoryOrigin, module)
+      ) {
+        unsupportedListener = true;
+        return;
+      }
+    }
     if (
       !callback ||
       !isFunctionLike(callback) ||
@@ -533,20 +578,24 @@ const hasVisibleOwnedInputPoison = (
       const root = findTransparentExpressionRoot(callback);
       const declaration = root.parent;
       const origin =
-        isNodeOfType(callback, "FunctionDeclaration") && callback.id
+        factoryOrigin ??
+        (isNodeOfType(callback, "FunctionDeclaration") && callback.id
           ? module.scopes.symbolFor(callback.id)
           : isNodeOfType(declaration, "VariableDeclarator") &&
               declaration.init === root &&
               isNodeOfType(declaration.id, "Identifier")
             ? module.scopes.symbolFor(declaration.id)
-            : null;
+            : null);
       if (!origin) {
         unsupportedListener = true;
         return;
       }
       const aliases = new Set<SymbolDescriptor>([origin]);
       for (const alias of aliases) {
-        if (!hasReadonlyCompleteReferences(alias, module)) {
+        if (
+          !hasReadonlyCompleteReferences(alias, module) ||
+          (factoryOrigin && alias.kind !== "const")
+        ) {
           unsupportedListener = true;
           break;
         }
@@ -554,6 +603,7 @@ const hasVisibleOwnedInputPoison = (
           if (!isRuntimeReference(reference.identifier)) continue;
           const use = findTransparentExpressionRoot(reference.identifier);
           const parent = use.parent;
+          if (isReactHookDependencyRead(use, module.scopes)) continue;
           if (
             parent &&
             isOwnGlobalListenerCall(parent, OWNED_INPUT_LISTENER_NAMES) &&

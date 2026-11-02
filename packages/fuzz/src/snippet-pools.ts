@@ -314,6 +314,8 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useState as useFuzzCookieState } from "react"; import { setCookie as applyFuzzCookie } from "../corpus/regressions/cookie-write-provider/persist"; const FuzzCookieProviderPreference = () => { const [value, setValue] = useFuzzCookieState(0); return <button onClick={() => setValue(previous => { applyFuzzCookie("view=compact"); return previous + 1; })}>{value}</button>; };`,
+  `import { useState as useFuzzCommonjsCookieState } from "react"; import { setCookie as applyFuzzCommonjsCookie } from "../corpus/regressions/cookie-write-commonjs-provider/persist.cts"; const FuzzCommonjsCookiePreference = () => { const [value, setValue] = useFuzzCommonjsCookieState(0); return <button onClick={() => setValue(previous => { applyFuzzCommonjsCookie("view", "compact"); return previous + 1; })}>{value}</button>; };`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

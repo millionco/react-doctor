@@ -11,3 +11,5 @@ Class output tracing requires an explicit own instance data field assigned by an
 Treat unknown computed global writes as ambiguous Error providers before suppressing security-shaped randomness.
 
 Cache function return proofs and index class-alias bindings to avoid repeated scans when tracing security consumers.
+
+Keep ambient function provider checks effective in TypeScript namespaces.

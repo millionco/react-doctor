@@ -27,6 +27,8 @@ export const hasVisibleAmbientFunctionDeclaration = (
         statements = owner.body;
       } else if (isFunctionLike(owner) && owner.body.type === "BlockStatement") {
         statements = owner.body.body;
+      } else if (owner.type === "TSModuleDeclaration" && owner.body?.type === "TSModuleBlock") {
+        statements = owner.body.body;
       } else if (owner.type === "CatchClause") {
         statements = owner.body.body;
       } else if (owner.type === "SwitchStatement") {

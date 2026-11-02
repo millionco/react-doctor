@@ -4,6 +4,199 @@ import { contextProviderValueFromUnmemoizedLocalLiteral } from "./context-provid
 
 describe.each(["() =>", "function Inner()"])("callback replacement with %s", (callbackSyntax) => {
   it.each([
+    [
+      "caught synchronous await operand throw",
+      "const replace = async () => { try { await (() => { throw 0; })(); } catch { callback = () => null; } }; replace(); return callback();",
+      0,
+    ],
+    [
+      "caught local synchronous await operand throw",
+      "const fail = () => { throw 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      0,
+    ],
+    [
+      "finally after synchronous await operand throw",
+      "const replace = async () => { try { await (() => { throw 0; })(); } finally { callback = () => null; } }; replace(); return callback();",
+      0,
+    ],
+    [
+      "throwing await operand after an earlier suspension",
+      "const replace = async () => { try { await 0; await (() => { throw 0; })(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "catch replacement after its own suspension",
+      "const replace = async () => { try { await (() => { throw 0; })(); } catch { await 0; callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "finally replacement after its own suspension",
+      "const replace = async () => { try { await (() => { throw 0; })(); } finally { await 0; callback = () => null; } }; replace().catch(() => {}); return callback();",
+      1,
+    ],
+    [
+      "catch after deferred promise rejection",
+      "const replace = async () => { try { await Promise.reject(0); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "catch after deferred async throw",
+      "const fail = async () => { throw 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "finally after awaiting a primitive",
+      "const replace = async () => { try { await 0; } finally { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "catch after a generator call",
+      "const fail = function* () { throw 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "unreachable local throw",
+      "const fail = () => { if (false) throw 0; return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "uncalled throwing nested function",
+      "const fail = () => { const unused = () => { throw 0; }; return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "absorbed local throw with unreachable rethrow",
+      "const fail = () => { try { throw 0; } catch { if (false) throw 0; } return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "absorbed local throw with rethrow after return",
+      "const fail = () => { try { throw 0; } catch { return 0; throw 0; } }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "absorbed local throw with nested async throw",
+      "const fail = () => { try { throw 0; } catch { const later = async () => { throw 0; }; } return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "absorbed local throw with nested generator throw",
+      "const fail = () => { try { throw 0; } catch { const later = function* () { throw 0; }; } return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "local finally return overrides throw",
+      "const fail = () => { try { throw 0; } finally { return 0; } }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "conditional local throw can return normally",
+      "const enabled = false; const fail = () => { if (enabled) throw 0; return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "conditional inline throw can return normally",
+      "const enabled = false; const replace = async () => { try { await (() => { if (enabled) throw 0; return 0; })(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "zero iteration loop does not throw",
+      "const fail = () => { for (const unused of []) throw 0; return 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "early return before local throw",
+      "const enabled = false; const fail = () => { if (!enabled) return 0; throw 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "supplied argument skips throwing default",
+      "const fail = (value = (() => { throw 0; })()) => value; const replace = async () => { try { await fail(0); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "supplied destructured property skips throwing default",
+      "const fail = ({ value = (() => { throw 0; })() }) => value; const replace = async () => { try { await fail({ value: 0 }); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "optional callee skips throwing key",
+      "const object = null; const fail = () => { throw 0; }; const replace = async () => { try { await object?.[fail()](); } catch { callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "caught replacement restores original callback",
+      "const original = callback; const fail = () => { throw 0; }; const replace = async () => { try { await fail(); } catch { callback = original; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "caught replacement forwards original callback",
+      "const original = callback; const fail = () => { throw 0; }; const replace = async () => { try { await fail(); } catch { callback = () => original(); } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "caught replacement returns rendered throw value",
+      "const original = callback; const fail = () => { throw original(); }; const replace = async () => { try { await fail(); } catch (value) { callback = () => value; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "inert caught replacement alongside original callback result",
+      "const original = callback; const fail = () => { throw 0; }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return [original(), callback()];",
+      1,
+    ],
+    [
+      "inert caught replacement after capturing original callback result",
+      "let result; const original = callback; const fail = () => { throw 0; }; const replace = async () => { try { await fail(); } catch { result = original(); callback = () => null; } }; replace(); return [result, callback()];",
+      1,
+    ],
+    [
+      "inert caught replacement after capturing rendered throw value",
+      "let result; const original = callback; const fail = () => { throw (result = original()); }; const replace = async () => { try { await fail(); } catch { callback = () => null; } }; replace(); return [result, callback()];",
+      1,
+    ],
+    [
+      "nested catch after an earlier handler suspension",
+      "const replace = async () => { try { await (() => { throw 0; })(); } catch { await 0; try { await (() => { throw 0; })(); } catch { callback = () => null; } } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "conditional caught assignment does not replace callback",
+      "const replace = async () => { try { await (() => { throw 0; })(); } catch { if (false) callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "conditional caught mutation call does not replace callback",
+      "const mutate = () => { callback = () => null; }; const replace = async () => { try { await (() => { throw 0; })(); } catch { if (false) mutate(); } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "early handler return prevents replacement",
+      "const replace = async () => { try { await (() => { throw 0; })(); } catch { if (true) return; callback = () => null; } }; replace(); return callback();",
+      1,
+    ],
+    [
+      "conditional async owner does not replace callback",
+      "const replace = async () => { if (false) { try { await (() => { throw 0; })(); } catch { callback = () => null; } } }; replace(); return callback();",
+      1,
+    ],
+  ])("handles closed exception replacement: %s", (_, helperBody, diagnosticCount) => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `import { createContext } from "react";
+       const ThemeContext = createContext(null);
+       function helper(callback) { ${helperBody} }
+       function App() {
+         return helper(${callbackSyntax} {
+           const value = {};
+           return <ThemeContext.Provider value={value} />;
+         });
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it.each([
     ["unchanged callback", "return callback();", 1],
     [
       "awaited-assignment-RHS",

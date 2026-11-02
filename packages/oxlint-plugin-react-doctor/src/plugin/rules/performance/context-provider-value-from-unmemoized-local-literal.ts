@@ -20,6 +20,7 @@ import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
+import { isClosedSynchronousInertCallbackReplacement } from "../../utils/is-closed-synchronous-inert-callback-replacement.js";
 import { isDescendantWithoutFunctionBoundary } from "../../utils/is-descendant-without-function-boundary.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -336,7 +337,18 @@ const isArgumentRenderedSynchronously = (
                       assignmentNode = assignmentNode.parent;
                     }
                   }
-                  return canExecuteBeforeAsyncSuspension(executionNode, executionOwner, context);
+                  if (canExecuteBeforeAsyncSuspension(executionNode, executionOwner, context)) {
+                    return true;
+                  }
+                  return (
+                    executionNode === writeReference.identifier &&
+                    isClosedSynchronousInertCallbackReplacement({
+                      helperFunction: calledFunction,
+                      writeIdentifier: writeReference.identifier,
+                      callbackCall: parameterCall,
+                      context,
+                    })
+                  );
                 },
               },
             ).length > 0

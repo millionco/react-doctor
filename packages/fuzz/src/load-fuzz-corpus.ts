@@ -4,6 +4,7 @@ import { MAX_CORPUS_FILES, MAX_CORPUS_FILE_BYTES } from "./constants.js";
 
 export interface FuzzCorpusEntry {
   relativePath: string;
+  fixtureFilename?: string;
   code: string;
   ruleIds?: string[];
   sourcePath?: string;
@@ -17,6 +18,7 @@ export interface FuzzCorpusLoadOptions {
 const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)(?:\.txt)?$/;
 const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: (.+)$/m;
 const SOURCE_PATH_DIRECTIVE_PATTERN = /^\/\/ file-path: (.+)$/m;
+const FIXTURE_CONTEXT_DIRECTIVE_PATTERN = /^\/\/ fixture-context: physical\r?$/m;
 const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
 
@@ -131,6 +133,9 @@ export const loadFuzzCorpus = (
       entries.push({
         relativePath: path.relative(corpusDirectory, fullPath).split(path.sep).join("/"),
         code,
+        ...(FIXTURE_CONTEXT_DIRECTIVE_PATTERN.test(code)
+          ? { fixtureFilename: path.resolve(fullPath) }
+          : {}),
         ...readCorpusDirectives(code),
       });
     } catch {

@@ -14,6 +14,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
@@ -249,6 +250,63 @@ const isKnownJsxCallbackArgument = (
   );
 };
 
+const isParameterlessLiteralReturningFunction = (expression: EsTreeNode): boolean => {
+  const functionNode = stripParenExpression(expression);
+  if (!isFunctionLike(functionNode) || functionNode.params.length !== 0) return false;
+  const returnedExpression = getSingleReturnExpression(functionNode);
+  return Boolean(
+    returnedExpression && isNodeOfType(stripParenExpression(returnedExpression), "Literal"),
+  );
+};
+
+const isReplacedParameterOnlyOutput = (
+  functionNode: EsTreeNode,
+  parameterName: string,
+  parameterCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (
+    !isFunctionLike(functionNode) ||
+    functionNode.params.length !== 1 ||
+    !isNodeOfType(functionNode.body, "BlockStatement") ||
+    parameterCall.arguments.length !== 0
+  ) {
+    return false;
+  }
+  const [firstStatement, secondStatement, ...remainingStatements] = functionNode.body.body;
+  if (!firstStatement || !secondStatement || remainingStatements.length > 0) return false;
+  const isReturnFirst = isNodeOfType(firstStatement, "ReturnStatement");
+  const returnStatement = isReturnFirst ? firstStatement : secondStatement;
+  const replacement = isReturnFirst ? secondStatement : firstStatement;
+  if (
+    !isNodeOfType(returnStatement, "ReturnStatement") ||
+    !returnStatement.argument ||
+    stripParenExpression(returnStatement.argument) !== parameterCall
+  ) {
+    return false;
+  }
+  if (isNodeOfType(replacement, "FunctionDeclaration")) {
+    return (
+      replacement.id?.name === parameterName && isParameterlessLiteralReturningFunction(replacement)
+    );
+  }
+  if (
+    isReturnFirst ||
+    !isNodeOfType(replacement, "VariableDeclaration") ||
+    replacement.kind !== "var"
+  ) {
+    return false;
+  }
+  const [declaration, ...remainingDeclarations] = replacement.declarations;
+  return Boolean(
+    declaration &&
+    remainingDeclarations.length === 0 &&
+    isNodeOfType(declaration.id, "Identifier") &&
+    declaration.id.name === parameterName &&
+    declaration.init &&
+    isParameterlessLiteralReturningFunction(declaration.init),
+  );
+};
+
 const isArgumentRenderedSynchronously = (
   call: EsTreeNodeOfType<"CallExpression">,
   argument: EsTreeNode,
@@ -281,7 +339,8 @@ const isArgumentRenderedSynchronously = (
         findEnclosingFunction(parameterCall) === calledFunction &&
         isNodeOnUnconditionalPath(parameterCall, calledFunction) &&
         context.cfg.isUnconditionalFromEntry(parameterCall) &&
-        doesCallResultReachFunctionOutput(parameterCall, calledFunction, context),
+        doesCallResultReachFunctionOutput(parameterCall, calledFunction, context) &&
+        !isReplacedParameterOnlyOutput(calledFunction, parameter.name, parameterCall),
       );
     }),
   );

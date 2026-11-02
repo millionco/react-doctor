@@ -22,6 +22,7 @@ import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-na
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -281,7 +282,29 @@ const isArgumentRenderedSynchronously = (
         findEnclosingFunction(parameterCall) === calledFunction &&
         isNodeOnUnconditionalPath(parameterCall, calledFunction) &&
         context.cfg.isUnconditionalFromEntry(parameterCall) &&
-        doesCallResultReachFunctionOutput(parameterCall, calledFunction, context),
+        doesCallResultReachFunctionOutput(parameterCall, calledFunction, context) &&
+        !parameterSymbol.references.some((writeReference) => {
+          const writeTarget = findTransparentExpressionRoot(writeReference.identifier);
+          const writeParent = writeTarget.parent;
+          const isBindingTarget =
+            isNodeOfType(writeParent, "ArrayPattern") ||
+            (isNodeOfType(writeParent, "Property") &&
+              writeParent.value === writeTarget &&
+              isNodeOfType(writeParent.parent, "ObjectPattern")) ||
+            ((isNodeOfType(writeParent, "AssignmentPattern") ||
+              isNodeOfType(writeParent, "AssignmentExpression")) &&
+              writeParent.left === writeTarget) ||
+            (isNodeOfType(writeParent, "RestElement") && writeParent.argument === writeTarget);
+          return (
+            (writeReference.flag !== "read" ||
+              (isBindingTarget && isWithinAssignmentTarget(writeTarget))) &&
+            getSymbolWriteExecutionPathsBefore(
+              writeReference.identifier,
+              parameterCall,
+              context.scopes,
+            ).length > 0
+          );
+        }),
       );
     }),
   );

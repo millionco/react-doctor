@@ -10,6 +10,7 @@ import { getImportBindingForName } from "../../utils/find-import-source-for-name
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isUnmodifiedArrayFromResult } from "../../utils/is-unmodified-array-from-result.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { hasReactRefCurrentOrigin } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -220,6 +221,7 @@ const getExternalAssignmentDescription = (
 const isArrayValue = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const expression = stripParenExpression(node);
   if (isNodeOfType(expression, "ArrayExpression")) return true;
+  if (isUnmodifiedArrayFromResult(expression, scopes)) return true;
   if (!isNodeOfType(expression, "Identifier")) return false;
   return isNodeOfType(
     resolveConstIdentifierAlias(expression, scopes)?.initializer,

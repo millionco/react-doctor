@@ -126,8 +126,10 @@ const readResolvedTsconfig = (
   configFilePath: string,
   extendsDepth: number,
   probedPaths: string[],
+  parsedConfig?: Record<string, unknown> | null,
 ): ResolvedTsconfig | null => {
-  const parsed = parseTsconfigFile(configFilePath, probedPaths);
+  const parsed =
+    parsedConfig === undefined ? parseTsconfigFile(configFilePath, probedPaths) : parsedConfig;
   if (!parsed) return null;
 
   const configDirectory = path.dirname(configFilePath);
@@ -155,11 +157,14 @@ const readResolvedTsconfig = (
 interface CacheEntry {
   readonly mtimeMs: number;
   readonly config: ResolvedTsconfig | null;
+  readonly hasUnsupportedRouting: boolean;
   /** Every tsconfig read while resolving the `extends` chain, in order. */
   readonly probedChainPaths: ReadonlyArray<string>;
 }
 
 interface TsconfigLookup {
+  readonly didFindConfig?: boolean;
+  readonly hasUnsupportedRouting?: boolean;
   readonly config: ResolvedTsconfig | null;
   readonly probedContentPaths: ReadonlySet<string>;
 }
@@ -188,7 +193,12 @@ const loadTsconfigCached = (configFilePath: string): TsconfigLookup => {
     fileStat = undefined;
   }
   if (fileStat === undefined) {
-    return { config: null, probedContentPaths: new Set([configFilePath]) };
+    return {
+      config: null,
+      didFindConfig: false,
+      hasUnsupportedRouting: false,
+      probedContentPaths: new Set([configFilePath]),
+    };
   }
   // The resolved config depends on the whole `extends` CHAIN, not just this
   // entry file, so each entry remembers the chain paths it read and replays
@@ -200,18 +210,42 @@ const loadTsconfigCached = (configFilePath: string): TsconfigLookup => {
     for (const probedPath of cached.probedChainPaths) recordContentProbe(probedPath);
     return {
       config: cached.config,
+      didFindConfig: true,
+      hasUnsupportedRouting: cached.hasUnsupportedRouting,
       probedContentPaths: new Set(cached.probedChainPaths),
     };
   }
 
   const probedChainPaths: string[] = [];
-  const config = readResolvedTsconfig(configFilePath, 0, probedChainPaths);
+  const parsedConfig = parseTsconfigFile(configFilePath, probedChainPaths);
+  const compilerOptions = parsedConfig?.compilerOptions;
+  const routingOptions = isObjectRecord(compilerOptions) ? compilerOptions : {};
+  const paths = routingOptions.paths;
+  const hasUnsupportedRouting =
+    parsedConfig === null ||
+    parsedConfig.extends !== undefined ||
+    (compilerOptions !== undefined && !isObjectRecord(compilerOptions)) ||
+    (routingOptions.baseUrl !== undefined && typeof routingOptions.baseUrl !== "string") ||
+    routingOptions.plugins !== undefined ||
+    (paths !== undefined &&
+      (!isObjectRecord(paths) ||
+        Object.values(paths).some(
+          (targets) =>
+            !Array.isArray(targets) || targets.some((target) => typeof target !== "string"),
+        )));
+  const config = readResolvedTsconfig(configFilePath, 0, probedChainPaths, parsedConfig);
   configByFilePath.set(configFilePath, {
     mtimeMs: fileStat.mtimeMs,
     config,
+    hasUnsupportedRouting,
     probedChainPaths,
   });
-  return { config, probedContentPaths: new Set(probedChainPaths) };
+  return {
+    config,
+    didFindConfig: true,
+    hasUnsupportedRouting,
+    probedContentPaths: new Set(probedChainPaths),
+  };
 };
 
 const cacheVisitedTsconfigDirectories = (
@@ -374,6 +408,40 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
     return resolveModuleFileFromAbsolutePath(path.resolve(config.baseAbsolutePath, source));
   }
   return null;
+};
+
+export const hasTsconfigAliasOrUnsupportedRouting = (
+  fromFilename: string,
+  sources: ReadonlySet<string>,
+): boolean => {
+  let currentDirectory = path.dirname(fromFilename);
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    for (const fileName of TSCONFIG_FILE_NAMES) {
+      const lookup = loadTsconfigCached(path.join(currentDirectory, fileName));
+      if (!lookup.didFindConfig) continue;
+      if (lookup.hasUnsupportedRouting) return true;
+      const config = lookup.config;
+      if (!config) return false;
+      for (const source of sources) {
+        if (
+          [...config.paths.keys()].some((pattern) => matchPathPattern(source, pattern) !== null)
+        ) {
+          return true;
+        }
+        if (
+          config.hasExplicitBaseUrl &&
+          resolveModuleFileFromAbsolutePath(path.resolve(config.baseAbsolutePath, source))
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) return false;
+    currentDirectory = parentDirectory;
+  }
+  return true;
 };
 
 export const resetTsconfigAliasCaches = (): void => {

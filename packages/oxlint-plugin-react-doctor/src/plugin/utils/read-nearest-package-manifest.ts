@@ -20,6 +20,11 @@ export interface PackageManifest {
   main?: unknown;
   module?: unknown;
   exports?: unknown;
+  browser?: unknown;
+  type?: unknown;
+  overrides?: unknown;
+  resolutions?: unknown;
+  pnpm?: unknown;
   workspaces?: unknown;
   private?: unknown;
   dependencies?: Record<string, unknown>;

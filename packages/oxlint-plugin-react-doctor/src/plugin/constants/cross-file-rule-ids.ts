@@ -54,6 +54,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-no-img-element",
   "nextjs-no-use-search-params-without-suspense",
   "no-dynamic-import-path",
+  "no-effect-chain",
   "no-full-lodash-import",
   "no-hydration-branch-on-browser-global",
   "no-img-without-dimensions",

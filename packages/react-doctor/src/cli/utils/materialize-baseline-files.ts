@@ -29,6 +29,7 @@ export const materializeBaselineFiles = (input: {
       const diffPlan = yield* git.baselineDiffPlan({
         directory: input.directory,
         ref: input.ref,
+        untrackedRenamePaths: input.files,
       });
       const baseFiles = input.baseFiles ?? diffPlan?.baseFiles;
       const headFiles = input.headFiles ?? diffPlan?.headFiles;

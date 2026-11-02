@@ -5,6 +5,8 @@ import { getFrozenLiteralExportKind } from "./get-frozen-literal-export-kind.js"
 import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
 import { getImportedName } from "./get-imported-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
+import { getBoundedFrozenIntrinsicPropertyNames } from "./get-bounded-frozen-intrinsic-property-names.js";
+import { collectConstAliasSymbols } from "./collect-const-alias-symbols.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isWithinAssignmentTarget } from "./is-within-assignment-target.js";
 import { parseSourceFile } from "./parse-source-file.js";
@@ -24,7 +26,13 @@ const UNSAFE_GLOBAL_NAMES = new Set([
   "eval",
   "Function",
 ]);
-const PROTOTYPE_PROPERTY_NAMES = new Set(["prototype", "__proto__", "constructor"]);
+const LEGACY_ACCESSOR_METHOD_NAMES = new Set(["__defineGetter__", "__defineSetter__"]);
+const PROTOTYPE_PROPERTY_NAMES = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+  ...LEGACY_ACCESSOR_METHOD_NAMES,
+]);
 
 export const createFrozenImportedCollectionChecker = (
   context: RuleContext,
@@ -69,11 +77,60 @@ export const createFrozenImportedCollectionChecker = (
             isEnumerationCall(findTransparentExpressionRoot(member).parent);
         }
       }
+      let propertyNames: ReadonlySet<string> | null = null;
+      if (
+        isNodeOfType(node, "MemberExpression") ||
+        (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern"))
+      ) {
+        const resolution = getBoundedFrozenIntrinsicPropertyNames(node, context);
+        if (resolution.didExceedBudget) {
+          canUseIntrinsics = false;
+          return false;
+        }
+        propertyNames = resolution.names;
+      }
+      if (
+        isNodeOfType(node, "Property") &&
+        isNodeOfType(node.parent, "ObjectPattern") &&
+        propertyNames &&
+        [...propertyNames].some((name) => LEGACY_ACCESSOR_METHOD_NAMES.has(name))
+      ) {
+        const binding = isNodeOfType(node.value, "AssignmentPattern")
+          ? node.value.left
+          : node.value;
+        const symbol = isNodeOfType(binding, "Identifier") ? scopes.symbolFor(binding) : null;
+        if (!symbol) {
+          canUseIntrinsics = false;
+          return;
+        }
+        const aliases = collectConstAliasSymbols(symbol, scopes);
+        const aliasSymbols = new Set(aliases);
+        canUseIntrinsics = aliases.every(
+          (alias) =>
+            !isNodeOfType(alias.declarationNode.parent?.parent, "ExportNamedDeclaration") &&
+            alias.references.every((reference) => {
+              if (reference.flag !== "read") return false;
+              const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+              const usage = referenceRoot.parent;
+              return (
+                isNodeOfType(usage, "ExpressionStatement") ||
+                (isNodeOfType(usage, "UnaryExpression") &&
+                  ["typeof", "void", "!"].includes(usage.operator)) ||
+                (isNodeOfType(usage, "BinaryExpression") &&
+                  ["===", "!=="].includes(usage.operator)) ||
+                (isNodeOfType(usage, "VariableDeclarator") &&
+                  usage.init === referenceRoot &&
+                  isNodeOfType(usage.id, "Identifier") &&
+                  aliasSymbols.has(scopes.symbolFor(usage.id)!))
+              );
+            }),
+        );
+      }
       if (!isNodeOfType(node, "MemberExpression")) return;
       const memberRoot = findTransparentExpressionRoot(node);
       const consumer = memberRoot.parent;
       if (
-        PROTOTYPE_PROPERTY_NAMES.has(getStaticPropertyName(node) ?? "") ||
+        (propertyNames && [...propertyNames].some((name) => PROTOTYPE_PROPERTY_NAMES.has(name))) ||
         (isNodeOfType(consumer, "AssignmentExpression") && consumer.left === memberRoot) ||
         (isNodeOfType(consumer, "UpdateExpression") && consumer.argument === memberRoot) ||
         (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "delete") ||

@@ -10,8 +10,14 @@ import {
 } from "../../utils/parse-source-file.js";
 import { resetModuleResolutionCaches } from "../../utils/resolve-relative-import-path.js";
 import { noSpreadAccumulatorInReduce } from "./no-spread-accumulator-in-reduce.js";
+import { getFiniteStaticStringValues } from "../../utils/get-finite-static-string-values.js";
+import {
+  FROZEN_COLLECTION_PROPERTY_KEY_MAX_EXPRESSIONS,
+  FROZEN_COLLECTION_PROPERTY_KEY_MAX_CHARS,
+} from "../../constants/thresholds.js";
 
 vi.mock("../../utils/parse-source-file.js", { spy: true });
+vi.mock("../../utils/get-finite-static-string-values.js", { spy: true });
 
 const FROZEN_ARRAY_PROVIDER = 'export const labels = Object.freeze(["bronze", "silver", "gold"]);';
 const FROZEN_OBJECT_PROVIDER =
@@ -153,6 +159,131 @@ describe("frozen literal imports in accumulator folds", () => {
         });
         labels.reduce((result, label) => [...result, label], []);`).diagnostics,
     ).toHaveLength(1);
+  });
+
+  it("preserves reports when a legacy accessor replaces the inherited reducer", () => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        const { constructor: { prototype: arrayPrototype } } = [];
+        export function fold(externalItems) {
+          arrayPrototype.__defineGetter__("reduce", () => function(callback, seed) {
+            for (const item of externalItems) seed = callback(seed, item);
+            return seed;
+          });
+          return labels.reduce((result, label) => [...result, label], []);
+        }`).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    'arrayPrototype.__defineSetter__("reduce", () => {});',
+    'arrayPrototype["__defineGetter__"]("reduce", () => replacement);',
+    'arrayPrototype[`__defineSetter__`]("reduce", () => {});',
+    'const method = "__defineGetter__"; arrayPrototype[method]("reduce", () => replacement);',
+    'const method = `__defineSetter__`; arrayPrototype[method]("reduce", () => {});',
+    'const install = arrayPrototype.__defineGetter__; install.call(arrayPrototype, "reduce", () => replacement);',
+    'const { __defineGetter__: install } = arrayPrototype; install.call(arrayPrototype, "reduce", () => replacement);',
+    'const { __defineSetter__: install } = arrayPrototype; install.call(arrayPrototype, "reduce", () => {});',
+    'const { __defineGetter__: install } = arrayPrototype; const alias = install; alias.apply(arrayPrototype, ["reduce", () => replacement]);',
+    'const method = "__defineGetter__"; const { [method]: install } = arrayPrototype; install.call(arrayPrototype, "reduce", () => replacement);',
+    "export const { __defineGetter__: install } = arrayPrototype;",
+    'arrayPrototype["__define" + "Getter__"]("reduce", () => replacement);',
+    'const method = "__define" + "Setter__"; arrayPrototype[method]("reduce", () => {});',
+    'const method = "__define" + "Getter__"; const { [method]: install } = arrayPrototype; install.call(arrayPrototype, "reduce", () => replacement);',
+    'const method = choose ? "__defineGetter__" : "__defineGetter__"; arrayPrototype[method]("reduce", () => replacement);',
+    'let method = "__defineGetter__"; arrayPrototype[method]("reduce", () => replacement);',
+    'var method = "__defineSetter__"; arrayPrototype[method]("reduce", () => {});',
+    'const method = choose && "__defineGetter__"; arrayPrototype[method]("reduce", () => replacement);',
+    'const method = choose || "__defineSetter__"; arrayPrototype[method]("reduce", () => {});',
+    'const method = choose ?? "__defineGetter__"; arrayPrototype[method]("reduce", () => replacement);',
+    'arrayPrototype[(ignored, "__defineGetter__")]("reduce", () => replacement);',
+    'let method; arrayPrototype[(method = "__defineGetter__")]("reduce", () => replacement);',
+    'const method = choose ? opaque : "__defineGetter__"; arrayPrototype[method]("reduce", () => replacement);',
+    'const method = choose ? "__defineGetter__" : opaque; arrayPrototype[method]("reduce", () => replacement);',
+    'const left = a ? "a" : b ? "b" : c ? "c" : "__define"; const right = d ? "0" : e ? "1" : f ? "2" : g ? "3" : h ? "4" : i ? "5" : j ? "6" : k ? "7" : "Getter__"; arrayPrototype[left + right]("reduce", () => replacement);',
+  ])("preserves reports for visible legacy accessor capabilities: %s", (installation) => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        const { constructor: { prototype: arrayPrototype } } = [];
+        const replacement = (callback, seed) => {
+          for (const item of externalItems) seed = callback(seed, item);
+          return seed;
+        };
+        ${installation}
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    "const { __defineGetter__: read } = arrayPrototype;",
+    "const { __defineGetter__: read } = arrayPrototype; typeof read;",
+    "const { __defineSetter__: read } = arrayPrototype; void read;",
+    "const { __defineGetter__: read } = arrayPrototype; const alias = read; alias;",
+    "const { __defineGetter__: read = record.value } = input; typeof read;",
+    "const { [record.key]: read = record.value } = input;",
+  ])("keeps passive destructured accessor reads quiet: %s", (read) => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        const { constructor: { prototype: arrayPrototype } } = [];
+        ${read}
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toEqual([]);
+  });
+
+  it.each([
+    "unrelated[readMethod()]();",
+    "const method = readMethod(); unrelated[method]();",
+    'unrelated["ordinary" + "Method"]();',
+    "const { [unrelated[readKey()]]: value } = input;",
+    'const method = choose ? opaque : "ordinary"; unrelated[method]();',
+    'const method = opaque || "ordinary"; unrelated[method]();',
+    'const method = (readValue(), "ordinary"); unrelated[method]();',
+    'let method = "__defineGetter__"; method = "ordinary"; unrelated[method]();',
+  ])("does not veto unrelated computed operations: %s", (operation) => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        ${operation}
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      "expression count",
+      Array.from({ length: FROZEN_COLLECTION_PROPERTY_KEY_MAX_EXPRESSIONS + 1 }, () => '""').join(
+        "+",
+      ),
+    ],
+    [
+      "literal characters",
+      JSON.stringify("x".repeat(FROZEN_COLLECTION_PROPERTY_KEY_MAX_CHARS + 1)),
+    ],
+  ])("refuses over-budget property keys before recursive evaluation: %s", (_label, key) => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        unrelated[${key}]();
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toHaveLength(1);
+    expect(getFiniteStaticStringValues).not.toHaveBeenCalled();
+  });
+
+  it("bounds duplicated alias expansion before recursive evaluation", () => {
+    writeProvider(FROZEN_ARRAY_PROVIDER);
+    const declarations = ["const part0 = ''; "];
+    for (let index = 1; index <= FROZEN_COLLECTION_PROPERTY_KEY_MAX_EXPRESSIONS; index++)
+      declarations.push(`const part${index} = part${index - 1} + part${index - 1};`);
+    expect(
+      lintConsumer(`import { labels } from "./provider";
+        ${declarations.join("\n")}
+        unrelated[part${FROZEN_COLLECTION_PROPERTY_KEY_MAX_EXPRESSIONS}]();
+        labels.reduce((result, label) => [...result, label], []);`).diagnostics,
+    ).toHaveLength(1);
+    expect(getFiniteStaticStringValues).not.toHaveBeenCalled();
   });
 
   it.each([

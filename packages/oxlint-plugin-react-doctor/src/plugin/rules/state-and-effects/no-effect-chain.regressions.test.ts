@@ -100,6 +100,49 @@ const buildReaderFrameCollisionFixture = (
 }`;
 
 describe("no-effect-chain — regressions", () => {
+  const buildChain = (cleanup: string): string => `import { useEffect, useState } from "react";
+    const Example = ({ source }) => {
+      const [step, setStep] = useState(0);
+      const [ready, setReady] = useState(false);
+      useEffect(() => {
+        setStep(1);
+        ${cleanup}
+      }, [source]);
+      useEffect(() => {
+        if (step > 0) setReady(true);
+      }, [step]);
+      return ready;
+    };`;
+
+  it.each([
+    ["an empty arrow", "return () => {};"],
+    ["an arrow that only reads a binding", "return () => { source; };"],
+  ])("reports an effect chain whose writer returns %s as its cleanup", (_label, cleanup) => {
+    const result = runRule(noEffectChain, buildChain(cleanup));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the writer returns a cleanup that does work", () => {
+    const result = runRule(noEffectChain, buildChain("return () => { cancelled = true; };"));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["return () => cleanupSignal;", "return () => void cleanupSignal;"])(
+    "retains a writer cleanup that reads a global accessor: %s",
+    (cleanup) => {
+      const result = runRule(
+        noEffectChain,
+        `Object.defineProperty(globalThis, "cleanupSignal", {
+          get() { connection.close(); }
+        });\n${buildChain(cleanup)}`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("reports effect chains through effect, setter, and dependency aliases", () => {
     const result = runRule(
       noEffectChain,

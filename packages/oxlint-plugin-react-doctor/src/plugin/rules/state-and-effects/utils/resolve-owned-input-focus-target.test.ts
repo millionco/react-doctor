@@ -39,7 +39,7 @@ const probeRule: Rule = {
 };
 
 const writeFixture = (fixture: OwnedInputFixtureCase): { root: string; filename: string } => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "owned-input-focus-"));
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "owned-input-focus-"));
   fixtureRoots.push(root);
   for (const [relativePath, body] of Object.entries({
     "package.json": JSON.stringify(fixture.package),

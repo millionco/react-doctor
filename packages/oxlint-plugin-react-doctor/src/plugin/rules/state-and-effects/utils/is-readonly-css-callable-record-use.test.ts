@@ -503,7 +503,7 @@ afterEach(() => {
 
 describe("isReadonlyCssCallableRecordUse", () => {
   it.each(cases)("$name", (fixture) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "readonly-css-record-"));
+    const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "readonly-css-record-"));
     roots.push(root);
     const filename = path.join(root, "entry.tsx");
     for (const [relativePath, body] of Object.entries({

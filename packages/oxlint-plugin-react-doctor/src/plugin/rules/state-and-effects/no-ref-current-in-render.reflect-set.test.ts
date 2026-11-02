@@ -2,6 +2,94 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noRefCurrentInRender } from "./no-ref-current-in-render.js";
 
+describe("Reflect runtime binding regression", () => {
+  it.each([
+    ["bare native", "", 'Reflect.set(valueRef, "current", value)', 1],
+    ["erased interface", "interface Reflect {}", 'Reflect.set(valueRef, "current", value)', 1],
+    ["erased type alias", "type Reflect = unknown;", 'Reflect.set(valueRef, "current", value)', 1],
+    [
+      "erased named import",
+      'import type { Reflect } from "./types";',
+      'Reflect.set(valueRef, "current", value)',
+      1,
+    ],
+    [
+      "erased namespace import",
+      'import type * as Reflect from "./types";',
+      'Reflect.set(valueRef, "current", value)',
+      1,
+    ],
+    [
+      "mixed inline type import",
+      'import { type Reflect, runtimeValue } from "./types";',
+      'Reflect.set(valueRef, "current", value)',
+      1,
+    ],
+    [
+      "native const alias with erased declaration",
+      "const Reflect = globalThis.Reflect; interface Reflect {}",
+      'Reflect.set(valueRef, "current", value)',
+      1,
+    ],
+    [
+      "outer runtime value behind erased declaration",
+      "const Reflect = { set: () => false };",
+      '(() => { interface Reflect {} Reflect.set(valueRef, "current", value); })()',
+      0,
+    ],
+    [
+      "runtime parameter behind erased declaration",
+      "",
+      '((Reflect) => { interface Reflect {} Reflect.set(valueRef, "current", value); })(customReflect)',
+      0,
+    ],
+    [
+      "runtime class behind erased declaration",
+      "class Reflect { static set() { return false; } }",
+      '(() => { interface Reflect {} Reflect.set(valueRef, "current", value); })()',
+      0,
+    ],
+    [
+      "runtime import behind erased declaration",
+      'import { Reflect } from "./custom-reflect";',
+      '(() => { interface Reflect {} Reflect.set(valueRef, "current", value); })()',
+      0,
+    ],
+    [
+      "same-scope runtime and erased declaration",
+      "const Reflect = { set: () => false }; interface Reflect {}",
+      'Reflect.set(valueRef, "current", value)',
+      0,
+    ],
+    [
+      "mutation behind erased declaration",
+      "interface Reflect {}",
+      'Reflect.set = () => false; Reflect.set(valueRef, "current", value)',
+      0,
+    ],
+    ["direct write control", "interface Reflect {}", "valueRef.current = value", 1],
+    [
+      "runtime shadow control",
+      "const Reflect = { set: () => false };",
+      'Reflect.set(valueRef, "current", value)',
+      0,
+    ],
+  ])("%s", (_, declaration, write, diagnosticCount) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react";
+       ${declaration}
+       const Panel = ({ value }) => {
+         const valueRef = useRef(null);
+         ${write};
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+});
+
 describe("ref writes through Reflect.set during render", () => {
   it.each([
     "valueRef.current = value",

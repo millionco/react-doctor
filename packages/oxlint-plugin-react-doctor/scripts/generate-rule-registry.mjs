@@ -102,6 +102,7 @@ const getRequiredCapabilities = (bucketName, ruleId) => {
 const BUCKET_TO_AUTO_TAGS = {
   design: ["design"],
   ink: ["ink"],
+  octane: ["octane"],
   project: ["project-analysis"],
   "react-native": ["react-native"],
   r3f: ["r3f", "webgl"],
@@ -223,6 +224,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   jotai: "State & Effects",
   mobx: "State & Effects",
   nextjs: "Next.js",
+  octane: "Correctness",
   performance: "Performance",
   preact: "Preact",
   project: "Architecture",

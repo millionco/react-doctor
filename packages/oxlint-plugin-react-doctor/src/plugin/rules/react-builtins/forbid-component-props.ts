@@ -2,6 +2,7 @@ import { compileGlob } from "../../utils/compile-glob.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
@@ -96,18 +97,6 @@ const isForbiddenForTag = (entry: NormalizedEntry, tag: string): boolean => {
   if (entry.allowedFor.includes(tag)) return false;
   if (entry.allowedForPatterns.some((regex) => regex.test(tag))) return false;
   return true;
-};
-
-const flattenJsxName = (name: EsTreeNode): string => {
-  if (isNodeOfType(name, "JSXIdentifier")) return name.name;
-  if (isNodeOfType(name, "JSXMemberExpression")) {
-    const obj = flattenJsxName(name.object);
-    return `${obj}.${name.property.name}`;
-  }
-  if (name.type === "ThisExpression" || name.type === ("JSXThisExpression" as unknown as string)) {
-    return "this";
-  }
-  return "";
 };
 
 const isSupportedJsxName = (name: EsTreeNode): boolean =>

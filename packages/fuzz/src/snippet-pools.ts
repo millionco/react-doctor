@@ -314,6 +314,21 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `const fakeReact = { useState: initial => [initial, callback => callback(initial)] }; Object.assign(globalThis, { React: fakeReact });
+
+
+let fuzzGlobalFactoryObserved = 0;
+const createFuzzGlobalFactoryHandlers = (applyState, configuration) => ({
+  onClick: () => applyState((previous) => {
+    fuzzGlobalFactoryObserved = previous;
+    return previous;
+  }),
+});
+const FuzzGlobalFactoryCounter = (props) => {
+  const [count, setCount] = React.useState(0);
+  return <button {...createFuzzGlobalFactoryHandlers(setCount, props.config)}>{count}</button>;
+};`,
+  `import FuzzFactoryReact from "react"; FuzzFactoryReact.useState = initial => [initial, callback => callback(initial)]; let fuzzFactoryObserved = 0; const createFuzzFactoryHandler = applyState => ({ onClick: () => applyState(previous => { fuzzFactoryObserved = previous; return previous; }) }); const FuzzFactoryProviderCounter = () => { const [value, setValue] = FuzzFactoryReact.useState(0); return <button {...createFuzzFactoryHandler(setValue)}>{value}</button>; };`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

@@ -1,5 +1,6 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
+import { TIMER_CLEANUP_CALLEE_NAMES } from "../../constants/dom.js";
 import {
   MUTATING_ARRAY_METHODS,
   MUTATING_COLLECTION_METHODS,
@@ -1976,6 +1977,21 @@ const callHasSideEffectName = (
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
+  if (TIMER_CLEANUP_CALLEE_NAMES.has(callName)) {
+    if (isNodeOfType(callee, "Identifier") && context.scopes.isGlobalReference(callee)) {
+      return true;
+    }
+    if (isNodeOfType(callee, "MemberExpression")) {
+      const receiver = stripParenExpression(callee.object);
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        GLOBAL_OBJECT_RECEIVER_NAMES.has(receiver.name) &&
+        context.scopes.isGlobalReference(receiver)
+      ) {
+        return true;
+      }
+    }
+  }
   if (
     callUsesProvenImmutableLibraryValueMethod(
       call,

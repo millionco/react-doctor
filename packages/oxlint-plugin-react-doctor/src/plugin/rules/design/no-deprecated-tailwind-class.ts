@@ -1,3 +1,4 @@
+import { getPreservedMergerFlexTokens } from "../../utils/get-preserved-merger-flex-tokens.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
@@ -31,8 +32,10 @@ export const noDeprecatedTailwindClass = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);
-      if (!classNameValue) return;
-      for (const token of getClassNameTokens(classNameValue)) {
+      const tokens = classNameValue
+        ? getClassNameTokens(classNameValue)
+        : getPreservedMergerFlexTokens(node, context);
+      for (const token of tokens) {
         const replacement = renameDeprecatedToken(token);
         if (replacement) {
           context.report({

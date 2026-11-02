@@ -528,6 +528,25 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+const collectTailwindMergerDependencies: CrossFileDependencyCollector = (input) => {
+  collectImportedValueDependencies(input);
+  collectNearestManifestDependencies(input);
+  const filenames = new Set([input.absoluteFilePath]);
+  for (const entry of flattenImportEntries(input.staticImports)) {
+    const resolved = resolveCrossFileValueExportWithFilePath(
+      input.absoluteFilePath,
+      entry.source,
+      entry.exportedName,
+    );
+    if (resolved) filenames.add(resolved.filePath);
+  }
+  for (const filename of filenames) {
+    readNearestPackageManifest(filename);
+    resolveModulePath(filename, "tailwind-merge");
+    resolveModulePath(filename, "clsx");
+  }
+};
+
 const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
   collectBrowserGuardDependencies(input);
@@ -589,6 +608,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
+    ["no-deprecated-tailwind-class", collectTailwindMergerDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],

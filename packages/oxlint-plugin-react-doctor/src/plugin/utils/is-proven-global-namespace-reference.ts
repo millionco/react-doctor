@@ -8,6 +8,7 @@ import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getValueImportDeclaration } from "./get-value-import-declaration.js";
+import { hasVisibleAmbientFunctionDeclaration } from "./has-visible-ambient-function-declaration.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -26,6 +27,20 @@ const valueImportsByAnalysis = new WeakMap<
   ScopeAnalysis,
   WeakMap<EsTreeNode, Map<boolean, boolean>>
 >();
+const ambientNamespaceProvidersByScope = new WeakMap<ScopeDescriptor, Map<string, boolean>>();
+
+const hasAmbientNamespaceProvider = (scope: ScopeDescriptor, name: string): boolean => {
+  let providers = ambientNamespaceProvidersByScope.get(scope);
+  if (!providers) {
+    providers = new Map();
+    ambientNamespaceProvidersByScope.set(scope, providers);
+  }
+  const cachedProvider = providers.get(name);
+  if (cachedProvider !== undefined) return cachedProvider;
+  const hasProvider = hasVisibleAmbientFunctionDeclaration(scope, name);
+  providers.set(name, hasProvider);
+  return hasProvider;
+};
 
 const hasRuntimeNamespaceValue = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
   if (symbol.kind === "ts-interface" || symbol.kind === "ts-type-alias") return false;
@@ -123,7 +138,8 @@ export const isProvenGlobalObjectReference = (
         strippedExpression.name === "self" ||
         strippedExpression.name === "global") &&
       scopes.referenceFor(strippedExpression) !== null &&
-      getRuntimeNamespaceSymbol(strippedExpression, scopes) === null
+      getRuntimeNamespaceSymbol(strippedExpression, scopes) === null &&
+      !hasAmbientNamespaceProvider(scopes.scopeFor(strippedExpression), strippedExpression.name)
     ) {
       return true;
     }
@@ -177,7 +193,8 @@ export const isProvenGlobalNamespaceReference = (
     if (
       strippedExpression.name === namespaceName &&
       scopes.referenceFor(strippedExpression) !== null &&
-      getRuntimeNamespaceSymbol(strippedExpression, scopes) === null
+      getRuntimeNamespaceSymbol(strippedExpression, scopes) === null &&
+      !hasAmbientNamespaceProvider(scopes.scopeFor(strippedExpression), namespaceName)
     ) {
       return true;
     }

@@ -2,6 +2,131 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noRefCurrentInRender } from "./no-ref-current-in-render.js";
 
+describe("ambient Reflect providers", () => {
+  it.each([
+    ["namespace ambient", "namespace Container { declare function Reflect(): unknown; BODY }", 0],
+    [
+      "namespace erased ambient",
+      "namespace Container { declare function Reflect(): unknown; interface Reflect {} BODY }",
+      0,
+    ],
+    [
+      "nested namespace ambient",
+      "namespace Container { export namespace Inner { declare function Reflect(): unknown; interface Reflect {} BODY } }",
+      0,
+    ],
+    [
+      "dotted namespace ambient",
+      "namespace Container.Inner { declare function Reflect(): unknown; interface Reflect {} BODY }",
+      0,
+    ],
+    [
+      "outer namespace ambient",
+      "namespace Container { declare function Reflect(): unknown; export namespace Inner { BODY } }",
+      0,
+    ],
+    ["native namespace", "namespace Container { BODY }", 1],
+    [
+      "namespace runtime shadow",
+      "namespace Container { const Reflect = { set: () => false }; interface Reflect {} BODY }",
+      0,
+    ],
+    [
+      "ambient sibling namespace",
+      "namespace Other { declare function Reflect(): unknown; } namespace Container { BODY }",
+      1,
+    ],
+    [
+      "native alias behind outer namespace ambient",
+      "namespace Container { declare function Reflect(): unknown; export namespace Inner { const Reflect = globalThis.Reflect; BODY } }",
+      1,
+    ],
+    [
+      "namespace ambient global object",
+      "namespace Container { declare function globalThis(): unknown; const Reflect = globalThis.Reflect; BODY }",
+      0,
+    ],
+  ])("%s", (_, source, diagnosticCount) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react";
+       ${source.replace(
+         "BODY",
+         'export const Panel = () => { const valueRef = useRef(null); (Reflect as any).set(valueRef, "current", 1); return null; };',
+       )}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it.each([
+    ["bare ambient", "declare function Reflect(): unknown;", "", 0],
+    [
+      "ambient with erased interface",
+      "declare function Reflect(): unknown; interface Reflect {}",
+      "",
+      0,
+    ],
+    ["inner ambient", "", "declare function Reflect(): unknown;", 0],
+    [
+      "inner ambient with erased interface",
+      "",
+      "declare function Reflect(): unknown; interface Reflect {}",
+      0,
+    ],
+    [
+      "native alias behind outer ambient",
+      "declare function Reflect(): unknown;",
+      "const Reflect = globalThis.Reflect;",
+      1,
+    ],
+    [
+      "native alias behind outer erased ambient",
+      "declare function Reflect(): unknown; interface Reflect {}",
+      "const Reflect = globalThis.Reflect;",
+      1,
+    ],
+    [
+      "ambient in a sibling function",
+      "function other() { declare function Reflect(): unknown; }",
+      "",
+      1,
+    ],
+    [
+      "native alias behind ambient global object",
+      "declare function globalThis(): unknown;",
+      "const globalThis = window; const Reflect = globalThis.Reflect;",
+      1,
+    ],
+    [
+      "ambient global object alias",
+      "declare function globalThis(): unknown; const Reflect = globalThis.Reflect;",
+      "",
+      0,
+    ],
+    [
+      "erased ambient global object alias",
+      "declare function globalThis(): unknown; interface globalThis {} const Reflect = globalThis.Reflect;",
+      "",
+      0,
+    ],
+  ])("%s", (_, declaration, setup, diagnosticCount) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react";
+       ${declaration}
+       const Panel = () => {
+         const valueRef = useRef(null);
+         ${setup}
+         (Reflect as any).set(valueRef, "current", 1);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+});
+
 describe("Reflect runtime binding regression", () => {
   it.each([
     ["bare native", "", 'Reflect.set(valueRef, "current", value)', 1],

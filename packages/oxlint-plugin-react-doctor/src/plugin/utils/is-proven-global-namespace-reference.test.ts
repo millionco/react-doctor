@@ -3,6 +3,7 @@ import { attachParentReferences } from "../../test-utils/attach-parent-reference
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import * as valueImportHelpers from "./get-value-import-declaration.js";
+import * as ambientFunctionHelpers from "./has-visible-ambient-function-declaration.js";
 import {
   isProvenGlobalNamespaceReference,
   isProvenGlobalObjectReference,
@@ -16,6 +17,52 @@ describe("native namespace runtime bindings", () => {
     ["native global", "Reflect;", [[true, true]]],
     ["interface", "interface Reflect {} Reflect;", [[true, true]]],
     ["type alias", "type Reflect = unknown; Reflect;", [[true, true]]],
+    ["ambient function", "declare function Reflect(): unknown; Reflect;", [[false, false]]],
+    [
+      "namespace ambient function",
+      "namespace Container { declare function Reflect(): unknown; interface Reflect {} Reflect; }",
+      [[false, false]],
+    ],
+    [
+      "nested namespace ambient function",
+      "namespace Container { namespace Inner { declare function Reflect(): unknown; interface Reflect {} Reflect; } }",
+      [[false, false]],
+    ],
+    [
+      "dotted namespace ambient function",
+      "namespace Container.Inner { declare function Reflect(): unknown; interface Reflect {} Reflect; }",
+      [[false, false]],
+    ],
+    [
+      "ambient function with erased interface",
+      "declare function Reflect(): unknown; interface Reflect {} Reflect;",
+      [[false, false]],
+    ],
+    [
+      "inner ambient function",
+      "function inspect() { declare function Reflect(): unknown; Reflect; }",
+      [[false, false]],
+    ],
+    [
+      "outer ambient function",
+      "function outer() { declare function Reflect(): unknown; const inner = () => { Reflect; }; }",
+      [[false, false]],
+    ],
+    [
+      "exported ambient function",
+      "export declare function Reflect(): unknown; interface Reflect {} Reflect;",
+      [[false, false]],
+    ],
+    [
+      "ambient declaration in sibling scope",
+      "function other() { declare function Reflect(): unknown; } Reflect;",
+      [[true, true]],
+    ],
+    [
+      "native alias inside ambient provider scope",
+      "declare function Reflect(): unknown; function inspect() { const Reflect = globalThis.Reflect; Reflect; }",
+      [[true, true]],
+    ],
     ["type import", 'import type { Reflect } from "./types"; Reflect;', [[true, true]]],
     ["default type import", 'import type Reflect from "./types"; Reflect;', [[true, true]]],
     ["namespace type import", 'import type * as Reflect from "./types"; Reflect;', [[true, true]]],
@@ -145,6 +192,54 @@ describe("native namespace runtime bindings", () => {
       expect(valueImportSpy).toHaveBeenCalledTimes(2);
     } finally {
       valueImportSpy.mockRestore();
+    }
+  });
+
+  it.each(["globalThis", "window", "self", "global"])(
+    "refuses the ambient global-object provider %s",
+    (name) => {
+      const parsed = parseFixture(
+        `declare function ${name}(): unknown; interface ${name} {} ${name};`,
+      );
+      expect(parsed.errors).toEqual([]);
+      attachParentReferences(parsed.program);
+      const scopes = analyzeScopes(parsed.program);
+      walkAst(parsed.program, (node) => {
+        if (!isNodeOfType(node, "ExpressionStatement")) return;
+        expect(isProvenGlobalObjectReference(node.expression, scopes)).toBe(false);
+      });
+    },
+  );
+
+  it("retains a native global-object alias inside an outer ambient declaration", () => {
+    const parsed = parseFixture(`
+      declare function globalThis(): unknown;
+      function inspect() { const globalThis = window; globalThis; }
+    `);
+    expect(parsed.errors).toEqual([]);
+    attachParentReferences(parsed.program);
+    const scopes = analyzeScopes(parsed.program);
+    walkAst(parsed.program, (node) => {
+      if (!isNodeOfType(node, "ExpressionStatement")) return;
+      expect(isProvenGlobalObjectReference(node.expression, scopes)).toBe(true);
+    });
+  });
+
+  it("memoizes ambient visibility for repeated native proofs in one scope", () => {
+    const parsed = parseFixture("Reflect; Reflect;");
+    expect(parsed.errors).toEqual([]);
+    attachParentReferences(parsed.program);
+    const scopes = analyzeScopes(parsed.program);
+    const ambientSpy = vi.spyOn(ambientFunctionHelpers, "hasVisibleAmbientFunctionDeclaration");
+    try {
+      walkAst(parsed.program, (node) => {
+        if (!isNodeOfType(node, "ExpressionStatement")) return;
+        expect(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes)).toBe(true);
+        expect(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes)).toBe(true);
+      });
+      expect(ambientSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      ambientSpy.mockRestore();
     }
   });
 });

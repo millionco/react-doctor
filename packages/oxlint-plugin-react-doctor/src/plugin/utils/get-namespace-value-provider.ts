@@ -14,6 +14,7 @@ interface NamespaceValueGroup {
 }
 
 interface NamespaceValueProviderIndex {
+  readonly rootScope: ScopeDescriptor;
   readonly globalNames: Set<string>;
   readonly localNamesByScope: Map<ScopeDescriptor, Set<string>>;
   readonly namespaceGroupsByScope: Map<ScopeDescriptor, NamespaceValueGroup>;
@@ -39,7 +40,7 @@ interface NamespaceScopeFrame {
   readonly hasImplicitExports: boolean;
 }
 
-const indexesByRootScope = new WeakMap<ScopeDescriptor, NamespaceValueProviderIndex>();
+const indexesByScope = new WeakMap<ScopeDescriptor, NamespaceValueProviderIndex>();
 
 const getScopeStatements = (scope: ScopeDescriptor): ReadonlyArray<EsTreeNode> => {
   const owner = scope.node;
@@ -91,6 +92,7 @@ const buildNamespaceValueProviderIndex = (
   rootScope: ScopeDescriptor,
 ): NamespaceValueProviderIndex => {
   const index: NamespaceValueProviderIndex = {
+    rootScope,
     globalNames: new Set(),
     localNamesByScope: new Map(),
     namespaceGroupsByScope: new Map(),
@@ -257,12 +259,18 @@ export const getNamespaceValueProvider = (
   initialScope: ScopeDescriptor,
   name: string,
 ): NamespaceValueProvider => {
-  let rootScope = initialScope;
-  while (rootScope.parent) rootScope = rootScope.parent;
-  let index = indexesByRootScope.get(rootScope);
+  let index = indexesByScope.get(initialScope);
   if (!index) {
-    index = buildNamespaceValueProviderIndex(rootScope);
-    indexesByRootScope.set(rootScope, index);
+    let rootScope = initialScope;
+    while (rootScope.parent) rootScope = rootScope.parent;
+    index = indexesByScope.get(rootScope);
+    if (!index) {
+      index = buildNamespaceValueProviderIndex(rootScope);
+      for (const indexedScope of index.localNamesByScope.keys()) {
+        indexesByScope.set(indexedScope, index);
+      }
+    }
+    indexesByScope.set(initialScope, index);
   }
   let providers = index.providersByScope.get(initialScope);
   if (!providers) {
@@ -272,6 +280,7 @@ export const getNamespaceValueProvider = (
   const cachedProvider = providers.get(name);
   if (cachedProvider) return cachedProvider;
   const hasGlobalProvider = index.globalNames.has(name);
+  const failedNamespaceGroups = new Set<NamespaceValueGroup>();
   let providerScope: ScopeDescriptor | null = null;
   let scope: ScopeDescriptor | null = initialScope;
   while (scope) {
@@ -280,18 +289,19 @@ export const getNamespaceValueProvider = (
       break;
     }
     let namespaceGroup = index.namespaceGroupsByScope.get(scope);
-    while (namespaceGroup) {
+    while (namespaceGroup && !failedNamespaceGroups.has(namespaceGroup)) {
       if (namespaceGroup.exportedNames.has(name)) {
         providerScope = scope;
         break;
       }
+      failedNamespaceGroups.add(namespaceGroup);
       namespaceGroup = namespaceGroup.parent ?? undefined;
     }
     if (providerScope) break;
     scope = scope.parent;
   }
   const provider: NamespaceValueProvider = {
-    scope: providerScope ?? (hasGlobalProvider ? rootScope : null),
+    scope: providerScope ?? (hasGlobalProvider ? index.rootScope : null),
     hasGlobalProvider,
   };
   providers.set(name, provider);

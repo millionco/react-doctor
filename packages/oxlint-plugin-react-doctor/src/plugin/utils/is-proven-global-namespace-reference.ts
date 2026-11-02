@@ -88,6 +88,15 @@ const isVisibleRuntimeNamespaceSymbol = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
+  const variableDeclaration = symbol.declarationNode.parent;
+  if (
+    symbol.declarationNode.type === "VariableDeclarator" &&
+    variableDeclaration?.type === "VariableDeclaration" &&
+    variableDeclaration.parent?.type === "ExportNamedDeclaration" &&
+    variableDeclaration.parent.parent?.type === "TSModuleBlock"
+  ) {
+    return false;
+  }
   const referenceScope = scopes.scopeFor(identifier);
   let declarationScope: ScopeDescriptor | null =
     scopes.ownScopeFor(symbol.declarationNode)?.parent ?? scopes.scopeFor(symbol.declarationNode);

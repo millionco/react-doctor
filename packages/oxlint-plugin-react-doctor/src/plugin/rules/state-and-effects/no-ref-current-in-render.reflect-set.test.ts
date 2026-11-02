@@ -2,6 +2,59 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noRefCurrentInRender } from "./no-ref-current-in-render.js";
 
+describe("namespace export alias boundary", () => {
+  it.each([
+    [
+      "exported namespace alias replaced through namespace object",
+      "namespace Engine { export const Reflect = globalThis.Reflect; BODY } Object.assign(Engine, { Reflect: { set: () => false } });",
+      0,
+    ],
+    [
+      "unmodified namespace export remains unproven",
+      "namespace Engine { export const Reflect = globalThis.Reflect; BODY }",
+      0,
+    ],
+    [
+      "nonexported namespace alias remains lexical",
+      "namespace Engine { const Reflect = globalThis.Reflect; BODY } Object.assign(Engine, { Reflect: { set: () => false } });",
+      1,
+    ],
+    ["ordinary module exported alias", "export const Reflect = globalThis.Reflect; BODY", 1],
+    [
+      "exported namespace destructuring replaced through namespace object",
+      "namespace Engine { export const { Reflect } = globalThis; BODY } Object.assign(Engine, { Reflect: { set: () => false } });",
+      0,
+    ],
+    [
+      "unmodified namespace exported destructuring remains unproven",
+      "namespace Engine { export const { Reflect } = globalThis; BODY }",
+      0,
+    ],
+    [
+      "nonexported namespace destructuring remains lexical",
+      "namespace Engine { const { Reflect } = globalThis; BODY } Object.assign(Engine, { Reflect: { set: () => false } });",
+      1,
+    ],
+    ["ordinary module exported destructuring", "export const { Reflect } = globalThis; BODY", 1],
+    [
+      "ancestor exported alias remains unproven",
+      "namespace Engine { export const Reflect = globalThis.Reflect; export namespace Inner { BODY } }",
+      0,
+    ],
+  ])("%s", (_, source, diagnosticCount) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react";
+       ${source.replace(
+         "BODY",
+         'export const Panel = () => { const valueRef = useRef(null); Reflect.set(valueRef, "current", 1); return null; };',
+       )}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+});
+
 describe("ambient Reflect providers", () => {
   it.each([
     ["namespace ambient", "namespace Container { declare function Reflect(): unknown; BODY }", 0],

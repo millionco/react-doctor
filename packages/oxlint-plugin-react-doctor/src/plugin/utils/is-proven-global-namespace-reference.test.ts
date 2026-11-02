@@ -13,8 +13,62 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
 describe("native namespace runtime bindings", () => {
+  it("keeps outer lexical providers after absent namespace export groups", () => {
+    const parsed = parseFixture(`
+      namespace Parent {
+        const provider = customProvider;
+        export namespace Inner {
+          export namespace Deep { provider; }
+        }
+      }
+    `);
+    expect(parsed.errors).toEqual([]);
+    attachParentReferences(parsed.program);
+    const scopes = analyzeScopes(parsed.program);
+    walkAst(parsed.program, (node) => {
+      if (!isNodeOfType(node, "ExpressionStatement")) return;
+      const provider = namespaceValueHelpers.getNamespaceValueProvider(
+        scopes.scopeFor(node.expression),
+        "provider",
+      );
+      expect(provider.hasGlobalProvider).toBe(false);
+      expect(provider.scope?.node.type).toBe("TSModuleDeclaration");
+      expect(provider.scope).toBe(scopes.rootScope.children[0]);
+    });
+  });
+
   it.each([
     ["native global", "Reflect;", [[true, true]]],
+    [
+      "namespace exported native alias",
+      "namespace Engine { export const Reflect = globalThis.Reflect; Reflect; }",
+      [[false, false]],
+    ],
+    [
+      "namespace lexical native alias",
+      "namespace Engine { const Reflect = globalThis.Reflect; Reflect; }",
+      [[true, true]],
+    ],
+    [
+      "module exported native alias",
+      "export const Reflect = globalThis.Reflect; Reflect;",
+      [[true, true]],
+    ],
+    [
+      "namespace exported native destructuring",
+      "namespace Engine { export const { Reflect } = globalThis; Reflect; }",
+      [[false, false]],
+    ],
+    [
+      "namespace lexical native destructuring",
+      "namespace Engine { const { Reflect } = globalThis; Reflect; }",
+      [[true, true]],
+    ],
+    [
+      "module exported native destructuring",
+      "export const { Reflect } = globalThis; Reflect;",
+      [[true, true]],
+    ],
     ["interface", "interface Reflect {} Reflect;", [[true, true]]],
     ["type alias", "type Reflect = unknown; Reflect;", [[true, true]]],
     ["ambient function", "declare function Reflect(): unknown; Reflect;", [[false, false]]],
@@ -172,6 +226,42 @@ describe("native namespace runtime bindings", () => {
       if (!isNodeOfType(node, "ExpressionStatement")) return;
       expect(isProvenGlobalObjectReference(node.expression, scopes)).toBe(true);
     });
+  });
+
+  it.each([
+    [
+      "namespace exported alias",
+      "namespace Engine { export const globalThis = window; globalThis; }",
+      false,
+    ],
+    [
+      "namespace lexical alias",
+      "namespace Engine { const globalThis = window; globalThis; }",
+      true,
+    ],
+    ["module exported alias", "export const globalThis = window; globalThis;", true],
+    [
+      "namespace exported destructuring",
+      "namespace Engine { export const { globalThis } = window; globalThis; }",
+      false,
+    ],
+    [
+      "namespace lexical destructuring",
+      "namespace Engine { const { globalThis } = window; globalThis; }",
+      true,
+    ],
+    ["module exported destructuring", "export const { globalThis } = window; globalThis;", true],
+  ])("global object %s", (_, source, expected) => {
+    const parsed = parseFixture(source);
+    expect(parsed.errors).toEqual([]);
+    attachParentReferences(parsed.program);
+    const scopes = analyzeScopes(parsed.program);
+    const proofs: boolean[] = [];
+    walkAst(parsed.program, (node) => {
+      if (!isNodeOfType(node, "ExpressionStatement")) return;
+      proofs.push(isProvenGlobalObjectReference(node.expression, scopes));
+    });
+    expect(proofs).toEqual([expected]);
   });
 
   it("classifies each import declaration group once per analysis", () => {

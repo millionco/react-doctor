@@ -18,7 +18,140 @@ const certificateProbe: Rule = {
 const baseSource =
   "import {useCallback,useEffect,useRef,useState} from 'react';\ninterface Props {recordId:string;onLoad?:()=>void|Promise<void>;hasRows:boolean;status?:'running'|'failed';}\nexport const Panel=({recordId,onLoad,hasRows,status}:Props)=>{\n const[busy,setBusy]=useState(false);const epoch=useRef(0);const tag=useRef(-1);\n const previousRecord=useRef(recordId);const previousLoad=useRef(onLoad);const previousRows=useRef(hasRows);const previousStatus=useRef(status);\n {let invalid=false;\n  if(previousRecord.current!==recordId){invalid=true;previousRecord.current=recordId;}\n  if(previousLoad.current!==onLoad){invalid=true;previousLoad.current=onLoad;}\n  if(previousRows.current!==hasRows){invalid=true;previousRows.current=hasRows;}\n  if(previousStatus.current!==status){invalid=true;previousStatus.current=status;}\n  if(invalid){epoch.current+=1;}\n }\n const visible=busy&&tag.current===epoch.current;\n useEffect(()=>{setBusy(false);},[recordId,onLoad,hasRows,status]);\n const begin=useCallback(()=>{if(!onLoad)return;const captured=epoch.current;const result=onLoad();if(result&&typeof result.then==='function'){setBusy(true);tag.current=captured;result.then(()=>setBusy(false),()=>setBusy(false));}},[onLoad]);\n return <button onClick={begin}>{visible?'busy':'idle'}</button>;\n};\n";
 
+const eventInvocationCases = [
+  { name: "direct synchronous activation", declarations: "", handler: "begin", certificate: true },
+  {
+    name: "synchronous event wrapper",
+    declarations: "const activate=()=>begin();",
+    handler: "activate",
+    certificate: true,
+  },
+  {
+    name: "nested synchronous event wrappers",
+    declarations: "const activate=()=>begin();const handleClick=()=>activate();",
+    handler: "handleClick",
+    certificate: true,
+  },
+  {
+    name: "synchronous wrapper with a sole expression statement",
+    declarations: "const handleClick=()=>{begin();};",
+    handler: "handleClick",
+    certificate: true,
+  },
+  {
+    name: "synchronous wrapper with a sole return statement",
+    declarations: "const handleClick=()=>{return begin();};",
+    handler: "handleClick",
+    certificate: true,
+  },
+  {
+    name: "synchronous wrapper with a simple event parameter",
+    declarations: "const handleClick=(event)=>begin();",
+    handler: "handleClick",
+    certificate: true,
+  },
+  {
+    name: "foreign call before synchronous activation",
+    declarations: "const handleClick=()=>{onLoad?.();begin();};",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "foreign call in a nested synchronous wrapper",
+    declarations: "const activate=()=>{onLoad?.();begin();};const handleClick=()=>activate();",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "foreign call in a wrapper argument",
+    declarations: "const handleClick=()=>begin(onLoad?.());",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "foreign call in a wrapper default parameter",
+    declarations: "const handleClick=(event,attempt=onLoad?.())=>begin();",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "destructured wrapper parameter remains outside the proof",
+    declarations: "const handleClick=({target})=>begin();",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "async event wrapper invokes activation after await",
+    declarations: "const handleClick=async()=>{await onLoad?.();begin();};",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "async outer wrapper resumes through a synchronous helper",
+    declarations:
+      "const activate=()=>begin();const handleClick=async()=>{await onLoad?.();activate();};",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "async intermediate wrapper beneath a synchronous event handler",
+    declarations:
+      "const activate=async()=>{await onLoad?.();begin();};const handleClick=()=>activate();",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "async wrapper synchronous prefix remains outside the proof",
+    declarations: "const handleClick=async()=>{begin();await onLoad?.();};",
+    handler: "handleClick",
+    certificate: false,
+  },
+  {
+    name: "generator intermediate wrapper remains outside the proof",
+    declarations:
+      "const activate=function*(){yield;begin();};const handleClick=()=>{const iterator=activate();iterator.next();iterator.next();};",
+    handler: "handleClick",
+    certificate: false,
+  },
+].map((fixture) => ({
+  name: fixture.name,
+  certificate: fixture.certificate,
+  source: baseSource.replace(
+    " return <button onClick={begin}>{visible?'busy':'idle'}</button>;\n",
+    ` ${fixture.declarations}return <button onClick={${fixture.handler}}>{visible?'busy':'idle'}</button>;\n`,
+  ),
+}));
+
+const activationParameterCases = [
+  {
+    name: "activation with a simple event parameter",
+    source: baseSource.replace(
+      "const begin=useCallback(()=>{",
+      "const begin=useCallback((event)=>{",
+    ),
+    certificate: true,
+  },
+  {
+    name: "foreign call in an activation default parameter",
+    source: baseSource.replace(
+      "const begin=useCallback(()=>{",
+      "const begin=useCallback((event,attempt=onLoad?.())=>{",
+    ),
+    certificate: false,
+  },
+  {
+    name: "destructured activation parameter remains outside the proof",
+    source: baseSource.replace(
+      "const begin=useCallback(()=>{",
+      "const begin=useCallback(({target})=>{",
+    ),
+    certificate: false,
+  },
+];
+
 const cases = [
+  ...eventInvocationCases,
+  ...activationParameterCases,
   {
     name: "JSX spread before epoch capture can read a getter",
     certificate: false,
@@ -538,6 +671,17 @@ describe("generation-masked Boolean resets", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length > 0).toBe(fixture.certificate);
   });
+
+  it.each([...eventInvocationCases, ...activationParameterCases])(
+    "$name retains the expected reset diagnostic",
+    (fixture) => {
+      const result = runRule(noAdjustStateOnPropChange, fixture.source, {
+        filename: "/synthetic/generation-mask.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(fixture.certificate ? 0 : 1);
+    },
+  );
 
   it("exempts the selected old-value mask without prescribing reset removal", () => {
     const result = runRule(noAdjustStateOnPropChange, baseSource, {

@@ -770,6 +770,7 @@ const hasClosedWriters = (proof: GenerationMaskProof): boolean => {
       activation.async ||
       !hasOnlyEventHandlerInvocations(activation, {
         ...proof,
+        requireDirectSynchronousInvocations: true,
         isReadonlyBinding: (symbol) => isReadonly(symbol, proof),
         isEventOwner: (owner, identifier) => isNativeEventUse(owner, identifier, proof),
       })

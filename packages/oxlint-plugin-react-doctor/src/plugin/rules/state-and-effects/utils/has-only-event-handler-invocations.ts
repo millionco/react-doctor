@@ -5,6 +5,7 @@ import type { RuleContext } from "../../../utils/rule-context.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
+import { getSingleReturnExpression } from "../../../utils/get-single-return-expression.js";
 import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNonReferenceIdentifier } from "../../../utils/is-non-reference-identifier.js";
@@ -15,6 +16,7 @@ interface EventHandlerInvocationProof {
   readonly component: EsTreeNode;
   readonly scopes: ScopeAnalysis;
   readonly context: RuleContext;
+  readonly requireDirectSynchronousInvocations?: boolean;
   readonly isReadonlyBinding: (symbol: SymbolDescriptor) => boolean;
   readonly isEventOwner?: (owner: EsTreeNode | null, reference: EsTreeNode) => boolean;
 }
@@ -27,6 +29,9 @@ export const hasOnlyEventHandlerInvocations = (
 ): boolean => {
   if (
     !isNodeOfType(functionNode, "ArrowFunctionExpression") ||
+    (proof.requireDirectSynchronousInvocations &&
+      (functionNode.async ||
+        functionNode.params.some((parameter) => !isNodeOfType(parameter, "Identifier")))) ||
     functionNode === proof.component ||
     visited.has(functionNode)
   )
@@ -73,9 +78,22 @@ export const hasOnlyEventHandlerInvocations = (
     )
       continue;
     if (isNodeOfType(call, "CallExpression") && call.callee === root) {
+      const caller = findEnclosingFunction(call);
+      const invocationRoot = findTransparentExpressionRoot(call);
+      const statement = invocationRoot.parent;
       if (
         call.optional ||
-        !hasOnlyEventHandlerInvocations(findEnclosingFunction(call), proof, nextVisited, proven)
+        (proof.requireDirectSynchronousInvocations &&
+          (call.arguments.length !== 0 ||
+            !isNodeOfType(caller, "ArrowFunctionExpression") ||
+            (getSingleReturnExpression(caller) !== invocationRoot &&
+              !(
+                isNodeOfType(caller.body, "BlockStatement") &&
+                caller.body.body.length === 1 &&
+                isNodeOfType(statement, "ExpressionStatement") &&
+                caller.body.body[0] === statement
+              )))) ||
+        !hasOnlyEventHandlerInvocations(caller, proof, nextVisited, proven)
       )
         return false;
       continue;

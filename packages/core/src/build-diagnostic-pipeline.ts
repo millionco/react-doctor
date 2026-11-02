@@ -124,6 +124,7 @@ export const buildDiagnosticPipeline = (
   const hasRawTextWrappers = rawTextWrapperComponentNames.size > 0;
   const hasRuntimeGlobals = runtimeGlobalNames.size > 0;
   const fileLinesCache = new Map<string, string[] | null>();
+  const inlineDisableMarkerPresenceCache = new Map<string, boolean>();
   const fileContextCache = new Map<string, DiagnosticFileContext>();
   const libraryFileCache = new Map<string, boolean>();
   const suppressions = new Map<string, SuppressedRuleCount>();
@@ -291,13 +292,20 @@ export const buildDiagnosticPipeline = (
       if (respectInlineDisables && current.line > 0) {
         const lines = getFileLines(current.filePath);
         if (lines) {
-          const diagnosticLineIndex = current.line - 1;
-          const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
-          if (evaluation.isSuppressed) {
-            return suppress(current, evaluation.isForeignDirective ? "foreign-inline" : "inline");
+          let hasInlineDisableMarker = inlineDisableMarkerPresenceCache.get(current.filePath);
+          if (hasInlineDisableMarker === undefined) {
+            hasInlineDisableMarker = lines.some((line) => line.includes("-disable"));
+            inlineDisableMarkerPresenceCache.set(current.filePath, hasInlineDisableMarker);
           }
-          if (evaluation.nearMissHint) {
-            current = { ...current, suppressionHint: evaluation.nearMissHint };
+          if (hasInlineDisableMarker) {
+            const diagnosticLineIndex = current.line - 1;
+            const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
+            if (evaluation.isSuppressed) {
+              return suppress(current, evaluation.isForeignDirective ? "foreign-inline" : "inline");
+            }
+            if (evaluation.nearMissHint) {
+              current = { ...current, suppressionHint: evaluation.nearMissHint };
+            }
           }
         }
       }

@@ -57,6 +57,8 @@ const buildTopLevelMessage = (hookName: string): string =>
   `\`${hookName}\` can only run inside a React component or custom Hook because React needs that render scope to track Hook state.`;
 const buildNonComponentMessage = (hookName: string, functionName: string): string =>
   `\`${hookName}\` runs inside \`${functionName}\`, which is not a component or Hook, so React cannot attach Hook state to a render.`;
+const buildNestedCallbackMessage = (hookName: string): string =>
+  `\`${hookName}\` runs inside a nested callback. Call Hooks at the top level of a React component or custom Hook.`;
 const buildConditionalMessage = (hookName: string): string =>
   `\`${hookName}\` changes Hook order between renders when called conditionally, so React can attach state to the wrong Hook.`;
 const buildLoopMessage = (hookName: string): string =>
@@ -997,7 +999,7 @@ const isUseEffectEventInitializer = (node: EsTreeNodeOfType<"CallExpression">): 
 export const rulesOfHooks = defineRule({
   id: "rules-of-hooks",
   diffScope: "function",
-  title: "Hook called conditionally",
+  title: "Invalid Hook placement",
   severity: "error",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
@@ -1156,7 +1158,7 @@ export const rulesOfHooks = defineRule({
               outerWalker = outerInfo.node;
             }
             if (!outerIsComponentOrHook) return;
-            context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
+            context.report({ node: node.callee, message: buildNestedCallbackMessage(hookName) });
             return;
           }
 

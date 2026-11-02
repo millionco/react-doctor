@@ -67,16 +67,6 @@ export const OVERSIZED_DISPLAY_HEADING_MIN_PX = 64;
 
 export const SHORT_DECORATIVE_LABEL_MAX_CHARACTERS = 32;
 
-export const HERO_EYEBROW_LABEL_MAX_FONT_SIZE_PX = 14;
-
-export const HERO_EYEBROW_DASH_MIN_WIDTH_PX = 8;
-
-export const HERO_EYEBROW_DASH_MAX_WIDTH_PX = 80;
-
-export const HERO_EYEBROW_DASH_MIN_HEIGHT_PX = 1;
-
-export const HERO_EYEBROW_DASH_MAX_HEIGHT_PX = 6;
-
 export const REPEATED_DECORATIVE_LABEL_MIN_COUNT = 3;
 
 export const NUMBERED_SECTION_LABEL_MIN_COUNT = 2;
@@ -84,8 +74,6 @@ export const NUMBERED_SECTION_LABEL_MIN_COUNT = 2;
 export const NUMBERED_SECTION_LABEL_MAX_INDEX = 40;
 
 export const NUMBERED_SECTION_LABEL_MAX_CHARACTERS = 40;
-
-export const NUMBERED_SECTION_LABEL_MAX_FONT_SIZE_PX = 13;
 
 export const NUMBERED_SECTION_LABEL_MIN_FONT_WEIGHT = 600;
 
@@ -99,24 +87,9 @@ export const TAILWIND_PADDING_SIDE_SPECIFICITY_RANK = 2;
 
 export const WIDE_SHADOW_BLUR_MIN_PX = 16;
 
-export const COMMON_UI_FONT_FAMILIES = new Set([
-  "arial",
-  "geist",
-  "helvetica",
-  "inter",
-  "lato",
-  "montserrat",
-  "open sans",
-  "plus jakarta sans",
-  "roboto",
-  "space grotesk",
-]);
-
 export const MIN_PAGE_TYPE_SCALE_RATIO = 2;
 
 export const PAGE_TYPE_SCALE_MIN_STEPS = 3;
-
-export const PAGE_SPACING_MIN_SAMPLES = 12;
 
 export const PAGE_SPACING_DOMINANT_RATIO = 0.67;
 
@@ -182,8 +155,6 @@ export const GENERIC_ICON_GRADIENT_MAX_SIZE_SPACING_UNITS = 16;
 
 export const EXCESSIVE_MOTION_STAGGER_SECONDS = 0.08;
 
-export const CENTERED_HERO_MAX_STATIC_ELEMENTS = 12;
-
 export const EXCESSIVE_CARD_SURFACE_MIN_COUNT = 6;
 
 export const REPEATED_SECTION_SHELL_MIN_COUNT = 3;
@@ -246,8 +217,6 @@ export const GENERIC_MARKETING_PHRASES = new Set([
   "world-class",
 ]);
 
-export const EM_DASH_PROSE_MIN_WORD_COUNT = 5;
-
 export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;
 
 export const MARQUEE_HORIZONTAL_TRAVEL_THRESHOLD_PERCENTAGE_POINTS = 20;
@@ -267,48 +236,6 @@ export const VAGUE_BUTTON_LABELS = new Set([
   "no",
   "go",
   "done",
-]);
-
-export const TYPOGRAPHY_PUNCTUATION_EXCLUDED_TAG_NAMES = new Set([
-  // Raw code / monospace HTML primitives — em-dashes / ellipses are
-  // syntactic content there, not prose.
-  "code",
-  "pre",
-  "kbd",
-  "samp",
-  "var",
-  "tt",
-  // Markdown / prose-rendering components — they round-trip user
-  // content (or vendor docstrings / CHANGELOG snippets / sample LLM
-  // output) which legitimately contains em-dashes and ellipses. These
-  // are conventional component names used across the ecosystem
-  // (`<Markdown>`, `<Md>`, `<MDX>`, `<MDXContent>`, `<Prose>`,
-  // `<Article>`, `<RichText>`, `<Body>` for body copy, `<Description>`
-  // for documentation snippets, `<MarkdownContent>`, `<MarkdownText>`,
-  // `<MarkdownRenderer>`, `<MarkdownBlock>`, etc.). Lowercase form is
-  // matched because `tagName.toLowerCase()` is the comparison key.
-  "markdown",
-  "markdownblock",
-  "markdowncontent",
-  "markdownrenderer",
-  "markdowntext",
-  "markdownview",
-  "mdx",
-  "mdxcontent",
-  "mdxremote",
-  "md",
-  "prose",
-  "richtext",
-  "article",
-  "blockquote",
-  "quote",
-  "trans",
-  // Internationalised / translated strings — em-dashes / ellipses in
-  // upstream translations are out of the engineer's control.
-  "translation",
-  "translated",
-  "fbt",
-  "fbs",
 ]);
 
 // HACK: trailing boundary uses a LOOKAHEAD `(?=...)` so the whitespace
@@ -353,5 +280,3 @@ export const TAILWIND_DISPLAY_TOKENS = new Set([
 ]);
 
 export const SPACE_AXIS_PATTERN = /(?:^|\s)(?:-)?space-(x|y)-(\d+(?:\.\d+)?|\[[^\]]+\])(?=$|[\s:])/;
-
-export const TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN = /[\p{L}\p{N}]\.\.\./u;

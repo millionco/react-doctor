@@ -6,6 +6,7 @@ import type {
 } from "./types/index.js";
 import { DEFAULT_SURFACE_EXCLUDED_TAGS } from "./diagnostic-surface.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
+import { isSameRuleKey } from "./rule-key-aliases.js";
 
 interface ResolvedSurfaceControls {
   includeFileContexts: ReadonlySet<string>;
@@ -45,6 +46,13 @@ const buildResolvedControls = (
 const intersects = (values: ReadonlyArray<string>, candidates: ReadonlySet<string>): boolean =>
   values.some((value) => candidates.has(value));
 
+const matchesRuleKey = (ruleKey: string, candidates: ReadonlySet<string>): boolean => {
+  for (const candidate of candidates) {
+    if (isSameRuleKey(candidate, ruleKey)) return true;
+  }
+  return false;
+};
+
 export const isDiagnosticOnSurface = (
   diagnostic: Diagnostic,
   surface: DiagnosticSurface,
@@ -55,7 +63,7 @@ export const isDiagnosticOnSurface = (
 
   // Include wins over exclude — checked first so a single rule can be
   // promoted back into a surface even when its tag / category is hidden.
-  if (resolved.includeRuleKeys.has(ruleKey)) return true;
+  if (matchesRuleKey(ruleKey, resolved.includeRuleKeys)) return true;
   if (resolved.includeCategories.has(category)) return true;
   if (intersects(tags, resolved.includeTags)) return true;
 
@@ -67,7 +75,7 @@ export const isDiagnosticOnSurface = (
     return false;
   }
 
-  if (resolved.excludeRuleKeys.has(ruleKey)) return false;
+  if (matchesRuleKey(ruleKey, resolved.excludeRuleKeys)) return false;
   if (resolved.excludeCategories.has(category)) return false;
   if (intersects(tags, resolved.excludeTags)) return false;
 

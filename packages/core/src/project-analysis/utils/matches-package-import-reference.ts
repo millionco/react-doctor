@@ -18,6 +18,3 @@ export const collectPackageImportNames = (content: string): Set<string> => {
   }
   return packageNames;
 };
-
-export const matchesPackageImportReference = (content: string, packageName: string): boolean =>
-  collectPackageImportNames(content).has(packageName);

@@ -125,11 +125,6 @@ const isStatefulOperand = (
   referencesAnyName(node, derivedNames) ||
   containsThisStateOrProps(node);
 
-const getStaticMemberName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "MemberExpression") || node.computed === true) return null;
-  return isNodeOfType(node.property, "Identifier") ? node.property.name : null;
-};
-
 const getMemberIdentity = (property: EsTreeNode): string | null => {
   const propertyName = getPropertyKeyName(property);
   if (propertyName !== undefined) {
@@ -219,7 +214,7 @@ const getStateSourcePath = (
   let currentNode = stripParenExpression(node);
   const members: string[] = [];
   while (isNodeOfType(currentNode, "MemberExpression")) {
-    const memberName = getStaticMemberName(currentNode);
+    const memberName = getStaticPropertyKeyName(currentNode);
     if (!memberName) return null;
     members.unshift(memberName);
     currentNode = stripParenExpression(currentNode.object as EsTreeNode);
@@ -740,11 +735,11 @@ const getThisStateFieldName = (node: EsTreeNode): string | null => {
   if (
     !isNodeOfType(object, "MemberExpression") ||
     !isNodeOfType(stripParenExpression(object.object as EsTreeNode), "ThisExpression") ||
-    getStaticMemberName(object) !== "state"
+    getStaticPropertyKeyName(object) !== "state"
   ) {
     return null;
   }
-  return getStaticMemberName(unwrappedNode);
+  return getStaticPropertyKeyName(unwrappedNode);
 };
 
 const collectLocalInitializers = (lifecycleFunction: EsTreeNode): Map<string, EsTreeNode> => {

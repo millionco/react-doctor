@@ -2,17 +2,9 @@ export const GIANT_COMPONENT_LINE_THRESHOLD = 300;
 export const REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD = 15;
 export const REACT_FUNCTION_COGNITIVE_COMPLEXITY_THRESHOLD = 15;
 export const RELATED_USE_STATE_THRESHOLD = 5;
-export const DEEP_NESTING_THRESHOLD = 3;
 export const DUPLICATE_STORAGE_READ_THRESHOLD = 2;
 export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
 export const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
-export const BOOLEAN_PROP_THRESHOLD = 4;
-export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
-// Distinct boolean props a single component must use as the test of a
-// two-sided JSX ternary before `prefer-explicit-variants` fires. Two is
-// the "several variants jammed into one component" signal — a lone
-// `isMobile ? <Mobile /> : <Desktop />` switch is legitimate and stays quiet.
-export const BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD = 2;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
 // Same-file wrapper hops `no-impure-state-updater` follows from a call
 // site to the React setter that receives the forwarded updater
@@ -78,6 +70,5 @@ export const TSCONFIG_EXTENDS_MAX_DEPTH = 8;
 // safe — it can only cause missed diagnostics, never false positives.
 export const REDUCER_PATH_STATE_LIMIT = 1000;
 export const MAX_MEMO_COMPARATOR_SYMBOLIC_ATOM_COUNT = 8;
-export const LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS = 1000;
 export const STATIC_STRING_VALUE_LIMIT = 32;
 export const INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS = 300;

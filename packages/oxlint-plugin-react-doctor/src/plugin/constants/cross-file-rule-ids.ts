@@ -40,6 +40,7 @@ import { INK_RULE_IDS } from "./ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./react-router.js";
 
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "no-direct-state-mutation",
   ...INK_RULE_IDS,
   "client-passive-event-listeners",
   "effect-needs-cleanup",

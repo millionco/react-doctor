@@ -1,5 +1,4 @@
 import * as path from "node:path";
-import { parseGitattributesLinguistPaths } from "./parse-gitattributes-linguist.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
 
 // HACK: when react-doctor passes `--ignore-path COMBINED_FILE` to
@@ -34,18 +33,11 @@ const computeIgnorePatterns = (rootDirectory: string): string[] => {
     }
   }
 
-  for (const linguistPath of parseGitattributesLinguistPaths(
-    path.join(rootDirectory, ".gitattributes"),
-  )) {
-    addPattern(linguistPath);
-  }
-
   return patterns;
 };
 
 // Returns the union of ignore-style patterns from every source react-doctor
-// knows about (`.eslintignore` + `.oxlintignore` + `.prettierignore` +
-// `.gitattributes` linguist annotations), with cross-file duplicates
+// knows about (`.eslintignore` + `.oxlintignore` + `.prettierignore`), with cross-file duplicates
 // removed. Cached per `rootDirectory` for the lifetime of the module —
 // see `clearIgnorePatternsCache` for the invalidation hook.
 export const collectIgnorePatterns = (rootDirectory: string): string[] => {

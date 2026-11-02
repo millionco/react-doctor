@@ -2,6 +2,7 @@ import {
   componentOrHookDisplayNameForFunction,
   findComponentHocExpressionRoot,
 } from "../../utils/component-or-hook-display-name.js";
+import { canExecuteBeforeAsyncSuspension } from "../../utils/can-execute-before-async-suspension.js";
 import { collectContextBindings } from "../../utils/collect-context-bindings.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -19,6 +20,7 @@ import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
+import { isDescendantWithoutFunctionBoundary } from "../../utils/is-descendant-without-function-boundary.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -302,6 +304,41 @@ const isArgumentRenderedSynchronously = (
               writeReference.identifier,
               parameterCall,
               context.scopes,
+              {
+                isSynchronousNode: (executionNode) => {
+                  const executionOwner = findEnclosingFunction(executionNode);
+                  if (
+                    !executionOwner ||
+                    !isFunctionLike(executionOwner) ||
+                    !executionOwner.async ||
+                    !isDescendantWithoutFunctionBoundary(executionNode, executionOwner.body)
+                  ) {
+                    return true;
+                  }
+                  if (executionNode === writeReference.identifier) {
+                    let assignmentNode = executionNode.parent;
+                    while (assignmentNode && assignmentNode !== executionOwner) {
+                      if (
+                        isNodeOfType(assignmentNode, "AssignmentExpression") ||
+                        isNodeOfType(assignmentNode, "ForOfStatement") ||
+                        isNodeOfType(assignmentNode, "ForInStatement")
+                      ) {
+                        if (
+                          isNodeOfType(
+                            stripParenExpression(assignmentNode.right),
+                            "AwaitExpression",
+                          )
+                        ) {
+                          return false;
+                        }
+                        break;
+                      }
+                      assignmentNode = assignmentNode.parent;
+                    }
+                  }
+                  return canExecuteBeforeAsyncSuspension(executionNode, executionOwner, context);
+                },
+              },
             ).length > 0
           );
         }),

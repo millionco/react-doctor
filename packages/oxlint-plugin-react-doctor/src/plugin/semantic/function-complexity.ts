@@ -1,3 +1,4 @@
+import { collectReachableBlocks } from "../utils/collect-reachable-blocks.js";
 import { forEachChildNode, walkAst } from "../utils/walk-ast.js";
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
@@ -20,18 +21,6 @@ interface CognitiveComplexityAccumulator {
 interface LogicalOperatorRunState {
   previousOperator: "&&" | "||" | "??" | null;
 }
-
-const collectReachableBlocks = (entryBlock: BasicBlock): Set<BasicBlock> => {
-  const reachableBlocks = new Set<BasicBlock>();
-  const pendingBlocks = [entryBlock];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock || reachableBlocks.has(currentBlock)) continue;
-    reachableBlocks.add(currentBlock);
-    for (const edge of currentBlock.successors) pendingBlocks.push(edge.to);
-  }
-  return reachableBlocks;
-};
 
 const countWeaklyConnectedComponents = (blocks: ReadonlySet<BasicBlock>): number => {
   const visitedBlocks = new Set<BasicBlock>();

@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isBareComputedStyleRead } from "../../utils/is-bare-computed-style-read.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -208,6 +209,8 @@ export const noChainStateUpdates = defineRule({
           !readsPostMountValueThroughLocals(callExpr, effectFn, {
             ignoreBareRefCurrent: true,
             scopes: context.scopes,
+            additionalRead: (candidate, walkedRoot) =>
+              isBareComputedStyleRead(candidate, walkedRoot, context.scopes),
           })
         ) {
           continue;

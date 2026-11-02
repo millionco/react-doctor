@@ -9,8 +9,10 @@ import { findDeferredExecutionBoundary } from "../../utils/find-deferred-executi
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
@@ -38,11 +40,66 @@ const getRefCurrentWrite = (node: EsTreeNode, scopes: ScopeAnalysis): RefCurrent
   }
   if (!isNodeOfType(node, "CallExpression")) return null;
   const callee = stripParenExpression(node.callee);
-  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "assign") {
-    return null;
-  }
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const methodName = getStaticPropertyName(callee);
   const receiver = stripParenExpression(callee.object);
   if (
+    methodName === "set" &&
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "Reflect" &&
+    isProvenUnmodifiedGlobalNamespaceReference(receiver, "Reflect", scopes, "set", true)
+  ) {
+    const [target, property, value, writeReceiver, ...extraArguments] = node.arguments;
+    if (
+      !target ||
+      !value ||
+      node.arguments.some((argument) => isNodeOfType(argument, "SpreadElement")) ||
+      getStaticStringExpression(property) !== "current"
+    ) {
+      return null;
+    }
+    const targetRefSymbol = resolveReactRefObjectSymbol(target, scopes);
+    const targetExpression = stripParenExpression(target);
+    let hasKnownTargetDescriptor = Boolean(targetRefSymbol);
+    if (isNodeOfType(targetExpression, "ObjectExpression")) {
+      let hasNullPrototype = false;
+      for (const property of targetExpression.properties) {
+        const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+        if (
+          !isNodeOfType(property, "Property") ||
+          property.kind !== "init" ||
+          propertyName === null
+        ) {
+          return null;
+        }
+        if (
+          propertyName === "__proto__" &&
+          !property.computed &&
+          !property.method &&
+          !property.shorthand
+        ) {
+          const prototypeValue = stripParenExpression(property.value);
+          hasNullPrototype =
+            isNodeOfType(prototypeValue, "Literal") && prototypeValue.value === null;
+        }
+      }
+      hasKnownTargetDescriptor =
+        hasNullPrototype || Boolean(getStaticObjectPropertyValue(targetExpression, "current"));
+    }
+    if (!hasKnownTargetDescriptor) return null;
+    const refSymbol = writeReceiver
+      ? resolveReactRefObjectSymbol(writeReceiver, scopes)
+      : targetRefSymbol;
+    if (!refSymbol) return null;
+    return {
+      node,
+      refSymbol,
+      value: extraArguments.length > 0 ? null : value,
+      operator: "=",
+    };
+  }
+  if (
+    methodName !== "assign" ||
     !isNodeOfType(receiver, "Identifier") ||
     receiver.name !== "Object" ||
     !isProvenUnmodifiedGlobalNamespaceReference(receiver, "Object", scopes, "assign")
@@ -329,14 +386,17 @@ const refHasDeclaredType = (refSymbol: SymbolDescriptor): boolean => {
 const isSafeRefIdentifierUse = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const expressionRoot = findTransparentExpressionRoot(identifier);
   const parent = expressionRoot.parent;
-  if (
-    parent &&
-    isNodeOfType(parent, "CallExpression") &&
-    parent.arguments[0] === expressionRoot &&
-    isResultDiscardedCall(parent, { areConciseArrowReturnsDiscarded: false }) &&
-    getRefCurrentWrite(parent, scopes)
-  ) {
-    return true;
+  if (parent && isNodeOfType(parent, "CallExpression") && getRefCurrentWrite(parent, scopes)) {
+    const [target, , , writeReceiver] = parent.arguments;
+    const callee = stripParenExpression(parent.callee);
+    const isReflectSet =
+      isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "set";
+    if (
+      (target === expressionRoot || (isReflectSet && writeReceiver === expressionRoot)) &&
+      (isReflectSet || isResultDiscardedCall(parent, { areConciseArrowReturnsDiscarded: false }))
+    ) {
+      return true;
+    }
   }
   if (
     parent &&
@@ -719,9 +779,14 @@ export const noRefCurrentInRender = defineRule({
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callee = stripParenExpression(node.callee);
+        if (!isNodeOfType(callee, "MemberExpression")) return;
+        const methodName = getStaticPropertyName(callee);
+        const receiver = stripParenExpression(callee.object);
         if (
-          !isNodeOfType(callee, "MemberExpression") ||
-          getStaticPropertyName(callee) !== "assign"
+          methodName !== "assign" &&
+          (methodName !== "set" ||
+            !isNodeOfType(receiver, "Identifier") ||
+            receiver.name !== "Reflect")
         ) {
           return;
         }

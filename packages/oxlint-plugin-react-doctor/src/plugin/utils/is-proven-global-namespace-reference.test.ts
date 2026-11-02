@@ -3,7 +3,7 @@ import { attachParentReferences } from "../../test-utils/attach-parent-reference
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import * as valueImportHelpers from "./get-value-import-declaration.js";
-import * as ambientFunctionHelpers from "./has-visible-ambient-function-declaration.js";
+import * as namespaceValueHelpers from "./get-namespace-value-provider.js";
 import {
   isProvenGlobalNamespaceReference,
   isProvenGlobalObjectReference,
@@ -65,6 +65,7 @@ describe("native namespace runtime bindings", () => {
     ],
     ["type import", 'import type { Reflect } from "./types"; Reflect;', [[true, true]]],
     ["default type import", 'import type Reflect from "./types"; Reflect;', [[true, true]]],
+    ["import equals type", 'import type Reflect = require("./types"); Reflect;', [[true, true]]],
     ["namespace type import", 'import type * as Reflect from "./types"; Reflect;', [[true, true]]],
     [
       "mixed inline type import",
@@ -230,16 +231,323 @@ describe("native namespace runtime bindings", () => {
     expect(parsed.errors).toEqual([]);
     attachParentReferences(parsed.program);
     const scopes = analyzeScopes(parsed.program);
-    const ambientSpy = vi.spyOn(ambientFunctionHelpers, "hasVisibleAmbientFunctionDeclaration");
-    try {
-      walkAst(parsed.program, (node) => {
-        if (!isNodeOfType(node, "ExpressionStatement")) return;
-        expect(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes)).toBe(true);
-        expect(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes)).toBe(true);
-      });
-      expect(ambientSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      ambientSpy.mockRestore();
+    const provider = namespaceValueHelpers.getNamespaceValueProvider(scopes.rootScope, "Reflect");
+    walkAst(parsed.program, (node) => {
+      if (!isNodeOfType(node, "ExpressionStatement")) return;
+      expect(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes)).toBe(true);
+      expect(
+        namespaceValueHelpers.getNamespaceValueProvider(scopes.scopeFor(node), "Reflect"),
+      ).toBe(provider);
+    });
+  });
+});
+
+describe("ambient value visibility", () => {
+  it.each([
+    [
+      "qualified runtime namespace",
+      "namespace Reflect.Inner { export const custom = true; } Reflect;",
+      false,
+    ],
+    [
+      "qualified namespace member",
+      "namespace Container.Reflect { export const marker = 1; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "qualified deep namespace member",
+      "namespace Container.Reflect.Inner { export const marker = 1; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "qualified namespace self",
+      "namespace Container.Reflect { export const marker = 1; Reflect; }",
+      false,
+    ],
+    [
+      "merged provider before outer native alias",
+      "const Reflect = globalThis.Reflect; namespace Container { export const Reflect = custom; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "merged ambient before outer native alias",
+      "const Reflect = globalThis.Reflect; namespace Container { export declare function Reflect(): unknown; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "arbitrary merged alias shadow",
+      "const nativeReflect = globalThis.Reflect; namespace Container { export const nativeReflect = custom; } namespace Container { nativeReflect; }",
+      false,
+    ],
+    [
+      "merged global object before outer native alias",
+      "const globalThis = window; namespace Container { export const globalThis = custom; } namespace Container { globalThis.Reflect; }",
+      false,
+    ],
+    [
+      "explicit local alias before merged provider",
+      "const Reflect = globalThis.Reflect; namespace Container { export const Reflect = custom; } namespace Container { const Reflect = globalThis.Reflect; Reflect; }",
+      true,
+    ],
+    [
+      "ambient lexical before outer native alias",
+      "const Reflect = globalThis.Reflect; function inspect() { declare function Reflect(): unknown; Reflect; }",
+      false,
+    ],
+    [
+      "unexported ambient import",
+      "declare namespace Custom { const marker: number; } declare namespace Container { import Reflect = Custom; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "exported ambient import",
+      "declare namespace Custom { const marker: number; } declare namespace Container { export import Reflect = Custom; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "ambient explicit empty export with namespace",
+      "declare namespace Container { namespace Reflect { const marker: number; } export {}; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "ambient explicit cross-fragment value export",
+      "declare namespace Container { const provider: unknown; } declare namespace Container { export { provider as Reflect }; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "ambient explicit cross-fragment interface export",
+      "declare namespace Container { interface Provider {} } declare namespace Container { export { Provider as Reflect }; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "ambient explicit alias chain",
+      "declare namespace Container { const provider: unknown; } declare namespace Container { export { provider as middle, middle as Reflect }; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "ambient explicit empty export",
+      "declare namespace Container { function Reflect(): unknown; export {}; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "ambient explicit value alias export",
+      "declare namespace Container { const provider: unknown; export { provider as Reflect }; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "ambient explicit interface alias export",
+      "declare namespace Container { interface Provider {} export { Provider as Reflect }; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "ambient explicit type alias export",
+      "declare namespace Container { type Provider = unknown; export type { Provider as Reflect }; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "reopened namespace",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "later namespace declaration",
+      "namespace Container { Reflect; } namespace Container { export declare function Reflect(): unknown; }",
+      false,
+    ],
+    [
+      "ambient namespace",
+      "declare namespace Container { function Reflect(): unknown; } namespace Container { Reflect; }",
+      false,
+    ],
+    [
+      "reopened nested namespace",
+      "namespace Container { export namespace Inner { export declare function Reflect(): unknown; } } namespace Container { export namespace Inner { Reflect; } }",
+      false,
+    ],
+    [
+      "reopened dotted namespace",
+      "namespace Container.Inner { export declare function Reflect(): unknown; } namespace Container.Inner { Reflect; }",
+      false,
+    ],
+    [
+      "outer merged namespace",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container.Inner { Reflect; }",
+      false,
+    ],
+    [
+      "unexported namespace declaration",
+      "namespace Container { declare function Reflect(): unknown; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "unexported nested namespaces",
+      "namespace Container { namespace Inner { export declare function Reflect(): unknown; } } namespace Container { namespace Inner { Reflect; } }",
+      true,
+    ],
+    [
+      "sibling namespace",
+      "namespace Other { export declare function Reflect(): unknown; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "sibling lexical scope",
+      "function outer() { namespace Container { export declare function Reflect(): unknown; } } function inspect() { namespace Container { Reflect; } }",
+      true,
+    ],
+    [
+      "sibling external module",
+      'declare module "other" { function Reflect(): unknown; } declare module "container" { Reflect; }',
+      true,
+    ],
+    [
+      "reopened external module",
+      'declare module "container" { function Reflect(): unknown; } declare module "container" { Reflect; }',
+      false,
+    ],
+    [
+      "unrelated external module",
+      'declare module "container" { function Reflect(): unknown; } Reflect;',
+      true,
+    ],
+    [
+      "erased merged interface",
+      "namespace Container { export interface Reflect {} } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "erased merged import",
+      'declare module "container" { import type { Reflect } from "./types"; } declare module "container" { Reflect; }',
+      true,
+    ],
+    [
+      "erased merged type",
+      "namespace Container { export type Reflect = unknown; } namespace Container { Reflect; }",
+      true,
+    ],
+    [
+      "native alias in reopened namespace",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container { const Reflect = globalThis.Reflect; Reflect; }",
+      true,
+    ],
+    [
+      "native alias behind merged erased declaration",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container { const Reflect = globalThis.Reflect; interface Reflect {} Reflect; }",
+      true,
+    ],
+    [
+      "global augmentation",
+      "export {}; declare global { function Reflect(): unknown; } Reflect;",
+      false,
+    ],
+    [
+      "later global augmentation",
+      "export {}; Reflect; declare global { function Reflect(): unknown; }",
+      false,
+    ],
+    [
+      "erased global interface",
+      "export {}; declare global { interface Reflect {} } Reflect;",
+      true,
+    ],
+    [
+      "global member provider",
+      "export {}; declare global { function Reflect(): unknown; } globalThis.Reflect;",
+      false,
+    ],
+    [
+      "global alias provider",
+      "export {}; declare global { function Reflect(): unknown; } const nativeReflect = globalThis.Reflect; nativeReflect;",
+      false,
+    ],
+    [
+      "destructured global provider",
+      "export {}; declare global { function Reflect(): unknown; } const { Reflect: nativeReflect } = globalThis; nativeReflect;",
+      false,
+    ],
+    [
+      "global namespace differs from local namespace",
+      "export {}; declare global { namespace Container { function Reflect(): unknown; } } namespace Container { Reflect; }",
+      true,
+    ],
+  ])("%s", (_, source, expectedProof) => {
+    const parsed = parseFixture(source);
+    expect(parsed.errors).toEqual([]);
+    attachParentReferences(parsed.program);
+    const scopes = analyzeScopes(parsed.program);
+    const proofs: boolean[] = [];
+    walkAst(parsed.program, (node) => {
+      if (!isNodeOfType(node, "ExpressionStatement")) return;
+      proofs.push(isProvenGlobalNamespaceReference(node.expression, "Reflect", scopes));
+    });
+    expect(proofs).toEqual([expectedProof]);
+  });
+
+  it.each(["Reflect", "Object", "Math"])("rejects merged ambient values for %s", (name) => {
+    for (const declaration of [
+      `function ${name}(): unknown;`,
+      `const ${name}: unknown;`,
+      `var ${name}: unknown;`,
+      `class ${name} {}`,
+      `enum ${name} { Custom }`,
+      `namespace ${name} {}`,
+    ]) {
+      for (const source of [
+        `namespace Container { export declare ${declaration} } namespace Container { ${name}; }`,
+        `declare namespace Container { ${declaration} } namespace Container { ${name}; }`,
+        `export {}; declare global { ${declaration} } ${name};`,
+      ]) {
+        const parsed = parseFixture(source);
+        expect(parsed.errors).toEqual([]);
+        attachParentReferences(parsed.program);
+        const scopes = analyzeScopes(parsed.program);
+        walkAst(parsed.program, (node) => {
+          if (!isNodeOfType(node, "ExpressionStatement")) return;
+          expect(isProvenGlobalNamespaceReference(node.expression, name, scopes)).toBe(false);
+        });
+      }
     }
   });
+
+  it.each(["Reflect", "Object", "Math"])(
+    "rejects ordinary merged runtime values for %s",
+    (name) => {
+      for (const declaration of [
+        `const ${name} = {};`,
+        `let ${name} = {};`,
+        `var ${name} = {};`,
+        `class ${name} {}`,
+        `function ${name}() {}`,
+        `enum ${name} { Custom }`,
+        `namespace ${name} { export const custom = true; }`,
+      ]) {
+        const parsed = parseFixture(
+          `namespace Container { export ${declaration} } namespace Container { ${name}; }`,
+        );
+        expect(parsed.errors).toEqual([]);
+        attachParentReferences(parsed.program);
+        const scopes = analyzeScopes(parsed.program);
+        walkAst(parsed.program, (node) => {
+          if (!isNodeOfType(node, "ExpressionStatement")) return;
+          expect(isProvenGlobalNamespaceReference(node.expression, name, scopes)).toBe(false);
+        });
+      }
+    },
+  );
+
+  it.each(["globalThis", "window", "self", "global"])(
+    "distinguishes erased and runtime global augmentations for %s",
+    (name) => {
+      for (const hasRuntimeProvider of [false, true]) {
+        const source = `export {}; declare global { ${hasRuntimeProvider ? `function ${name}(): unknown;` : `interface ${name} {}`} } ${name};`;
+        const parsed = parseFixture(source);
+        expect(parsed.errors).toEqual([]);
+        attachParentReferences(parsed.program);
+        const scopes = analyzeScopes(parsed.program);
+        walkAst(parsed.program, (node) => {
+          if (!isNodeOfType(node, "ExpressionStatement")) return;
+          expect(isProvenGlobalObjectReference(node.expression, scopes)).toBe(!hasRuntimeProvider);
+        });
+      }
+    },
+  );
 });

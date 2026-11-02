@@ -127,6 +127,96 @@ describe("ambient Reflect providers", () => {
   });
 });
 
+describe("merged namespace and global providers", () => {
+  it.each([
+    [
+      "merged exported runtime alias",
+      "declare namespace Container { const provider: unknown; } declare namespace Container { export { provider as Reflect }; } namespace Container { BODY }",
+      0,
+    ],
+    [
+      "reopened ambient namespace",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container { BODY }",
+      0,
+    ],
+    [
+      "reopened runtime namespace",
+      "namespace Container { export const Reflect = { set: () => false }; } namespace Container { BODY }",
+      0,
+    ],
+    [
+      "reopened ambient class",
+      "namespace Container { export declare class Reflect {} } namespace Container { BODY }",
+      0,
+    ],
+    [
+      "reopened runtime class",
+      "namespace Container { export class Reflect {} } namespace Container { BODY }",
+      0,
+    ],
+    [
+      "unexported sibling namespace",
+      "namespace Container { declare function Reflect(): unknown; } namespace Container { BODY }",
+      1,
+    ],
+    [
+      "erased merged namespace",
+      "namespace Container { export interface Reflect {} } namespace Container { BODY }",
+      1,
+    ],
+    ["native merged namespace", "namespace Container { BODY }", 1],
+    [
+      "native alias inside merged namespace",
+      "namespace Container { export declare function Reflect(): unknown; } namespace Container { const Reflect = globalThis.Reflect; BODY }",
+      1,
+    ],
+    ["global ambient function", "declare global { function Reflect(): unknown; } BODY", 0],
+    ["global ambient const", "declare global { const Reflect: unknown; } BODY", 0],
+    ["global ambient class", "declare global { class Reflect {} } BODY", 0],
+    ["erased global interface", "declare global { interface Reflect {} } BODY", 1],
+    [
+      "global native member alias",
+      "declare global { function Reflect(): unknown; } const nativeReflect = globalThis.Reflect; BODY",
+      0,
+    ],
+    [
+      "global native destructuring alias",
+      "declare global { function Reflect(): unknown; } const { Reflect: nativeReflect } = globalThis; BODY",
+      0,
+    ],
+  ])("%s", (_, source, diagnosticCount) => {
+    const reflectName = source.includes("nativeReflect") ? "nativeReflect" : "Reflect";
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react"; ${source.replace("BODY", `export const Panel = () => { const valueRef = useRef(null); (${reflectName} as any).set(valueRef, "current", 1); return null; };`)}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+});
+
+describe("native controls beside merged providers", () => {
+  it.each([
+    [
+      "outside a custom namespace",
+      "namespace Container { export const Reflect = { set: () => false }; }",
+      'Reflect.set(valueRef, "current", 1);',
+    ],
+    [
+      "unrelated native namespace",
+      "declare global { function Reflect(): unknown; }",
+      "Object.assign(valueRef, { current: 1 });",
+    ],
+  ])("%s", (_, declaration, write) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useRef } from "react"; ${declaration} export const Panel = () => { const valueRef = useRef(null); ${write} return null; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("Reflect runtime binding regression", () => {
   it.each([
     ["bare native", "", 'Reflect.set(valueRef, "current", value)', 1],

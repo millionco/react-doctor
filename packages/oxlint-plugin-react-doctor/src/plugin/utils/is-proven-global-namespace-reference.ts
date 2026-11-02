@@ -3,12 +3,13 @@ import type {
   ScopeDescriptor,
   SymbolDescriptor,
 } from "../semantic/scope-analysis.js";
+import { isDescendantScope } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getValueImportDeclaration } from "./get-value-import-declaration.js";
-import { hasVisibleAmbientFunctionDeclaration } from "./has-visible-ambient-function-declaration.js";
+import { getNamespaceValueProvider } from "./get-namespace-value-provider.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -27,23 +28,37 @@ const valueImportsByAnalysis = new WeakMap<
   ScopeAnalysis,
   WeakMap<EsTreeNode, Map<boolean, boolean>>
 >();
-const ambientNamespaceProvidersByScope = new WeakMap<ScopeDescriptor, Map<string, boolean>>();
+const namespaceValueProvidersByScope = new WeakMap<ScopeDescriptor, Map<string, boolean>>();
 
-const hasAmbientNamespaceProvider = (scope: ScopeDescriptor, name: string): boolean => {
-  let providers = ambientNamespaceProvidersByScope.get(scope);
+const hasVisibleNamespaceValueProvider = (scope: ScopeDescriptor, name: string): boolean => {
+  let providers = namespaceValueProvidersByScope.get(scope);
   if (!providers) {
     providers = new Map();
-    ambientNamespaceProvidersByScope.set(scope, providers);
+    namespaceValueProvidersByScope.set(scope, providers);
   }
   const cachedProvider = providers.get(name);
   if (cachedProvider !== undefined) return cachedProvider;
-  const hasProvider = hasVisibleAmbientFunctionDeclaration(scope, name);
+  const hasProvider = getNamespaceValueProvider(scope, name).scope !== null;
   providers.set(name, hasProvider);
   return hasProvider;
 };
 
 const hasRuntimeNamespaceValue = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
   if (symbol.kind === "ts-interface" || symbol.kind === "ts-type-alias") return false;
+  if (
+    symbol.kind === "ts-module" &&
+    symbol.declarationNode.type === "TSModuleDeclaration" &&
+    symbol.declarationNode.global
+  ) {
+    return false;
+  }
+  if (
+    symbol.kind === "ts-import-equals" &&
+    symbol.declarationNode.type === "TSImportEqualsDeclaration" &&
+    symbol.declarationNode.importKind === "type"
+  ) {
+    return false;
+  }
   if (symbol.kind !== "import") return true;
   const declaration = symbol.declarationNode.parent;
   if (!declaration || !isNodeOfType(declaration, "ImportDeclaration")) return true;
@@ -68,13 +83,40 @@ const hasRuntimeNamespaceValue = (symbol: SymbolDescriptor, scopes: ScopeAnalysi
   return hasValue;
 };
 
+const isVisibleRuntimeNamespaceSymbol = (
+  symbol: SymbolDescriptor,
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const referenceScope = scopes.scopeFor(identifier);
+  let declarationScope: ScopeDescriptor | null =
+    scopes.ownScopeFor(symbol.declarationNode)?.parent ?? scopes.scopeFor(symbol.declarationNode);
+  while (declarationScope && declarationScope !== symbol.scope) {
+    if (
+      declarationScope.kind === "ts-module" &&
+      !isDescendantScope(referenceScope, declarationScope)
+    )
+      return false;
+    declarationScope = declarationScope.parent;
+  }
+  if (identifier.type !== "Identifier" && identifier.type !== "JSXIdentifier") return false;
+  const providerScope = getNamespaceValueProvider(referenceScope, identifier.name).scope;
+  return (
+    !providerScope ||
+    providerScope === symbol.scope ||
+    !isDescendantScope(providerScope, symbol.scope)
+  );
+};
+
 const getRuntimeNamespaceSymbol = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
 ): SymbolDescriptor | null => {
   const resolvedSymbol = scopes.symbolFor(identifier);
   if (!resolvedSymbol || hasRuntimeNamespaceValue(resolvedSymbol, scopes)) {
-    return resolvedSymbol;
+    return resolvedSymbol && !isVisibleRuntimeNamespaceSymbol(resolvedSymbol, identifier, scopes)
+      ? null
+      : resolvedSymbol;
   }
   let runtimeSymbols = runtimeNamespaceSymbolsByAnalysis.get(scopes);
   if (!runtimeSymbols) {
@@ -120,7 +162,12 @@ const getRuntimeNamespaceSymbol = (
     }
     runtimeNamespaceSymbolsByAnalysis.set(scopes, runtimeSymbols);
   }
-  return runtimeSymbols.has(identifier) ? (runtimeSymbols.get(identifier) ?? null) : resolvedSymbol;
+  const runtimeSymbol = runtimeSymbols.has(identifier)
+    ? (runtimeSymbols.get(identifier) ?? null)
+    : resolvedSymbol;
+  return runtimeSymbol && !isVisibleRuntimeNamespaceSymbol(runtimeSymbol, identifier, scopes)
+    ? null
+    : runtimeSymbol;
 };
 
 export const isProvenGlobalObjectReference = (
@@ -139,7 +186,10 @@ export const isProvenGlobalObjectReference = (
         strippedExpression.name === "global") &&
       scopes.referenceFor(strippedExpression) !== null &&
       getRuntimeNamespaceSymbol(strippedExpression, scopes) === null &&
-      !hasAmbientNamespaceProvider(scopes.scopeFor(strippedExpression), strippedExpression.name)
+      !hasVisibleNamespaceValueProvider(
+        scopes.scopeFor(strippedExpression),
+        strippedExpression.name,
+      )
     ) {
       return true;
     }
@@ -187,14 +237,16 @@ export const isProvenGlobalNamespaceReference = (
       return (
         isNodeOfType(strippedExpression, "MemberExpression") &&
         getStaticPropertyName(strippedExpression) === namespaceName &&
-        isProvenGlobalObjectReference(strippedExpression.object, scopes)
+        isProvenGlobalObjectReference(strippedExpression.object, scopes) &&
+        !getNamespaceValueProvider(scopes.scopeFor(strippedExpression), namespaceName)
+          .hasGlobalProvider
       );
     }
     if (
       strippedExpression.name === namespaceName &&
       scopes.referenceFor(strippedExpression) !== null &&
       getRuntimeNamespaceSymbol(strippedExpression, scopes) === null &&
-      !hasAmbientNamespaceProvider(scopes.scopeFor(strippedExpression), namespaceName)
+      !hasVisibleNamespaceValueProvider(scopes.scopeFor(strippedExpression), namespaceName)
     ) {
       return true;
     }
@@ -215,7 +267,11 @@ export const isProvenGlobalNamespaceReference = (
       bindingProperty.parent === declaration.id &&
       declaration.init
     ) {
-      return isProvenGlobalObjectReference(declaration.init, scopes);
+      return (
+        isProvenGlobalObjectReference(declaration.init, scopes) &&
+        !getNamespaceValueProvider(scopes.scopeFor(declaration.init), namespaceName)
+          .hasGlobalProvider
+      );
     }
     const directInitializer = getDirectConstInitializer(symbol);
     if (!directInitializer) return false;

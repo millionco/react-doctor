@@ -110,6 +110,45 @@ export const StatusBadge = () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    "setLabel",
+    "() => setLabel(initialLabel)",
+    "undefined, setLabel",
+    "undefined, () => setLabel(initialLabel)",
+  ])("does not treat a later registration callback as the listener: %s", (callbacks) => {
+    const result = run(`
+import { useEffect, useState } from "react";
+let initialLabel = "ready";
+const queuedTasks = new Set();
+const registerTask = (task, onRegistered, onComplete) => {
+  queuedTasks.add(task);
+  onRegistered?.(initialLabel);
+  onComplete?.(initialLabel);
+  return () => queuedTasks.delete(task);
+};
+export const TaskLabel = () => {
+  const [label, setLabel] = useState(initialLabel);
+  useEffect(() => registerTask(() => performTask(), ${callbacks}), []);
+  return <span>{label}</span>;
+};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["setState", "(next) => setState(next)"])(
+    "still flags a registered first-argument listener with another callback: %s",
+    (listener) => {
+      const result = run(`${MODULE_STORE_PREAMBLE}
+export const SnapshotLabel = () => {
+  const [state, setState] = useState(sharedPushState);
+  useEffect(() => subscribePushState(${listener}, () => recordRegistration()), []);
+  return <span>{state}</span>;
+};`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("flags an array-backed listener registry registered via push", () => {
     const result = run(
       `import { useEffect, useState } from "react";

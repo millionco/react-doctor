@@ -449,11 +449,9 @@ const findModuleSubscribeCallForwardingSetter = (
     if (!storeIndex.subscribeFunctionNames.has(child.callee.name)) return;
     const binding = findVariableInitializer(child.callee, child.callee.name);
     if (!binding || !isNodeOfType(binding.scopeOwner, "Program")) return;
-    for (const argument of child.arguments ?? []) {
-      if (argumentForwardsSetter(argument, setterName)) {
-        matchedCall = child;
-        return false;
-      }
+    if (argumentForwardsSetter(child.arguments?.[0], setterName)) {
+      matchedCall = child;
+      return false;
     }
   });
   return matchedCall;

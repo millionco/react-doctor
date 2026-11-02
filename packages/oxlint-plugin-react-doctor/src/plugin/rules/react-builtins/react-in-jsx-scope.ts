@@ -1,6 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isJsxFactoryBound } from "../../utils/is-jsx-factory-bound.js";
+import { readJsxFactoryPragmas } from "../../utils/read-jsx-factory-pragmas.js";
+import type { JsxFactoryPragmas } from "../../utils/read-jsx-factory-pragmas.js";
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
 
@@ -26,14 +29,35 @@ export const reactInJsxScope = defineRule({
   defaultEnabled: false,
   recommendation:
     "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (findVariableInitializer(node, "React")) return;
-      context.report({ node: node.name, message: MESSAGE });
-    },
-    JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-      if (findVariableInitializer(node, "React")) return;
-      context.report({ node: node.openingFragment, message: MESSAGE });
-    },
-  }),
+  create: (context) => {
+    let factoryPragmas: JsxFactoryPragmas | null = null;
+    return {
+      Program(node) {
+        factoryPragmas = readJsxFactoryPragmas(node, context.sourceComments ?? []);
+      },
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (findVariableInitializer(node, "React")) return;
+        if (factoryPragmas) {
+          let tagRoot = node.name;
+          while (tagRoot.type === "JSXMemberExpression") tagRoot = tagRoot.object;
+          const hasReactTag = tagRoot.type === "JSXIdentifier" && tagRoot.name === "React";
+          if (!hasReactTag && isJsxFactoryBound(node, factoryPragmas.elementFactory, context)) {
+            return;
+          }
+        }
+        context.report({ node: node.name, message: MESSAGE });
+      },
+      JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
+        if (findVariableInitializer(node, "React")) return;
+        if (factoryPragmas) {
+          if (
+            isJsxFactoryBound(node, factoryPragmas.elementFactory, context) &&
+            isJsxFactoryBound(node, factoryPragmas.fragmentFactory, context)
+          )
+            return;
+        }
+        context.report({ node: node.openingFragment, message: MESSAGE });
+      },
+    };
+  },
 });

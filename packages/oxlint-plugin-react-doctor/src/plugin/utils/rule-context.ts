@@ -3,9 +3,17 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
+export interface RuleSourceComment {
+  readonly type?: string;
+  readonly value: string;
+  readonly range?: readonly [number, number];
+  readonly end?: number;
+}
+
 export interface BaseRuleSourceCode {
   readonly ast?: EsTreeNode;
   getText?: (node?: EsTreeNode | null) => string;
+  getAllComments?: () => ReadonlyArray<RuleSourceComment>;
 }
 
 // The "base" context the host (oxlint at runtime, ESLint via the
@@ -36,4 +44,5 @@ export interface BaseRuleContext {
 export interface RuleContext extends Omit<BaseRuleContext, "getFilename"> {
   readonly scopes: ScopeAnalysis;
   readonly cfg: ControlFlowAnalysis;
+  readonly sourceComments?: ReadonlyArray<RuleSourceComment>;
 }

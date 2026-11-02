@@ -225,6 +225,16 @@ const visitDestructuringDeclarations = (
   symbolKind: SymbolKind,
   declarationNode: EsTreeNode,
 ): void => {
+  if (isNodeOfType(pattern, "TSParameterProperty")) {
+    return visitDestructuringDeclarations(
+      pattern.parameter,
+      baseInitializer,
+      scope,
+      state,
+      symbolKind,
+      declarationNode,
+    );
+  }
   if (isNodeOfType(pattern, "Identifier")) {
     recordSymbol(scope, state, {
       name: pattern.name,
@@ -580,6 +590,9 @@ const walkParameterReferences = (
   state: BuilderState,
   inheritedScope: ScopeDescriptor,
 ): boolean => {
+  if (isNodeOfType(pattern, "TSParameterProperty")) {
+    return walkParameterReferences(pattern.parameter, state, inheritedScope);
+  }
   if (pattern.type === "AssignmentPattern") {
     walkParameterReferences(pattern.left as EsTreeNode, state, inheritedScope);
     const defaultValue = (pattern.right as EsTreeNode | null) ?? null;

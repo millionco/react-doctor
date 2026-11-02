@@ -523,3 +523,86 @@ describe("parameter expression environments", () => {
     expect(functionScope.symbolsByName.get("local")?.kind).toBe("var");
   });
 });
+
+describe("TypeScript parameter properties", () => {
+  it.each(["public", "private", "protected", "readonly", "public readonly"])(
+    "binds %s parameter properties in the constructor scope",
+    (modifier) => {
+      const analysis = analyze(`
+        class Example {
+          constructor(${modifier} selected: number, value = selected) {
+            consume(selected);
+          }
+        }
+      `);
+      const constructor = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+      const constructorScope = analysis.ownScopeFor(constructor)!;
+      const references = findAllNamedNodes(constructor, "Identifier", "selected");
+      const parameterSymbol = constructorScope.symbolsByName.get("selected");
+      expect(parameterSymbol?.kind).toBe("parameter");
+      expect(parameterSymbol?.declarationNode.type).toBe("TSParameterProperty");
+      for (const identifier of references) {
+        expect(analysis.symbolFor(identifier)).toBe(parameterSymbol);
+      }
+      expect(parameterSymbol?.references).toHaveLength(2);
+    },
+  );
+
+  it("walks wrapped defaults and closures without exposing body declarations", () => {
+    const analysis = analyze(`
+      const selected = 1;
+      class Example {
+        constructor(public value = () => selected) {
+          const selected = 2;
+          consume(selected);
+        }
+      }
+    `);
+    const references = findAllNamedNodes(analysis.program, "Identifier", "selected").filter(
+      (identifier) => analysis.referenceFor(identifier) !== null,
+    );
+    expect(references).toHaveLength(2);
+    expect(analysis.symbolFor(references[0]!)?.scope).toBe(analysis.rootScope);
+    expect(analysis.symbolFor(references[1]!)?.scope.kind).toBe("function-body");
+    const constructor = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+    expect(analysis.ownScopeFor(constructor)?.symbolsByName.get("value")?.initializer?.type).toBe(
+      "ArrowFunctionExpression",
+    );
+  });
+
+  it("resolves later destructuring defaults and computed keys to parameter properties", () => {
+    const analysis = analyze(`
+      class Example {
+        constructor(
+          public selected: string,
+          { [selected]: value }: Record<string, number>,
+          { result = selected }: { result?: string } = {},
+        ) {
+          consume(selected, value, result);
+        }
+      }
+    `);
+    const constructor = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+    const parameterSymbol = analysis.ownScopeFor(constructor)?.symbolsByName.get("selected");
+    expect(parameterSymbol?.references).toHaveLength(3);
+    for (const identifier of findAllNamedNodes(constructor, "Identifier", "selected")) {
+      expect(analysis.symbolFor(identifier)).toBe(parameterSymbol);
+    }
+  });
+
+  it("keeps parameter properties out of the class property-name scope", () => {
+    const analysis = analyze(`
+      const selected = "outside";
+      class Example {
+        constructor(public selected: string) { consume(selected); }
+        read() { return selected; }
+      }
+    `);
+    const references = findAllNamedNodes(analysis.program, "Identifier", "selected").filter(
+      (identifier) => analysis.referenceFor(identifier) !== null,
+    );
+    expect(references).toHaveLength(2);
+    expect(analysis.symbolFor(references[0]!)?.kind).toBe("parameter");
+    expect(analysis.symbolFor(references[1]!)?.scope).toBe(analysis.rootScope);
+  });
+});

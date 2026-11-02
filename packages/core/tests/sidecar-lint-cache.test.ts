@@ -1,7 +1,22 @@
+import { fileURLToPath } from "node:url";
+import { createOxlintConfig } from "../src/runners/oxlint/config.js";
+import { createOxlintWorkerPool } from "../src/runners/oxlint/oxlint-worker-pool.js";
+import * as workerPrespawn from "../src/runners/oxlint/oxlint-worker-prespawn.js";
+import { parseOxlintOutput } from "../src/runners/oxlint/parse-output.js";
+import {
+  resolveOxlintPackageDirectory,
+  resolvePluginPath,
+} from "../src/runners/oxlint/resolve-paths.js";
+import { createSidecarProbeAnswerResolver } from "../src/runners/oxlint/resolve-sidecar-probe-answer.js";
+import { createOxlintSpawnSlots } from "../src/utils/create-oxlint-spawn-slots.js";
+import { hashFileContents } from "../src/utils/hash-file-contents.js";
+import type { OxlintWorkerProbeResult } from "../src/start-oxlint-worker.js";
+import { buildProject } from "./helpers/oxlint-parse-harness.js";
+import { OXLINT_OUTPUT_MAX_BYTES, OXLINT_SPAWN_TIMEOUT_MS } from "../src/constants.js";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic } from "../src/types/index.js";
 import {
   SIDECAR_LINT_CACHE_FILENAME,
@@ -258,3 +273,191 @@ describe("createSidecarLintCache", () => {
     ).not.toBeNull();
   });
 });
+
+interface PooledSidecarScanResult {
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+  readonly replayed: boolean;
+  readonly providerProbe: SidecarDependencyProbe;
+}
+
+it(
+  "invalidates a keyed draft on a same-size provider edit in the same real worker pool",
+  async () => {
+    const rootDirectory = makeCacheDir();
+    const primaryRelativePath = "src/Editor.tsx";
+    const providerRelativePath = "src/entity.ts";
+    const primaryPath = path.join(rootDirectory, primaryRelativePath);
+    const providerPath = path.join(rootDirectory, providerRelativePath);
+    const cacheDirectory = path.join(rootDirectory, "cache");
+    const configPath = path.join(rootDirectory, "oxlintrc.json");
+    const ruleId = "no-derived-useState";
+    const ruleKey = `react-doctor/${ruleId}`;
+    const primary = `import {useState} from 'react';
+import type {Entity} from './entity';
+const Editor=({entity}:{entity:Entity})=>{const[draft,setDraft]=useState(entity.label);return <input value={draft} onChange={event=>setDraft(event.target.value)}/>};
+export const Screen=({entity}:{entity:Entity})=><Editor key={entity.slug} entity={entity}/>;
+`;
+    const stringProvider = "export interface Entity {slug:string;label:string}\n";
+    const numberProvider = "export interface Entity {slug:number;label:string}\n";
+    const timestamp = new Date("2025-01-01T00:00:00.000Z");
+    fs.mkdirSync(path.dirname(primaryPath));
+    fs.writeFileSync(primaryPath, primary);
+    fs.writeFileSync(providerPath, stringProvider);
+    fs.utimesSync(providerPath, timestamp, timestamp);
+    expect(Buffer.byteLength(stringProvider)).toBe(Buffer.byteLength(numberProvider));
+    const primaryHash = hashFileContents(primaryPath);
+    if (!primaryHash) throw new Error("Primary source content hash unavailable");
+    const fileKey = `${primaryRelativePath}\0${primaryHash}`;
+    const project = buildProject({ rootDirectory, framework: "vite", hasReactCompiler: false });
+    const pluginPath = resolvePluginPath();
+    const generated = createOxlintConfig({
+      pluginPath,
+      project,
+      customRulesOnly: true,
+      disableReactHooksJsPlugin: true,
+      ignoredTags: new Set(),
+      severityControls: { rules: { [ruleKey]: "warn" } },
+    });
+    const config = {
+      ...generated,
+      rules: {
+        ...Object.fromEntries(Object.keys(generated.rules).map((key) => [key, "off"])),
+        [ruleKey]: "warn",
+      },
+    };
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    const workerScriptPath = fileURLToPath(new URL("../dist/oxlint-worker.js", import.meta.url));
+    expect(fs.existsSync(workerScriptPath)).toBe(true);
+    expect(fs.existsSync(pluginPath)).toBe(true);
+    const spawnObservation = vi.spyOn(workerPrespawn, "spawnOxlintWorkerProcess");
+    const pool = createOxlintWorkerPool({
+      nodeBinaryPath: process.execPath,
+      workerScriptPath,
+      oxlintPackageDirectory: resolveOxlintPackageDirectory(),
+      pluginPath,
+      maxWorkers: 1,
+      environment: { ...process.env, REACT_DOCTOR_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" },
+    });
+    const scan = async (useCache: boolean): Promise<PooledSidecarScanResult> => {
+      const epoch = createOxlintSpawnSlots(1).filesystemCacheEpoch;
+      const cache = createSidecarLintCache(cacheDirectory, "real-keyed-draft-pooled-epoch");
+      const answers = createSidecarProbeAnswerResolver({
+        rootDirectory,
+        contentHashByRelativePath: new Map([[primaryRelativePath, primaryHash]]),
+      });
+      const previous = useCache ? cache.lookup(fileKey) : null;
+      const providerProbeOf = (entry: SidecarFileEntry): SidecarDependencyProbe => {
+        const providerProbe = entry.probeIds
+          .map(cache.probeAt)
+          .find((probe) => probe.kind === "content" && probe.path === providerRelativePath);
+        if (!providerProbe)
+          throw new Error("Real collector omitted the type-provider content probe");
+        return providerProbe;
+      };
+      if (previous && cache.isReplayable(previous, answers.answerFor)) {
+        return {
+          diagnostics: previous.diagnostics,
+          replayed: true,
+          providerProbe: providerProbeOf(previous),
+        };
+      }
+      const job = {
+        cwd: rootDirectory,
+        timeoutMs: OXLINT_SPAWN_TIMEOUT_MS,
+        outputMaxBytes: OXLINT_OUTPUT_MAX_BYTES,
+        filesystemCacheEpoch: epoch,
+      };
+      const stdout = await pool.run({
+        ...job,
+        argumentsList: [
+          "-c",
+          configPath,
+          "--format",
+          "json",
+          "--threads",
+          "1",
+          primaryRelativePath,
+        ],
+      });
+      const diagnostics = parseOxlintOutput(stdout, project, rootDirectory);
+      const probes: OxlintWorkerProbeResult = JSON.parse(
+        await pool.run({
+          ...job,
+          argumentsList: [],
+          probeRequest: { files: [primaryRelativePath], ruleIds: [ruleId] },
+        }),
+      );
+      const trace = probes.traces.find((candidate) => candidate?.file === primaryRelativePath);
+      if (!trace)
+        throw new Error("Real worker did not return a complete provider dependency trace");
+      const fresh: SidecarFileEntry = {
+        diagnostics,
+        probeIds: [
+          ...trace.content.map((index) =>
+            cache.internProbe(
+              "content",
+              probes.paths[index],
+              answers.answerFor("content", probes.paths[index]),
+            ),
+          ),
+          ...trace.existence.map((index) =>
+            cache.internProbe(
+              "exists",
+              probes.paths[index],
+              probes.existenceAnswers[index] ?? answers.answerFor("exists", probes.paths[index]),
+            ),
+          ),
+        ],
+      };
+      if (useCache) {
+        cache.store(fileKey, fresh);
+        cache.persist();
+      }
+      return { diagnostics, replayed: false, providerProbe: providerProbeOf(fresh) };
+    };
+    try {
+      const cold = await scan(true);
+      expect(cold.replayed).toBe(false);
+      expect(cold.diagnostics).toEqual([]);
+      const warm = await scan(true);
+      expect(warm.replayed).toBe(true);
+      expect(warm.diagnostics).toEqual(cold.diagnostics);
+      const beforeMetadata = fs.readFileSync(
+        path.join(cacheDirectory, SIDECAR_LINT_CACHE_FILENAME),
+        "utf8",
+      );
+      fs.writeFileSync(providerPath, numberProvider);
+      fs.utimesSync(providerPath, timestamp, timestamp);
+      expect(fs.statSync(providerPath).mtimeMs).toBe(timestamp.getTime());
+      expect(fs.statSync(providerPath).size).toBe(Buffer.byteLength(stringProvider));
+      expect(fs.readFileSync(primaryPath, "utf8")).toBe(primary);
+      expect(hashFileContents(primaryPath)).toBe(primaryHash);
+      const incremental = await scan(true);
+      expect(incremental.replayed).toBe(false);
+      expect(incremental.diagnostics).toHaveLength(1);
+      expect(incremental.diagnostics[0]).toMatchObject({
+        rule: ruleId,
+        filePath: primaryRelativePath,
+      });
+      expect(incremental.providerProbe.answer).not.toBe(cold.providerProbe.answer);
+      expect(
+        fs.readFileSync(path.join(cacheDirectory, SIDECAR_LINT_CACHE_FILENAME), "utf8"),
+      ).not.toBe(beforeMetadata);
+      const full = await scan(false);
+      expect(full.replayed).toBe(false);
+      expect(full.diagnostics).toEqual(incremental.diagnostics);
+      const warmAfter = await scan(true);
+      expect(warmAfter.replayed).toBe(true);
+      expect(warmAfter.diagnostics).toEqual(incremental.diagnostics);
+      expect(pool.workerCount()).toBe(1);
+      expect(spawnObservation).toHaveBeenCalledTimes(1);
+      const spawned = spawnObservation.mock.results[0];
+      if (spawned?.type !== "return") throw new Error("Real worker spawn was not observed");
+      expect(spawned.value.pid).toBeGreaterThan(0);
+    } finally {
+      await pool.close();
+      spawnObservation.mockRestore();
+    }
+  },
+  OXLINT_SPAWN_TIMEOUT_MS,
+);

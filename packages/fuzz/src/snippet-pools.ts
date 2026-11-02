@@ -314,6 +314,10 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useState as useFuzzKeyedDraftState } from "react";
+interface FuzzKeyedDraftEntity {slug:string;label:string}
+const FuzzKeyedDraftEditor=({entity}:{entity:FuzzKeyedDraftEntity})=>{const [draft,setDraft]=(useFuzzKeyedDraftState as typeof useFuzzKeyedDraftState)(entity.label as string);return <input value={draft} onChange={event=>setDraft(event.target.value)}/>};
+export const FuzzKeyedDraftScreen=({entity}:{entity:FuzzKeyedDraftEntity})=><FuzzKeyedDraftEditor key={entity.slug as string} entity={entity}/>;`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

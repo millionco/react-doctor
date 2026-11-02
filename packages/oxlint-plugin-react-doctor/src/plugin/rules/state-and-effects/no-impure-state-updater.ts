@@ -7,6 +7,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { getGlobalObjectUrlOperation } from "../../utils/get-global-object-url-operation.js";
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -155,6 +156,8 @@ const getKnownImpureCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
 ): string | null => {
+  const objectUrlOperation = getGlobalObjectUrlOperation(callExpression, scopes);
+  if (objectUrlOperation) return `URL.${objectUrlOperation}()`;
   if (
     isNodeOfType(callExpression.callee, "Identifier") &&
     TIMER_FUNCTION_NAMES.has(callExpression.callee.name) &&

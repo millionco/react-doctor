@@ -21,6 +21,14 @@ const baseSource =
 const cases = [
   { name: "closed stamped record and current payload mask", source: baseSource, certificate: true },
   {
+    name: "async event wrapper retains the captured record stamp",
+    source: baseSource.replace(
+      '  return <section><button onClick={send}>Send</button>{currentError ? <p role="alert">{currentError}</p> : null}</section>;',
+      '  const handleClick = async () => { await respond(); send(); };\n  return <section><button onClick={handleClick}>Send</button>{currentError ? <p role="alert">{currentError}</p> : null}</section>;',
+    ),
+    certificate: true,
+  },
+  {
     name: "renamed record stamp and local pair",
     source: baseSource
       .replace(/\btoken\b/g, "marker")

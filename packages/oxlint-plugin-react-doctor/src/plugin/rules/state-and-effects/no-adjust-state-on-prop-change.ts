@@ -1,3 +1,4 @@
+import { isGenerationMaskedBooleanReset } from "./utils/is-generation-masked-boolean-reset.js";
 import { isCurrentContextRecordTransition } from "./utils/is-current-context-record-transition.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
@@ -103,6 +104,7 @@ export const noAdjustStateOnPropChange = defineRule({
           fact.isDeferred ||
           isOwnedRequestMapReset(fact.callExpression, context) ||
           isCurrentContextRecordTransition(fact.callExpression, context) ||
+          isGenerationMaskedBooleanReset(fact.callExpression, context) ||
           isPortalMountStateWrite(fact.callExpression, context) ||
           isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
           hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)

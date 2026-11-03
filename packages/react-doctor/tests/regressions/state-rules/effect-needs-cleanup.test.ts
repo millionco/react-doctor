@@ -1,10 +1,86 @@
+import { spawnSync } from "node:child_process";
+import * as path from "node:path";
+import * as Schema from "effect/Schema";
+import { JsonReport } from "@react-doctor/core/schemas";
 import { describe, expect, it } from "vite-plus/test";
 
 import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_helpers.js";
 
 const tempRoot = createScopedTempRoot("effect-needs-cleanup");
+const builtCliPath = path.resolve(import.meta.dirname, "../../../dist/cli.js");
 
 describe("effect-needs-cleanup", () => {
+  it.each([
+    { name: "synchronous handler release", shouldClear: true, expectedCount: 0 },
+    { name: "missing handler release", shouldClear: false, expectedCount: 1 },
+  ])(
+    "built CLI reports $expectedCount cleanup findings for $name",
+    ({ shouldClear, expectedCount }) => {
+      const projectDirectory = setupReactProject(
+        tempRoot,
+        `effect-needs-cleanup-handler-${shouldClear ? "cleared" : "leaked"}`,
+        {
+          reactVersion: "^18.3.1",
+          packageJsonExtras: { private: true },
+          files: {
+            "doctor.config.json": JSON.stringify({
+              customRulesOnly: false,
+              rules: { "react-doctor/effect-needs-cleanup": "error" },
+            }),
+            "src/Clock.tsx": `import { useState } from "react";
+
+export const Clock = () => {
+  const [now, setNow] = useState(0);
+  const handleClick = () => {
+    const handle = setInterval(() => setNow(Date.now()), 1000);
+    ${shouldClear ? "clearInterval(handle);" : ""}
+  };
+  return <button type="button" onClick={handleClick}>{now}</button>;
+};
+`,
+          },
+        },
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          builtCliPath,
+          ".",
+          "--json",
+          "--no-score",
+          "--no-telemetry",
+          "--no-supply-chain",
+          "--no-dead-code",
+          "--no-cache",
+          "--yes",
+          "--blocking",
+          "error",
+        ],
+        {
+          cwd: projectDirectory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            CI: "true",
+            FORCE_COLOR: "0",
+            REACT_DOCTOR_NO_UPDATE_NOTIFIER: "1",
+          },
+        },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.stdout, result.stderr).not.toBe("");
+      const report = Schema.decodeUnknownSync(JsonReport)(JSON.parse(result.stdout));
+      expect(report.ok).toBe(true);
+      expect(
+        report.diagnostics.filter(
+          (diagnostic) =>
+            diagnostic.plugin === "react-doctor" && diagnostic.rule === "effect-needs-cleanup",
+        ),
+      ).toHaveLength(expectedCount);
+      expect(result.status).toBe(expectedCount > 0 ? 1 : 0);
+    },
+  );
+
   it("flags a useEffect with addEventListener but no cleanup", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-listener", {
       files: {

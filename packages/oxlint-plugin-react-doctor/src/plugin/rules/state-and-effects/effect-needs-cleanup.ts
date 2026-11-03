@@ -74,6 +74,10 @@ import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capt
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isNodeFollowedBySynchronousRelease } from "../../utils/is-node-followed-by-synchronous-release.js";
+import { isNativeTimerCleanupUnmodified } from "../../utils/is-native-timer-cleanup-unmodified.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import {
@@ -10210,6 +10214,114 @@ const doesResourceResultEscape = (
   return false;
 };
 
+const isLocalTimerSynchronouslyReleased = (
+  retainedFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const allocationRoot = findTransparentExpressionRoot(usage.node);
+  const declaration = allocationRoot.parent;
+  const statement = declaration?.parent;
+  if (
+    usage.kind !== "timer" ||
+    findEnclosingFunction(usage.node) !== retainedFunction ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.init !== allocationRoot ||
+    !isNodeOfType(declaration.id, "Identifier") ||
+    !isNodeOfType(statement, "VariableDeclaration") ||
+    statement.declarations.some((sibling) => sibling !== declaration)
+  ) {
+    return false;
+  }
+  const handleSymbol = context.scopes.symbolFor(declaration.id);
+  const program = findProgramRoot(retainedFunction);
+  if (
+    !handleSymbol ||
+    !program ||
+    !hasCompleteSymbolReferences(handleSymbol, program, context.scopes) ||
+    getDirectUnreassignedInitializer(handleSymbol) !== allocationRoot ||
+    handleSymbol.references.some(
+      (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
+    )
+  ) {
+    return false;
+  }
+  let hasDirectEval = false;
+  walkAst(retainedFunction, (child) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === "eval" &&
+      context.scopes.isGlobalReference(child.callee)
+    )
+      hasDirectEval = true;
+  });
+  if (hasDirectEval) return false;
+  return isNodeFollowedBySynchronousRelease({
+    statement,
+    owner: retainedFunction,
+    context,
+    isRelease: (node) => {
+      const release = stripParenExpression(node);
+      if (!isNodeOfType(release, "CallExpression")) return false;
+      const callee = stripParenExpression(release.callee);
+      const [handle, ...otherArguments] = release.arguments;
+      if (
+        (isNodeOfType(callee, "MemberExpression") && callee.optional) ||
+        !handle ||
+        otherArguments.length > 0 ||
+        !doesStableIdentifierMatchUsageHandle(handle, usage, context) ||
+        !doesReleaseCallMatchUsage(release, usage, context)
+      )
+        return false;
+      let currentHandle = stripParenExpression(handle);
+      const visitedSymbols = new Set<SymbolDescriptor>();
+      while (isNodeOfType(currentHandle, "Identifier")) {
+        const symbol = context.scopes.symbolFor(currentHandle);
+        if (symbol === handleSymbol) break;
+        if (
+          !symbol ||
+          symbol.kind !== "const" ||
+          visitedSymbols.has(symbol) ||
+          !hasCompleteSymbolReferences(symbol, program, context.scopes)
+        )
+          return false;
+        visitedSymbols.add(symbol);
+        const initializer = getDirectUnreassignedInitializer(symbol);
+        const aliasStatement = symbol.declarationNode.parent;
+        const aliasBlock = aliasStatement?.parent;
+        if (
+          !initializer ||
+          !isNodeOfType(stripParenExpression(initializer), "Identifier") ||
+          initializer.range[0] <= allocationRoot.range[0] ||
+          symbol.references.some((reference) => reference.flag !== "read") ||
+          (!nodeDominatesNode(initializer, release, context) &&
+            !(
+              isNodeOfType(aliasBlock, "BlockStatement") &&
+              isAstDescendant(release, aliasBlock) &&
+              symbol.declarationNode.range[1] < release.range[0]
+            ))
+        )
+          return false;
+        currentHandle = stripParenExpression(initializer);
+      }
+      const releaseName = getNativeTimerCalleeName(
+        callee,
+        context.scopes,
+        TIMER_CLEANUP_CALLEE_NAMES,
+      );
+      return (
+        releaseName !== null &&
+        isNativeTimerCleanupUnmodified({
+          cleanupName: releaseName,
+          program,
+          scopes: context.scopes,
+        })
+      );
+    },
+  });
+};
+
 const findRetainedFunctionLeak = (
   retainedFunction: EsTreeNode,
   context: RuleContext,
@@ -10250,6 +10362,7 @@ const findRetainedFunctionLeak = (
         hasGuaranteedRefOwnedUnmountCleanup(retainedFunction, usage, context)
       );
     }
+    if (isLocalTimerSynchronouslyReleased(retainedFunction, usage, context)) return true;
     const isReactRef = isFunctionUsedAsReactRef(retainedFunction, context);
     const doesCallerOwnReturnedCleanup = Boolean(
       options?.allowReturnedResourceEscape === true ||

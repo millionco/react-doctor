@@ -24,7 +24,7 @@ const memberIsMutated = (member: EsTreeNode): boolean => {
   );
 };
 
-const namespaceHasMemberMutation = (
+export const hasGlobalNamespaceMemberMutation = (
   namespaceName: string | null,
   scopes: ScopeAnalysis,
   memberName?: string,
@@ -139,4 +139,4 @@ export const isProvenUnmodifiedGlobalNamespaceReference = (
   (namespaceName === null
     ? isProvenGlobalObjectReference(expression, scopes)
     : isProvenGlobalNamespaceReference(expression, namespaceName, scopes)) &&
-  !namespaceHasMemberMutation(namespaceName, scopes, memberName, considerEscapes);
+  !hasGlobalNamespaceMemberMutation(namespaceName, scopes, memberName, considerEscapes);

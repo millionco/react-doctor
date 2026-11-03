@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../../test-utils/run-rule.js";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
+import { runRule, runRuleOnParsedFixture } from "../../../test-utils/run-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import * as astWalker from "../../utils/walk-ast.js";
 import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
-const SMALL_HANDLER_COUNT = 500;
-const LARGE_HANDLER_COUNT = 2500;
-const MEASUREMENT_SAMPLE_COUNT = 7;
-const MAXIMUM_SCALING_MULTIPLIER = 15;
+const SMALL_HANDLER_COUNT = 8;
+const LARGE_HANDLER_COUNT = 40;
 
 const buildRetainedHandlersSource = (
   handlerCount: number,
@@ -23,20 +25,40 @@ const buildRetainedHandlersSource = (
   return `const Component = () => {\n${handlers}\nreturn <>${buttons}</>;\n};`;
 };
 
-const measureDuration = (
+const countWholeTreeWalks = (
   handlerCount: number,
   buildRegistration: (handlerIndex: number) => string,
-): number => {
+) => {
   const source = buildRetainedHandlersSource(handlerCount, buildRegistration);
-  const sampleDurations = Array.from({ length: MEASUREMENT_SAMPLE_COUNT }, () => {
-    const startedAt = process.hrtime.bigint();
-    const result = runRule(effectNeedsCleanup, source);
+  const parsed = parseFixture(source);
+  let componentBody: EsTreeNode | undefined;
+  astWalker.walkAst(parsed.program, (node) => {
+    if (
+      isNodeOfType(node, "VariableDeclarator") &&
+      isNodeOfType(node.id, "Identifier") &&
+      node.id.name === "Component" &&
+      isNodeOfType(node.init, "ArrowFunctionExpression")
+    ) {
+      componentBody = node.init.body;
+    }
+  });
+  expect(componentBody).toBeDefined();
+  let programWalkCount = 0;
+  let componentWalkCount = 0;
+  const originalWalkAst = astWalker.walkAst;
+  const walkSpy = vi.spyOn(astWalker, "walkAst").mockImplementation((node, visitor) => {
+    if (node === parsed.program) programWalkCount += 1;
+    if (node === componentBody) componentWalkCount += 1;
+    return originalWalkAst(node, visitor);
+  });
+  try {
+    const result = runRuleOnParsedFixture(effectNeedsCleanup, source, parsed);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(handlerCount);
-    return Number(process.hrtime.bigint() - startedAt);
-  });
-  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
-  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
+    return { programWalkCount, componentWalkCount };
+  } finally {
+    walkSpy.mockRestore();
+  }
 };
 
 describe("effect-needs-cleanup performance", () => {
@@ -44,19 +66,42 @@ describe("effect-needs-cleanup performance", () => {
     {
       name: "timers",
       buildRegistration: (handlerIndex: number) => `setInterval(task${handlerIndex}, 1000);`,
+      releasedSource: `const Component = () => { useEffect(() => { const handle = setInterval(task, 1000); return () => clearInterval(handle); }, []); return null; };`,
+      expectsProgramScan: false,
     },
     {
       name: "listeners",
       buildRegistration: (handlerIndex: number) =>
         `window.addEventListener("resize", listener${handlerIndex});`,
+      releasedSource: buildRetainedHandlersSource(
+        SMALL_HANDLER_COUNT,
+        (handlerIndex) =>
+          `window.addEventListener("resize", listener${handlerIndex}); window.removeEventListener("resize", listener${handlerIndex});`,
+      ),
+      expectsProgramScan: true,
     },
   ]) {
-    it(`scales near-linearly across retained ${performanceCase.name}`, () => {
-      measureDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
-      measureDuration(LARGE_HANDLER_COUNT, performanceCase.buildRegistration);
-      const smallDuration = measureDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
-      const largeDuration = measureDuration(LARGE_HANDLER_COUNT, performanceCase.buildRegistration);
-      expect(largeDuration).toBeLessThan(smallDuration * MAXIMUM_SCALING_MULTIPLIER);
+    it(`reuses whole-tree scans across retained ${performanceCase.name}`, () => {
+      const smallCounts = countWholeTreeWalks(
+        SMALL_HANDLER_COUNT,
+        performanceCase.buildRegistration,
+      );
+      const largeCounts = countWholeTreeWalks(
+        LARGE_HANDLER_COUNT,
+        performanceCase.buildRegistration,
+      );
+      expect(smallCounts.componentWalkCount).toBeGreaterThan(0);
+      if (performanceCase.expectsProgramScan) {
+        expect(smallCounts.programWalkCount).toBeGreaterThan(0);
+      }
+      expect(largeCounts.componentWalkCount).toBe(smallCounts.componentWalkCount);
+      expect(largeCounts.programWalkCount).toBe(smallCounts.programWalkCount);
+    });
+
+    it(`accepts matching cleanup for ${performanceCase.name}`, () => {
+      const result = runRule(effectNeedsCleanup, performanceCase.releasedSource);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
     });
   }
 });

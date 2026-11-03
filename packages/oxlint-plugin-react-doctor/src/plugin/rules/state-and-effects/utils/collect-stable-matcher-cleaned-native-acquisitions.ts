@@ -963,6 +963,7 @@ const collectConstructorOrigin = (
 const classReferencesAreClosed = (
   stateAssignment: EsTreeNode,
   proof: MatcherCollectionProof,
+  ownFieldReads?: ReadonlySet<EsTreeNode>,
 ): boolean => {
   let valid = true;
   const selectedNames = new Set(["state", proof.fieldName]);
@@ -1009,7 +1010,12 @@ const classReferencesAreClosed = (
           return false;
       } else if (name === "state") {
         if (!isDirectMatcherThisMember(reference, "state")) return false;
-      } else if (!isSelectedMatcherStateRecord(reference, proof.fieldName)) return false;
+      } else if (
+        ownFieldReads
+          ? !isDirectMatcherThisMember(reference, proof.fieldName)
+          : !isSelectedMatcherStateRecord(reference, proof.fieldName)
+      )
+        return false;
     }
   }
   walkAst(proof.classBody, (node) => {
@@ -1040,6 +1046,7 @@ const classReferencesAreClosed = (
         valid = false;
         return;
       }
+      if (ownFieldReads?.has(parent)) return;
       const owner = findEnclosingFunction(node);
       if (!owner || !ownMemberFunctions.has(owner)) {
         valid = false;
@@ -1088,6 +1095,179 @@ const classReferencesAreClosed = (
   return valid && referencesAreClosed(proof);
 };
 
+const collectOwnFieldMatcherIteration = (
+  functionNode: EsTreeNode | null,
+  removal: boolean,
+  proof: MatcherCollectionProof,
+  ownFieldReads: Set<EsTreeNode>,
+): MatcherIteration | null => {
+  if (
+    !isNodeOfType(functionNode, "FunctionExpression") ||
+    functionNode.async ||
+    functionNode.generator ||
+    functionNode.params.length ||
+    !isNodeOfType(functionNode.body, "BlockStatement")
+  )
+    return null;
+  const [statement, extraStatement] = functionNode.body.body;
+  if (extraStatement || !isNodeOfType(statement, "ExpressionStatement")) return null;
+  const iteration = getMatcherMethodCall(statement.expression, "forEach");
+  const values =
+    iteration &&
+    getNativeMatcherMethodCall(iteration.callee.object, "Object", "values", proof.context);
+  if (!iteration || !values) return null;
+  const [record, extraRecord] = values.call.arguments;
+  const recordExpression = unwrapMatcherExpression(record);
+  const [callback, extraCallback] = iteration.call.arguments;
+  if (
+    extraRecord ||
+    !recordExpression ||
+    !isDirectMatcherThisMember(recordExpression, proof.fieldName) ||
+    extraCallback ||
+    !isNodeOfType(callback, "ArrowFunctionExpression")
+  )
+    return null;
+  const [matcher, extraMatcher] = callback.params;
+  if (
+    extraMatcher ||
+    !isNodeOfType(matcher, "Identifier") ||
+    !hasPlainParameters(callback, [matcher])
+  )
+    return null;
+  let callbackExpression = unwrapMatcherExpression(callback.body);
+  if (isNodeOfType(callbackExpression, "BlockStatement")) {
+    const [callbackStatement, extraCallbackStatement] = callbackExpression.body;
+    if (extraCallbackStatement || !isNodeOfType(callbackStatement, "ExpressionStatement"))
+      return null;
+    callbackExpression = unwrapMatcherExpression(callbackStatement.expression);
+  }
+  const operation = getMatcherMethodCall(
+    callbackExpression,
+    removal ? "removeListener" : "addListener",
+  );
+  if (!operation || !allowSymbolUse(operation.callee.object, matcher, proof)) return null;
+  const [handler, extraHandler] = operation.call.arguments;
+  const handlerExpression = unwrapMatcherExpression(handler);
+  const handlerName = handlerExpression && getMatcherMemberName(handlerExpression);
+  if (
+    extraHandler ||
+    !handlerExpression ||
+    !handlerName ||
+    !isDirectMatcherThisMember(handlerExpression, handlerName) ||
+    !isNodeReachableWithinFunction(operation.call, proof.context) ||
+    !doNodesCoverEveryPathFromFunctionEntry(callback, [operation.call], proof.context)
+  )
+    return null;
+  ownFieldReads.add(recordExpression);
+  ownFieldReads.add(handlerExpression);
+  proof.allowedCalls.add(values.call);
+  proof.allowedCalls.add(iteration.call);
+  proof.allowedCalls.add(operation.call);
+  return { registration: operation.call, handlerName };
+};
+
+const collectOwnFieldMatcherAcquisitions = (
+  constructorNode: EsTreeNodeOfType<"FunctionExpression">,
+  input: StableMatcherCollectionInput,
+): ReadonlySet<EsTreeNode> => {
+  const empty = new Set<EsTreeNode>();
+  if (!isNodeOfType(constructorNode.body, "BlockStatement")) return empty;
+  const [superStatement, assignmentStatement, extraStatement] = constructorNode.body.body;
+  const [parameter, extraParameter] = constructorNode.params;
+  if (
+    extraStatement ||
+    extraParameter ||
+    !isNodeOfType(parameter, "Identifier") ||
+    !isNodeOfType(superStatement, "ExpressionStatement") ||
+    !isNodeOfType(superStatement.expression, "CallExpression") ||
+    superStatement.expression.optional ||
+    !isNodeOfType(superStatement.expression.callee, "Super") ||
+    !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
+    !isNodeOfType(assignmentStatement.expression, "AssignmentExpression") ||
+    assignmentStatement.expression.operator !== "="
+  )
+    return empty;
+  const assignment = assignmentStatement.expression;
+  const fieldName = getMatcherMemberName(assignment.left);
+  if (
+    !fieldName ||
+    ["context", "refs", "updater"].includes(fieldName) ||
+    !isDirectMatcherThisMember(assignment.left, fieldName)
+  )
+    return empty;
+  const field = input.classBody.body.find((member) => getMatcherMemberName(member) === fieldName);
+  const record = unwrapMatcherExpression(assignment.right);
+  if (
+    !isNodeOfType(field, "PropertyDefinition") ||
+    field.value ||
+    !isNodeOfType(record, "ObjectExpression") ||
+    !record.properties.length
+  )
+    return empty;
+  const proof: MatcherCollectionProof = {
+    ...input,
+    fieldName,
+    allowedCalls: new Set(),
+    allowedRecordReads: new Set(),
+    allowedThisDestructures: new Set(),
+    symbolUses: new Map(),
+  };
+  const [superArgument, extraSuperArgument] = superStatement.expression.arguments;
+  if (extraSuperArgument || !allowSymbolUse(superArgument, parameter, proof)) return empty;
+  const keys = new Set<string>();
+  for (const property of record.properties) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.computed ||
+      property.method ||
+      property.kind !== "init"
+    )
+      return empty;
+    const name = getMatcherMemberName(property);
+    const acquisition = getNativeMatcherMethodCall(
+      property.value,
+      "window",
+      "matchMedia",
+      input.context,
+    );
+    if (!name || name === "__proto__" || keys.has(name) || !acquisition) return empty;
+    const [query, extraQuery] = acquisition.call.arguments;
+    if (extraQuery || !isNodeOfType(query, "Literal") || typeof query.value !== "string")
+      return empty;
+    keys.add(name);
+    proof.allowedCalls.add(acquisition.call);
+  }
+  const ownFieldReads = new Set<EsTreeNode>([assignment.left]);
+  const mount = collectOwnFieldMatcherIteration(
+    input.resolveMember("componentDidMount"),
+    false,
+    proof,
+    ownFieldReads,
+  );
+  const unmount = collectOwnFieldMatcherIteration(
+    input.resolveMember("componentWillUnmount"),
+    true,
+    proof,
+    ownFieldReads,
+  );
+  if (!mount || !unmount || mount.handlerName !== unmount.handlerName) return empty;
+  const handler = input.classBody.body.find(
+    (member) => getMatcherMemberName(member) === mount.handlerName,
+  );
+  if (
+    !isNodeOfType(handler, "PropertyDefinition") ||
+    !isNodeOfType(handler.value, "ArrowFunctionExpression") ||
+    handler.value.async ||
+    handler.value.generator ||
+    handler.value.params.length ||
+    !isNodeOfType(handler.value.body, "BlockStatement") ||
+    handler.value.body.body.length ||
+    !classReferencesAreClosed(assignment, proof, ownFieldReads)
+  )
+    return empty;
+  return new Set([mount.registration]);
+};
+
 export const collectStableMatcherCleanedNativeAcquisitions = (
   input: StableMatcherCollectionInput,
 ): ReadonlySet<EsTreeNode> => {
@@ -1107,6 +1287,8 @@ export const collectStableMatcherCleanedNativeAcquisitions = (
     !isNodeOfType(constructorNode.body, "BlockStatement")
   )
     return empty;
+  const ownFieldAcquisitions = collectOwnFieldMatcherAcquisitions(constructorNode, input);
+  if (ownFieldAcquisitions.size) return ownFieldAcquisitions;
   const finalStatement = constructorNode.body.body.at(-1);
   if (
     !isNodeOfType(finalStatement, "ExpressionStatement") ||

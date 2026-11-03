@@ -33,7 +33,7 @@ const MISSING_MESSAGE =
 const INVALID_VALUE_MESSAGE = (value: string): string =>
   `\`${value}\` isn't a valid \`sandbox\` token, so the browser ignores it & leaves your iframe exposed.`;
 const INVALID_COMBINATION_MESSAGE =
-  "Combining `allow-scripts` & `allow-same-origin` lets the iframe remove its own sandbox, defeating the protection.";
+  "For content with the same origin as its embedding page, combining `allow-scripts` and `allow-same-origin` lets the iframe remove its sandbox and reload without its restrictions.";
 
 // The permissions-policy boilerplate vendors ship with third-party video
 // embeds (YouTube/Vimeo: `allow="… encrypted-media; picture-in-picture …"`).
@@ -80,7 +80,7 @@ const validateSandboxValue = (
 // (DOM API, sandbox can't be set there).
 export const iframeMissingSandbox = defineRule({
   id: "iframe-missing-sandbox",
-  title: "iframe missing sandbox attribute",
+  title: "iframe sandbox configuration needs review",
   severity: "warn",
   recommendation:
     'Add `sandbox=""` or a curated value so embedded pages cannot get full access to your site by default.',

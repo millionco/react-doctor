@@ -1406,7 +1406,7 @@
     "originallyExternal": true,
     "rule": {
       "id": "iframe-missing-sandbox",
-      "title": "iframe missing sandbox attribute",
+      "title": "iframe sandbox configuration needs review",
       "severity": "warn",
       "recommendation": "Add `sandbox=\"\"` or a curated value so embedded pages cannot get full access to your site by default.",
       "category": "Security",

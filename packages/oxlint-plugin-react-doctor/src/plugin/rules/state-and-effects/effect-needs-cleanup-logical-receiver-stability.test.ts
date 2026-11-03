@@ -350,7 +350,7 @@ export const MixedProviderPanel = ({ opaque }: { opaque: OpaqueProvider | null }
     expectedCount: 0,
   },
   {
-    name: "readonly-logical-member-roots",
+    name: "opaque-logical-member-roots",
     source: `import { useEffect } from "react";
 interface Emitter { on: (event: string, callback: () => void) => void; off: (event: string, callback: () => void) => void; }
 export const HolderPanel = ({ holder, other }: { holder: { first: Emitter | null; fallback: Emitter }; other: Emitter }) => {
@@ -363,7 +363,7 @@ export const HolderPanel = ({ holder, other }: { holder: { first: Emitter | null
  return null;
 };
 `,
-    expectedCount: 0,
+    expectedCount: 1,
   },
   {
     name: "written-logical-member-root",
@@ -435,6 +435,51 @@ export const GlobalEmitterPanel = ({ fallback, other }: { fallback: Emitter; oth
  return null;
 };
 `,
+    expectedCount: 1,
+  },
+  {
+    name: "getter-logical-recomputed-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder={get current(){flip=!flip;return flip?first:second;}};useEffect(()=>{const handler=()=>{};(holder.current??fallback).addEventListener('x',handler);return()=> (holder.current??fallback).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 1,
+  },
+  {
+    name: "getter-logical-captured-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder={get current(){flip=!flip;return flip?first:second;}};useEffect(()=>{const handler=()=>{};const target=holder.current??fallback;target.addEventListener('x',handler);return()=> target.removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 0,
+  },
+  {
+    name: "getter-direct-member-control",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder={get current(){flip=!flip;return flip?first:second;}};useEffect(()=>{const handler=()=>{};(holder.current).addEventListener('x',handler);return()=> (holder.current).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 0,
+  },
+  {
+    name: "proxy-logical-recomputed-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder=new Proxy({current:first},{get(){flip=!flip;return flip?first:second;}});useEffect(()=>{const handler=()=>{};(holder.current??fallback).addEventListener('x',handler);return()=> (holder.current??fallback).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 1,
+  },
+  {
+    name: "proxy-logical-captured-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder=new Proxy({current:first},{get(){flip=!flip;return flip?first:second;}});useEffect(()=>{const handler=()=>{};const target=holder.current??fallback;target.addEventListener('x',handler);return()=> target.removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 0,
+  },
+  {
+    name: "proxy-direct-member-control",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder=new Proxy({current:first},{get(){flip=!flip;return flip?first:second;}});useEffect(()=>{const handler=()=>{};(holder.current).addEventListener('x',handler);return()=> (holder.current).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 0,
+  },
+  {
+    name: "static-own-data-logical-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder={current:first};useEffect(()=>{const handler=()=>{};(holder.current??fallback).addEventListener('x',handler);return()=> (holder.current??fallback).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 0,
+  },
+  {
+    name: "aliased-static-own-data-logical-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder={current:first};const alias=holder;useEffect(()=>{const handler=()=>{};(alias.current??fallback).addEventListener('x',handler);return()=> (alias.current??fallback).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
+    expectedCount: 0,
+  },
+  {
+    name: "method-mutated-own-data-logical-member",
+    source: `import {useEffect} from "react";export const Panel=()=>{const first=new EventTarget();const second=new EventTarget();const fallback=new EventTarget();let flip=false;const holder={current:first,swap(){this.current=second;}};useEffect(()=>{const handler=()=>{};(holder.current??fallback).addEventListener('x',handler);holder.swap();return()=> (holder.current??fallback).removeEventListener('x',handler);},[holder,fallback]);return null;};`,
     expectedCount: 1,
   },
 ];

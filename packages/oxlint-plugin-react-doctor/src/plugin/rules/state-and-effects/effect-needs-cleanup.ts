@@ -1,7 +1,11 @@
+import { isStableLogicalReceiver } from "../../utils/is-stable-logical-receiver.js";
+import { hasStableLogicalDataProperty } from "../../utils/has-stable-logical-data-property.js";
+import { hasLogicalReceiverOrigin } from "../../utils/has-logical-receiver-origin.js";
+import { hasDeclaredCallableListenerResult } from "../../utils/has-declared-callable-listener-result.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
-import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
+import { getNativeTimerCalleeName } from "../../utils/get-native-timer-callee-name.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
@@ -25,6 +29,7 @@ import { resolveImportedExportName } from "../../utils/find-exported-function-bo
 import {
   collectEffectInvokedFunctions,
   collectSynchronouslyEffectInvokedFunctions,
+  collectSynchronouslyInvokedLocalFunctions,
   getPromiseChainCallForCallback,
 } from "../../utils/collect-effect-invoked-functions.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
@@ -199,7 +204,7 @@ interface EffectRetainedInvocation {
 }
 
 interface FileReleaseCallIndex {
-  identifierCallsByName: Map<string, EsTreeNode[]>;
+  timerCleanupCallsByName: Map<string, EsTreeNode[]>;
   potentialNonTimerCalls: EsTreeNode[];
 }
 
@@ -263,12 +268,9 @@ const resolveExpressionKey = (
     }
     if (
       requireStableLogicalContributors &&
-      symbol.references.some(
-        (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
-      )
-    ) {
+      !isStableLogicalReceiver(unwrappedExpression, context.scopes)
+    )
       return null;
-    }
     if (visitedSymbolIds.has(symbol.id)) return `symbol:${symbol.id}`;
     visitedSymbolIds.add(symbol.id);
     const substitutedExpression = parameterSubstitutions.get(symbol.id);
@@ -327,6 +329,15 @@ const resolveExpressionKey = (
   }
   if (isNodeOfType(unwrappedExpression, "MemberExpression") && !unwrappedExpression.computed) {
     if (!isNodeOfType(unwrappedExpression.property, "Identifier")) return null;
+    if (
+      requireStableLogicalContributors &&
+      !hasStableLogicalDataProperty(
+        unwrappedExpression.object,
+        unwrappedExpression.property.name,
+        context.scopes,
+      )
+    )
+      return null;
     const objectKey = resolveExpressionKey(
       unwrappedExpression.object,
       context,
@@ -1222,28 +1233,22 @@ const isKnownReactNavigationReceiver = (
   if (isNodeOfType(receiver, "Identifier")) {
     const receiverSymbol = context.scopes.symbolFor(receiver);
     if (!receiverSymbol || visitedSymbolIds.has(receiverSymbol.id)) return false;
-    if (requireStableLogicalContributors && provenStableReceiverSymbolIds.has(receiverSymbol.id)) {
+    const needsStableReceiver =
+      requireStableLogicalContributors || hasLogicalReceiverOrigin(receiver, context.scopes);
+    if (needsStableReceiver && provenStableReceiverSymbolIds.has(receiverSymbol.id)) {
       return true;
     }
-    if (
-      requireStableLogicalContributors &&
-      receiverSymbol.references.some(
-        (reference) => reference.flag !== "read" || isWithinAssignmentTarget(reference.identifier),
-      )
-    ) {
-      return false;
-    }
-    if (receiver.name === "navigation") {
-      if (requireStableLogicalContributors) provenStableReceiverSymbolIds.add(receiverSymbol.id);
-      return true;
-    }
+    if (needsStableReceiver && !isStableLogicalReceiver(receiver, context.scopes)) return false;
+    if (!needsStableReceiver && receiver.name === "navigation") return true;
     visitedSymbolIds.add(receiverSymbol.id);
-    const stableInitializer = requireStableLogicalContributors
+    const stableInitializer = needsStableReceiver
       ? getDirectUnreassignedInitializer(receiverSymbol)
       : receiverSymbol.initializer;
-    const receiverInitializer = stableInitializer ? stripParenExpression(stableInitializer) : null;
-    const navigationHook = isNodeOfType(receiverInitializer, "CallExpression")
-      ? resolveImportedApiReference(receiverInitializer.callee, context.scopes)
+    const stableReceiverInitializer = stableInitializer
+      ? stripParenExpression(stableInitializer)
+      : null;
+    const navigationHook = isNodeOfType(stableReceiverInitializer, "CallExpression")
+      ? resolveImportedApiReference(stableReceiverInitializer.callee, context.scopes)
       : null;
     if (
       navigationHook?.importedName === "useNavigation" &&
@@ -1252,17 +1257,21 @@ const isKnownReactNavigationReceiver = (
       if (requireStableLogicalContributors) provenStableReceiverSymbolIds.add(receiverSymbol.id);
       return true;
     }
+    if (needsStableReceiver && hasDeclaredCallableListenerResult(receiver, context)) {
+      provenStableReceiverSymbolIds.add(receiverSymbol.id);
+      return true;
+    }
     const hasKnownReceiver = Boolean(
-      receiverInitializer &&
+      stableReceiverInitializer &&
       isKnownReactNavigationReceiver(
-        receiverInitializer,
+        stableReceiverInitializer,
         context,
         visitedSymbolIds,
-        requireStableLogicalContributors,
+        needsStableReceiver,
         provenStableReceiverSymbolIds,
       ),
     );
-    if (requireStableLogicalContributors && hasKnownReceiver) {
+    if (needsStableReceiver && hasKnownReceiver) {
       provenStableReceiverSymbolIds.add(receiverSymbol.id);
     }
     return hasKnownReceiver;
@@ -1288,6 +1297,13 @@ const isKnownReactNavigationReceiver = (
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const receiverCallee = stripParenExpression(receiver.callee);
+  if (
+    requireStableLogicalContributors &&
+    isNodeOfType(receiverCallee, "MemberExpression") &&
+    hasDeclaredCallableListenerResult(receiverCallee.object, context)
+  ) {
+    return hasDeclaredCallableListenerResult(receiver, context);
+  }
   return Boolean(
     isNodeOfType(receiverCallee, "MemberExpression") &&
     !receiverCallee.computed &&
@@ -1630,10 +1646,7 @@ const collectEffectOwnedResourceCallbackFunctions = (
       if (child !== ownerFunction.body && isFunctionLike(child)) return false;
       if (!isNodeOfType(child, "CallExpression")) return;
       let callbackArgument: EsTreeNode | null = null;
-      if (
-        isNodeOfType(child.callee, "Identifier") &&
-        isNativeTimerIdentifier(child.callee, context.scopes)
-      ) {
+      if (getNativeTimerCalleeName(child.callee, context.scopes) !== null) {
         const timerCallback = child.arguments?.[0];
         callbackArgument = timerCallback && isAstNode(timerCallback) ? timerCallback : null;
       } else {
@@ -1709,12 +1722,10 @@ const findSubscribeLikeUsages = (
 
     if (!isNodeOfType(child, "CallExpression")) return;
 
-    if (
-      isNodeOfType(child.callee, "Identifier") &&
-      isNativeTimerIdentifier(child.callee, context.scopes)
-    ) {
+    const timerCalleeName = getNativeTimerCalleeName(child.callee, context.scopes);
+    if (timerCalleeName !== null) {
       if (
-        child.callee.name === "setTimeout" &&
+        timerCalleeName === "setTimeout" &&
         (isDeferredTeardownTimer(child) || isShortInertRefTimer(child, context))
       ) {
         return;
@@ -1722,10 +1733,10 @@ const findSubscribeLikeUsages = (
       usages.push({
         kind: "timer",
         node: child,
-        resourceName: child.callee.name,
+        resourceName: timerCalleeName,
         handleKey: findAssignedResourceKey(child, context, true),
         receiverKey: null,
-        registrationVerbName: child.callee.name,
+        registrationVerbName: timerCalleeName,
         eventKey: null,
         handlerKey: null,
       });
@@ -3209,9 +3220,10 @@ const isDirectExhaustiveTimerCollectionCleanup = (
     cleanupCallee.computed ||
     !isNodeOfType(cleanupCallee.property, "Identifier") ||
     cleanupCallee.property.name !== "forEach" ||
-    !isNodeOfType(cleanupCallback, "Identifier") ||
-    !TIMER_CLEANUP_CALLEE_NAMES.has(cleanupCallback.name) ||
-    !context.scopes.isGlobalReference(cleanupCallback) ||
+    !cleanupCallback ||
+    !isAstNode(cleanupCallback) ||
+    getNativeTimerCalleeName(cleanupCallback, context.scopes, TIMER_CLEANUP_CALLEE_NAMES) ===
+      null ||
     retainedCollectionKey === null ||
     retainedCollectionKey !== resolveExpressionKey(cleanupCallee.object, context)
   ) {
@@ -5576,19 +5588,17 @@ const getOwnedFunctionReference = (
   if (
     !isNodeOfType(schedulerCall, "CallExpression") ||
     !schedulerCall.arguments.some((argument) => argument === referenceRoot) ||
-    !isNodeOfType(schedulerCall.callee, "Identifier") ||
-    schedulerCall.callee.name !== "setTimeout" ||
-    !context.scopes.isGlobalReference(schedulerCall.callee)
+    getNativeTimerCalleeName(schedulerCall.callee, context.scopes) !== "setTimeout"
   ) {
     return null;
   }
   const schedulerUsage: SubscribeLikeUsage = {
     kind: "timer",
     node: schedulerCall,
-    resourceName: schedulerCall.callee.name,
+    resourceName: "setTimeout",
     handleKey: findAssignedResourceKey(schedulerCall, context),
     receiverKey: null,
-    registrationVerbName: schedulerCall.callee.name,
+    registrationVerbName: "setTimeout",
     eventKey: null,
     handlerKey: null,
   };
@@ -6773,17 +6783,25 @@ const effectHasCleanupForUsage = (
     return false;
   }
   if (callback.async) return false;
+  const usageCallee = isNodeOfType(usage.node, "CallExpression")
+    ? stripParenExpression(usage.node.callee)
+    : null;
+  const hasLogicalReceiver =
+    isNodeOfType(usageCallee, "MemberExpression") &&
+    hasLogicalReceiverOrigin(usageCallee.object, context.scopes);
   if (
-    cleanupRegistryReleasesUsage(callback, usage, context) ||
-    symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
-    hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||
-    hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
-    oneShotTimerHasUnmountGuard(usage, context) ||
-    hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context)
+    !hasLogicalReceiver &&
+    (cleanupRegistryReleasesUsage(callback, usage, context) ||
+      symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
+      hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||
+      hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
+      oneShotTimerHasUnmountGuard(usage, context) ||
+      hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context))
   ) {
     return true;
   }
   if (
+    !hasLogicalReceiver &&
     usage.kind === "subscribe" &&
     findEnclosingFunction(usage.node) === callback &&
     doesResourceResultEscape(usage.node, true, true, context) &&
@@ -6804,6 +6822,7 @@ const effectHasCleanupForUsage = (
       ? context.scopes.symbolFor(usageAssignment.left)
       : null;
   const requiresDirectReleasePathCoverage =
+    hasLogicalReceiver ||
     (usage.kind === "subscribe" && usage.registrationVerbName === "observe") ||
     (usage.kind === "timer" &&
       ((findEnclosingFunction(usage.node) === callback &&
@@ -6856,6 +6875,14 @@ const effectHasCleanupForUsage = (
       return;
     }
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+    if (
+      hasLogicalReceiver &&
+      [
+        cleanupFunction,
+        ...collectSynchronouslyInvokedLocalFunctions(cleanupFunction, context.scopes),
+      ].some((invokedFunction) => findSubscribeLikeUsages(invokedFunction, context).length > 0)
+    )
+      return;
     if (
       doesCleanupFunctionReleaseUsage(
         cleanupFunction,
@@ -7965,11 +7992,11 @@ const doesReleaseCallMatchUsage = (
 
   if (usage.kind === "timer") {
     if (
-      !isNodeOfType(callee, "Identifier") ||
-      !(usage.registrationVerbName === "requestAnimationFrame"
-        ? callee.name === "cancelAnimationFrame"
-        : TIMER_CLEANUP_CALLEE_NAMES.has(callee.name)) ||
-      !context.scopes.isGlobalReference(callee)
+      usage.registrationVerbName === "requestAnimationFrame"
+        ? !isNodeOfType(callee, "Identifier") ||
+          callee.name !== "cancelAnimationFrame" ||
+          !context.scopes.isGlobalReference(callee)
+        : getNativeTimerCalleeName(callee, context.scopes, TIMER_CLEANUP_CALLEE_NAMES) === null
     ) {
       return false;
     }
@@ -8803,7 +8830,7 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   }
   let releaseCallIndex = indexesByProgram.get(programNode);
   if (!releaseCallIndex) {
-    const identifierCallsByName = new Map<string, EsTreeNode[]>();
+    const timerCleanupCallsByName = new Map<string, EsTreeNode[]>();
     const potentialNonTimerCalls: EsTreeNode[] = [];
     walkAst(programNode, (child: EsTreeNode) => {
       const callNode = isNodeOfType(child, "ChainExpression") ? child.expression : child;
@@ -8811,22 +8838,29 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
       const callee = isNodeOfType(callNode.callee, "ChainExpression")
         ? callNode.callee.expression
         : callNode.callee;
-      if (isNodeOfType(callee, "Identifier")) {
-        const namedCalls = identifierCallsByName.get(callee.name) ?? [];
+      const timerCleanupName = getNativeTimerCalleeName(
+        callee,
+        context.scopes,
+        TIMER_CLEANUP_CALLEE_NAMES,
+      );
+      if (timerCleanupName !== null) {
+        const namedCalls = timerCleanupCallsByName.get(timerCleanupName) ?? [];
         namedCalls.push(child);
-        identifierCallsByName.set(callee.name, namedCalls);
+        timerCleanupCallsByName.set(timerCleanupName, namedCalls);
+      }
+      if (isNodeOfType(callee, "Identifier")) {
         potentialNonTimerCalls.push(child);
       } else if (getReleaseVerbName(child)) {
         potentialNonTimerCalls.push(child);
       }
     });
-    releaseCallIndex = { identifierCallsByName, potentialNonTimerCalls };
+    releaseCallIndex = { timerCleanupCallsByName, potentialNonTimerCalls };
     indexesByProgram.set(programNode, releaseCallIndex);
   }
   let candidates: ReadonlyArray<EsTreeNode>;
   if (usage.kind === "timer") {
     candidates = [...TIMER_CLEANUP_CALLEE_NAMES].flatMap(
-      (cleanupName) => releaseCallIndex.identifierCallsByName.get(cleanupName) ?? [],
+      (cleanupName) => releaseCallIndex.timerCleanupCallsByName.get(cleanupName) ?? [],
     );
   } else {
     candidates = releaseCallIndex.potentialNonTimerCalls;
@@ -10408,10 +10442,10 @@ const findRetainedFunctionLeak = (
 
     if (!isNodeOfType(child, "CallExpression")) return;
 
+    const timerCalleeName = getNativeTimerCalleeName(child.callee, context.scopes);
     if (
-      isNodeOfType(child.callee, "Identifier") &&
-      isNativeTimerIdentifier(child.callee, context.scopes) &&
-      (child.callee.name === "setInterval" || options?.includeOneShotTimers === true) &&
+      timerCalleeName !== null &&
+      (timerCalleeName === "setInterval" || options?.includeOneShotTimers === true) &&
       (options?.allowReturnedTimerEscape === false ||
         !doesResourceResultEscape(child, true, allowReturnedResourceEscape, context)) &&
       !isDeferredTeardownTimer(child) &&
@@ -10420,10 +10454,10 @@ const findRetainedFunctionLeak = (
       const timerUsage: SubscribeLikeUsage = {
         kind: "timer",
         node: child,
-        resourceName: child.callee.name,
+        resourceName: timerCalleeName,
         handleKey: findAssignedResourceKey(child, context, true),
         receiverKey: null,
-        registrationVerbName: child.callee.name,
+        registrationVerbName: timerCalleeName,
         eventKey: null,
         handlerKey: null,
       };

@@ -38,11 +38,44 @@ describe("isErasedTypeScriptBinding", () => {
     { code: "declare var candidate: unknown;", expected: true },
     { code: "declare class candidate {}", expected: true },
     { code: "export declare const candidate: unknown;", expected: true },
+    {
+      code: 'declare module "consumer" { import candidate from "provider"; }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import * as candidate from "provider"; }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import { candidate } from "provider"; }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import candidate = require("provider"); }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import type candidate from "provider"; }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import type * as candidate from "provider"; }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import type { candidate } from "provider"; }',
+      expected: true,
+    },
+    {
+      code: 'declare module "consumer" { import type candidate = require("provider"); }',
+      expected: true,
+    },
     { code: "interface candidate {}", expected: true },
     { code: "type candidate = unknown;", expected: true },
     { code: 'import type candidate from "provider";', expected: true },
     { code: 'import type * as candidate from "provider";', expected: true },
     { code: 'import { type candidate } from "provider";', expected: true },
+    { code: 'import type { candidate } from "provider";', expected: true },
     { code: 'import type candidate = require("provider");', expected: true },
     { code: 'import candidate = require("provider");', expected: false },
     { code: "const candidate = 0;", expected: false },

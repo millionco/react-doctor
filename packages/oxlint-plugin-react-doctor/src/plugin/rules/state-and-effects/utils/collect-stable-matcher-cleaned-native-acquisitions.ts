@@ -9,6 +9,8 @@ import { doNodesCoverEveryPathFromFunctionEntry } from "../../../utils/do-nodes-
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { hasRuntimeValueBinding } from "../../../utils/has-runtime-value-binding.js";
+import { hasReliableMatcherSymbolReferences } from "../../../utils/has-reliable-matcher-symbol-references.js";
+import { hasStableLocalClassUses } from "../../../utils/has-stable-local-class-uses.js";
 import { findEnclosingClass } from "../../../utils/find-enclosing-class.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
@@ -20,6 +22,7 @@ import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isTypeScriptTypePosition } from "../../../utils/is-typescript-type-position.js";
+import { isErasedMatcherReference } from "../../../utils/is-erased-matcher-reference.js";
 import { isWithinAssignmentTarget } from "../../../utils/is-within-assignment-target.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
@@ -225,14 +228,20 @@ const recordedShorthandKey = (
 };
 
 const referencesAreClosed = (proof: MatcherCollectionProof): boolean =>
-  [...proof.symbolUses].every(([symbol, uses]) =>
-    symbol.references.every(
-      (reference) =>
-        isTypeScriptTypePosition(reference.identifier) ||
-        ownShorthandKey(reference.identifier, symbol) ||
-        recordedShorthandKey(reference.identifier, symbol, proof) ||
-        uses.has(reference.identifier),
-    ),
+  [...proof.symbolUses].every(
+    ([symbol, uses]) =>
+      hasReliableMatcherSymbolReferences(
+        symbol,
+        proof.context.scopes.rootScope.node,
+        proof.context.scopes,
+      ) &&
+      symbol.references.every(
+        (reference) =>
+          isErasedMatcherReference(reference.identifier) ||
+          ownShorthandKey(reference.identifier, symbol) ||
+          recordedShorthandKey(reference.identifier, symbol, proof) ||
+          uses.has(reference.identifier),
+      ),
   );
 
 const isMatcherStateLiteralData = (expression: EsTreeNode | null | undefined): boolean => {
@@ -1086,7 +1095,8 @@ export const collectStableMatcherCleanedNativeAcquisitions = (
   if (
     !hasReactSuperclass(input) ||
     !hasUniqueOwnMembers(input) ||
-    !hasClosedMatcherProviders(input.context)
+    !hasClosedMatcherProviders(input.context) ||
+    !hasStableLocalClassUses({ classNode: input.classBody.parent, context: input.context })
   )
     return empty;
   const constructorNode = input.resolveMember("constructor");

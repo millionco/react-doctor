@@ -6,7 +6,7 @@ import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
-const GLOBAL_SELF_PROPERTY_NAMES = new Set(["global", "globalThis", "self", "window"]);
+export const GLOBAL_SELF_PROPERTY_NAMES = new Set(["global", "globalThis", "self", "window"]);
 
 export const isProvenGlobalObjectReference = (
   expression: EsTreeNode,

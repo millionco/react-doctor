@@ -2,7 +2,6 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -12,6 +11,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getEffectStatementsWithoutEmptyCleanup } from "./utils/get-effect-statements-without-empty-cleanup.js";
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
 // local state with a useEffect that re-syncs it. The combined shape
@@ -144,7 +144,7 @@ export const noMirrorPropEffect = defineRule({
 
         const callback = getEffectCallback(effectCall);
         if (!callback) continue;
-        const bodyStatements = getCallbackStatements(callback);
+        const bodyStatements = getEffectStatementsWithoutEmptyCleanup(effectCall, callback);
         if (bodyStatements.length !== 1) continue;
         const onlyStatement = bodyStatements[0];
         const expressionNode =

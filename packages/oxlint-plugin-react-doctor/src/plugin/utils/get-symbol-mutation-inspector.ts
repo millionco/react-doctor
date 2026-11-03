@@ -44,6 +44,7 @@ interface ReplayedSymbolMutation {
 }
 
 interface SymbolMutationInspector {
+  readonly getMutationPropertyNames: (node: EsTreeNode) => ReadonlySet<string> | null | undefined;
   readonly getEventsBefore: (
     symbol: SymbolDescriptor,
     usageNode: EsTreeNode,
@@ -1252,6 +1253,7 @@ export const getSymbolMutationInspector = (scopes: ScopeAnalysis): SymbolMutatio
   };
 
   const inspector: SymbolMutationInspector = {
+    getMutationPropertyNames,
     getEventsBefore,
     getOutermostTarget,
     isGlobalNamespaceMethod,

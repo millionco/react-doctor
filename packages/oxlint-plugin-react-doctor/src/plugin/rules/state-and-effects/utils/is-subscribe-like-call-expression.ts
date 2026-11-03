@@ -4,14 +4,16 @@ import {
 } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
 export const OBSERVER_REGISTRATION_METHOD_NAME = "observe";
 
 const getSubscribeLikeMethodName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
-  if (!isNodeOfType(node.callee, "MemberExpression")) return null;
-  if (!isNodeOfType(node.callee.property, "Identifier")) return null;
-  return node.callee.property.name;
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  if (!isNodeOfType(callee.property, "Identifier")) return null;
+  return callee.property.name;
 };
 
 export const isSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {

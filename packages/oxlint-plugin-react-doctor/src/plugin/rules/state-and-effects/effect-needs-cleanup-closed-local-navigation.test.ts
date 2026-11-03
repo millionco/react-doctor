@@ -27,6 +27,18 @@ const cases: ClosedNavigationCase[] = [
     name: "renamed-closed-callable",
     source:
       'import { useEffect } from "react";\nexport const SubscriptionPanel = () => {\n  const customNavigation = { addListener: (_event: string, _callback: () => void) => () => {} };\n  useEffect(() => {\n    const unsubscribe = customNavigation.addListener("event", () => {});\n    return () => { unsubscribe(); };\n  }, [customNavigation]);\n  return null;\n};\n',
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "renamed-closed-noncallable",
+    source:
+      'import { useEffect } from "react"; export const Panel = () => { const customNavigation = { addListener: (_event: string, _callback: () => void) => ({ remove() {} }) }; useEffect(() => { const stop = customNavigation.addListener("event", () => {}); return () => stop(); }, [customNavigation]); return null; };',
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "renamed-closed-mutated-method",
+    source:
+      'import { useEffect } from "react"; export const Panel = () => { const customNavigation = { addListener: (_event: string, _callback: () => void) => () => {} }; try { throw {}; } catch ({ ignored = (customNavigation.addListener = () => ({ remove() {} })) }) {} useEffect(() => { const stop = customNavigation.addListener("event", () => {}); return () => stop(); }, [customNavigation]); return null; };',
     expectedDiagnostics: 1,
   },
   {
@@ -198,15 +210,63 @@ const cases: ClosedNavigationCase[] = [
     expectedDiagnostics: 1,
   },
   {
-    name: "literal-aliased-registration-unsupported-control",
+    name: "stable-local-registration-function",
     source:
       'import { useEffect } from "react";\nfunction register(){return()=>{};}\nexport const SubscriptionPanel = () => {\n  const navigation = { addListener: register };\n  useEffect(() => {\n    const unsubscribe = navigation.addListener("event", () => {});\n    return () => { unsubscribe(); };\n  }, [navigation]);\n  return null;\n};\n',
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "stable-local-return-factory",
+    source:
+      'import { useEffect } from "react";\nfunction createDisposer(){return()=>{};}\nexport const SubscriptionPanel = () => {\n  const navigation = { addListener: ()=>createDisposer() };\n  useEffect(() => {\n    const unsubscribe = navigation.addListener("event", () => {});\n    return () => { unsubscribe(); };\n  }, [navigation]);\n  return null;\n};\n',
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "stable-const-registration-function",
+    source:
+      'import { useEffect } from "react"; const register = (_event: string, _callback: () => void) => () => {}; export const Panel = () => { const navigation = { addListener: register }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "stable-const-return-factory",
+    source:
+      'import { useEffect } from "react"; const createDisposer = () => () => {}; export const Panel = () => { const navigation = { addListener: (_event: string, _callback: () => void) => createDisposer() }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
+    expectedDiagnostics: 0,
+  },
+  {
+    name: "registration-alias-indexed-write",
+    source:
+      'import { useEffect } from "react"; function register() { return () => {}; } register = () => ({ remove() {} }); export const Panel = () => { const navigation = { addListener: register }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
     expectedDiagnostics: 1,
   },
   {
-    name: "return-factory-unsupported-control",
+    name: "return-factory-mixed-callable-result",
     source:
-      'import { useEffect } from "react";\nfunction createDisposer(){return()=>{};}\nexport const SubscriptionPanel = () => {\n  const navigation = { addListener: ()=>createDisposer() };\n  useEffect(() => {\n    const unsubscribe = navigation.addListener("event", () => {});\n    return () => { unsubscribe(); };\n  }, [navigation]);\n  return null;\n};\n',
+      'import { useEffect } from "react"; function createDisposer() { if (enabled) return () => {}; return { remove() {} }; } export const Panel = () => { const navigation = { addListener: (_event: string, _callback: () => void) => createDisposer() }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "return-factory-fallthrough",
+    source:
+      'import { useEffect } from "react"; function createDisposer() { if (enabled) return () => {}; } export const Panel = () => { const navigation = { addListener: (_event: string, _callback: () => void) => createDisposer() }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "recursive-return-factory",
+    source:
+      'import { useEffect } from "react"; function createDisposer() { return createDisposer(); } export const Panel = () => { const navigation = { addListener: (_event: string, _callback: () => void) => createDisposer() }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "async-return-factory",
+    source:
+      'import { useEffect } from "react"; async function createDisposer() { return () => {}; } export const Panel = () => { const navigation = { addListener: (_event: string, _callback: () => void) => createDisposer() }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
+    expectedDiagnostics: 1,
+  },
+  {
+    name: "generator-return-factory",
+    source:
+      'import { useEffect } from "react"; function* createDisposer() { return () => {}; } export const Panel = () => { const navigation = { addListener: (_event: string, _callback: () => void) => createDisposer() }; useEffect(() => { const stop = navigation.addListener("event", () => {}); return () => stop(); }, [navigation]); return null; };',
     expectedDiagnostics: 1,
   },
   {

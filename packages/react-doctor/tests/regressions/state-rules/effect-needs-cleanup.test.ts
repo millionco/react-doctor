@@ -1010,4 +1010,34 @@ export function RenamedReceiver() {
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(0);
   });
+
+  it("accepts the declared callable Navigation contract with either receiver name", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-declared-navigation", {
+      files: {
+        "src/DeclaredNavigation.tsx": `import { useEffect } from "react";
+interface Navigation {
+  addListener: (event: "transitionEnd", callback: () => void) => () => void;
+}
+declare function useNavigation(): Navigation;
+export const RenamedReceiver = () => {
+  const coveredNavigation = useNavigation();
+  useEffect(() => {
+    const stop = coveredNavigation.addListener("transitionEnd", () => {});
+    return () => stop();
+  }, [coveredNavigation]);
+  return null;
+};
+export const NavigationReceiver = () => {
+  const navigation = useNavigation();
+  useEffect(() => {
+    const stop = navigation.addListener("transitionEnd", () => {});
+    return () => stop();
+  }, [navigation]);
+  return null;
+};`,
+      },
+    });
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
 });

@@ -2,6 +2,7 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import {
   isProvenGlobalObjectReference,
@@ -11,6 +12,7 @@ import { getSymbolMutationInspector } from "./get-symbol-mutation-inspector.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const namespaceMutationByAnalysis = new WeakMap<ScopeAnalysis, Map<string, boolean>>();
+const PRIMITIVE_FUNCTION_METADATA_PROPERTY_NAMES = new Set(["name", "length"]);
 
 const memberIsMutated = (member: EsTreeNode): boolean => {
   const memberRoot = findTransparentExpressionRoot(member);
@@ -82,8 +84,19 @@ const namespaceHasMemberMutation = (
               (isNodeOfType(argument, "SpreadElement") && argument.argument === target),
           );
         const valueConsumer = candidate.parent;
+        const candidateExpression = stripParenExpression(candidate);
+        const isPrimitiveFunctionMetadataRead =
+          considerEscapes &&
+          memberName === undefined &&
+          (namespaceName === "Promise" || namespaceName === "queueMicrotask") &&
+          isNodeOfType(candidateExpression, "MemberExpression") &&
+          PRIMITIVE_FUNCTION_METADATA_PROPERTY_NAMES.has(
+            getStaticPropertyName(candidateExpression) ?? "",
+          ) &&
+          isProvenGlobalNamespaceReference(candidateExpression.object, namespaceName, scopes);
         const isIndirectValueEscape =
           considerEscapes &&
+          !isPrimitiveFunctionMetadataRead &&
           ((isNodeOfType(valueConsumer, "Property") && valueConsumer.value === candidate) ||
             isNodeOfType(valueConsumer, "ArrayExpression") ||
             isNodeOfType(valueConsumer, "SpreadElement") ||

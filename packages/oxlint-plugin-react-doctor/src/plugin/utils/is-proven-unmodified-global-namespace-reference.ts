@@ -75,15 +75,37 @@ const namespaceHasMemberMutation = (
         const isArgumentEscape =
           considerEscapes &&
           (properties === undefined || candidate !== target) &&
-          isNodeOfType(consumer, "CallExpression") &&
+          (isNodeOfType(consumer, "CallExpression") || isNodeOfType(consumer, "NewExpression")) &&
           consumer.arguments.some(
             (argument) =>
               argument === target ||
               (isNodeOfType(argument, "SpreadElement") && argument.argument === target),
           );
+        const valueConsumer = candidate.parent;
+        const isIndirectValueEscape =
+          considerEscapes &&
+          ((isNodeOfType(valueConsumer, "Property") && valueConsumer.value === candidate) ||
+            isNodeOfType(valueConsumer, "ArrayExpression") ||
+            isNodeOfType(valueConsumer, "SpreadElement") ||
+            isNodeOfType(valueConsumer, "ReturnStatement") ||
+            isNodeOfType(valueConsumer, "YieldExpression") ||
+            isNodeOfType(valueConsumer, "AwaitExpression") ||
+            (isNodeOfType(valueConsumer, "ArrowFunctionExpression") &&
+              valueConsumer.body === candidate) ||
+            (isNodeOfType(valueConsumer, "AssignmentExpression") &&
+              valueConsumer.right === candidate) ||
+            (isNodeOfType(valueConsumer, "VariableDeclarator") &&
+              valueConsumer.init === candidate &&
+              isNodeOfType(valueConsumer.parent, "VariableDeclaration") &&
+              valueConsumer.parent.kind !== "const") ||
+            (isNodeOfType(valueConsumer, "ConditionalExpression") &&
+              valueConsumer.test !== candidate) ||
+            isNodeOfType(valueConsumer, "LogicalExpression") ||
+            isNodeOfType(valueConsumer, "SequenceExpression"));
         if (
           (isBindingWrite ||
             isArgumentEscape ||
+            isIndirectValueEscape ||
             (isMutationCallTarget &&
               candidate === target &&
               properties !== undefined &&
@@ -99,6 +121,7 @@ const namespaceHasMemberMutation = (
           candidate === target &&
           isProvenGlobalObjectReference(candidate, scopes) &&
           (isArgumentEscape ||
+            isIndirectValueEscape ||
             (isMutationCallTarget &&
               properties !== undefined &&
               (properties === null || properties.has(namespaceName))))

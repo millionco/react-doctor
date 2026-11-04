@@ -7,6 +7,7 @@ export const DUPLICATE_STORAGE_READ_THRESHOLD = 2;
 export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
 export const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
 export const BOOLEAN_PROP_THRESHOLD = 4;
+export const JSX_DESCENDANT_SCAN_NODE_BUDGET = 200;
 export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 // Distinct boolean props a single component must use as the test of a
 // two-sided JSX ternary before `prefer-explicit-variants` fires. Two is
@@ -81,3 +82,10 @@ export const MAX_MEMO_COMPARATOR_SYMBOLIC_ATOM_COUNT = 8;
 export const LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS = 1000;
 export const STATIC_STRING_VALUE_LIMIT = 32;
 export const INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS = 300;
+
+export const CUSTOM_SPLIT_OBJECT_ASSIGN_ARGUMENT_COUNT = 2;
+export const CUSTOM_SPLIT_METHOD_PROPERTY_COUNT = 1;
+export const CUSTOM_SPLIT_INPUT_PARAMETER_COUNT = 1;
+export const CUSTOM_SPLIT_RECORD_PAIR_COUNT = 2;
+export const CUSTOM_SPLIT_CALL_ARGUMENT_COUNT = 1;
+export const CUSTOM_SPLIT_MAPPER_ARGUMENT_COUNT = 1;

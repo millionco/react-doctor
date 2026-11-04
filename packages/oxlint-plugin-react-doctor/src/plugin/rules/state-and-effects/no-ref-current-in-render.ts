@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { findSynchronouslyCalledRenderOwner } from "../../utils/find-synchronously-called-render-owner.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -708,7 +709,13 @@ export const noRefCurrentInRender = defineRule({
 
     const reportWrite = (node: EsTreeNode) => {
       const write = getRefCurrentWrite(node, context.scopes);
-      if (!write || !findRenderPhaseComponentOrHook(node, context.scopes)) return;
+      if (
+        !write ||
+        (!findRenderPhaseComponentOrHook(node, context.scopes) &&
+          (!isNodeOfType(node, "AssignmentExpression") ||
+            !findSynchronouslyCalledRenderOwner(node, context)))
+      )
+        return;
       if (isDocumentedLazyInitialization(write, write.refSymbol, context.scopes)) return;
       report(isNodeOfType(node, "AssignmentExpression") ? node.left : node);
     };

@@ -20,6 +20,76 @@ describe("no-mirror-prop-effect — regressions", () => {
     },
   );
 
+  it.each([
+    ["an empty arrow", "return () => {};"],
+    ["a parenthesized empty arrow", "return (() => {});"],
+    ["an arrow that only reads a binding", "return () => { value; };"],
+  ])("flags a prop mirror whose effect returns %s as its cleanup", (_label, cleanup) => {
+    const result = runRule(
+      noMirrorPropEffect,
+      `function Form({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => { setDraft(value); ${cleanup} }, [value]);
+        return <span>{draft}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the effect returns a cleanup that does work", () => {
+    const result = runRule(
+      noMirrorPropEffect,
+      `function Form({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => { setDraft(value); return () => { cancelled = true; }; }, [value]);
+        return <span>{draft}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["cleanupSignal", "void cleanupSignal"])(
+    "stays silent when cleanup reads a global accessor: %s",
+    (expression) => {
+      const result = runRule(
+        noMirrorPropEffect,
+        `Object.defineProperty(globalThis, "cleanupSignal", {
+          get() { connection.close(); }
+        });
+        function Form({ value }) {
+          const [draft, setDraft] = useState(value);
+          useEffect(() => { setDraft(value); return () => ${expression}; }, [value]);
+          return <span>{draft}</span>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    "subscribe()",
+    "(() => subscribe())()",
+    "void notify()",
+    "choose() ? () => {} : undefined",
+    "(notify(), () => {})",
+    "(() => connection.close()) as (() => void)",
+  ])("retains unknown or effectful cleanup-return evaluation: %s", (expression) => {
+    const result = runRule(
+      noMirrorPropEffect,
+      `const subscribe = () => () => connection.close();
+      function Form({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => { setDraft(value); return ${expression}; }, [value]);
+        return <span>{draft}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on an initial-only prop re-seed that is also user-editable", () => {
     const result = runRule(
       noMirrorPropEffect,

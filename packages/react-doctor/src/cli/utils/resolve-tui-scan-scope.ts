@@ -55,7 +55,13 @@ export const resolveTuiScanScope = async (
   }
   const baselineRef = scope === "changed" ? comparisonBaseRef : null;
   const baselineDiffPlan =
-    baselineRef === null ? null : await getBaselineDiffPlan(input.directory, baselineRef);
+    baselineRef === null
+      ? null
+      : await getBaselineDiffPlan(
+          input.directory,
+          baselineRef,
+          includeUntracked ? diffInfo?.changedFiles : undefined,
+        );
   const linesBaseRef = diffInfo?.isCurrentChanges ? "HEAD" : comparisonBaseRef;
   const canComputeChangedLines =
     (scope === "lines" || scope === "contextual") &&

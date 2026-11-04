@@ -1,4 +1,3 @@
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
@@ -7,13 +6,16 @@ import { nodeDominatesNode } from "../../../utils/node-dominates-node.js";
 import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
 
-export const isReleasedObjectUrlStateWrite = (write: EsTreeNode, context: RuleContext): boolean => {
-  if (!isNodeOfType(write, "CallExpression")) return false;
-  const value = write.arguments[0];
+export const isReleasedObjectUrlStateWrite = (
+  write: EffectStateWriteSite,
+  context: RuleContext,
+): boolean => {
+  const value = write.value;
   if (!isNodeOfType(value, "Literal") || value.value !== null) return false;
-  const pair = resolveReactUseStatePair(write.callee, context.scopes);
-  const owner = findEnclosingFunction(write);
+  const pair = resolveReactUseStatePair(write.setter, context.scopes);
+  const owner = findEnclosingFunction(write.node);
   if (!pair?.stateSymbol || !owner) return false;
   let didRelease = false;
   walkAst(owner, (node) => {
@@ -31,7 +33,7 @@ export const isReleasedObjectUrlStateWrite = (write: EsTreeNode, context: RuleCo
     if (
       isNodeOfType(handle, "Identifier") &&
       context.scopes.symbolFor(handle) === pair.stateSymbol &&
-      nodeDominatesNode(node, write, context)
+      nodeDominatesNode(node, write.node, context)
     )
       didRelease = true;
   });

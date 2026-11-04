@@ -9,16 +9,85 @@ import { findDeferredExecutionBoundary } from "../../utils/find-deferred-executi
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
-import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
-import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import {
+  resolveReactRefObjectSymbol,
+  resolveReactRefSymbol,
+} from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+
+interface RefCurrentWrite {
+  node: EsTreeNode;
+  refSymbol: SymbolDescriptor;
+  value: EsTreeNode | null;
+  operator: string;
+}
+
+const getRefCurrentWrite = (node: EsTreeNode, scopes: ScopeAnalysis): RefCurrentWrite | null => {
+  if (isNodeOfType(node, "AssignmentExpression")) {
+    const refSymbol = resolveReactRefSymbol(node.left, scopes);
+    return refSymbol ? { node, refSymbol, value: node.right, operator: node.operator } : null;
+  }
+  if (!isNodeOfType(node, "CallExpression")) return null;
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "assign") {
+    return null;
+  }
+  const receiver = stripParenExpression(callee.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Object" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(receiver, "Object", scopes, "assign")
+  ) {
+    return null;
+  }
+  const [target, ...sources] = node.arguments;
+  if (!target || isNodeOfType(target, "SpreadElement")) return null;
+  const refSymbol = resolveReactRefObjectSymbol(target, scopes);
+  if (!refSymbol) return null;
+  let hasCurrentProperty = false;
+  let hasUnprovenInitialization = false;
+  let initializationValue: EsTreeNode | null = null;
+  for (const source of sources) {
+    const expression = stripParenExpression(source);
+    if (!isNodeOfType(expression, "ObjectExpression")) {
+      hasUnprovenInitialization = true;
+      continue;
+    }
+    let currentValue: EsTreeNode | null = null;
+    let sourceHasCurrentProperty = false;
+    for (const property of expression.properties) {
+      const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      if (!propertyName || !isNodeOfType(property, "Property") || property.kind !== "init") {
+        hasUnprovenInitialization = true;
+      }
+      if (propertyName !== "current" || !isNodeOfType(property, "Property")) continue;
+      sourceHasCurrentProperty = true;
+      currentValue = property.kind === "init" ? property.value : null;
+    }
+    if (!sourceHasCurrentProperty) continue;
+    if (hasCurrentProperty) hasUnprovenInitialization = true;
+    hasCurrentProperty = true;
+    initializationValue = currentValue;
+  }
+  return hasCurrentProperty
+    ? {
+        node,
+        refSymbol,
+        value: hasUnprovenInitialization ? null : initializationValue,
+        operator: "=",
+      }
+    : null;
+};
 
 const REPEATED_ANCESTOR_TYPES = new Set([
   "DoWhileStatement",
@@ -258,9 +327,18 @@ const refHasDeclaredType = (refSymbol: SymbolDescriptor): boolean => {
   );
 };
 
-const isSafeRefIdentifierUse = (identifier: EsTreeNode): boolean => {
+const isSafeRefIdentifierUse = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const expressionRoot = findTransparentExpressionRoot(identifier);
   const parent = expressionRoot.parent;
+  if (
+    parent &&
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments[0] === expressionRoot &&
+    isResultDiscardedCall(parent, { areConciseArrowReturnsDiscarded: false }) &&
+    getRefCurrentWrite(parent, scopes)
+  ) {
+    return true;
+  }
   if (
     parent &&
     isNodeOfType(parent, "VariableDeclarator") &&
@@ -300,7 +378,7 @@ const refDoesNotEscape = (
     if (didEscape) return false;
     if (!isNodeOfType(child, "Identifier")) return;
     if (resolveConstIdentifierAlias(child, scopes)?.id !== refSymbol.id) return;
-    if (child === refSymbol.bindingIdentifier || isSafeRefIdentifierUse(child)) return;
+    if (child === refSymbol.bindingIdentifier || isSafeRefIdentifierUse(child, scopes)) return;
     didEscape = true;
     return false;
   });
@@ -428,12 +506,12 @@ const canExecuteTogether = (
 };
 
 const hasNoCoExecutableCompetingWrite = (
-  assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,
+  write: RefCurrentWrite,
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const assignmentConstraints = getBranchConstraints(assignmentExpression, renderOwner);
+  const writeConstraints = getBranchConstraints(write.node, renderOwner);
   const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
     renderOwner,
     scopes,
@@ -441,9 +519,10 @@ const hasNoCoExecutableCompetingWrite = (
   let hasCompetingWrite = false;
   walkAst(renderOwner, (child: EsTreeNode): boolean | void => {
     if (hasCompetingWrite) return false;
+    if (child === write.node) return;
+    const competingWrite = getRefCurrentWrite(child, scopes);
     let writtenExpression: EsTreeNode | null = null;
     if (isNodeOfType(child, "AssignmentExpression")) {
-      if (child === assignmentExpression) return;
       writtenExpression = child.left;
     } else if (
       isNodeOfType(child, "UpdateExpression") ||
@@ -454,10 +533,14 @@ const hasNoCoExecutableCompetingWrite = (
       writtenExpression = child.left;
     }
     const deferredExecutionBoundary = findDeferredExecutionBoundary(child);
-    const deferredWriteValue =
-      isNodeOfType(child, "AssignmentExpression") && child.operator === "="
-        ? resolveInitializationValue(child.right, scopes)
-        : null;
+    const assignedValue = isNodeOfType(child, "AssignmentExpression")
+      ? child.operator === "="
+        ? child.right
+        : null
+      : competingWrite?.value;
+    const deferredWriteValue = assignedValue
+      ? resolveInitializationValue(assignedValue, scopes)
+      : null;
     const isDeferredTruthyWrite =
       deferredExecutionBoundary !== null &&
       deferredExecutionBoundary !== renderOwner &&
@@ -467,10 +550,12 @@ const hasNoCoExecutableCompetingWrite = (
       !isNodeOfType(deferredWriteValue, "CallExpression") &&
       isProvablyTruthyInitializationValue(deferredWriteValue, scopes);
     if (
-      !writtenExpression ||
       isDeferredTruthyWrite ||
-      !expressionContainsRefCurrent(writtenExpression, refSymbol, scopes) ||
-      !canExecuteTogether(assignmentConstraints, getBranchConstraints(child, renderOwner))
+      !(
+        competingWrite?.refSymbol.id === refSymbol.id ||
+        (writtenExpression && expressionContainsRefCurrent(writtenExpression, refSymbol, scopes))
+      ) ||
+      !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner))
     ) {
       return;
     }
@@ -481,29 +566,30 @@ const hasNoCoExecutableCompetingWrite = (
 };
 
 const hasNoPriorCoExecutableWrite = (
-  assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,
+  write: RefCurrentWrite,
   branchRoot: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const assignmentConstraints = getBranchConstraints(assignmentExpression, branchRoot);
-  const assignmentStart = getRangeStart(assignmentExpression);
+  const writeConstraints = getBranchConstraints(write.node, branchRoot);
+  const writeStart = getRangeStart(write.node);
   let hasCoExecutableWrite = false;
   walkAst(branchRoot, (child: EsTreeNode): boolean | void => {
     if (hasCoExecutableWrite) return false;
     const childStart = getRangeStart(child);
+    const priorWrite = getRefCurrentWrite(child, scopes);
     if (
-      child === assignmentExpression ||
-      !isNodeOfType(child, "AssignmentExpression") ||
-      assignmentStart === null ||
+      child === write.node ||
+      !priorWrite ||
+      writeStart === null ||
       childStart === null ||
-      childStart >= assignmentStart ||
-      resolveReactRefSymbol(child.left, scopes)?.id !== refSymbol.id ||
+      childStart >= writeStart ||
+      priorWrite.refSymbol.id !== refSymbol.id ||
       hasRepeatedExecutionAncestor(child, branchRoot)
     ) {
       return;
     }
-    if (canExecuteTogether(assignmentConstraints, getBranchConstraints(child, branchRoot))) {
+    if (canExecuteTogether(writeConstraints, getBranchConstraints(child, branchRoot))) {
       hasCoExecutableWrite = true;
       return false;
     }
@@ -512,46 +598,47 @@ const hasNoPriorCoExecutableWrite = (
 };
 
 const isPredictableGuardedInitialization = (
-  assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,
+  write: RefCurrentWrite,
   guardedBranch: EsTreeNode,
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
 ): boolean =>
+  write.value !== null &&
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
   isPredictableInitializationValue(
-    assignmentExpression.right,
+    write.value,
     refSymbol,
     renderOwner,
     scopes,
     requiresClosedTruthyDomain,
   ) &&
-  !hasRepeatedExecutionAncestor(assignmentExpression, guardedBranch) &&
+  !hasRepeatedExecutionAncestor(write.node, guardedBranch) &&
   (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
-  hasNoPriorCoExecutableWrite(assignmentExpression, renderOwner, refSymbol, scopes) &&
-  hasNoCoExecutableCompetingWrite(assignmentExpression, renderOwner, refSymbol, scopes) &&
+  hasNoPriorCoExecutableWrite(write, renderOwner, refSymbol, scopes) &&
+  hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes) &&
   refDoesNotEscape(renderOwner, refSymbol, scopes);
 
 const isDocumentedLazyInitialization = (
-  assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,
+  write: RefCurrentWrite,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const renderOwner = findRenderPhaseComponentOrHook(assignmentExpression, scopes);
+  const renderOwner = findRenderPhaseComponentOrHook(write.node, scopes);
   if (!renderOwner) return false;
-  if (assignmentExpression.operator === "??=" || assignmentExpression.operator === "||=") {
+  if (write.operator === "??=" || write.operator === "||=") {
     return isPredictableGuardedInitialization(
-      assignmentExpression,
+      write,
       renderOwner,
       renderOwner,
       refSymbol,
       scopes,
-      assignmentExpression.operator === "||=",
+      write.operator === "||=",
     );
   }
-  if (assignmentExpression.operator !== "=") return false;
-  let descendant: EsTreeNode = assignmentExpression;
+  if (write.operator !== "=") return false;
+  let descendant: EsTreeNode = write.node;
   let ancestor = descendant.parent;
   while (ancestor) {
     const test = isNodeOfType(ancestor, "IfStatement") ? stripParenExpression(ancestor.test) : null;
@@ -563,7 +650,7 @@ const isDocumentedLazyInitialization = (
       isSameRefCurrentAlias(test.argument, refSymbol, scopes) &&
       ancestor.consequent === descendant &&
       isPredictableGuardedInitialization(
-        assignmentExpression,
+        write,
         ancestor.consequent,
         renderOwner,
         refSymbol,
@@ -589,7 +676,7 @@ const isDocumentedLazyInitialization = (
         guardedBranch === descendant &&
         guardedBranch &&
         isPredictableGuardedInitialization(
-          assignmentExpression,
+          write,
           guardedBranch,
           renderOwner,
           refSymbol,
@@ -612,68 +699,88 @@ export const noRefCurrentInRender = defineRule({
   recommendation:
     "Move ref writes into an event handler or effect. Render must stay pure because React can replay or discard it. The predictable null-guarded lazy initialization pattern remains supported.",
   create: (context) => {
-    const report = (memberExpression: EsTreeNode) => {
-      const target = stripParenExpression(memberExpression);
-      const directRefSymbol = resolveReactRefSymbol(target, context.scopes);
-      const refSymbol =
-        directRefSymbol ??
-        (isNodeOfType(target, "MemberExpression")
-          ? resolveReactRefSymbol(stripParenExpression(target.object), context.scopes)
-          : null);
-      if (!refSymbol) return;
-      if (!directRefSymbol) {
-        if (
-          refSymbol.references.some(
-            (reference) =>
-              reference.flag !== "read" ||
-              (isWithinAssignmentTarget(reference.identifier) &&
-                !isNodeOfType(
-                  findTransparentExpressionRoot(reference.identifier).parent,
-                  "MemberExpression",
-                )),
-          )
-        )
-          return;
-        const initializer = refSymbol.initializer
-          ? stripParenExpression(refSymbol.initializer)
-          : null;
-        const initialValue = isNodeOfType(initializer, "CallExpression")
-          ? initializer.arguments[0]
-          : null;
-        if (!initialValue || isNodeOfType(initialValue, "SpreadElement")) return;
-        const initialContainer = stripParenExpression(initialValue);
-        if (
-          !isNodeOfType(initialContainer, "ObjectExpression") &&
-          !isNodeOfType(initialContainer, "ArrayExpression")
-        )
-          return;
-        if (
-          isNodeOfType(initialContainer, "ObjectExpression") &&
-          initialContainer.properties.some(
-            (property) =>
-              isNodeOfType(property, "Property") &&
-              (property.kind !== "init" ||
-                getStaticPropertyKeyName(property, { allowComputedString: true }) === "__proto__"),
-          )
-        )
-          return;
-      }
-      if (!findRenderPhaseComponentOrHook(memberExpression, context.scopes)) return;
+    const report = (node: EsTreeNode) => {
       context.report({
-        node: memberExpression,
+        node,
         message:
           "This ref is mutated during render. React can replay or discard render work, so the mutation can leak from UI that never commits.",
       });
     };
 
+    const reportWrite = (node: EsTreeNode) => {
+      const write = getRefCurrentWrite(node, context.scopes);
+      if (!write || !findRenderPhaseComponentOrHook(node, context.scopes)) return;
+      if (isDocumentedLazyInitialization(write, write.refSymbol, context.scopes)) return;
+      report(isNodeOfType(node, "AssignmentExpression") ? node.left : node);
+    };
+
+    const reportNestedWrite = (memberExpression: EsTreeNode) => {
+      const target = stripParenExpression(memberExpression);
+      if (!isNodeOfType(target, "MemberExpression")) return;
+      const refSymbol = resolveReactRefSymbol(stripParenExpression(target.object), context.scopes);
+      if (!refSymbol) return;
+      if (
+        refSymbol.references.some(
+          (reference) =>
+            reference.flag !== "read" ||
+            (isWithinAssignmentTarget(reference.identifier) &&
+              !isNodeOfType(
+                findTransparentExpressionRoot(reference.identifier).parent,
+                "MemberExpression",
+              )),
+        )
+      )
+        return;
+      const initializer = refSymbol.initializer
+        ? stripParenExpression(refSymbol.initializer)
+        : null;
+      const initialValue = isNodeOfType(initializer, "CallExpression")
+        ? initializer.arguments[0]
+        : null;
+      if (!initialValue || isNodeOfType(initialValue, "SpreadElement")) return;
+      const initialContainer = stripParenExpression(initialValue);
+      if (
+        !isNodeOfType(initialContainer, "ObjectExpression") &&
+        !isNodeOfType(initialContainer, "ArrayExpression")
+      )
+        return;
+      if (
+        isNodeOfType(initialContainer, "ObjectExpression") &&
+        initialContainer.properties.some(
+          (property) =>
+            isNodeOfType(property, "Property") &&
+            (property.kind !== "init" ||
+              getStaticPropertyKeyName(property, { allowComputedString: true }) === "__proto__"),
+        )
+      )
+        return;
+      if (!findRenderPhaseComponentOrHook(memberExpression, context.scopes)) return;
+      report(memberExpression);
+    };
+
     return {
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-        const refSymbol = resolveReactRefSymbol(node.left, context.scopes);
-        if (refSymbol && isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
-        report(node.left);
+        reportWrite(node);
+        reportNestedWrite(node.left);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callee = stripParenExpression(node.callee);
+        if (
+          !isNodeOfType(callee, "MemberExpression") ||
+          getStaticPropertyName(callee) !== "assign"
+        ) {
+          return;
+        }
+        reportWrite(node);
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
-        report(node.argument);
+        if (
+          resolveReactRefSymbol(node.argument, context.scopes) &&
+          findRenderPhaseComponentOrHook(node.argument, context.scopes)
+        ) {
+          report(node.argument);
+        }
+        reportNestedWrite(node.argument);
       },
     };
   },

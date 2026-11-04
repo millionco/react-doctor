@@ -1173,6 +1173,23 @@
     }
   },
   {
+    "key": "react-doctor/forwarded-set-state-in-effect",
+    "id": "forwarded-set-state-in-effect",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "forwarded-set-state-in-effect",
+      "title": "setState in effect through a helper",
+      "severity": "warn",
+      "recommendation": "Derive the value during render, initialize the state directly, or set it from the event that caused the change. This reports a synchronous state update made through a local setter helper wherever React Compiler's `set-state-in-effect` reports the direct call, and React Doctor reports it under `react-hooks-js/set-state-in-effect`.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/git-provider-url-injection-risk",
     "id": "git-provider-url-injection-risk",
     "source": "react-doctor",
@@ -5359,7 +5376,7 @@
       "id": "no-initialize-state",
       "title": "State initialized from a mount effect",
       "severity": "warn",
-      "recommendation": "Pass the initial value directly to useState() instead of setting it from a mount-only useEffect. For SSR hydration, prefer useSyncExternalStore().",
+      "recommendation": "Pass the initial value directly to useState() instead of setting it from a mount-only effect. For SSR hydration, prefer useSyncExternalStore().",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
@@ -7058,7 +7075,7 @@
       "id": "no-reset-all-state-on-prop-change",
       "title": "All state reset on prop change",
       "severity": "warn",
-      "recommendation": "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
+      "recommendation": "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in an effect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
@@ -7175,9 +7192,9 @@
     "originallyExternal": false,
     "rule": {
       "id": "no-set-state-after-await-in-effect",
-      "title": "State update after await in an effect",
+      "title": "Unguarded asynchronous state update in an effect",
       "severity": "warn",
-      "recommendation": "In a `useEffect` whose dependencies can change, guard any setter call that runs after an `await` behind a cancellation/ignore flag, or return a cleanup that cancels the async work.",
+      "recommendation": "In an effect whose dependencies can change, guard setters after `await` or inside deferred microtask and Promise callbacks with a cancellation/ignore flag checked after deferral, or return a cleanup that cancels the async work.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

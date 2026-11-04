@@ -3,6 +3,7 @@ import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-read
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
+import { isFixedIntrinsicJsxMap } from "../../utils/is-fixed-intrinsic-jsx-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
@@ -1971,7 +1972,8 @@ export const noArrayIndexAsKey = defineRule({
         if (!indexUse) return;
         if (
           indexUse.binding.iteratorCall &&
-          (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
+          (isFixedIntrinsicJsxMap(indexUse.binding.iteratorCall, context.scopes) ||
+            isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
             isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
         )
           return;

@@ -19,6 +19,9 @@
  *          exports — older plugin versions can lack newer compiler rules,
  *          so React Compiler users would otherwise hit
  *          "Rule 'void-use-memo' not found in plugin 'react-hooks-js'".
+ *   #2018 — JSX node budget must scale with project size to avoid marking
+ *           large repos incomplete, and duplicate jsx-node-limit reasons
+ *           must collapse into one summary instead of one per exhausted file.
  */
 
 import { spawnSync } from "node:child_process";
@@ -1014,5 +1017,22 @@ export const preferencesStore = createStore<PreferencesState>()((set, get) => ({
         includePaths: [path.join(projectDir, "src/stores/preferences/preferences-store.ts")],
       }),
     ).resolves.toEqual(expect.any(Array));
+  });
+});
+
+describe("issue #2018: JSX node budget scales with project size", () => {
+  it("completes maintainability analysis on large repos without hitting global budget", async () => {
+    const files: Record<string, string> = {};
+    for (let fileIndex = 0; fileIndex < 100; fileIndex++) {
+      files[`src/component-${fileIndex}.tsx`] =
+        `export const Component${fileIndex} = () => (<div><span>Content ${fileIndex}</span></div>);`;
+    }
+    const projectRoot = setupReactProject(tempRoot, "large-jsx-project", { files });
+    const { inspect } = await import("../../src/inspect.js");
+
+    const result = await inspect(projectRoot);
+
+    expect(result.skippedCheckReasons?.["dead-code"]).toBeUndefined();
+    expect(result.score).not.toBeNull();
   });
 });

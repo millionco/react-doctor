@@ -20,6 +20,7 @@ import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-a
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { splitCssTopLevel } from "./utils/split-css-top-level.js";
+import { isOwnedAsyncResultPlaceholder } from "./utils/is-owned-async-result-placeholder.js";
 
 const BUSY_TEXT_PATTERN = /\b(?:loading|processing|saving|syncing|uploading)\b/i;
 const CURSOR_GLYPH_PATTERN = /^[_|▀-▟■▮❙❚｜]$/u;
@@ -301,6 +302,7 @@ export const noDecorativePulse = defineRule({
       const text = getStaticJsxText(node).replace(/\s+/g, " ").trim();
       if (!text || BUSY_TEXT_PATTERN.test(text)) return;
       if (isBusyStatus(openingElement)) return;
+      if (isOwnedAsyncResultPlaceholder(node, context.scopes)) return;
       context.report({
         node: openingElement,
         message:

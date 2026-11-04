@@ -1,3 +1,5 @@
+import { FUNCTION_RESOLUTION_MAX_DEPTH } from "../../constants/thresholds.js";
+import { createClosedRefContainerMutationInspector } from "../../utils/create-closed-ref-container-mutation-inspector.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -7,6 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { findSynchronouslyCalledRenderOwner } from "../../utils/find-synchronously-called-render-owner.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -709,12 +712,19 @@ export const noRefCurrentInRender = defineRule({
 
     const reportWrite = (node: EsTreeNode) => {
       const write = getRefCurrentWrite(node, context.scopes);
-      if (!write || !findRenderPhaseComponentOrHook(node, context.scopes)) return;
+      if (
+        !write ||
+        (!findRenderPhaseComponentOrHook(node, context.scopes) &&
+          (!isNodeOfType(node, "AssignmentExpression") ||
+            !findSynchronouslyCalledRenderOwner(node, context)))
+      )
+        return;
       if (isDocumentedLazyInitialization(write, write.refSymbol, context.scopes)) return;
       report(isNodeOfType(node, "AssignmentExpression") ? node.left : node);
     };
 
-    const reportNestedWrite = (memberExpression: EsTreeNode) => {
+    const containerProof = createClosedRefContainerMutationInspector(context);
+    const reportNestedWrite = (memberExpression: EsTreeNode, mutation: EsTreeNode) => {
       const target = stripParenExpression(memberExpression);
       if (!isNodeOfType(target, "MemberExpression")) return;
       const refSymbol = resolveReactRefSymbol(stripParenExpression(target.object), context.scopes);
@@ -754,14 +764,26 @@ export const noRefCurrentInRender = defineRule({
         )
       )
         return;
-      if (!findRenderPhaseComponentOrHook(memberExpression, context.scopes)) return;
+      if (
+        !findRenderPhaseComponentOrHook(memberExpression, context.scopes) &&
+        !(
+          containerProof.isProvenRefMutation(mutation) &&
+          findSynchronouslyCalledRenderOwner(
+            mutation,
+            context,
+            FUNCTION_RESOLUTION_MAX_DEPTH,
+            containerProof,
+          )
+        )
+      )
+        return;
       report(memberExpression);
     };
 
     return {
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         reportWrite(node);
-        reportNestedWrite(node.left);
+        reportNestedWrite(node.left, node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callee = stripParenExpression(node.callee);
@@ -780,7 +802,7 @@ export const noRefCurrentInRender = defineRule({
         ) {
           report(node.argument);
         }
-        reportNestedWrite(node.argument);
+        reportNestedWrite(node.argument, node);
       },
     };
   },

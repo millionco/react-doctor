@@ -1,3 +1,10 @@
+import {
+  CUSTOM_SPLIT_MAPPER_ARGUMENT_COUNT,
+  JSX_DESCENDANT_SCAN_NODE_BUDGET,
+} from "../../constants/thresholds.js";
+import { getClosedIntrinsicJsxMapCallback } from "../../utils/get-closed-intrinsic-jsx-map-callback.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
+import { hasReorderedCustomSplitOutput } from "../../utils/has-reordered-custom-split-output.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -2035,7 +2042,55 @@ export const noArrayIndexAsKey = defineRule({
                     keyTemplate,
                     itemNames,
                   );
+                const splitCallback = indexUse.binding.bindingFunction;
+                const splitIterator = indexUse.binding.iteratorCall;
+                let hasReorderedSplitItems = false;
+                if (
+                  isInlineTextRun &&
+                  isNodeOfType(splitCallback, "ArrowFunctionExpression") &&
+                  stripParenExpression(splitCallback.body) === jsxElement &&
+                  splitIterator &&
+                  isNodeOfType(iteratorCallee, "MemberExpression") &&
+                  getStaticPropertyName(iteratorCallee) === "map" &&
+                  splitIterator.arguments.length === CUSTOM_SPLIT_MAPPER_ARGUMENT_COUNT &&
+                  splitIterator.arguments.some(
+                    (argument) => stripParenExpression(argument) === splitCallback,
+                  )
+                ) {
+                  const mapper = getClosedIntrinsicJsxMapCallback(splitCallback, {
+                    remainingNodes: JSX_DESCENDANT_SCAN_NODE_BUDGET,
+                  });
+                  if (
+                    mapper?.hasItemChild &&
+                    openingElement.attributes.every(
+                      (attribute) =>
+                        attribute === node ||
+                        (isNodeOfType(attribute, "JSXAttribute") &&
+                          isNodeOfType(attribute.name, "JSXIdentifier") &&
+                          attribute.name.name === "className" &&
+                          getStringLiteralAttributeValue(attribute) !== null),
+                    ) &&
+                    jsxElement.children.every((child) => {
+                      if (isNodeOfType(child, "JSXText")) return true;
+                      if (!isNodeOfType(child, "JSXExpressionContainer")) return false;
+                      const value = stripParenExpression(child.expression);
+                      return (
+                        (isNodeOfType(value, "Identifier") && value.name === mapper.childName) ||
+                        (isNodeOfType(value, "Literal") &&
+                          (value.value === null ||
+                            typeof value.value === "string" ||
+                            typeof value.value === "number" ||
+                            typeof value.value === "boolean"))
+                      );
+                    })
+                  )
+                    hasReorderedSplitItems = hasReorderedCustomSplitOutput(
+                      iteratorCallee.object,
+                      context.scopes,
+                    );
+                }
                 const isStateful =
+                  hasReorderedSplitItems ||
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||
                   containsStatefulDescendant(jsxElement, {

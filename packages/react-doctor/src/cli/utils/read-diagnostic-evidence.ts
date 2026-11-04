@@ -79,31 +79,38 @@ const readSourceRecord = (
   rootDirectory: string,
   filePath: string,
   state: DiagnosticEvidenceReaderState,
+  requiresSourceFile = false,
 ): SourceRecord | null => {
   const normalizedFilePath = filePath.replace(/\\/g, "/");
-  if (state.recordByFilePath.has(normalizedFilePath)) {
-    return state.recordByFilePath.get(normalizedFilePath) ?? null;
-  }
-  const absolutePath = resolveSafeSourcePath(rootDirectory, normalizedFilePath);
-  if (absolutePath === null) {
-    state.recordByFilePath.set(normalizedFilePath, null);
-    return null;
-  }
+  let record = state.recordByFilePath.get(normalizedFilePath);
+  if (record === null) return null;
   try {
-    const sourceText = fs.readFileSync(absolutePath, "utf-8");
-    const record = {
-      absolutePath,
-      filePath: normalizedFilePath,
-      sourceFile: ts.createSourceFile(
+    if (record === undefined) {
+      const absolutePath = resolveSafeSourcePath(rootDirectory, normalizedFilePath);
+      if (absolutePath === null) {
+        state.recordByFilePath.set(normalizedFilePath, null);
+        return null;
+      }
+      const sourceText = fs.readFileSync(absolutePath, "utf-8");
+      let parsedSourceFile: ts.SourceFile | undefined;
+      record = {
         absolutePath,
+        filePath: normalizedFilePath,
+        get sourceFile() {
+          parsedSourceFile ??= ts.createSourceFile(
+            absolutePath,
+            sourceText,
+            ts.ScriptTarget.Latest,
+            true,
+            getScriptKind(absolutePath),
+          );
+          return parsedSourceFile;
+        },
         sourceText,
-        ts.ScriptTarget.Latest,
-        true,
-        getScriptKind(absolutePath),
-      ),
-      sourceText,
-    } satisfies SourceRecord;
-    state.recordByFilePath.set(normalizedFilePath, record);
+      } satisfies SourceRecord;
+      state.recordByFilePath.set(normalizedFilePath, record);
+    }
+    if (requiresSourceFile) void record.sourceFile;
     return record;
   } catch {
     state.recordByFilePath.set(normalizedFilePath, null);
@@ -117,7 +124,7 @@ const listSourceRecords = (
 ): ReadonlyArray<SourceRecord> => {
   if (state.sourceRecords !== null) return state.sourceRecords;
   state.sourceRecords = listSourceFiles(rootDirectory).flatMap((filePath) => {
-    const record = readSourceRecord(rootDirectory, filePath, state);
+    const record = readSourceRecord(rootDirectory, filePath, state, true);
     return record === null ? [] : [record];
   });
   return state.sourceRecords;
@@ -530,6 +537,12 @@ export const createDiagnosticEvidenceReader = (
   return (diagnostic) => {
     const record = readSourceRecord(rootDirectory, diagnostic.filePath, state);
     if (record === null || !Number.isInteger(diagnostic.line)) return null;
+    const shouldResolveForwardedHandlers = Boolean(options.resolveForwardedHandlers);
+    if (
+      shouldResolveForwardedHandlers &&
+      readSourceRecord(rootDirectory, diagnostic.filePath, state, true) === null
+    )
+      return null;
     const sourceLines = record.sourceText.split(/\r?\n/);
     const startLineIndex = Math.max(0, diagnostic.line - 1);
     const endLineIndex = Math.max(startLineIndex, (diagnostic.endLine ?? diagnostic.line) - 1);
@@ -549,7 +562,7 @@ export const createDiagnosticEvidenceReader = (
               return line.slice(start, end);
             })
             .join("\n");
-    if (!options.resolveForwardedHandlers) return evidence;
+    if (!shouldResolveForwardedHandlers) return evidence;
     const propNames = new Set(evidence.match(/\bon[A-Z]\w*\b/g) ?? []);
     if (propNames.size === 0) return evidence;
     const component = findEnclosingComponent(record, diagnostic);

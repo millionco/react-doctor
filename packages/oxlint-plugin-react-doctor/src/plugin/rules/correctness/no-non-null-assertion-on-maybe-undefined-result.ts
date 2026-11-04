@@ -4,7 +4,9 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getReadonlyFinderStringPredicateMatch } from "../../utils/get-readonly-finder-string-predicate-match.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
@@ -618,14 +620,15 @@ const areRegexPatternsEquivalent = (
 const doesPredicateTruthRequireMatch = (
   matchCall: EsTreeNode,
   predicateFunction: EsTreeNode,
+  prefixDeclaration?: EsTreeNodeOfType<"VariableDeclaration">,
 ): boolean => {
   if (!isFunctionLike(predicateFunction)) return false;
-  if (
-    isNodeOfType(predicateFunction.body, "BlockStatement") &&
-    (predicateFunction.body.body.length !== 1 ||
-      !isNodeOfType(predicateFunction.body.body[0], "ReturnStatement"))
-  ) {
-    return false;
+  if (isNodeOfType(predicateFunction.body, "BlockStatement")) {
+    if (prefixDeclaration && predicateFunction.body.body[0] !== prefixDeclaration) return false;
+    const statements = prefixDeclaration
+      ? predicateFunction.body.body.slice(1)
+      : predicateFunction.body.body;
+    if (statements.length !== 1 || !isNodeOfType(statements[0], "ReturnStatement")) return false;
   }
   let isNegated = false;
   let child = matchCall;
@@ -932,12 +935,61 @@ const isMatchProvenByFindUpUntilPredicate = (
       !isNodeOfType(callee, "MemberExpression") ||
       getStaticPropertyName(callee) !== "match" ||
       !child.arguments[0] ||
-      !areRegexPatternsEquivalent(child.arguments[0] as EsTreeNode, assertedPattern, context) ||
-      !doesPredicateTruthRequireMatch(child, predicateFunction)
+      !areRegexPatternsEquivalent(child.arguments[0] as EsTreeNode, assertedPattern, context)
     ) {
       return;
     }
-    const predicateReceiver = stripParenExpression(callee.object as EsTreeNode);
+    let predicateReceiver = stripParenExpression(callee.object as EsTreeNode);
+    if (!doesPredicateTruthRequireMatch(child, predicateFunction)) {
+      const directResultInitializer = getDirectConstInitializer(resultSymbol);
+      const predicatePattern = stripParenExpression(child.arguments[0] as EsTreeNode);
+      const consumerPattern = stripParenExpression(assertedPattern);
+      const assertedCall = isNodeOfType(assertion, "TSNonNullExpression")
+        ? stripParenExpression(assertion.expression)
+        : null;
+      const predicateBinding = stripParenExpression(predicateArgument as EsTreeNode);
+      const predicateSymbol = isNodeOfType(predicateBinding, "Identifier")
+        ? context.scopes.symbolFor(predicateBinding)
+        : null;
+      if (
+        isOptionalResultPath ||
+        !directResultInitializer ||
+        stripParenExpression(directResultInitializer) !== initializer ||
+        !isNodeOfType(predicatePattern, "Literal") ||
+        !("regex" in predicatePattern) ||
+        !predicatePattern.regex ||
+        !isNodeOfType(consumerPattern, "Literal") ||
+        !("regex" in consumerPattern) ||
+        !consumerPattern.regex ||
+        !isNodeOfType(assertedCall, "CallExpression") ||
+        assertedCall.optional ||
+        assertedCall.arguments.length !== 1 ||
+        isNodeOfType(assertedCall.arguments[0], "SpreadElement") ||
+        !isNodeOfType(assertedCall.callee, "MemberExpression") ||
+        assertedCall.callee.optional ||
+        assertedCall.callee.computed ||
+        context.scopes.symbolFor(finderCallee)?.kind !== "import" ||
+        (predicateBinding !== predicateFunction &&
+          (predicateSymbol?.kind !== "const" ||
+            predicateSymbol.initializer !== predicateFunction ||
+            predicateSymbol.references.some((reference) => reference.flag !== "read")))
+      ) {
+        return;
+      }
+      const aliasMatch = getReadonlyFinderStringPredicateMatch(
+        child,
+        predicateFunction,
+        context.scopes,
+      );
+      if (
+        !aliasMatch ||
+        !isStringTypeofGuardForPath(aliasMatch.stringGuard, aliasMatch.aliasName) ||
+        !doesPredicateTruthRequireMatch(child, predicateFunction, aliasMatch.declaration)
+      ) {
+        return;
+      }
+      predicateReceiver = aliasMatch.receiver;
+    }
     const predicateRoot = getRootIdentifier(predicateReceiver);
     const predicatePath = receiverPathKey(predicateReceiver);
     if (

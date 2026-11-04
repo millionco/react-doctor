@@ -10,6 +10,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getDeferredEffectCallbackCall } from "../../utils/get-deferred-effect-callback-call.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
@@ -30,9 +31,13 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { resolveStateWriteSite } from "./utils/collect-effect-state-write-facts.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 const MESSAGE =
   "This setter runs after `await`, so overlapping re-runs of the effect can resolve out of order and write stale state; gate it behind a cancellation/ignore flag or return a cleanup that cancels the work.";
+const DEFERRED_MESSAGE =
+  "This deferred setter can run after its effect has been cleaned up and write stale state; gate it behind a cancellation/ignore flag checked inside the callback.";
 
 const STATE_DISPATCHER_HOOKS = new Set(["useState", "useReducer"]);
 const REF_HOOKS = new Set(["useRef"]);
@@ -138,16 +143,29 @@ const hasOnlyStableIdentityDependencies = ({
     );
   });
 
+const isStateDispatcherReference = (node: EsTreeNode, context: RuleContext): boolean =>
+  isNodeOfType(node, "Identifier") &&
+  isReactHookResultReference(node, STATE_DISPATCHER_HOOKS, 1, context.scopes);
+
 const isStateDispatcherCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  if (!isNodeOfType(callExpression.callee, "Identifier")) return false;
-  return isReactHookResultReference(
-    callExpression.callee,
-    STATE_DISPATCHER_HOOKS,
-    1,
-    context.scopes,
+  if (isStateDispatcherReference(callExpression.callee, context)) return true;
+  if (
+    !callExpression.arguments.some((argument) =>
+      isStateDispatcherReference(stripParenExpression(argument), context),
+    )
+  ) {
+    return false;
+  }
+  const analysis = getProgramAnalysis(callExpression);
+  const forwardedWrite = analysis
+    ? resolveStateWriteSite(analysis, context, callExpression, { acceptsReducerDispatch: true })
+    : null;
+  return Boolean(
+    forwardedWrite?.isForwardedWrite &&
+    isStateDispatcherReference(stripParenExpression(forwardedWrite.setter), context),
   );
 };
 
@@ -249,11 +267,17 @@ const collectDirectlyInvokedFunctions = (
   }
   for (const argument of call.arguments ?? []) {
     const callback = stripParenExpression(argument);
-    if (isFunctionLike(callback) && getPromiseChainCallForCallback(callback) === call) {
+    if (
+      isFunctionLike(callback) &&
+      (getPromiseChainCallForCallback(callback) === call ||
+        getDeferredEffectCallbackCall(callback, context.scopes) === call)
+    ) {
       functions.add(callback);
     }
   }
-  return [...functions];
+  return [...functions].filter(
+    (invokedFunction) => isFunctionLike(invokedFunction) && !invokedFunction.generator,
+  );
 };
 
 const collectTransitivelyInvokedFunctions = (
@@ -1029,9 +1053,10 @@ const collectOrderedAsyncEvents = (root: EsTreeNode, context: RuleContext): EsTr
   const events: EsTreeNode[] = [];
   walkWithoutNestedFunctions(root, (child: EsTreeNode) => {
     if (
-      isNodeOfType(child, "AwaitExpression") ||
-      (isNodeOfType(child, "ForOfStatement") && child.await === true) ||
-      (isNodeOfType(child, "CallExpression") && isStateDispatcherCall(child, context))
+      (isNodeOfType(child, "AwaitExpression") ||
+        (isNodeOfType(child, "ForOfStatement") && child.await === true) ||
+        (isNodeOfType(child, "CallExpression") && isStateDispatcherCall(child, context))) &&
+      isNodeReachableWithinFunction(child, context)
     ) {
       events.push(child);
     }
@@ -1104,6 +1129,15 @@ const analyzeAsyncStatements = (
   for (const statement of statements) {
     if (states.length === 0) break;
     if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+      if (statement.argument) {
+        const returned = analyzeAsyncEvents(
+          statement.argument,
+          states,
+          context,
+          abortProtectedControllers,
+        );
+        if (returned.hasUnsafeSetter) return returned;
+      }
       states = [];
       continue;
     }
@@ -1310,8 +1344,13 @@ const hasUnsafePostAwaitSetter = (
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  if (!isFunctionLike(asyncFunction) || !asyncFunction.async) return false;
-  const firstSuspensionStart = findFirstSuspensionStart(asyncFunction);
+  if (!isFunctionLike(asyncFunction)) return false;
+  const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
+  if (deferredCall && !isNodeReachableWithinFunction(deferredCall, context)) return false;
+  if (!asyncFunction.async && !deferredCall) return false;
+  const firstSuspensionStart = deferredCall
+    ? asyncFunction.range[0]
+    : findFirstSuspensionStart(asyncFunction);
   if (firstSuspensionStart === null) return false;
   const cleanupFunctions = collectCleanupFunctionsAfterInvocations(
     effectCallback,
@@ -1351,7 +1390,7 @@ const hasUnsafePostAwaitSetter = (
     statements,
     [
       {
-        didSuspend: false,
+        didSuspend: Boolean(deferredCall),
         hasDominatingGuard: false,
         isAbortProtected: false,
         suspensionNode: null,
@@ -1366,11 +1405,11 @@ const hasUnsafePostAwaitSetter = (
 
 export const noSetStateAfterAwaitInEffect = defineRule({
   id: "no-set-state-after-await-in-effect",
-  title: "State update after await in an effect",
+  title: "Unguarded asynchronous state update in an effect",
   severity: "warn",
   category: "Bugs",
   recommendation:
-    "In a `useEffect` whose dependencies can change, guard any setter call that runs after an `await` behind a cancellation/ignore flag, or return a cleanup that cancels the async work.",
+    "In an effect whose dependencies can change, guard setters after `await` or inside deferred microtask and Promise callbacks with a cancellation/ignore flag checked after deferral, or return a cleanup that cancels the async work.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (
@@ -1393,7 +1432,12 @@ export const noSetStateAfterAwaitInEffect = defineRule({
           asyncFunction !== callback &&
           hasUnsafePostAwaitSetter(asyncFunction, callback, context)
         ) {
-          context.report({ node, message: MESSAGE });
+          context.report({
+            node,
+            message: getDeferredEffectCallbackCall(asyncFunction, context.scopes)
+              ? DEFERRED_MESSAGE
+              : MESSAGE,
+          });
           return;
         }
       }

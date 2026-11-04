@@ -1,3 +1,4 @@
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -92,10 +93,10 @@ export const noInitializeState = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Pass the initial value directly to useState() instead of setting it from a mount-only useEffect. For SSR hydration, prefer useSyncExternalStore().",
+    "Pass the initial value directly to useState() instead of setting it from a mount-only effect. For SSR hydration, prefer useSyncExternalStore().",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
+      if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
       const dependencies = node.arguments?.[1];
       if (
         !dependencies ||
@@ -118,7 +119,7 @@ export const noInitializeState = defineRule({
         const stateName = getStateName(fact.stateDeclarator);
         context.report({
           node: fact.callExpression,
-          message: `Your users see an extra render with empty "${stateName}" because a useEffect sets its starting value.`,
+          message: `Initializing "${stateName}" from an effect costs an extra render.`,
         });
       }
     },

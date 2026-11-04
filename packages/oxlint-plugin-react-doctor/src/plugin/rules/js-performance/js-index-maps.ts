@@ -11,6 +11,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveFirstArgumentBinding } from "../../utils/resolve-first-argument-binding.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isSmallReadonlyLookupArray } from "./utils/is-small-readonly-lookup-array.js";
 
 // Only a predicate that tests a SINGLE equality on one field
 // (`item.id === target` / `item === target`) can be replaced by a `Map`
@@ -192,6 +193,7 @@ export const jsIndexMaps = defineRule({
         if (methodName !== "find" && methodName !== "findIndex") return;
         if (!isSingleFieldEqualityPredicate(node)) return;
         if (isConstantTableReceiver(node)) return;
+        if (isSmallReadonlyLookupArray(node, context.scopes)) return;
         if (isLoopVariantReceiver(node)) return;
         context.report({
           node,

@@ -3,6 +3,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { parseTailwindClassNameToken } from "../../utils/parse-tailwind-class-name-token.js";
+import { getClosedClassMergerTokens } from "./utils/get-closed-class-merger-tokens.js";
 
 // Tailwind v4 renamed/removed these utilities. Map each deprecated base token
 // to its canonical v4 replacement. Gated on `tailwind:4` so v3 projects, where
@@ -31,8 +35,15 @@ export const noDeprecatedTailwindClass = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);
-      if (!classNameValue) return;
-      for (const token of getClassNameTokens(classNameValue)) {
+      const attribute = getAuthoritativeJsxAttribute(node.attributes, "className");
+      const mergedTokens = isNodeOfType(attribute?.value, "JSXExpressionContainer")
+        ? getClosedClassMergerTokens(attribute.value.expression, context)
+        : null;
+      const tokens =
+        mergedTokens?.map((token) => parseTailwindClassNameToken(token).utility) ??
+        (classNameValue ? getClassNameTokens(classNameValue) : null);
+      if (!tokens) return;
+      for (const token of tokens) {
         const replacement = renameDeprecatedToken(token);
         if (replacement) {
           context.report({

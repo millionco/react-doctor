@@ -8,6 +8,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isFreshRootInitialRender } from "../../utils/is-fresh-root-initial-render.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 // Libraries that position or attach to freshly committed DOM — the
 // canonical justified `flushSync` integration (the DOM must be committed
@@ -296,7 +298,11 @@ const hasAwarenessSelectionFlushSyncCall = (program: EsTreeNode, localName: stri
 // A justified call keeps the import regardless of the file's other call
 // sites, so one exempt usage silences the (per-file, import-anchored)
 // diagnostic.
-const hasExemptFlushSyncCall = (program: EsTreeNode, localName: string): boolean => {
+const hasExemptFlushSyncCall = (
+  program: EsTreeNode,
+  localName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
   const measuringFunctionNames = collectMeasuringFunctionNames(program);
   const imperativeDomFunctionNames = collectImperativeDomFunctionNames(program);
   let exempt = false;
@@ -312,7 +318,8 @@ const hasExemptFlushSyncCall = (program: EsTreeNode, localName: string): boolean
     if (
       isInsideStartViewTransition(child) ||
       enclosingFunctionChainReadsMeasurement(child, measuringFunctionNames) ||
-      isFollowedByImperativeDomMutation(child, imperativeDomFunctionNames)
+      isFollowedByImperativeDomMutation(child, imperativeDomFunctionNames) ||
+      isFreshRootInitialRender(child, scopes)
     ) {
       exempt = true;
       return false;
@@ -354,7 +361,7 @@ export const noFlushSync = defineRule({
             ? specifier.local.name
             : "flushSync";
           if (hasAwarenessSelectionFlushSyncCall(program, localName)) return;
-          if (hasExemptFlushSyncCall(program, localName)) return;
+          if (hasExemptFlushSyncCall(program, localName, context.scopes)) return;
         }
 
         context.report({

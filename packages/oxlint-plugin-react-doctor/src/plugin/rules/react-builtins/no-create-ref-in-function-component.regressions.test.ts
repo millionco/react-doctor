@@ -621,6 +621,21 @@ export const Input = () => { const target = createRef(); function render() { ret
     expect(declarationResult.diagnostics).toEqual([]);
   });
 
+  it("finds same-render function declarations in a separate body environment", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `import { createRef } from "react";
+export const Input = (props = {}) => {
+  const target = createRef();
+  function render() { return <input ref={target} />; }
+  return render();
+};`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports named render functions that are retained, deferred, or async", () => {
     const retainedResult = runRule(
       noCreateRefInFunctionComponent,

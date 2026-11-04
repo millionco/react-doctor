@@ -1,4 +1,5 @@
 import type { Reference } from "eslint-scope";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
@@ -18,7 +19,13 @@ import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-funct
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { getCallExpr, getDownstreamRefs, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  getCallExpr,
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+  isSynchronous,
+} from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   findContainingNode,
@@ -31,7 +38,12 @@ import {
   isRefCurrent,
   isState,
   isSyncStateSetterCall,
+  resolveStateSetterReference,
 } from "./utils/effect/react.js";
+import {
+  resolveStateWriteSite,
+  type ResolvedStateWriteSite,
+} from "./utils/collect-effect-state-write-facts.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
@@ -756,14 +768,39 @@ const haveSameLivePropExpressionIdentity = (
   return left.memberPath.every((propertyName, index) => propertyName === right.memberPath[index]);
 };
 
+const getForwardedSetterWrite = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  setterRef: Reference,
+): ResolvedStateWriteSite | null => {
+  const identifier = setterRef.identifier as unknown as EsTreeNode;
+  const invocation = identifier.parent;
+  if (
+    !isNodeOfType(invocation, "CallExpression") ||
+    !invocation.arguments?.some((argument) => argument === identifier) ||
+    !resolveStateSetterReference(analysis, setterRef)
+  ) {
+    return null;
+  }
+  const forwardedWrite = resolveStateWriteSite(analysis, context, invocation);
+  return forwardedWrite?.isForwardedWrite && forwardedWrite.setter === identifier
+    ? forwardedWrite
+    : null;
+};
+
 const isSetStateToInitialValue = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   setterRef: Reference,
+  forwardedWrite: ResolvedStateWriteSite | undefined,
 ): boolean => {
   const callExpr = getCallExpr(setterRef);
-  if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
-  const setStateToValue: EsTreeNode | undefined = callExpr.arguments?.[0] as EsTreeNode | undefined;
+  if (!forwardedWrite && !isNodeOfType(callExpr, "CallExpression")) return false;
+  const setStateToValue: EsTreeNode | undefined = forwardedWrite
+    ? forwardedWrite.value
+    : isNodeOfType(callExpr, "CallExpression")
+      ? (callExpr.arguments?.[0] as EsTreeNode | undefined)
+      : undefined;
   const useStateDecl = getUseStateDecl(analysis, setterRef);
   if (!useStateDecl || !isNodeOfType(useStateDecl, "VariableDeclarator")) return false;
   if (!isNodeOfType(useStateDecl.init, "CallExpression")) return false;
@@ -1129,7 +1166,7 @@ const areAllSetterWritesVisibilityGuarded = (
       }
       if (resetIdentifiers.has(setterReference.identifier)) continue;
       const setterCall = getCallExpr(setterReference);
-      if (!setterCall) return false;
+      if (!setterCall && !getForwardedSetterWrite(analysis, context, setterReference)) return false;
       const conditionsByExposure = getSetterExposureConditions(
         analysis,
         context,
@@ -1236,17 +1273,31 @@ const findPropUsedToResetAllState = (
   depsRefs: Reference[],
   useEffectNode: EsTreeNode,
   effectFn: EsTreeNode,
+  mediaReceiverCache: WeakMap<SymbolDescriptor, boolean>,
 ): Reference | null => {
   // A setter that only runs inside a listener / observer / subscription
   // callback fires on that event, not when the prop changes — only
   // synchronous setter calls are the reset-on-prop-change shape.
-  const stateSetterRefs = effectFnRefs.filter((ref) =>
-    isSyncStateSetterCall(analysis, ref, effectFn),
+  const stateSetterVariablesByReference = new Map<Reference, Reference["resolved"]>(
+    effectFnRefs.map((reference) => [
+      reference,
+      resolveStateSetterReference(analysis, reference)?.resolved ?? null,
+    ]),
   );
+  const forwardedWritesByReference = new Map<Reference, ResolvedStateWriteSite>();
+  for (const ref of effectFnRefs) {
+    const forwardedWrite = getForwardedSetterWrite(analysis, context, ref);
+    if (forwardedWrite) forwardedWritesByReference.set(ref, forwardedWrite);
+  }
+  const isSyncSetterWrite = (ref: Reference): boolean =>
+    isSyncStateSetterCall(analysis, ref, effectFn) ||
+    (forwardedWritesByReference.has(ref) &&
+      isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn));
+  const stateSetterRefs = effectFnRefs.filter(isSyncSetterWrite);
   if (stateSetterRefs.length === 0) return null;
 
   const allResetToInitial = stateSetterRefs.every((ref) =>
-    isSetStateToInitialValue(analysis, context, ref),
+    isSetStateToInitialValue(analysis, context, ref, forwardedWritesByReference.get(ref)),
   );
   if (!allResetToInitial) return null;
   if (hasSynchronousResourceLifecycleTransition(effectFn, context.scopes)) return null;
@@ -1259,6 +1310,7 @@ const findPropUsedToResetAllState = (
         useEffectNode,
         depsRefs,
         true,
+        mediaReceiverCache,
       ),
     )
   ) {
@@ -1274,9 +1326,10 @@ const findPropUsedToResetAllState = (
       effectFnRefs.some(
         (otherRef) =>
           otherRef !== setterRef &&
-          otherRef.resolved === setterRef.resolved &&
-          Boolean(getCallExpr(otherRef)) &&
-          !isSyncStateSetterCall(analysis, otherRef, effectFn),
+          stateSetterVariablesByReference.get(otherRef) ===
+            stateSetterVariablesByReference.get(setterRef) &&
+          (Boolean(getCallExpr(otherRef)) || forwardedWritesByReference.has(otherRef)) &&
+          !isSyncSetterWrite(otherRef),
       ) ||
       effectInvokesAsyncSetterReloadHelper(analysis, context, effectFnRefs, effectFn, setterRef),
   );
@@ -1286,7 +1339,9 @@ const findPropUsedToResetAllState = (
   // Distinct state VARIABLES reset — two call sites of one setter must not
   // satisfy a two-useState component (freecut inline-composition-preview,
   // delta audit).
-  const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
+  const resetStateVariables = new Set(
+    stateSetterRefs.map((setterRef) => stateSetterVariablesByReference.get(setterRef)),
+  );
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
 
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
@@ -1317,33 +1372,38 @@ export const noResetAllStateOnPropChange = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactHookCall(node, "useEffect", context.scopes)) return;
-      const analysis = getProgramAnalysis(node);
-      if (!analysis) return;
-      const effectFnRefs = getEffectFnRefs(analysis, node);
-      const depsRefs = getEffectDepsRefs(analysis, node);
-      if (!effectFnRefs || !depsRefs) return;
-      const containing = findContainingNode(analysis, node);
-      if (containing && isCustomHook(containing)) return;
-      const effectFn = getEffectFn(analysis, node);
-      if (!effectFn) return;
+    "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in an effect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
+  create: (context: RuleContext) => {
+    const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
+        const analysis = getProgramAnalysis(node);
+        if (!analysis) return;
+        const effectFnRefs = getEffectFnRefs(analysis, node);
+        const depsRefs = getEffectDepsRefs(analysis, node);
+        if (!effectFnRefs || !depsRefs) return;
+        const containing = findContainingNode(analysis, node);
+        if (containing && isCustomHook(containing)) return;
+        const effectFn = getEffectFn(analysis, node);
+        if (!effectFn) return;
 
-      const propUsedToReset = findPropUsedToResetAllState(
-        analysis,
-        context,
-        effectFnRefs,
-        depsRefs,
-        node,
-        effectFn,
-      );
-      if (!propUsedToReset) return;
-      context.report({
-        node,
-        message: `Your users briefly see stale state when a prop changes because this useEffect clears all state.`,
-      });
-    },
-  }),
+        const propUsedToReset = findPropUsedToResetAllState(
+          analysis,
+          context,
+          effectFnRefs,
+          depsRefs,
+          node,
+          effectFn,
+          mediaReceiverCache,
+        );
+        if (!propUsedToReset) return;
+        context.report({
+          node,
+          message:
+            "This effect clears all state after a prop changes, which costs an extra render.",
+        });
+      },
+    };
+  },
 });

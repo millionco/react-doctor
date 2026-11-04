@@ -17,6 +17,7 @@ import {
 } from "../../constants/react.js";
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
+import { collectFunctionReturnValues } from "../../utils/collect-function-return-values.js";
 import { collectSynchronouslyInvokedLocalFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { createStateUpdaterEntryExclusionResolver } from "../../utils/create-state-updater-entry-exclusion-resolver.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -403,24 +404,6 @@ const functionParameterIsArray = (
       (annotation.typeName.name === "Array" || annotation.typeName.name === "ReadonlyArray"),
     );
   });
-};
-
-const collectFunctionReturnValues = (functionNode: EsTreeNode): EsTreeNode[] | null => {
-  if (!isFunctionLike(functionNode)) return null;
-  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
-    return [functionNode.body];
-  }
-  const returnValues: EsTreeNode[] = [];
-  let hasUnprovenReturn = false;
-  walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
-    if (!isNodeOfType(child, "ReturnStatement")) return;
-    if (!child.argument) {
-      hasUnprovenReturn = true;
-      return;
-    }
-    returnValues.push(child.argument);
-  });
-  return !hasUnprovenReturn && returnValues.length > 0 ? returnValues : null;
 };
 
 const functionReturnsOnlyFreshContainerLiterals = (functionNode: EsTreeNode): boolean => {

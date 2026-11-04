@@ -1,13 +1,20 @@
 import { analyzeScopes } from "../semantic/scope-analysis.js";
+import { OBJECT_PROPERTY_MUTATION_METHOD_NAMES } from "../constants/mutation-methods.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import { collectConstAliasSymbols } from "./collect-const-alias-symbols.js";
+import { createStateUpdaterDocumentProjectionInspector } from "./create-state-updater-document-projection-inspector.js";
+import { createStateUpdaterOwnedWriteBaseInspector } from "./create-state-updater-owned-write-base-inspector.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
 import { getImportedName } from "./get-imported-name.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
+import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
+import { isProvenGlobalObjectReference } from "./is-proven-global-namespace-reference.js";
+import { hasRuntimeValueBinding } from "./has-runtime-value-binding.js";
 import { isFunctionLike } from "./is-function-like.js";
+import { isAstDescendant } from "./is-ast-descendant.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 import { isTypeScriptTypePosition } from "./is-typescript-type-position.js";
@@ -30,7 +37,20 @@ interface EntryProofProgram {
   safeProviders: boolean;
 }
 
-const DYNAMIC_CAPABILITY_NAMES = new Set(["eval", "Function", "Proxy", "Reflect"]);
+interface ClosedBindingOptions {
+  allowSeparateBindings?: boolean;
+  allowMemberWrites?: boolean;
+}
+
+const DYNAMIC_CAPABILITY_NAMES = new Set([
+  "eval",
+  "Function",
+  "Proxy",
+  "Reflect",
+  "require",
+  "module",
+  "arguments",
+]);
 const DYNAMIC_CAPABILITY_PROPERTIES = new Set([
   "constructor",
   "__proto__",
@@ -44,6 +64,12 @@ const DYNAMIC_CAPABILITY_PROPERTIES = new Set([
   "setPrototypeOf",
   "getOwnPropertyDescriptor",
   "getOwnPropertyDescriptors",
+  "require",
+  "createRequire",
+  "mainModule",
+  "getBuiltinModule",
+  "caller",
+  "arguments",
 ]);
 const REACT_DEPENDENCY_API_NAMES = new Set([
   "useCallback",
@@ -197,17 +223,92 @@ export const createStateUpdaterEntryExclusionResolver = (
           "TSParameterProperty",
           "TSImportEqualsDeclaration",
           "TSExportAssignment",
+          "ImportExpression",
         ].includes(node.type)
       ) {
         safeProviders = false;
         return false;
       }
       if (isTypeScriptTypePosition(node)) return false;
+      if (
+        isNodeOfType(node, "ImportDeclaration") &&
+        node.importKind !== "type" &&
+        typeof node.source.value === "string" &&
+        ["module", "node:module", "vm", "node:vm", "process", "node:process"].includes(
+          node.source.value,
+        )
+      )
+        safeProviders = false;
       nodes.push(node);
       if (isNodeOfType(node, "Identifier") && !isNonReferenceIdentifier(node, scopes)) {
         if (DYNAMIC_CAPABILITY_NAMES.has(node.name)) safeProviders = false;
+        const symbol = scopes.symbolFor(node);
+        if (symbol) {
+          let owner = node.parent;
+          while (owner) {
+            if (
+              isFunctionLike(owner) &&
+              owner.params.some((parameter) => isAstDescendant(node, parameter)) &&
+              owner.body &&
+              isAstDescendant(symbol.declarationNode, owner.body)
+            )
+              safeProviders = false;
+            owner = owner.parent;
+          }
+        }
+        if (
+          ["process", "parent", "top", "frames"].includes(node.name) &&
+          (!symbol || !hasRuntimeValueBinding(symbol))
+        )
+          safeProviders = false;
+        if (
+          ["globalThis", "global", "self", "window"].includes(node.name) &&
+          symbol &&
+          !hasRuntimeValueBinding(symbol)
+        )
+          safeProviders = false;
+        if (isProvenGlobalObjectReference(node, scopes)) {
+          const root = findTransparentExpressionRoot(node);
+          const parent = root.parent;
+          const propertyName =
+            isNodeOfType(parent, "MemberExpression") && parent.object === root
+              ? getResolvedStaticPropertyName(parent, scopes)
+              : null;
+          if (
+            propertyName === null ||
+            [
+              "process",
+              "globalThis",
+              "global",
+              "self",
+              "window",
+              "parent",
+              "top",
+              "frames",
+              "document",
+              "Object",
+            ].includes(propertyName)
+          )
+            safeProviders = false;
+        }
+        if (node.name === "Object" && (!symbol || !hasRuntimeValueBinding(symbol))) {
+          const root = findTransparentExpressionRoot(node);
+          const member = root.parent;
+          const propertyName = isNodeOfType(member, "MemberExpression")
+            ? getResolvedStaticPropertyName(member, scopes)
+            : null;
+          if (
+            !isNodeOfType(member, "MemberExpression") ||
+            member.object !== root ||
+            member.optional ||
+            propertyName === null ||
+            OBJECT_PROPERTY_MUTATION_METHOD_NAMES.has(propertyName) ||
+            !isNodeOfType(member.parent, "CallExpression") ||
+            member.parent.callee !== member
+          )
+            safeProviders = false;
+        }
         if (node.name === "React") {
-          const symbol = scopes.symbolFor(node);
           const declaration = symbol?.declarationNode.parent;
           if (
             !symbol ||
@@ -218,17 +319,52 @@ export const createStateUpdaterEntryExclusionResolver = (
             safeProviders = false;
         }
       }
-      if (
-        isNodeOfType(node, "MemberExpression") &&
-        (DYNAMIC_CAPABILITY_PROPERTIES.has(getStaticPropertyName(node) ?? "") ||
-          getStaticPropertyName(node) === "React")
-      )
-        safeProviders = false;
+      if (isNodeOfType(node, "MemberExpression")) {
+        const propertyName = getResolvedStaticPropertyName(node, scopes);
+        if (DYNAMIC_CAPABILITY_PROPERTIES.has(propertyName ?? "") || propertyName === "React")
+          safeProviders = false;
+      }
       if (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern")) {
         const key = getStaticPropertyKeyName(node, { allowComputedString: true });
         if (key === null || DYNAMIC_CAPABILITY_PROPERTIES.has(key)) safeProviders = false;
       }
     });
+    const indexed = { nodes, scopes, safeProviders };
+    const hasOwnedWriteBase = createStateUpdaterOwnedWriteBaseInspector({
+      scopes,
+      hasClosedBinding: (symbols) =>
+        hasClosedBinding(symbols, indexed, { allowMemberWrites: true }),
+      isNativeRefCall: (call) => isDirectReactCall(call, "useRef", scopes),
+      isDependencyEntry: (node) => isDependencyEntry(node, scopes),
+    });
+    const hasSafeDocumentUse = createStateUpdaterDocumentProjectionInspector({
+      scopes,
+      hasClosedBinding: (symbols) =>
+        hasClosedBinding(symbols, indexed, { allowSeparateBindings: true }),
+      hasClosedFunctionBinding: (symbols) => hasClosedBinding(symbols, indexed),
+    });
+    for (const node of nodes) {
+      if (isNodeOfType(node, "MemberExpression")) {
+        const propertyName = getResolvedStaticPropertyName(node, scopes);
+        if (
+          isWithinAssignmentTarget(findTransparentExpressionRoot(node)) &&
+          (propertyName === null ||
+            REACT_DEPENDENCY_API_NAMES.has(propertyName) ||
+            ["useRef", "useState", "useReducer", "createElement"].includes(propertyName)) &&
+          !hasOwnedWriteBase(node.object)
+        )
+          safeProviders = false;
+      }
+      if (
+        isNodeOfType(node, "Identifier") &&
+        node.name === "document" &&
+        !isNonReferenceIdentifier(node, scopes)
+      ) {
+        const symbol = scopes.symbolFor(node);
+        if ((!symbol || !hasRuntimeValueBinding(symbol)) && !hasSafeDocumentUse(node))
+          safeProviders = false;
+      }
+    }
     const reactImports = scopes.rootScope.symbols.filter((symbol) => {
       const declaration = symbol.declarationNode.parent;
       return (
@@ -279,17 +415,22 @@ export const createStateUpdaterEntryExclusionResolver = (
           safeProviders = false;
       }
     }
-    const indexed = { nodes, scopes, safeProviders };
+    indexed.safeProviders = safeProviders;
     programs.set(program, indexed);
     return indexed;
   };
 
-  const hasClosedBinding = (symbols: SymbolDescriptor[], indexed: EntryProofProgram): boolean => {
+  const hasClosedBinding = (
+    symbols: SymbolDescriptor[],
+    indexed: EntryProofProgram,
+    options: ClosedBindingOptions = {},
+  ): boolean => {
     if (
       symbols.length === 0 ||
       symbols.some((symbol) => symbol.references.some((reference) => reference.flag !== "read"))
     )
       return false;
+    const bindingSymbolSet = new Set(symbols);
     for (const node of indexed.nodes) {
       if (
         !isNodeOfType(node, "Identifier") ||
@@ -299,10 +440,21 @@ export const createStateUpdaterEntryExclusionResolver = (
         continue;
       const reference = indexed.scopes.referenceFor(node);
       if (!reference) return false;
-      if (reference.resolvedSymbol && !symbols.includes(reference.resolvedSymbol)) return false;
+      if (reference.resolvedSymbol && !bindingSymbolSet.has(reference.resolvedSymbol)) {
+        if (options.allowSeparateBindings) continue;
+        return false;
+      }
       if (!reference.resolvedSymbol || reference.flag !== "read") return false;
       const root = findTransparentExpressionRoot(node);
-      if (isWithinAssignmentTarget(root)) return false;
+      if (
+        isWithinAssignmentTarget(root) &&
+        !(
+          options.allowMemberWrites &&
+          isNodeOfType(root.parent, "MemberExpression") &&
+          root.parent.object === root
+        )
+      )
+        return false;
     }
     return true;
   };
@@ -390,6 +542,7 @@ export const createStateUpdaterEntryExclusionResolver = (
     if (cached !== undefined) return cached;
     const indexed = indexProgram(context.scopes.rootScope.node, context.scopes);
     const aliases = collectConstAliasSymbols(symbol, context.scopes);
+    const aliasSymbolSet = new Set(aliases);
     let closed =
       indexed.safeProviders &&
       symbol.kind === "const" &&
@@ -413,7 +566,7 @@ export const createStateUpdaterEntryExclusionResolver = (
         closed = false;
         continue;
       }
-      if (!aliases.includes(reference.resolvedSymbol)) {
+      if (!aliasSymbolSet.has(reference.resolvedSymbol)) {
         closed = false;
         continue;
       }

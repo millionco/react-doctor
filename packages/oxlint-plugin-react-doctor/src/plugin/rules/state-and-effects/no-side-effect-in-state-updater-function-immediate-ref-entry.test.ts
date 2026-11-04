@@ -389,6 +389,49 @@ afterEach(() => {
 });
 
 describe("immediate ordinary ref entry", () => {
+  it.each([
+    "const runtime=require('react');let reads=0;runtime.useRef=()=>({get current(){reads+=1;return reads===1;}});",
+    "const load=require;const runtime=load('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "const runtime=await import('react');runtime.default.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "import {createRequire as loadModule} from 'node:module';const runtime=loadModule(import.meta.url)('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "import loader from 'module';const runtime=loader.createRequire(import.meta.url)('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "const runtime=module['req'+'uire']('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "let environment=globalThis;const loader=environment['req'+'uire'];const runtime=loader('react');runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "const loader=globalThis['req'+'uire'];const runtime=loader('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "const key='require';const runtime=globalThis[key]('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "const runtime=process.getBuiltinModule('module').createRequire(import.meta.url)('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "const runtime=process.mainModule.require('react');runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "import runtime from 'provider';runtime.useRef=()=>({get current(){return Math.random()>0.5}});",
+    "import runtime from 'provider';const key='useRef';runtime[key]=()=>({get current(){return Math.random()>0.5}});",
+    "const loader=process['getBuiltin'+'Module']('module')['create'+'Require']('/tmp/provider.cjs');const runtime=loader('react');runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "declare const process:any;const loader=process['getBuiltin'+'Module']('module')['create'+'Require']('/tmp/provider.cjs');const runtime=loader('react');runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "import runtimeProcess from 'node:process';const loader=runtimeProcess['getBuiltin'+'Module']('module')['create'+'Require']('/tmp/provider.cjs');const runtime=loader('react');runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "const runtimeProcess=globalThis.process;const loader=runtimeProcess['getBuiltin'+'Module']('module')['create'+'Require']('/tmp/provider.cjs');const runtime=loader('react');runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "declare const globalThis:any;const runtime=globalThis['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "declare const globalThis:any;const environment=globalThis;const runtime=environment['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "declare const window:any;const runtime=window['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "declare const self:any;const runtime=self['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "declare const global:any;const runtime=global['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "const environment=window.top;const runtime=environment['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "const environment=parent;const runtime=environment['Re'+'act'];runtime['use'+'Ref']=()=>({get current(){return Math.random()>0.5}});",
+    "arguments[1]('node:vm').runInThisContext('let reads=0;globalThis.sdk.useRef=()=>({get current(){reads+=1;return reads===1;}});');",
+  ])("declines visible loader or provider uncertainty: %s", (providerPrelude) => {
+    const code = `import {useRef,useState} from 'react';${providerPrelude}export const Widget=()=>{const gate=useRef(true);const [value,setValue]=useState(0);const reset=()=>fetch('/reset');const scroll=()=>{if(!gate.current){reset();}};const update=()=>setValue(previous=>{if(gate.current){scroll();}return previous+1;});return <button onClick={update}>{value}</button>;};`;
+    const fixture = {
+      name: "visible loader or provider uncertainty",
+      code,
+      providers: {},
+      hasCertifiedEntry: false,
+    };
+    const filename = createFixture(fixture);
+    const certificate = runRule(probeRule, code, { filename, forceJsx: true });
+    const result = runRule(noSideEffectInStateUpdaterFunction, code, { filename, forceJsx: true });
+    expect(certificate.parseErrors).toEqual([]);
+    expect(certificate.diagnostics).toEqual([]);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   for (const fixture of entryFixtures) {
     it(fixture.name, () => {
       const filename = createFixture(fixture);
@@ -401,6 +444,282 @@ describe("immediate ordinary ref entry", () => {
       );
     });
   }
+
+  it("preserves local geometry and runtime global-name shadows beneath erased declarations", () => {
+    const code =
+      "import {useRef,useState} from 'react';const globalThis={label:'local'};interface globalThis{}const label=globalThis.label;const rectangle={top:1,bottom:2,parent:{height:3}};const top=rectangle.top;const parent=rectangle.parent;const process={height:4};const height=rectangle.bottom-top+parent.height+process.height;export const Widget=()=>{const gate=useRef(true);const [value,setValue]=useState(0);const reset=()=>fetch('/reset');const scroll=()=>{if(!gate.current){reset();}};const update=()=>setValue(previous=>{if(gate.current){scroll();}return previous+1;});return <button onClick={update}>{value}</button>;};";
+    const filename = createFixture({
+      name: "runtime global-name shadow",
+      code,
+      providers: {},
+      hasCertifiedEntry: true,
+    });
+    const certificate = runRule(probeRule, code, { filename, forceJsx: true });
+    const result = runRule(noSideEffectInStateUpdaterFunction, code, { filename, forceJsx: true });
+    expect(certificate.parseErrors).toEqual([]);
+    expect(certificate.diagnostics).toHaveLength(1);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "private mutable dictionary",
+      body: "let dictionary={};dictionary[entryKey]=entryValue;",
+      closed: true,
+    },
+    {
+      name: "readonly dictionary alias",
+      body: "const dictionary={};const alias=dictionary;alias[entryKey]=entryValue;Object.keys(alias);",
+      closed: true,
+    },
+    {
+      name: "private dictionary ref alias and fresh reset",
+      body: "const dictionary=useRef({});const alias=dictionary;alias.current[entryKey]=entryValue;dictionary.current={};",
+      closed: true,
+    },
+    {
+      name: "readonly payload snapshot with fresh current resets",
+      body: "const dictionary=useRef({});const snapshot=dictionary.current;dictionary.current={};snapshot[entryKey]=entryValue;",
+      closed: true,
+    },
+    {
+      name: "foreign dictionary setter only changes private data value",
+      body: "const prototype={set slot_(next){gate.current=Boolean(next);}};let dictionary={};dictionary[entryKey]=prototype;dictionary[foreign]=entryValue;",
+      closed: true,
+    },
+    {
+      name: "raw document in uncalled private arrow",
+      body: "const readDocument=()=>document;",
+      closed: true,
+    },
+    {
+      name: "closed document geometry and event projections",
+      body: "const getList=()=>document.querySelector('main');const read=()=>{const element=getList();if(element){const{scrollTop,scrollHeight,clientHeight}=element;}};const measure=()=>{const element=getList();if(element){const rectangle=element.getBoundingClientRect();const top=rectangle.top;const bottom=rectangle.bottom;}};const listen=()=>{let element=getList();if(element){element.addEventListener('scroll',read);element.removeEventListener('scroll',read);}};read();measure();listen();",
+      closed: true,
+    },
+    {
+      name: "reassigned dictionary base",
+      body: "let dictionary={};dictionary=foreign;dictionary[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "replaced dictionary ref payload",
+      body: "const dictionary=useRef({});dictionary.current=foreign;dictionary.current[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "replaced payload through const ref alias",
+      body: "const dictionary=useRef({});const alias=dictionary;alias.current=foreign;dictionary.current[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "ref descriptor replacement",
+      body: "const dictionary=useRef({});Object.defineProperty(dictionary,'current',{value:foreign});dictionary.current[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "escaped dictionary ref object",
+      body: "const dictionary=useRef({});expose(dictionary);dictionary.current[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "mutable ref binding",
+      body: "let reference=useRef({});const dictionary=reference;reference=foreign;dictionary.current[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "payload snapshot with unproved later replacement",
+      body: "const dictionary=useRef({});const snapshot=dictionary.current;dictionary.current=foreign;snapshot[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "unresolved external computed mutation",
+      body: "foreign[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "static callback factory replacement",
+      body: "foreign.useCallback=(callback)=>()=>{callback();callback();};",
+      closed: false,
+    },
+    {
+      name: "computed callback factory replacement",
+      body: "foreign['use'+'Callback']=(callback)=>()=>{callback();callback();};",
+      closed: false,
+    },
+    {
+      name: "native Object assignment",
+      body: "Object.assign(foreign,{useCallback:(callback)=>()=>{callback();callback();}});",
+      closed: false,
+    },
+    {
+      name: "computed native mutation method",
+      body: "Object['ass'+'ign'](foreign,{useRef:()=>foreign});",
+      closed: false,
+    },
+    {
+      name: "escaped native Object method",
+      body: "const merge=Object.assign;merge(foreign,{useRef:()=>foreign});",
+      closed: false,
+    },
+    {
+      name: "document window projection",
+      body: "const browser=document.defaultView;",
+      closed: false,
+    },
+    {
+      name: "computed document window projection",
+      body: "const browser=document['default'+'View'];",
+      closed: false,
+    },
+    {
+      name: "queried node window projection",
+      body: "const element=document.querySelector('main');if(element){const browser=element.ownerDocument.defaultView;}",
+      closed: false,
+    },
+    {
+      name: "queried node raw escape",
+      body: "const element=document.querySelector('main');expose(element);",
+      closed: false,
+    },
+    {
+      name: "queried node spread escape",
+      body: "const element=document.querySelector('main');const spread={...element};",
+      closed: false,
+    },
+    {
+      name: "queried node unsafe destructuring",
+      body: "const element=document.querySelector('main');const {ownerDocument}=element;",
+      closed: false,
+    },
+    {
+      name: "queried method replacement",
+      body: "const element=document.querySelector('main');element.getBoundingClientRect=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "queried node executable HTML insertion",
+      body: "const element=document.querySelector('main');element.insertAdjacentHTML('beforeend',entryValue);",
+      closed: false,
+    },
+    {
+      name: "called raw document helper",
+      body: "const readDocument=()=>document;const browser=readDocument();",
+      closed: false,
+    },
+    {
+      name: "raw document helper JSX reference",
+      body: "const readDocument=()=>document;const consumer=<section read={readDocument}/>;",
+      closed: false,
+    },
+    {
+      name: "raw document getter",
+      body: "const reader={get document(){return document;}};",
+      closed: false,
+    },
+    { name: "raw document IIFE", body: "(()=>document)();", closed: false },
+    {
+      name: "raw document memo callback",
+      body: "const result=useMemo(()=>document,[]);",
+      closed: false,
+    },
+    {
+      name: "uncalled document helper still scans capability writes",
+      body: "const readDocument=()=>{foreign.useCallback=(callback)=>()=>{callback();callback();};return document;};",
+      closed: false,
+    },
+    {
+      name: "legacy argument frame reflection",
+      body: "const frame=foreign.arguments;",
+      closed: false,
+    },
+    { name: "legacy caller reflection", body: "const caller=foreign.caller;", closed: false },
+    {
+      name: "object destructuring fallback is not allocation",
+      body: "const {dictionary={}}=foreign;dictionary.useRef=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "let destructuring fallback is not allocation",
+      body: "let {dictionary={}}=foreign;dictionary.useRef=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "array destructuring fallback is not allocation",
+      body: "const [dictionary={}]=foreign;dictionary.useRef=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "nested pattern fallback is not allocation",
+      body: "const {outer:{dictionary={}}}=foreign;dictionary.useRef=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "pattern fallback const alias is not allocation",
+      body: "const {dictionary={}}=foreign;const alias=dictionary;alias['use'+'Ref']=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "provided getter wins over fallback",
+      body: "const provided={get dictionary(){return foreign;}};const {dictionary={}}=provided;dictionary.useRef=()=>foreign;",
+      closed: false,
+    },
+    {
+      name: "parameter default is not allocation",
+      body: "const replace=(dictionary={})=>{dictionary.useRef=()=>foreign;};replace(foreign);",
+      closed: false,
+    },
+    {
+      name: "pattern ref initializer is not native payload allocation",
+      body: "const {dictionary=useRef({})}=foreign;dictionary.current[entryKey]=entryValue;",
+      closed: false,
+    },
+    {
+      name: "later let assignment is outside direct-origin proof",
+      body: "let dictionary;dictionary={};dictionary.useRef=entryValue;",
+      closed: false,
+    },
+    {
+      name: "direct readonly let remains owned",
+      body: "let dictionary={};dictionary.useRef=entryValue;",
+      closed: true,
+    },
+    {
+      name: "raw document default shadow does not prove dead helper",
+      body: "const readDocument=()=>document;const consumer=(initial=readDocument())=>{var readDocument;return initial;};consumer();",
+      closed: false,
+    },
+    {
+      name: "document alias default shadow does not prove closed uses",
+      body: "const getList=()=>document.querySelector('main');const element=getList();const consumer=(initial=element)=>{var element;expose(initial);};consumer();",
+      closed: false,
+    },
+    {
+      name: "query function default shadow does not prove closed calls",
+      body: "const getList=()=>document.querySelector('main');const consumer=(initial=getList())=>{var getList;return initial;};consumer();",
+      closed: false,
+    },
+    {
+      name: "native Object default shadow is a parameter-scope uncertainty",
+      body: "const consumer=(initial=Object.assign(foreign,{useRef:()=>foreign}))=>{var Object;return initial;};consumer();",
+      closed: false,
+    },
+  ])("proves private cell interval with $name", ({ body, closed }) => {
+    const code = `import {useRef,useState,useCallback,useMemo} from 'react';export const Widget=({entryKey,entryValue,foreign})=>{const gate=useRef(true);const [value,setValue]=useState(0);${body}const reset=()=>fetch('/reset');const scroll=useCallback(()=>{if(!gate.current){reset();}},[]);const update=()=>setValue(previous=>{if(gate.current){scroll();}return previous+1;});return <button onClick={update}>{value}</button>;};`;
+    const filename = createFixture({
+      name: "private cell interval",
+      code,
+      providers: {},
+      hasCertifiedEntry: closed,
+    });
+    const certificate = runRule(probeRule, code, { filename, forceJsx: true });
+    const result = runRule(noSideEffectInStateUpdaterFunction, code, { filename, forceJsx: true });
+    expect(certificate.parseErrors).toEqual([]);
+    expect(certificate.diagnostics).toHaveLength(closed ? 1 : 0);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(closed ? 0 : 1);
+  });
 
   it("declines a replaced named callee self binding", () => {
     const fixture = {

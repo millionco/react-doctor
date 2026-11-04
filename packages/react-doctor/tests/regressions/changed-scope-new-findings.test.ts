@@ -92,6 +92,7 @@ interface ComparisonCase {
   headSource?: string;
   rename?: boolean;
   untracked?: boolean;
+  untrackedRename?: boolean;
   copy?: boolean;
   deleteFile?: boolean;
   expectedCount: number;
@@ -166,6 +167,12 @@ const CASES: ComparisonCase[] = [
   },
   { name: "rename unchanged content", baseSource: EFFECT, rename: true, expectedCount: 0 },
   {
+    name: "move a tracked file to an untracked path",
+    baseSource: EFFECT,
+    untrackedRename: true,
+    expectedCount: 0,
+  },
+  {
     name: "new untracked file",
     baseSource: EFFECT,
     untracked: true,
@@ -217,7 +224,8 @@ describe("changed scope compares findings through the CLI", () => {
     if (testCase.untracked || testCase.copy) writeFile(path.join(directory, "src/new.tsx"), EFFECT);
     if (testCase.copy) execFileSync("git", ["add", "src/new.tsx"], { cwd: directory });
     if (testCase.deleteFile) fs.rmSync(sourcePath);
-    const flags = testCase.untracked ? ["--include-untracked"] : [];
+    if (testCase.untrackedRename) fs.renameSync(sourcePath, path.join(directory, "src/moved.tsx"));
+    const flags = testCase.untracked || testCase.untrackedRename ? ["--include-untracked"] : [];
     const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD", ...flags]);
     const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile, ...flags]);
     for (const result of [gitResult, savedResult]) {
@@ -248,36 +256,36 @@ describe("changed scope compares findings through the CLI", () => {
     }
   });
 
-  it.each(["", NEW_DERIVED_STATE])(
-    "keeps the HostedCart findings after reformatting and reports only an added derived state: %j",
-    (appended) => {
-      const sourcePath = path.join(directory, "src/HostedCart.tsx");
-      writeFile(sourcePath, HOSTED_CART);
-      commitAll(directory, "base cart findings");
-      const base = scan(directory);
-      expect(base.report.diagnostics.some((finding) => finding.rule === "exhaustive-deps")).toBe(
-        true,
+  it.each([
+    { name: "keeps the HostedCart findings after reformatting", appended: "" },
+    { name: "reports only an added derived state", appended: NEW_DERIVED_STATE },
+  ])("$name", ({ appended }) => {
+    const sourcePath = path.join(directory, "src/HostedCart.tsx");
+    writeFile(sourcePath, HOSTED_CART);
+    commitAll(directory, "base cart findings");
+    const base = scan(directory);
+    expect(base.report.diagnostics.some((finding) => finding.rule === "exhaustive-deps")).toBe(
+      true,
+    );
+    expect(
+      base.report.diagnostics.some(
+        (finding) => finding.rule === "no-set-state-after-await-in-effect",
+      ),
+    ).toBe(true);
+    writeJson(reportFile, base.report);
+    writeFile(sourcePath, REFORMATTED_HOSTED_CART + appended);
+    const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
+    const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
+    const fullSavedResult = scan(directory, ["--baseline", reportFile]);
+    for (const result of [gitResult, savedResult, fullSavedResult]) {
+      expect(result.report.diagnostics.map((finding) => finding.rule)).toEqual(
+        appended ? ["no-derived-state"] : [],
       );
-      expect(
-        base.report.diagnostics.some(
-          (finding) => finding.rule === "no-set-state-after-await-in-effect",
-        ),
-      ).toBe(true);
-      writeJson(reportFile, base.report);
-      writeFile(sourcePath, REFORMATTED_HOSTED_CART + appended);
-      const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
-      const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
-      const fullSavedResult = scan(directory, ["--baseline", reportFile]);
-      for (const result of [gitResult, savedResult, fullSavedResult]) {
-        expect(result.report.diagnostics.map((finding) => finding.rule)).toEqual(
-          appended ? ["no-derived-state"] : [],
-        );
-        expect(result.report.summary.totalDiagnosticCount).toBe(appended ? 1 : 0);
-        expect(result.status).toBe(appended ? 1 : 0);
-        if (appended) expect(result.report.diagnostics[0]?.line).toBe(15);
-      }
-    },
-  );
+      expect(result.report.summary.totalDiagnosticCount).toBe(appended ? 1 : 0);
+      expect(result.status).toBe(appended ? 1 : 0);
+      if (appended) expect(result.report.diagnostics[0]?.line).toBe(15);
+    }
+  });
 
   it.each([
     { ignore: { rules: ["react-hooks/exhaustive-deps"] } },

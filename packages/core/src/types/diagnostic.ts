@@ -12,7 +12,7 @@ interface OxlintLabel {
   span: OxlintSpan;
 }
 
-interface OxlintDiagnostic {
+export interface OxlintDiagnostic {
   message: string;
   code: string;
   severity: "warning" | "error";

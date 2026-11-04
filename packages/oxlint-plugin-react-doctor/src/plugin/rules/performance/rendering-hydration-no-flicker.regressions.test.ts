@@ -15,6 +15,40 @@ const expectPass = (code: string): void => {
 };
 
 describe("performance/rendering-hydration-no-flicker — regressions", () => {
+  const buildCalendar = (cleanup: string): string => `
+    import { useEffect, useState } from "react";
+    const Calendar = () => {
+      const [events, setEvents] = useState([]);
+      useEffect(() => {
+        setEvents([{ id: "conference" }]);
+        ${cleanup}
+      }, []);
+      return <CalendarView events={events} />;
+    };
+  `;
+
+  it.each([
+    ["an empty arrow", "return () => {};"],
+    ["an arrow that only reads a binding", "return () => { events; };"],
+  ])("flags a mount flash whose effect returns %s as its cleanup", (_label, cleanup) => {
+    expectFail(buildCalendar(cleanup));
+  });
+
+  it("stays silent when the mount effect returns a cleanup that does work", () => {
+    expectPass(buildCalendar("return () => { cancelled = true; };"));
+  });
+
+  it.each([
+    "return () => cleanupSignal;",
+    "return () => void cleanupSignal;",
+    "return subscribe();",
+    "return (() => connection.close()) as (() => void);",
+  ])("retains meaningful or unproved cleanup work: %s", (cleanup) => {
+    expectPass(`Object.defineProperty(globalThis, "cleanupSignal", {
+      get() { connection.close(); }
+    });\n${buildCalendar(cleanup)}`);
+  });
+
   it("flags immediate viewport adoption alongside resize subscription setup", () => {
     expectFail(`
       import { useEffect, useState } from "react";

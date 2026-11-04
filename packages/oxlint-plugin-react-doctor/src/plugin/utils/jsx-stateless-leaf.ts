@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { JSX_DESCENDANT_SCAN_NODE_BUDGET } from "../constants/thresholds.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 // Pure-presentational SVG primitives — no DOM state, no event-bound
@@ -173,8 +174,6 @@ const hasStatefulHtmlAttribute = (openingElement: EsTreeNode): boolean => {
   });
 };
 
-const STATEFUL_DESCENDANT_SCAN_BUDGET = 200;
-
 interface RowContentScanOptions {
   // Member reads rooted at these names (`{token.text}` where `token` is
   // the iteration item) are row content that travels with the row.
@@ -208,7 +207,7 @@ export const containsStatefulDescendant = (
   const memberRootNames = options.memberRootNames ?? new Set<string>();
   const bareIdentifierNames = options.bareIdentifierNames ?? new Set<string>();
   const callCalleeRootNames = options.callCalleeRootNames ?? new Set<string>();
-  let budget = STATEFUL_DESCENDANT_SCAN_BUDGET;
+  let budget = JSX_DESCENDANT_SCAN_NODE_BUDGET;
   const stack: Array<EsTreeNode> = [jsxElement];
   while (stack.length > 0) {
     if (budget <= 0) return true; // Bail-out: assume stateful.

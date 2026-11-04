@@ -7,6 +7,7 @@ export const DUPLICATE_STORAGE_READ_THRESHOLD = 2;
 export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
 export const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
 export const BOOLEAN_PROP_THRESHOLD = 4;
+export const JSX_DESCENDANT_SCAN_NODE_BUDGET = 200;
 export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 // Distinct boolean props a single component must use as the test of a
 // two-sided JSX ternary before `prefer-explicit-variants` fires. Two is

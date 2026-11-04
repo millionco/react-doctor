@@ -18,6 +18,7 @@ export interface ResolvedPackageVersion {
 interface InstalledDependencyVersionResolution {
   didFindPackage: boolean;
   version: ParsedPackageVersion | null;
+  name: string | null;
 }
 
 interface CachedDependencyVersionResolution {
@@ -82,6 +83,7 @@ const findInstalledDependencyVersion = (
     if (installedManifest) {
       return {
         didFindPackage: true,
+        name: typeof installedManifest.name === "string" ? installedManifest.name : null,
         version:
           typeof installedManifest.version === "string"
             ? parsePackageVersion(installedManifest.version)
@@ -90,7 +92,7 @@ const findInstalledDependencyVersion = (
     }
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) {
-      return { didFindPackage: false, version: null };
+      return { didFindPackage: false, version: null, name: null };
     }
     currentDirectory = parentDirectory;
   }
@@ -133,4 +135,29 @@ export const resolvePackageVersion = (
   );
   cachedDependencyVersionByPackageDirectory.set(cacheKey, { version, trace });
   return version;
+};
+
+export const hasCanonicalPackageDependency = (filename: string, packageName: string): boolean => {
+  const packageDirectory = findNearestPackageDirectory(path.resolve(filename));
+  if (!packageDirectory) return false;
+  const manifest = readPackageManifest(packageDirectory);
+  if (!manifest || manifest.name === packageName) return false;
+  const declarations = [
+    manifest.dependencies,
+    manifest.devDependencies,
+    manifest.peerDependencies,
+    manifest.optionalDependencies,
+  ]
+    .map((dependencies) => dependencies?.[packageName])
+    .filter((specifier) => specifier !== undefined);
+  if (
+    !declarations.length ||
+    !declarations.every(
+      (specifier) =>
+        typeof specifier === "string" && /^[~^]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(specifier),
+    )
+  )
+    return false;
+  const installed = findInstalledDependencyVersion(packageDirectory, packageName);
+  return !installed.didFindPackage || installed.name === packageName;
 };

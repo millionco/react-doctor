@@ -59,10 +59,12 @@
   "dependencies": {
     "@shaderfrog/glsl-parser": "^7.0.1",
     "@typescript-eslint/types": "^8.59.3",
+    "clsx": "2.1.1",
     "eslint-scope": "^9.1.2",
     "eslint-visitor-keys": "^5.0.1",
     "lightningcss": "^1.33.0",
-    "oxc-parser": "^0.148.0"
+    "oxc-parser": "^0.148.0",
+    "tailwind-merge": "3.4.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

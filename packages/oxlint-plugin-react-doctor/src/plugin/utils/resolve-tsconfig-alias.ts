@@ -23,7 +23,7 @@ const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
 // Strips `//` line + `/* */` block comments and trailing commas from a
 // JSONC document (tsconfig.json is JSONC), while preserving comment-like
 // sequences that appear inside string literals.
-const stripJsonComments = (text: string): string => {
+const stripJsonComments = (text: string, strict = false): string | null => {
   let output = "";
   let inString = false;
   let inLineComment = false;
@@ -72,12 +72,18 @@ const stripJsonComments = (text: string): string => {
     }
     output += character;
   }
-  return output.replace(/,(\s*[}\]])/g, "$1");
+  if (!strict) return output.replace(/,(\s*[}\]])/g, "$1");
+  if (inBlockComment) return null;
+  return output.replace(
+    /"(?:\\.|[^"\\])*"|,(\s*[}\]])/g,
+    (match, trailing: string | undefined) => trailing ?? match,
+  );
 };
 
 const parseTsconfigFile = (
   configFilePath: string,
   probedPaths: string[],
+  strict = false,
 ): Record<string, unknown> | null => {
   recordContentProbe(configFilePath);
   probedPaths.push(configFilePath);
@@ -88,7 +94,9 @@ const parseTsconfigFile = (
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(stripJsonComments(sourceText));
+    const cleanedSource = stripJsonComments(sourceText, strict);
+    if (cleanedSource === null) return null;
+    const parsed: unknown = JSON.parse(cleanedSource);
     return isObjectRecord(parsed) ? parsed : null;
   } catch {
     return null;
@@ -374,6 +382,84 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
     return resolveModuleFileFromAbsolutePath(path.resolve(config.baseAbsolutePath, source));
   }
   return null;
+};
+
+export const getTsconfigPackageProviderStatus = (
+  fromFilename: string,
+  source: string,
+): "external" | "alias" | "unknown" => {
+  const inspect = (configPath: string, visited: Set<string>): "external" | "alias" | "unknown" => {
+    if (visited.has(configPath) || visited.size >= TSCONFIG_EXTENDS_MAX_DEPTH) return "unknown";
+    visited.add(configPath);
+    const parsed = parseTsconfigFile(configPath, [], true);
+    if (
+      !parsed ||
+      Array.isArray(parsed) ||
+      (parsed.compilerOptions !== undefined &&
+        (!isObjectRecord(parsed.compilerOptions) || Array.isArray(parsed.compilerOptions)))
+    )
+      return "unknown";
+    const options = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
+    if (options.baseUrl !== undefined && typeof options.baseUrl !== "string") return "unknown";
+    if (
+      options.plugins !== undefined &&
+      (!Array.isArray(options.plugins) || options.plugins.length > 0)
+    )
+      return "unknown";
+    if (options.paths !== undefined) {
+      if (!isObjectRecord(options.paths) || Array.isArray(options.paths)) return "unknown";
+      for (const [pattern, targets] of Object.entries(options.paths)) {
+        if (
+          !pattern ||
+          pattern.split("*").length > 2 ||
+          !Array.isArray(targets) ||
+          !targets.length ||
+          !targets.every((target) => typeof target === "string" && target.split("*").length <= 2)
+        )
+          return "unknown";
+        if (matchPathPattern(source, pattern) !== null) return "alias";
+      }
+    }
+    if (
+      typeof options.baseUrl === "string" &&
+      resolveModuleFileFromAbsolutePath(
+        path.resolve(path.dirname(configPath), options.baseUrl, source),
+      )
+    )
+      return "alias";
+    if (parsed.extends !== undefined) {
+      const parents = Array.isArray(parsed.extends) ? parsed.extends : [parsed.extends];
+      if (
+        !parents.length ||
+        !parents.every((parent) => typeof parent === "string" && parent.length > 0)
+      )
+        return "unknown";
+      for (const parent of parents) {
+        const parentPath = resolveExtendsPath(parent, path.dirname(configPath));
+        if (!parentPath) return "unknown";
+        const status = inspect(parentPath, new Set(visited));
+        if (status !== "external") return status;
+      }
+    }
+    return "external";
+  };
+  let directory = path.dirname(fromFilename);
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    for (const name of TSCONFIG_FILE_NAMES) {
+      const candidate = path.join(directory, name);
+      recordContentProbe(candidate);
+      try {
+        const stat = fs.statSync(candidate, { throwIfNoEntry: false });
+        if (stat) return stat.isFile() ? inspect(candidate, new Set()) : "unknown";
+      } catch {
+        return "unknown";
+      }
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) return "external";
+    directory = parent;
+  }
+  return "unknown";
 };
 
 export const resetTsconfigAliasCaches = (): void => {

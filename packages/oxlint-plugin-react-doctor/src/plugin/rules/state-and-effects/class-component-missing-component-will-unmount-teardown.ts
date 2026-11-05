@@ -1,3 +1,7 @@
+import {
+  TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
+  TIMER_CLEANUP_CALLEE_NAMES,
+} from "../../constants/dom.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -20,6 +24,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -39,6 +44,10 @@ const MESSAGE =
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
+const NATIVE_TIMER_API_NAMES = new Set([
+  ...TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
+  ...TIMER_CLEANUP_CALLEE_NAMES,
+]);
 const STABLE_GLOBAL_MEMBER_NAMES = new Set(["body", "documentElement", "visualViewport"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
@@ -270,6 +279,122 @@ const getTimerCalleeName = (node: EsTreeNode, scopes: ScopeAnalysis): string | n
   return getStaticPropertyName(callee);
 };
 
+const closedGlobalTimerUsesByScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasClosedGlobalTimerUses = (scopes: ScopeAnalysis): boolean => {
+  const cachedResult = closedGlobalTimerUsesByScope.get(scopes);
+  if (cachedResult !== undefined) return cachedResult;
+  const pendingScopes = [scopes.rootScope];
+  while (pendingScopes.length > 0) {
+    const scope = pendingScopes.pop();
+    if (!scope) break;
+    if (scope.kind === "with") {
+      closedGlobalTimerUsesByScope.set(scopes, false);
+      return false;
+    }
+    for (const child of scope.children) pendingScopes.push(child);
+    for (const { identifier, flag, resolvedSymbol } of scope.references) {
+      if (!isNodeOfType(identifier, "Identifier")) continue;
+      const expression = findTransparentExpressionRoot(identifier);
+      if (
+        (identifier.name === "eval" &&
+          (!resolvedSymbol ||
+            (isNodeOfType(expression.parent, "CallExpression") &&
+              expression.parent.callee === expression))) ||
+        (identifier.name === "Function" && !resolvedSymbol)
+      ) {
+        closedGlobalTimerUsesByScope.set(scopes, false);
+        return false;
+      }
+      if (resolvedSymbol) continue;
+      let timerReference = expression;
+      if (GLOBAL_OBJECT_NAMES.has(identifier.name)) {
+        const member = expression.parent;
+        if (
+          !isNodeOfType(member, "MemberExpression") ||
+          member.object !== expression ||
+          !NATIVE_TIMER_API_NAMES.has(getStaticPropertyName(member) ?? "")
+        ) {
+          closedGlobalTimerUsesByScope.set(scopes, false);
+          return false;
+        }
+        timerReference = findTransparentExpressionRoot(member);
+      } else if (!NATIVE_TIMER_API_NAMES.has(identifier.name)) {
+        continue;
+      }
+      if (
+        flag !== "read" ||
+        !isNodeOfType(timerReference.parent, "CallExpression") ||
+        timerReference.parent.callee !== timerReference
+      ) {
+        closedGlobalTimerUsesByScope.set(scopes, false);
+        return false;
+      }
+    }
+  }
+  closedGlobalTimerUsesByScope.set(scopes, true);
+  return true;
+};
+
+const timerHandleReleaseKeys = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  timerCalleeName: string,
+  handleKey: string | null,
+  scopes: ScopeAnalysis,
+  classBody: EsTreeNode | null,
+): ReadonlyArray<string> => {
+  if (!handleKey) return [];
+  const exactReleaseName =
+    timerCalleeName === "setInterval"
+      ? "clearInterval"
+      : timerCalleeName === "setTimeout"
+        ? "clearTimeout"
+        : timerCalleeName;
+  const releaseKeys = [`timer:${exactReleaseName}:${handleKey}`];
+  if (
+    call.optional ||
+    (TIMER_CLEANUP_CALLEE_NAMES.has(timerCalleeName) && call.arguments.length !== 1) ||
+    !classBody ||
+    getClassBodyIndex(classBody).hasOpaqueTimerInstanceAccess ||
+    !hasClosedGlobalTimerUses(scopes)
+  ) {
+    return releaseKeys;
+  }
+
+  if (TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(timerCalleeName)) {
+    const enclosingMember = getEnclosingClassMember(call, classBody);
+    const memberName = enclosingMember ? getClassMemberName(enclosingMember) : null;
+    if (
+      !enclosingMember ||
+      (memberName !== "constructor" && memberName !== "componentDidMount") ||
+      findEnclosingFunction(call) !== getMemberFunction(enclosingMember) ||
+      findEnclosingRepeatingLoop(call)
+    ) {
+      return releaseKeys;
+    }
+  }
+
+  const callee = stripParenExpression(call.callee);
+  let timerNamespace = "globalThis";
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const receiver = stripParenExpression(callee.object);
+    if (
+      callee.optional ||
+      !isNodeOfType(receiver, "Identifier") ||
+      !GLOBAL_OBJECT_NAMES.has(receiver.name) ||
+      !scopes.isGlobalReference(receiver)
+    ) {
+      return releaseKeys;
+    }
+    timerNamespace = receiver.name;
+  } else if (!isNodeOfType(callee, "Identifier") || !scopes.isGlobalReference(callee)) {
+    return releaseKeys;
+  }
+
+  releaseKeys.push(`timer:timeout-or-interval:${timerNamespace}:${handleKey}`);
+  return releaseKeys;
+};
+
 const getClassMemberName = (member: EsTreeNode): string | null => {
   if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
     return "constructor";
@@ -287,6 +412,7 @@ interface ClassBodyIndex {
   readonly accessorNames: ReadonlySet<string>;
   readonly memberFunctionsByName: ReadonlyMap<string, EsTreeNode>;
   readonly instanceWritesByName: ReadonlyMap<string, ReadonlyArray<ClassInstanceWrite>>;
+  readonly hasOpaqueTimerInstanceAccess: boolean;
 }
 
 const classBodyIndexCache = new WeakMap<EsTreeNode, ClassBodyIndex>();
@@ -303,6 +429,8 @@ const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
   const accessorNames = new Set<string>();
   const memberFunctionsByName = new Map<string, EsTreeNode>();
   const instanceWritesByName = new Map<string, ClassInstanceWrite[]>();
+  const calledInstanceMemberNames = new Set<string>();
+  let hasOpaqueTimerInstanceAccess = false;
   if (isNodeOfType(classBody, "ClassBody")) {
     for (const member of classBody.body) {
       const memberName = getClassMemberName(member);
@@ -322,6 +450,33 @@ const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
       }
     }
     walkAst(classBody, (candidate) => {
+      if (isNodeOfType(candidate, "ThisExpression")) {
+        const receiver = findTransparentExpressionRoot(candidate);
+        const member = receiver.parent;
+        if (!isNodeOfType(member, "MemberExpression") || member.object !== receiver) {
+          hasOpaqueTimerInstanceAccess = true;
+        } else {
+          const memberName = getStaticPropertyName(member);
+          const memberReference = findTransparentExpressionRoot(member);
+          const consumer = memberReference.parent;
+          if (!memberName || memberName === "componentDidMount" || memberName === "constructor") {
+            hasOpaqueTimerInstanceAccess = true;
+          } else if (
+            isNodeOfType(consumer, "CallExpression") &&
+            consumer.callee === memberReference
+          ) {
+            calledInstanceMemberNames.add(memberName);
+          } else if (
+            isWithinAssignmentTarget(memberReference) &&
+            !(
+              isNodeOfType(consumer, "AssignmentExpression") && consumer.left === memberReference
+            ) &&
+            !isNodeOfType(consumer, "UpdateExpression")
+          ) {
+            hasOpaqueTimerInstanceAccess = true;
+          }
+        }
+      }
       const target = isNodeOfType(candidate, "AssignmentExpression")
         ? stripParenExpression(candidate.left)
         : isNodeOfType(candidate, "UpdateExpression")
@@ -349,6 +504,15 @@ const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
     accessorNames,
     memberFunctionsByName,
     instanceWritesByName,
+    hasOpaqueTimerInstanceAccess:
+      hasOpaqueTimerInstanceAccess ||
+      [...calledInstanceMemberNames].some(
+        (memberName) =>
+          accessorNames.has(memberName) ||
+          instanceWritesByName.has(memberName) ||
+          (!memberFunctionsByName.has(memberName) &&
+            !COMPONENT_MUTATION_METHOD_NAMES.has(memberName)),
+      ),
   };
   classBodyIndexCache.set(classBody, index);
   return index;
@@ -1166,7 +1330,7 @@ const cleanupReleaseKeys = (
     !isNodeOfType(handleArgument, "SpreadElement")
   ) {
     const handleKey = serializeLifecycleReference(handleArgument, scopes, classBody);
-    return handleKey ? [`timer:${timerCalleeName}:${handleKey}`] : [];
+    return timerHandleReleaseKeys(call, timerCalleeName, handleKey, scopes, classBody);
   }
   return [];
 };
@@ -1802,7 +1966,7 @@ const isMountHazard = (
       node,
       listenerIdentityKey: null,
       registrationCount: 1,
-      releaseKeys: handleKey ? [`timer:clearInterval:${handleKey}`] : [],
+      releaseKeys: timerHandleReleaseKeys(node, timerCalleeName, handleKey, scopes, classBody),
     };
   }
   if (timerCalleeName === "setTimeout" && node.arguments?.[0]) {
@@ -1814,7 +1978,7 @@ const isMountHazard = (
       node,
       listenerIdentityKey: null,
       registrationCount: 1,
-      releaseKeys: handleKey ? [`timer:clearTimeout:${handleKey}`] : [],
+      releaseKeys: timerHandleReleaseKeys(node, timerCalleeName, handleKey, scopes, classBody),
     };
   }
   return null;

@@ -6,6 +6,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getElementType } from "../../utils/get-element-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
+import { hasNativeDialogDismissAlternative } from "../../utils/has-native-dialog-dismiss-alternative.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import {
   isFocusForwardingOrBlockingHandler,
@@ -357,6 +358,9 @@ export const clickEventsHaveKeyEvents = defineRule({
             resolvedSpreadEventValues.has(handler.toLowerCase()),
         );
         if (hasKeyHandler) return;
+        if (shouldUseCuratedBehavior && hasNativeDialogDismissAlternative(node, context.scopes)) {
+          return;
+        }
 
         context.report({ node: node.name, message: MESSAGE });
       },

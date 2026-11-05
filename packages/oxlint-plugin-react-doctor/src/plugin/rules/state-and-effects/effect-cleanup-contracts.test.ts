@@ -25,6 +25,18 @@ const NO_OP_CLEANUPS = [
   ["an arrow returning void 0", "return () => void 0;"],
   ["a binding to an empty arrow", "const noop = () => {};\nreturn noop;"],
   ["an empty arrow behind a conditional", "return isEnabled ? () => {} : undefined;"],
+  ["an arrow that only reads a binding", "const isEnabled = true; return () => { isEnabled; };"],
+  ["an arrow returning a binding", "const isEnabled = true; return () => isEnabled;"],
+  ["an arrow returning void of a binding", "const isEnabled = true; return () => void isEnabled;"],
+  ["an async arrow returning intrinsic undefined", "return async () => undefined;"],
+  [
+    "an async arrow discarding a thenable binding",
+    "const cleanupValue = { get then() { dispose(); return undefined; } }; return async () => void cleanupValue;",
+  ],
+  [
+    "an async block that only reads a thenable binding",
+    "const cleanupValue = { get then() { dispose(); return undefined; } }; return async () => { cleanupValue; };",
+  ],
 ];
 
 const CLEANUP_EXEMPT_RULE_CASES: Record<string, CleanupExemptRuleCase> = {
@@ -100,7 +112,44 @@ describe.each(Object.entries(CLEANUP_EXEMPT_RULE_CASES))(
     });
 
     it.each([
+      "return () => { cleanupSignal; };",
+      "return () => cleanupSignal;",
+      "return () => void cleanupSignal;",
+    ])("retains a cleanup that reads a global accessor: %s", (cleanup) => {
+      const source = `Object.defineProperty(globalThis, "cleanupSignal", {
+        get() { connection.close(); }
+      });\n${buildCode(cleanup)}`;
+      const result = runRule(rule, source, { forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
+      "declare const cleanupSignal: unknown;",
+      'import type { cleanupSignal } from "cleanup-types";',
+    ])("does not treat an erased binding as a local cleanup read: %s", (declaration) => {
+      const result = runRule(rule, `${declaration}\n${buildCode("return () => cleanupSignal;")}`, {
+        forceJsx: true,
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
       ["a cleanup that does work", "return () => { cancelled = true; };"],
+      [
+        "an async cleanup that adopts a thenable binding",
+        "const cleanupValue = { get then() { dispose(); return undefined; } }; return async () => cleanupValue;",
+      ],
+      [
+        "an async cleanup that adopts a thenable through a type assertion",
+        "const cleanupValue = { get then() { dispose(); return undefined; } }; return async () => (cleanupValue as unknown);",
+      ],
+      [
+        "an async cleanup returning a thenable named undefined",
+        "const undefined = { get then() { dispose(); return void 0; } }; return async () => undefined;",
+      ],
+      ["a cleanup that reads a member", "return () => { connection.state; };"],
       ["a disposer call opposite an empty arrow", "return isEnabled ? subscribe() : () => {};"],
       [
         "a mutable binding replaced by a working arrow",

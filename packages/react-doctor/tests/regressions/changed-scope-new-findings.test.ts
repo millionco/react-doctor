@@ -116,6 +116,7 @@ interface ComparisonCase {
   headSource?: string;
   rename?: boolean;
   untracked?: boolean;
+  untrackedRename?: boolean;
   copy?: boolean;
   deleteFile?: boolean;
   expectedCount: number;
@@ -190,6 +191,12 @@ const CASES: ComparisonCase[] = [
   },
   { name: "rename unchanged content", baseSource: EFFECT, rename: true, expectedCount: 0 },
   {
+    name: "move a tracked file to an untracked path",
+    baseSource: EFFECT,
+    untrackedRename: true,
+    expectedCount: 0,
+  },
+  {
     name: "new untracked file",
     baseSource: EFFECT,
     untracked: true,
@@ -244,7 +251,9 @@ describe("changed scope compares findings through the CLI", () => {
         writeFile(path.join(directory, "src/new.tsx"), EFFECT);
       if (testCase.copy) execFileSync("git", ["add", "src/new.tsx"], { cwd: directory });
       if (testCase.deleteFile) fs.rmSync(sourcePath);
-      const flags = testCase.untracked ? ["--include-untracked"] : [];
+      if (testCase.untrackedRename)
+        fs.renameSync(sourcePath, path.join(directory, "src/moved.tsx"));
+      const flags = testCase.untracked || testCase.untrackedRename ? ["--include-untracked"] : [];
       const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD", ...flags]);
       const savedResult = scan(directory, [
         "--scope",

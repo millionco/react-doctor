@@ -9,7 +9,6 @@ import { hasSymbolWriteBefore } from "../../../../utils/has-symbol-write-before.
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
-import { isNoOpFunction } from "../../../../utils/is-no-op-function.js";
 import { resolveFirstArgumentBinding } from "../../../../utils/resolve-first-argument-binding.js";
 import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -30,6 +29,7 @@ import { FIRST_ARGUMENT_INDEX, SECOND_ARGUMENT_INDEX } from "./constants.js";
 import { getAstChildKeys } from "./get-ast-child-keys.js";
 import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
 import { isProvenNativeReadMethod } from "./is-proven-native-read-method.js";
+import { isNoOpCleanupFunction } from "./is-no-op-cleanup-function.js";
 
 // 1:1 port of upstream `src/util/react.js` from
 // `eslint-plugin-react-you-might-not-need-an-effect`. See `./ast.ts`
@@ -788,7 +788,7 @@ export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTr
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
-  if (isFunctionLike(node)) return !isNoOpFunction(node);
+  if (isFunctionLike(node)) return !isNoOpCleanupFunction(analysis, node);
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
     const ref = getRef(analysis, node);
@@ -805,7 +805,7 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
     ) {
       return true;
     }
-    return !isNoOpFunction(resolvedFunction);
+    return !isNoOpCleanupFunction(analysis, resolvedFunction);
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     const branches = [node.consequent as EsTreeNode, node.alternate as EsTreeNode];

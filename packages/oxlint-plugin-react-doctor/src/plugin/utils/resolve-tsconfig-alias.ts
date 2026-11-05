@@ -376,6 +376,51 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
   return null;
 };
 
+export const hasTsconfigAliasMapping = (fromFilename: string, source: string): boolean => {
+  const config = findNearestTsconfig(path.dirname(fromFilename));
+  return Boolean(
+    config &&
+    [...config.paths.keys()].some((pattern) => matchPathPattern(source, pattern) !== null),
+  );
+};
+
+export const hasStandardReactJsxConfiguration = (fromFilename: string): boolean => {
+  const inspectConfig = (configPath: string, visitedPaths: ReadonlySet<string>): boolean => {
+    if (visitedPaths.size >= TSCONFIG_EXTENDS_MAX_DEPTH || visitedPaths.has(configPath))
+      return false;
+    const parsed = parseTsconfigFile(configPath, []);
+    if (!parsed) return false;
+    if (parsed.compilerOptions !== undefined && !isObjectRecord(parsed.compilerOptions))
+      return false;
+    const compilerOptions = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
+    if (
+      (compilerOptions.jsxImportSource !== undefined &&
+        compilerOptions.jsxImportSource !== "react") ||
+      compilerOptions.jsxFactory !== undefined ||
+      compilerOptions.jsxFragmentFactory !== undefined ||
+      (compilerOptions.jsx !== undefined &&
+        !["preserve", "react-jsx", "react-jsxdev"].includes(String(compilerOptions.jsx)))
+    )
+      return false;
+    if (parsed.extends === undefined) return true;
+    if (typeof parsed.extends !== "string") return false;
+    const parentPath = resolveExtendsPath(parsed.extends, path.dirname(configPath));
+    return Boolean(parentPath && inspectConfig(parentPath, new Set([...visitedPaths, configPath])));
+  };
+  let currentDirectory = path.dirname(fromFilename);
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level += 1) {
+    for (const fileName of TSCONFIG_FILE_NAMES) {
+      const configPath = path.join(currentDirectory, fileName);
+      recordContentProbe(configPath);
+      if (fs.existsSync(configPath)) return inspectConfig(configPath, new Set());
+    }
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) return true;
+    currentDirectory = parentDirectory;
+  }
+  return false;
+};
+
 export const resetTsconfigAliasCaches = (): void => {
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();

@@ -1,7 +1,8 @@
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
-import { getNativeTimerCalleeName } from "../../utils/get-native-timer-callee-name.js";
+import { getClosedGlobalTimerCall } from "../../utils/get-closed-global-timer-call.js";
+import { getNativeTimerCallee } from "../../utils/get-native-timer-callee.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
@@ -1533,7 +1534,7 @@ const collectEffectOwnedResourceCallbackFunctions = (
       if (child !== ownerFunction.body && isFunctionLike(child)) return false;
       if (!isNodeOfType(child, "CallExpression")) return;
       let callbackArgument: EsTreeNode | null = null;
-      if (getNativeTimerCalleeName(child.callee, context.scopes) !== null) {
+      if (getNativeTimerCallee(child.callee, context.scopes) !== null) {
         const timerCallback = child.arguments?.[0];
         callbackArgument = timerCallback && isAstNode(timerCallback) ? timerCallback : null;
       } else {
@@ -1609,8 +1610,8 @@ const findSubscribeLikeUsages = (
 
     if (!isNodeOfType(child, "CallExpression")) return;
 
-    const timerCalleeName = getNativeTimerCalleeName(child.callee, context.scopes);
-    if (timerCalleeName !== null) {
+    const timerCalleeName = getNativeTimerCallee(child.callee, context.scopes)?.name;
+    if (timerCalleeName !== undefined) {
       if (
         timerCalleeName === "setTimeout" &&
         (isDeferredTeardownTimer(child) || isShortInertRefTimer(child, context))
@@ -3085,6 +3086,52 @@ const resolveCleanupHelperParameterSubstitutions = (
   return substitutions;
 };
 
+const doesTimerCleanupMatchProvider = (
+  cleanupCallee: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+  cleanupCall?: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const cleaner = getNativeTimerCallee(cleanupCallee, context.scopes, TIMER_CLEANUP_CALLEE_NAMES);
+  if (!cleaner) return false;
+  const registrationCallee = isNodeOfType(usage.node, "CallExpression")
+    ? stripParenExpression(usage.node.callee)
+    : null;
+  const registration = registrationCallee
+    ? getNativeTimerCallee(registrationCallee, context.scopes)
+    : null;
+  const hasOneHandle =
+    cleanupCall !== undefined &&
+    !cleanupCall.optional &&
+    cleanupCall.arguments.length === 1 &&
+    !isNodeOfType(cleanupCall.arguments[0], "SpreadElement");
+  if (cleaner.provider === "node") {
+    return registration?.provider === "node" && (!cleanupCall || hasOneHandle);
+  }
+  if (registration?.provider !== "node") return true;
+  if (
+    !isNodeOfType(registrationCallee, "Identifier") ||
+    registrationCallee.name !== registration.name
+  ) {
+    return Boolean(
+      registration.source === "node:timers" &&
+      cleanupCall &&
+      hasOneHandle &&
+      getClosedGlobalTimerCall(cleanupCall, context.scopes)?.realm === "globalThis",
+    );
+  }
+  const callee = stripParenExpression(cleanupCallee);
+  if (isNodeOfType(callee, "Identifier")) return true;
+  const receiver = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object)
+    : null;
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "globalThis" &&
+    context.scopes.isGlobalReference(receiver)
+  );
+};
+
 const isDirectExhaustiveTimerCollectionCleanup = (
   cleanupNode: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -3109,8 +3156,7 @@ const isDirectExhaustiveTimerCollectionCleanup = (
     cleanupCallee.property.name !== "forEach" ||
     !cleanupCallback ||
     !isAstNode(cleanupCallback) ||
-    getNativeTimerCalleeName(cleanupCallback, context.scopes, TIMER_CLEANUP_CALLEE_NAMES) ===
-      null ||
+    !doesTimerCleanupMatchProvider(cleanupCallback, usage, context) ||
     retainedCollectionKey === null ||
     retainedCollectionKey !== resolveExpressionKey(cleanupCallee.object, context)
   ) {
@@ -5475,7 +5521,7 @@ const getOwnedFunctionReference = (
   if (
     !isNodeOfType(schedulerCall, "CallExpression") ||
     !schedulerCall.arguments.some((argument) => argument === referenceRoot) ||
-    getNativeTimerCalleeName(schedulerCall.callee, context.scopes) !== "setTimeout"
+    getNativeTimerCallee(schedulerCall.callee, context.scopes)?.name !== "setTimeout"
   ) {
     return null;
   }
@@ -7866,7 +7912,7 @@ const doesReleaseCallMatchUsage = (
         ? !isNodeOfType(callee, "Identifier") ||
           callee.name !== "cancelAnimationFrame" ||
           !context.scopes.isGlobalReference(callee)
-        : getNativeTimerCalleeName(callee, context.scopes, TIMER_CLEANUP_CALLEE_NAMES) === null
+        : !doesTimerCleanupMatchProvider(callee, usage, context, callNode)
     ) {
       return false;
     }
@@ -8708,12 +8754,12 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
       const callee = isNodeOfType(callNode.callee, "ChainExpression")
         ? callNode.callee.expression
         : callNode.callee;
-      const timerCleanupName = getNativeTimerCalleeName(
+      const timerCleanupName = getNativeTimerCallee(
         callee,
         context.scopes,
         TIMER_CLEANUP_CALLEE_NAMES,
-      );
-      if (timerCleanupName !== null) {
+      )?.name;
+      if (timerCleanupName !== undefined) {
         const namedCalls = timerCleanupCallsByName.get(timerCleanupName) ?? [];
         namedCalls.push(child);
         timerCleanupCallsByName.set(timerCleanupName, namedCalls);
@@ -10312,9 +10358,9 @@ const findRetainedFunctionLeak = (
 
     if (!isNodeOfType(child, "CallExpression")) return;
 
-    const timerCalleeName = getNativeTimerCalleeName(child.callee, context.scopes);
+    const timerCalleeName = getNativeTimerCallee(child.callee, context.scopes)?.name;
     if (
-      timerCalleeName !== null &&
+      timerCalleeName !== undefined &&
       (timerCalleeName === "setInterval" || options?.includeOneShotTimers === true) &&
       (options?.allowReturnedTimerEscape === false ||
         !doesResourceResultEscape(child, true, allowReturnedResourceEscape, context)) &&

@@ -12,8 +12,10 @@ import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cov
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
@@ -27,11 +29,16 @@ import {
   isPromiseResolveCall,
   subtreeContainsThrow,
 } from "../../utils/is-never-rejecting-expression.js";
+import { isDeclaredPromiseReturningProp } from "../../utils/is-declared-promise-returning-prop.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isReadonlyNamedReactCall } from "../../utils/is-readonly-named-react-call.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
@@ -48,6 +55,8 @@ import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callba
 
 const MESSAGE =
   "This resets a loading/busy flag only on the success path: if the awaited call rejects the reset never runs and the flag stays stuck truthy (a spinner that never stops, a button disabled forever). Move the reset into a `finally` block, or mirror it on every catch, so it clears on rejection too.";
+const FULFILLMENT_ONLY_RESET_MESSAGE =
+  "This promise clears the loading flag only on fulfillment. If the submission rejects, the flag stays set. Clear it in a `.finally()` handler or reset it on both outcomes.";
 const TEST_FILE_BASENAME_SUFFIXES: ReadonlyArray<string> = [".test.", ".spec.", ".cy."];
 
 const TEST_FILE_PATH_SEGMENTS: ReadonlyArray<string> = [
@@ -3286,6 +3295,283 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
   }
 };
 
+const getDirectStatementCall = (
+  statement: EsTreeNode | undefined,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+  const expression = stripParenExpression(statement.expression);
+  return isNodeOfType(expression, "CallExpression") && !expression.optional ? expression : null;
+};
+
+const getLiteralLoadingSetter = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  value: boolean,
+  context: RuleContext,
+) => {
+  if (!isNodeOfType(call.callee, "Identifier") || call.arguments.length !== 1) return null;
+  const argument = stripParenExpression(call.arguments[0]);
+  if (!isNodeOfType(argument, "Literal") || argument.value !== value) return null;
+  const symbol = context.scopes.symbolFor(call.callee);
+  if (
+    symbol?.kind !== "const" ||
+    !isSymbolReadOnly(symbol) ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    !isNodeOfType(symbol.declarationNode.id, "ArrayPattern") ||
+    symbol.declarationNode.id.elements[1] !== symbol.bindingIdentifier ||
+    !symbol.initializer
+  ) {
+    return null;
+  }
+  const initializer = stripParenExpression(symbol.initializer);
+  return isNodeOfType(initializer, "CallExpression") &&
+    !initializer.optional &&
+    isReadonlyNamedReactCall(initializer, "useState", context.scopes) &&
+    LOADING_FLAG_SETTER_PATTERN.test(symbol.name)
+    ? symbol
+    : null;
+};
+
+const SETTLEMENT_AND_REACT_METHOD_NAMES = new Set([
+  "then",
+  "catch",
+  "finally",
+  "forwardRef",
+  "useState",
+  "useCallback",
+]);
+const OPAQUE_PROMISE_ACCESS_NAMES = new Set([
+  "Promise",
+  "Object",
+  "Reflect",
+  "constructor",
+  "prototype",
+  "__proto__",
+  "getPrototypeOf",
+  "setPrototypeOf",
+  "defineProperty",
+  "defineProperties",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "defaultView",
+]);
+const PROMISE_REFLECTION_GLOBAL_NAMES = new Set([
+  "Promise",
+  "Object",
+  "Reflect",
+  "globalThis",
+  "window",
+  "self",
+  "document",
+]);
+const promiseMutationByScope = new WeakMap<ScopeAnalysis, boolean>();
+const hasVisiblePromiseMutation = (scopes: ScopeAnalysis): boolean => {
+  const cached = promiseMutationByScope.get(scopes);
+  if (cached !== undefined) return cached;
+  let hasMutation = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasMutation) return false;
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = stripParenExpression(node.callee);
+      if (
+        isNodeOfType(callee, "Identifier") &&
+        (callee.name === "eval" ||
+          (callee.name === "require" &&
+            isNodeOfType(node.arguments[0], "Literal") &&
+            node.arguments[0].value === "react"))
+      ) {
+        hasMutation = true;
+      }
+    }
+    if (
+      isNodeOfType(node, "ImportExpression") &&
+      isNodeOfType(node.source, "Literal") &&
+      node.source.value === "react"
+    ) {
+      hasMutation = true;
+    }
+    if (isNodeOfType(node, "Identifier") && scopes.referenceFor(node)) {
+      const symbol = scopes.symbolFor(node);
+      const isReactObject =
+        symbol &&
+        (isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
+          isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier")) &&
+        getImportDeclarationForSymbol(symbol)?.source.value === "react";
+      const isGlobal = scopes.isGlobalReference(node);
+      if (isGlobal && (node.name === "Function" || node.name === "Proxy" || node.name === "eval")) {
+        hasMutation = true;
+      }
+      if (isReactObject || (isGlobal && PROMISE_REFLECTION_GLOBAL_NAMES.has(node.name))) {
+        const reference = findTransparentExpressionRoot(node);
+        const member = reference.parent;
+        if (
+          !(isNodeOfType(member, "UnaryExpression") && member.operator === "typeof") &&
+          (!isNodeOfType(member, "MemberExpression") ||
+            member.object !== reference ||
+            getResolvedStaticPropertyName(member, scopes) === null)
+        ) {
+          hasMutation = true;
+        }
+      }
+    }
+    if (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern")) {
+      const propertyName = getResolvedStaticPropertyName(node, scopes);
+      if (propertyName === null || OPAQUE_PROMISE_ACCESS_NAMES.has(propertyName)) {
+        hasMutation = true;
+      }
+    }
+    if (
+      isNodeOfType(node, "MethodDefinition") ||
+      isNodeOfType(node, "PropertyDefinition") ||
+      (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectExpression"))
+    ) {
+      const propertyName = getResolvedStaticPropertyName(node, scopes);
+      if (propertyName === "then" || (node.computed && propertyName === null)) {
+        hasMutation = true;
+      }
+    }
+    if (isNodeOfType(node, "MemberExpression")) {
+      const propertyName = getResolvedStaticPropertyName(node, scopes);
+      if (
+        OPAQUE_PROMISE_ACCESS_NAMES.has(propertyName ?? "") ||
+        (SETTLEMENT_AND_REACT_METHOD_NAMES.has(propertyName ?? "") &&
+          isWithinAssignmentTarget(node))
+      ) {
+        hasMutation = true;
+      }
+    }
+  });
+  promiseMutationByScope.set(scopes, hasMutation);
+  return hasMutation;
+};
+
+const analyzeFulfillmentOnlyReset = (
+  node: EsTreeNodeOfType<"IfStatement">,
+  context: RuleContext,
+  reserveImport: (specifier: string) => boolean,
+): void => {
+  const guard = stripParenExpression(node.test);
+  const enclosingBody = node.parent;
+  const handler = enclosingBody?.parent;
+  if (
+    !isNodeOfType(guard, "Identifier") ||
+    !isNodeOfType(node.consequent, "BlockStatement") ||
+    node.consequent.body.length !== 2 ||
+    !isNodeOfType(enclosingBody, "BlockStatement") ||
+    enclosingBody.body.at(-1) !== node ||
+    !isFunctionLike(handler) ||
+    handler.body !== enclosingBody ||
+    handler.async ||
+    handler.generator
+  ) {
+    return;
+  }
+  const start = getDirectStatementCall(node.consequent.body[0]);
+  const attach = getDirectStatementCall(node.consequent.body[1]);
+  if (!start || !attach || attach.arguments.length !== 1) return;
+  const method = stripParenExpression(attach.callee);
+  const reset = stripParenExpression(attach.arguments[0]);
+  if (
+    !isNodeOfType(method, "MemberExpression") ||
+    method.optional ||
+    method.computed ||
+    getStaticPropertyName(method) !== "then" ||
+    !isNodeOfType(reset, "Identifier")
+  ) {
+    return;
+  }
+  const receiver = stripParenExpression(method.object);
+  if (!isNodeOfType(receiver, "Identifier")) return;
+  const result = context.scopes.symbolFor(guard);
+  if (
+    !result ||
+    context.scopes.symbolFor(receiver) !== result ||
+    result.declarationNode.parent?.parent !== enclosingBody ||
+    result.references.length !== 2 ||
+    !isSymbolReadOnly(result) ||
+    !result.references.every(({ identifier }) => identifier === receiver || identifier === guard)
+  ) {
+    return;
+  }
+  const acquisition = getDirectConstInitializer(result);
+  if (!acquisition) return;
+  const acquire = stripParenExpression(acquisition);
+  if (!isNodeOfType(acquire, "CallExpression") || acquire.optional) return;
+
+  const loading = getLiteralLoadingSetter(start, true, context);
+  const resetSymbol = context.scopes.symbolFor(reset);
+  if (
+    !loading ||
+    loading.references.length !== 2 ||
+    !resetSymbol ||
+    !isSymbolReadOnly(resetSymbol)
+  ) {
+    return;
+  }
+  const resetInitializer = getDirectConstInitializer(resetSymbol);
+  if (!resetInitializer) return;
+  const resetExpression = stripParenExpression(resetInitializer);
+  const resetFunction =
+    isNodeOfType(resetExpression, "CallExpression") &&
+    !resetExpression.optional &&
+    isReadonlyNamedReactCall(resetExpression, "useCallback", context.scopes)
+      ? resetExpression.arguments[0]
+      : resetExpression;
+  if (
+    !isFunctionLike(resetFunction) ||
+    resetFunction.async ||
+    resetFunction.generator ||
+    resetFunction.params.length !== 0
+  ) {
+    return;
+  }
+  const resetBody = resetFunction.body;
+  const finish = isNodeOfType(resetBody, "BlockStatement")
+    ? resetBody.body.every((statement) => isNodeOfType(statement, "ExpressionStatement"))
+      ? getDirectStatementCall(resetBody.body.at(-1))
+      : null
+    : isNodeOfType(resetBody, "CallExpression") && !resetBody.optional
+      ? resetBody
+      : null;
+  if (!finish || getLiteralLoadingSetter(finish, false, context) !== loading) return;
+
+  const alternative = node.alternate;
+  const synchronousReset = isNodeOfType(alternative, "BlockStatement")
+    ? alternative.body.length === 1
+      ? getDirectStatementCall(alternative.body[0])
+      : null
+    : getDirectStatementCall(alternative ?? undefined);
+  if (
+    !resetSymbol.references.every(({ identifier }) => {
+      if (identifier === reset || identifier === synchronousReset?.callee) return true;
+      const dependencies = identifier.parent;
+      const callbackCall = dependencies?.parent;
+      return (
+        isNodeOfType(dependencies, "ArrayExpression") &&
+        dependencies.elements.some((element) => element === identifier) &&
+        isNodeOfType(callbackCall, "CallExpression") &&
+        callbackCall.arguments[1] === dependencies &&
+        isReadonlyNamedReactCall(callbackCall, "useCallback", context.scopes)
+      );
+    })
+  ) {
+    return;
+  }
+  if (
+    hasVisiblePromiseMutation(context.scopes) ||
+    !isDeclaredPromiseReturningProp({
+      callee: stripParenExpression(acquire.callee),
+      filename: context.filename,
+      scopes: context.scopes,
+      reserveImport,
+    })
+  ) {
+    return;
+  }
+  context.report({ node: attach, message: FULFILLMENT_ONLY_RESET_MESSAGE });
+};
+
 export const noLoadingFlagResetOutsideFinally = defineRule({
   id: "no-loading-flag-reset-outside-finally",
   title: "Loading flag reset outside finally",
@@ -3300,7 +3586,17 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
     crossFileResolutionMemo.clear();
     budgetedCrossFileSpecifiers.clear();
     isAnalyzingForeignHelperBody = false;
+    const fulfillmentTypeImports = new Set<string>();
+    const reserveFulfillmentTypeImport = (specifier: string): boolean => {
+      if (fulfillmentTypeImports.has(specifier)) return true;
+      if (fulfillmentTypeImports.size >= CROSS_FILE_RESOLUTION_BUDGET_PER_FILE) return false;
+      fulfillmentTypeImports.add(specifier);
+      return true;
+    };
     return {
+      IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
+        analyzeFulfillmentOnlyReset(node, context, reserveFulfillmentTypeImport);
+      },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
         analyzeFunction(node, context);
       },

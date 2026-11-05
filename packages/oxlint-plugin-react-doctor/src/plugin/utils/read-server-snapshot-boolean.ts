@@ -11,12 +11,18 @@ import { findTransparentExpressionRoot } from "./find-transparent-expression-roo
 import { resolveImportedExportName } from "./find-exported-function-body.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isPotentialDirectEvalCall } from "./is-potential-direct-eval-call.js";
+import {
+  readDirectEvalBooleanAssignment,
+  type DirectEvalBooleanAssignment,
+} from "./read-direct-eval-boolean-assignment.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 import { isReactHookName } from "./is-react-hook-name.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "./resolve-cross-file-function-export.js";
 import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { walkAst } from "./walk-ast.js";
 
 interface ServerSnapshotBooleanResult {
   hasUseSyncExternalStoreOrigin: boolean;
@@ -41,6 +47,89 @@ const getCrossFileScopes = (programNode: EsTreeNode): ScopeAnalysis => {
 const symbolIsImmutable = (symbol: SymbolDescriptor): boolean =>
   (symbol.kind === "const" || symbol.kind === "function") &&
   symbol.references.every((reference) => reference.flag === "read");
+
+interface DirectEvalSnapshotReplacement extends DirectEvalBooleanAssignment {
+  readonly statement: EsTreeNode;
+}
+
+const directEvalReplacementsByBody = new WeakMap<
+  EsTreeNode,
+  DirectEvalSnapshotReplacement | null
+>();
+
+const unwrapExportDeclaration = (statement: EsTreeNode): EsTreeNode =>
+  (isNodeOfType(statement, "ExportNamedDeclaration") ||
+    isNodeOfType(statement, "ExportDefaultDeclaration")) &&
+  statement.declaration
+    ? statement.declaration
+    : statement;
+
+const readDirectEvalSnapshotReplacement = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean | null => {
+  if (!isNodeOfType(identifier, "Identifier")) return null;
+  const symbol = scopes.symbolFor(identifier);
+  const declaration = symbol?.declarationNode;
+  if (
+    !symbol ||
+    !isNodeOfType(declaration, "FunctionDeclaration") ||
+    symbol.scope !== scopes.scopeFor(declaration)
+  ) {
+    return null;
+  }
+  const parent = declaration.parent;
+  const body = (parent && unwrapExportDeclaration(parent) === declaration ? parent : declaration)
+    .parent;
+  if (
+    !isNodeOfType(body, "Program") &&
+    !(
+      isNodeOfType(body, "BlockStatement") &&
+      isFunctionLike(body.parent) &&
+      body.parent.body === body
+    )
+  ) {
+    return null;
+  }
+  if (!directEvalReplacementsByBody.has(body)) {
+    let replacement: DirectEvalSnapshotReplacement | null = null;
+    for (const statement of body.body) {
+      if (isNodeOfType(statement, "ExpressionStatement") && !statement.directive) {
+        const assignment = readDirectEvalBooleanAssignment(statement.expression, scopes);
+        if (assignment) {
+          let otherEval = false;
+          const selectedCall = stripParenExpression(statement.expression);
+          walkAst(body, (node) => {
+            if (otherEval) return false;
+            if (
+              node !== selectedCall &&
+              isNodeOfType(node, "CallExpression") &&
+              isPotentialDirectEvalCall(node)
+            ) {
+              otherEval = true;
+              return false;
+            }
+          });
+          if (!otherEval) replacement = { ...assignment, statement };
+        }
+        break;
+      }
+      if (
+        !isNodeOfType(statement, "ImportDeclaration") &&
+        !isNodeOfType(statement, "EmptyStatement") &&
+        !isNodeOfType(unwrapExportDeclaration(statement), "FunctionDeclaration") &&
+        !isNodeOfType(statement, "ExpressionStatement")
+      ) {
+        break;
+      }
+    }
+    directEvalReplacementsByBody.set(body, replacement);
+  }
+  const replacement = directEvalReplacementsByBody.get(body);
+  return replacement?.name === symbol.name && replacement.statement.range[1] <= identifier.range[0]
+    ? replacement.value
+    : null;
+};
 
 const identifierAliasChainIsImmutable = (
   identifier: EsTreeNode,
@@ -158,7 +247,10 @@ const readFunctionLiteralBoolean = (
   const functionNode = resolveExactLocalFunction(unwrappedExpression, scopes);
   if (!functionNode) return null;
   const resultExpression = getExactFunctionResultExpression(functionNode);
-  return resultExpression ? readImmutableBooleanLiteral(resultExpression, scopes, new Set()) : null;
+  if (!resultExpression) return null;
+  const result = readImmutableBooleanLiteral(resultExpression, scopes, new Set());
+  const replacement = readDirectEvalSnapshotReplacement(unwrappedExpression, scopes);
+  return replacement !== null && replacement !== result ? null : result;
 };
 
 const readServerSnapshotBooleanInternal = (
@@ -328,15 +420,17 @@ const readServerSnapshotBooleanInternal = (
   }
   visitedFunctionNodes.add(hookFunction);
   const resultExpression = getExactFunctionResultExpression(hookFunction);
-  return resultExpression
-    ? readServerSnapshotBooleanInternal(
-        resultExpression,
-        scopes,
-        visitedSymbolIds,
-        visitedFunctionNodes,
-        currentFilename,
-      )
-    : null;
+  if (!resultExpression) return null;
+  const result = readServerSnapshotBooleanInternal(
+    resultExpression,
+    scopes,
+    visitedSymbolIds,
+    visitedFunctionNodes,
+    currentFilename,
+  );
+  if (!result) return null;
+  const replacement = readDirectEvalSnapshotReplacement(callee, scopes);
+  return replacement !== null && replacement !== result.value ? null : result;
 };
 
 export const readServerSnapshotBoolean = (

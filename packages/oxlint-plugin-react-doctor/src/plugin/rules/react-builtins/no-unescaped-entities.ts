@@ -27,8 +27,8 @@ export const noUnescapedEntities = defineRule({
     "Replace bare `'` / `\"` / `>` / `}` characters with HTML entities so literal UI text is encoded consistently.",
   create: (context) => ({
     JSXText(node: EsTreeNodeOfType<"JSXText">) {
-      const value = node.value;
-      for (const character of value) {
+      const text = node.raw ?? context.sourceCode?.getText?.(node) ?? "";
+      for (const character of text) {
         if (character in ESCAPED_VERSIONS) {
           context.report({ node, message: buildMessage(character) });
           return;

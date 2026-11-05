@@ -292,6 +292,164 @@ describe("no-boolean-toggle-without-functional-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    ["setInterval", "clearTimeout(timer)"],
+    ["setTimeout", "clearInterval(timer)"],
+    ["window.setInterval", 'window["clearTimeout"](timer)'],
+    ["globalThis.setTimeout", "{ clearInterval(timer); }"],
+  ])("accepts %s with interchangeable cleanup %s and a state dependency", (schedule, cleanup) => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+       const Panel = () => {
+         const [open, setOpen] = useState(false);
+         useLayoutEffect(() => {
+           const timer = ${schedule}(() => setOpen(!open), 100);
+           return () => ${cleanup};
+         }, [open]);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["setInterval", "return () => clearTimeout(otherTimer);", "[open]", ""],
+    ["window.setInterval", "return () => globalThis.clearTimeout(timer);", "[open]", ""],
+    ["setInterval", "return () => { if (enabled) clearTimeout(timer); };", "[open]", ""],
+    ["setInterval", "return () => clearTimeout(timer);", "[]", ""],
+    [
+      "setInterval",
+      "return () => clearTimeout(timer);",
+      "[open]",
+      "const clearTimeout = () => {};",
+    ],
+    ["requestAnimationFrame", "return () => clearTimeout(timer);", "[open]", ""],
+    [
+      "setInterval",
+      "return () => clearTimeout(timer);",
+      "[open]",
+      "globalThis.clearTimeout = () => {};",
+    ],
+    [
+      "setInterval",
+      "return () => clearTimeout(timer);",
+      "[open]",
+      "const box = { host: globalThis }; box.host.clearTimeout = () => {};",
+    ],
+    ["setInterval", "return () => clearTimeout(timer, throwNow());", "[open]", ""],
+    ["setInterval", "if (enabled) return; return () => clearTimeout(timer);", "[open]", ""],
+  ])(
+    "retains the stale toggle warning without proven timer cleanup: %s %s %s %s",
+    (schedule, cleanup, dependencies, preamble) => {
+      const result = runRule(
+        noBooleanToggleWithoutFunctionalUpdate,
+        `import { useLayoutEffect, useState } from "react";
+       ${preamble}
+       const Panel = () => {
+         const [open, setOpen] = useState(false);
+         useLayoutEffect(() => {
+           const timer = ${schedule}(() => setOpen(!open), 100);
+           ${cleanup}
+         }, ${dependencies});
+         return null;
+       };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["async () => { await ready; setOpen(!open); }"],
+    ["() => { Promise.resolve().then(() => setOpen(!open)); }"],
+  ])("does not treat timer cleanup as canceling already deferred work: %s", (callback) => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+       const Panel = () => {
+         const [open, setOpen] = useState(false);
+         useLayoutEffect(() => {
+           const timer = setTimeout(${callback}, 100);
+           return () => clearInterval(timer);
+         }, [open]);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["() => { setOpen(!open); }", 0],
+    ["() => { return setOpen(!open); }", 0],
+    ["() => { for (let count = 0; count < 2; count += 1) setOpen(!open); }", 1],
+    ["() => { setOpen(!open); setOpen(!open); }", 2],
+    ["(unused = setOpen(true)) => setOpen(!open)", 1],
+    ["() => setOpen(!open, setOpen(true))", 1],
+    ["() => setOpen(!open, ...extra)", 1],
+    ["() => setOpen?.(!open)", 1],
+  ])("requires one direct toggle in the timer callback: %s", (callback, diagnosticCount) => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+       const Panel = () => {
+         const [open, setOpen] = useState(false);
+         useLayoutEffect(() => {
+           const timer = setInterval(${callback}, 100);
+           return () => clearTimeout(timer);
+         }, [open]);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it.each([
+    "document.defaultView.clearTimeout = () => {};",
+    'const realm = "defaultView"; document[realm].clearTimeout = () => {};',
+    "document[realmKey][methodKey] = () => {};",
+    'const method = "clearTimeout"; host[method] = () => {};',
+    "const { defaultView: host } = ownerDocument; useHost(host);",
+  ])("retains the warning when a timer realm could be replaced: %s", (preamble) => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+       ${preamble}
+       const Panel = () => {
+         const [open, setOpen] = useState(false);
+         useLayoutEffect(() => {
+           const timer = setInterval(() => setOpen(!open), 100);
+           return () => clearTimeout(timer);
+         }, [open]);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the warning when the timer setup also runs outside React", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+       const Panel = () => {
+         const [open, setOpen] = useState(false);
+         const install = () => {
+           const timer = setInterval(() => setOpen(!open), 100);
+           return () => clearTimeout(timer);
+         };
+         install();
+         useLayoutEffect(install, [open]);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet: Write-through mirror of an absolute external command in .then — the rule's own remediation would introduce a desync bug", () => {
     const result = runRule(
       noBooleanToggleWithoutFunctionalUpdate,

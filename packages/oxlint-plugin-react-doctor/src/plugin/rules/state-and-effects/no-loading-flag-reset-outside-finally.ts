@@ -17,6 +17,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
+import { getSuccessOnlyClassMountLoadingReset } from "../../utils/get-success-only-class-mount-loading-reset.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
@@ -3301,6 +3302,14 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
     budgetedCrossFileSpecifiers.clear();
     isAnalyzingForeignHelperBody = false;
     return {
+      ClassDeclaration(node: EsTreeNodeOfType<"ClassDeclaration">) {
+        const reset = getSuccessOnlyClassMountLoadingReset(
+          node,
+          context.scopes,
+          LOADING_FLAG_SETTER_PATTERN,
+        );
+        if (reset) context.report({ node: reset, message: MESSAGE });
+      },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
         analyzeFunction(node, context);
       },

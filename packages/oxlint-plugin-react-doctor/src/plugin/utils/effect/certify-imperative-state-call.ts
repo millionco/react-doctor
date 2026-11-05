@@ -1,3 +1,4 @@
+import { HOOKS_WITH_DEPS } from "../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { SourceProjectIndex, SourceProjectModule } from "../build-source-project-index.js";
 import type { EsTreeNode } from "../es-tree-node.js";
@@ -336,6 +337,36 @@ const hasImperativeClosedRecordWriters = (
     pair.stateSymbol.references.every((reference) => {
       const root = findTransparentExpressionRoot(reference.identifier);
       const member = root.parent;
+      if (member && isNodeOfType(member, "ArrayExpression")) {
+        const dependencyExpression = findTransparentExpressionRoot(member);
+        const dependencyCall = dependencyExpression.parent;
+        if (
+          reference.flag !== "read" ||
+          !dependencyCall ||
+          !isNodeOfType(dependencyCall, "CallExpression") ||
+          dependencyCall.optional
+        )
+          return false;
+        const [callback, dependencies, ...extraArguments] = dependencyCall.arguments;
+        const callee = stripParenExpression(dependencyCall.callee);
+        let hookOwner: EsTreeNode | null | undefined = dependencyCall.parent;
+        while (hookOwner && !isFunctionLike(hookOwner)) hookOwner = hookOwner.parent;
+        return Boolean(
+          callback &&
+          !isNodeOfType(callback, "SpreadElement") &&
+          dependencies === dependencyExpression &&
+          extraArguments.length === 0 &&
+          member.elements.some((element) => element === root) &&
+          member.elements.every((element) =>
+            Boolean(element && !isNodeOfType(element, "SpreadElement")),
+          ) &&
+          hookOwner === childComponent &&
+          (!isNodeOfType(callee, "MemberExpression") || !callee.optional) &&
+          [...HOOKS_WITH_DEPS].some((hookName) =>
+            isClosedReactHookCall(dependencyCall, hookName, environment.scopes),
+          ),
+        );
+      }
       if (!member || !isNodeOfType(member, "MemberExpression") || member.object !== root)
         return false;
       const memberRoot = findTransparentExpressionRoot(member);

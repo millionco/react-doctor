@@ -27,6 +27,7 @@ interface ImperativeFixtureOptions {
   readonly parentReturn?: string;
   readonly childDeclaration?: string;
   readonly selectedMethodName?: string;
+  readonly stateInitializer?: string;
 }
 
 const certifyFixture = (options: ImperativeFixtureOptions = {}): boolean => {
@@ -48,7 +49,7 @@ const certifyFixture = (options: ImperativeFixtureOptions = {}): boolean => {
     `
     import { ${options.childHookImport ?? "useState, useImperativeHandle"} } from '${options.hookSource ?? "react"}';
     ${options.childDeclaration ?? `export ${options.childBinding ?? "const"} Board = ({ apiRef }) =>`} {
-      const [flags, setFlags] = useState({});
+      const [flags, setFlags] = useState(${options.stateInitializer ?? "{}"});
       ${options.childSetup ?? ""}
       useImperativeHandle(apiRef, ${
         options.factory ??
@@ -284,5 +285,213 @@ describe("certifyImperativeStateCall", () => {
     ],
   ])("refuses %s", (_name, options) => {
     expect(certifyFixture(options)).toBe(false);
+  });
+
+  it.each(["useMemo", "useCallback", "useEffect", "useLayoutEffect"])(
+    "certifies a private record retained only in genuine %s dependencies",
+    (hookName) => {
+      expect(
+        certifyFixture({
+          childHookImport: `useState, useImperativeHandle, ${hookName}`,
+          childSetup: `${hookName}(() => { void flags['tile']; }, [flags]);`,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    [
+      "renamed React import",
+      {
+        childHookImport: "useState, useImperativeHandle, useMemo as cacheValue",
+        childSetup: "cacheValue(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "readonly hook alias",
+      {
+        childHookImport: "useState, useImperativeHandle, useMemo",
+        childSetup: "const cacheValue = useMemo; cacheValue(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "readonly namespace hook",
+      {
+        childSetup: "React.useMemo(() => flags['tile'], [flags]);",
+        childTail: "import * as React from 'react';",
+      },
+    ],
+    [
+      "transparent dependency array",
+      {
+        childHookImport: "useState, useImperativeHandle, useMemo",
+        childSetup: "useMemo(() => flags['tile'], ([flags] as const));",
+      },
+    ],
+    [
+      "multiple ordinary identity dependencies",
+      {
+        childHookImport: "useState, useImperativeHandle, useMemo",
+        childSetup: "const revision = 1; useMemo(() => flags['tile'], [revision, flags]);",
+      },
+    ],
+  ])("certifies %s without widening record writers", (_name, options) => {
+    expect(certifyFixture(options)).toBe(true);
+  });
+
+  it.each([
+    [
+      "aliased dependency array",
+      { childSetup: "const dependencies = [flags]; useMemo(() => null, dependencies);" },
+    ],
+    [
+      "escaped dependency array",
+      {
+        childSetup:
+          "const dependencies = [flags]; publish(dependencies); useMemo(() => null, dependencies);",
+      },
+    ],
+    ["wrong dependency argument", { childSetup: "useMemo([flags], []);" }],
+    ["nested dependency array", { childSetup: "useMemo(() => null, [[flags]]);" }],
+    ["spread record dependency", { childSetup: "useMemo(() => null, [...flags]);" }],
+    ["spread sibling dependency", { childSetup: "useMemo(() => null, [flags, ...foreign]);" }],
+    ["dependency hole", { childSetup: "useMemo(() => null, [, flags]);" }],
+    ["extra hook argument", { childSetup: "useMemo(() => null, [flags], foreign);" }],
+    ["spread callback argument", { childSetup: "useMemo(...foreign, [flags]);" }],
+    ["optional hook call", { childSetup: "useMemo?.(() => null, [flags]);" }],
+    [
+      "optional namespace hook",
+      {
+        childSetup: "React?.useMemo(() => null, [flags]);",
+        childTail: "import * as React from 'react';",
+      },
+    ],
+    [
+      "custom hook dependency",
+      { childSetup: "const useCustom = foreign; useCustom(() => null, [flags]);" },
+    ],
+    [
+      "foreign hook import",
+      {
+        childHookImport: "useState, useImperativeHandle",
+        childSetup: "useMemo(() => null, [flags]);",
+        childTail: "import { useMemo } from 'foreign-hooks';",
+      },
+    ],
+    ["shadowed hook", { childSetup: "const useMemo = foreign; useMemo(() => null, [flags]);" }],
+    [
+      "unbound hook name",
+      {
+        childHookImport: "useState, useImperativeHandle",
+        childSetup: "useMemo(() => null, [flags]);",
+      },
+    ],
+    [
+      "type-only hook import is no runtime provider",
+      {
+        childHookImport: "useState, useImperativeHandle, type useMemo",
+        childSetup: "useMemo(() => null, [flags]);",
+      },
+    ],
+    [
+      "type-only React namespace is no runtime provider",
+      {
+        childSetup: "React.useMemo(() => flags['tile'], [flags]);",
+        childTail: "import type * as React from 'react';",
+      },
+    ],
+    [
+      "reassigned imported hook in parser-only input",
+      { childSetup: "useMemo = foreign; useMemo(() => null, [flags]);" },
+    ],
+    [
+      "mutable hook alias",
+      {
+        childSetup:
+          "let cacheValue = useMemo; cacheValue = foreign; cacheValue(() => null, [flags]);",
+      },
+    ],
+    [
+      "nested uncertain hook placement",
+      { childSetup: "const derive = () => useMemo(() => flags['tile'], [flags]);" },
+    ],
+    ["callback returns whole record", { childSetup: "useMemo(() => flags, [flags]);" }],
+    ["callback passes whole record", { childSetup: "useMemo(() => publish(flags), [flags]);" }],
+    [
+      "state alias still escapes",
+      { childSetup: "const alias = flags; useMemo(() => alias['tile'], [flags]);" },
+    ],
+    [
+      "state property mutation remains unsafe",
+      { childSetup: "flags['tile'] = false; useMemo(() => flags['tile'], [flags]);" },
+    ],
+    [
+      "unknown other state writer",
+      {
+        childSetup:
+          "const replace = () => setFlags(foreign); useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "accessor other state writer",
+      {
+        childSetup:
+          "const replace = () => setFlags(previous => ({ ...previous, get tile() { return foreign(); } })); useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "Proxy other state writer",
+      {
+        childSetup:
+          "const replace = () => setFlags(new Proxy({}, {})); useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "accessor state initializer",
+      {
+        stateInitializer: "({ get tile() { return foreign(); } })",
+        childSetup: "useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "Proxy state initializer",
+      {
+        stateInitializer: "new Proxy({}, {})",
+        childSetup: "useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "async imperative method",
+      {
+        method: "async (key, value) => setFlags(previous => ({ ...previous, [key]: value }))",
+        childSetup: "useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "async state updater",
+      {
+        method: "(key, value) => setFlags(async previous => ({ ...previous, [key]: value }))",
+        childSetup: "useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "selected parent callback",
+      {
+        method:
+          "(key, value) => { notify(); setFlags(previous => ({ ...previous, [key]: value })); }",
+        childSetup: "useMemo(() => flags['tile'], [flags]);",
+      },
+    ],
+    [
+      "imperative-handle third argument",
+      { childSetup: "useImperativeHandle(foreign, () => ({}), [flags]);" },
+    ],
+  ])("refuses %s despite identity-only dependency support", (_name, options) => {
+    expect(
+      certifyFixture({
+        childHookImport: "useState, useImperativeHandle, useMemo",
+        ...options,
+      }),
+    ).toBe(false);
   });
 });

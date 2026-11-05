@@ -3,6 +3,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import type { EsTreeNodeOfType } from "../es-tree-node-of-type.js";
 import { isNodeOfType } from "../is-node-of-type.js";
 import { isReactApiCall } from "../is-react-api-call.js";
+import { isTypeOnlyImport } from "../is-type-only-import.js";
 import { stripParenExpression } from "../strip-paren-expression.js";
 
 export const isClosedReactHookCall = (
@@ -25,11 +26,14 @@ export const isClosedReactHookCall = (
       return false;
     visitedSymbols.add(symbol);
     if (symbol.kind === "import") {
-      const declaration = symbol.declarationNode.parent;
+      const specifier = symbol.declarationNode;
+      const declaration = specifier.parent;
       return Boolean(
         declaration &&
         isNodeOfType(declaration, "ImportDeclaration") &&
-        declaration.source.value === "react",
+        declaration.source.value === "react" &&
+        !isTypeOnlyImport(declaration) &&
+        (!isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind !== "type"),
       );
     }
     if (symbol.kind !== "const" || !symbol.initializer) return false;

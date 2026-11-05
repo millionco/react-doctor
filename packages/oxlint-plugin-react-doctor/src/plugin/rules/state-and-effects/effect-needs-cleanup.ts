@@ -19,6 +19,7 @@ import {
 import { INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
+import { doesEffectDisposeNativeNodeTimer } from "../../utils/does-effect-dispose-native-node-timer.js";
 import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { resolveImportedExportName } from "../../utils/find-exported-function-body.js";
@@ -6670,6 +6671,18 @@ const effectHasCleanupForUsage = (
     return false;
   }
   if (callback.async) return false;
+  if (usage.kind === "timer" && isNodeOfType(usage.node, "CallExpression")) {
+    const callbackRoot = findTransparentExpressionRoot(callback);
+    const callbackConsumer = callbackRoot.parent;
+    if (
+      isNodeOfType(callbackConsumer, "CallExpression") &&
+      callbackConsumer.arguments[0] === callbackRoot &&
+      isCleanupEffectHookCall(callbackConsumer, context) &&
+      doesEffectDisposeNativeNodeTimer(callback, usage.node, context)
+    ) {
+      return true;
+    }
+  }
   if (
     cleanupRegistryReleasesUsage(callback, usage, context) ||
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||

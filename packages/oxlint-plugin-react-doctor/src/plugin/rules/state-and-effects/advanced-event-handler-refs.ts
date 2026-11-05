@@ -6,6 +6,7 @@ import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isImportedMemoizedHookReturnHandler } from "../../utils/is-imported-memoized-hook-return-handler.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -126,11 +127,11 @@ export const advancedEventHandlerRefs = defineRule({
       const depsNode = node.arguments[1];
       if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
-      const depIdentifierNames = new Set<string>();
+      const depIdentifiers = new Map<string, EsTreeNode>();
       for (const element of depsNode.elements) {
-        if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
+        if (isNodeOfType(element, "Identifier")) depIdentifiers.set(element.name, element);
       }
-      if (depIdentifierNames.size === 0) return;
+      if (depIdentifiers.size === 0) return;
 
       // Look for an addEventListener (etc.) call inside the body whose
       // second argument is one of our deps. Also collect the receiver root
@@ -147,7 +148,13 @@ export const advancedEventHandlerRefs = defineRule({
         if (receiverName) subscriptionReceiverNames.add(receiverName);
         const handlerArg = child.arguments?.[1];
         if (!isNodeOfType(handlerArg, "Identifier")) return;
-        if (!registeredHandlerName && depIdentifierNames.has(handlerArg.name)) {
+        if (!registeredHandlerName) {
+          const dependency = depIdentifiers.get(handlerArg.name);
+          if (
+            !dependency ||
+            isImportedMemoizedHookReturnHandler(handlerArg, dependency, node, context)
+          )
+            return;
           registeredHandlerName = handlerArg.name;
         }
       });
@@ -173,7 +180,7 @@ export const advancedEventHandlerRefs = defineRule({
       // moving the handler into a ref wouldn't remove the re-subscription.
       // A `useRef(...)` receiver is exempt from this bailout: its identity
       // never changes, so the handler churn is still the only churn.
-      const hasNonHandlerDepTarget = [...depIdentifierNames].some(
+      const hasNonHandlerDepTarget = [...depIdentifiers.keys()].some(
         (depName) =>
           depName !== registeredHandlerName &&
           subscriptionReceiverNames.has(depName) &&

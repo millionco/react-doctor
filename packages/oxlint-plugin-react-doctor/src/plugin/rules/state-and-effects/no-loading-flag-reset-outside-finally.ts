@@ -3192,7 +3192,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       .map((awaitSite) => awaitSite.node),
   );
 
-  for (const [setterKey, calls] of settersByKey) {
+  loadingSetters: for (const [setterKey, calls] of settersByKey) {
     const truthySets = calls.filter((call) => call.value);
     if (truthySets.length === 0) continue;
     const exceptionallyProtectedAwaits = collectExceptionallyProtectedAwaits(awaitSites, calls);
@@ -3248,7 +3248,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       );
       if (riskyAwait) {
         context.report({ node: reset.node, message: MESSAGE });
-        return;
+        continue loadingSetters;
       }
     }
     const plainResets = calls.filter((call) => !call.value && call.context === "plain");
@@ -3278,7 +3278,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
             continue;
           }
           context.report({ node: reset.node, message: MESSAGE });
-          return;
+          continue loadingSetters;
         }
         break;
       }

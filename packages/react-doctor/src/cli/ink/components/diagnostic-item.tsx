@@ -6,16 +6,19 @@ export interface DiagnosticItemProps {
   readonly row: DiagnosticRow;
   readonly isSelected: boolean;
   readonly isRead: boolean;
+  readonly isMarked?: boolean;
 }
 
-export const DiagnosticItem = ({ row, isSelected, isRead }: DiagnosticItemProps) => {
+export const DiagnosticItem = ({ row, isSelected, isRead, isMarked = false }: DiagnosticItemProps) => {
   const variant = severityVariant(row.severity);
   const shouldHighlightSeverity = isSelected || !isRead;
   let marker = "• ";
   if (isRead) marker = "  ";
+  if (isMarked) marker = "✓ ";
   if (isSelected) marker = "› ";
   let markerColor = shouldHighlightSeverity ? variant.color : undefined;
   if (isSelected) markerColor = "cyan";
+  if (isMarked) markerColor = "green";
 
   return (
     <Text wrap="truncate-end" dimColor={isRead && !isSelected}>

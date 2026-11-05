@@ -1,3 +1,4 @@
+import { createDocusaurusLinkImageCheck } from "../../utils/create-docusaurus-link-image-check.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -170,6 +171,7 @@ export const nextjsNoImgElement = defineRule({
     "Use `next/image` so users get optimized formats, responsive srcsets, and lazy loading instead of oversized image downloads.",
   create: (context: RuleContext): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return EMPTY_RULE_VISITORS;
+    const isDocusaurusLinkImage = createDocusaurusLinkImageCheck(context);
     const generatedImageOwnershipByFunction = new WeakMap<EsTreeNode, boolean>();
     const isExportedJsxGeneratedImageOwned =
       createExportedJsxGeneratedImageOwnershipAnalyzer(context);
@@ -177,6 +179,7 @@ export const nextjsNoImgElement = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (resolveJsxElementType(node) !== "img") return;
+        if (isDocusaurusLinkImage(node)) return;
         if (isGeneratedImageRenderContext(context, node)) return;
 
         const enclosingFunction = findEnclosingFunction(node);

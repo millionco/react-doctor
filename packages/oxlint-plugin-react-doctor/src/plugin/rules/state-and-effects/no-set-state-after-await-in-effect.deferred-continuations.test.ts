@@ -122,3 +122,61 @@ describe("no-set-state-after-await-in-effect deferred continuations", () => {
     expect(result.diagnostics[0]?.message).not.toContain("out of order");
   });
 });
+
+const runFetchContinuation = (effectBody: string, dependencies = "[id]") =>
+  runRule(
+    noSetStateAfterAwaitInEffect,
+    `const Component = ({ id }) => {
+      const [, setValue] = useState(null);
+      useEffect(() => { ${effectBody} }, ${dependencies});
+    };`,
+  );
+
+describe("no-set-state-after-await-in-effect native fetch fulfillment", () => {
+  it.each([
+    'fetch("/catalog").then((result) => setValue(result));',
+    "fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "let ignore = false; if (!ignore) fetch(`/catalog/${id}`).then((result) => setValue(result)); return () => { ignore = true; };",
+    "let ignore = false; fetch(`/catalog/${id}`).then((result) => { ignore = false; if (!ignore) setValue(result); }); return () => { ignore = true; };",
+    "const controller = new AbortController(); fetch(`/catalog/${id}`).then((result) => setValue(result)); return () => controller.abort();",
+  ])("reports the unguarded deferred fulfillment: %s", (effectBody) => {
+    const result = runFetchContinuation(effectBody);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("cleaned up");
+  });
+
+  it.each([
+    "let ignore = false; fetch(`/catalog/${id}`).then((result) => { if (ignore) return; setValue(result); }); return () => { ignore = true; };",
+    "let active = true; fetch(`/catalog/${id}`).then((result) => { if (active) setValue(result); }); return () => { active = false; };",
+    "const fetch = () => ({ then(callback) { callback(id); } }); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "fetch = () => ({ then(callback) { callback(id); } }); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "const host = globalThis; host.fetch = () => ({ then(callback) { callback(id); } }); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "const nativeFetch = fetch; registerFetch(nativeFetch); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "const nativeFetch = fetch; nativeFetch(id).then((result) => setValue(result));",
+    "Promise.prototype.then = (callback) => callback(id); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "const prototypeAlias = Promise.prototype; prototypeAlias.then = (callback) => callback(id); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "Reflect.getPrototypeOf(fetch(`/catalog/${id}`)).then = (callback) => callback(id); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "const { constructor: NativePromise } = fetch(`/catalog/${id}`); NativePromise.prototype.then = (callback) => callback(id); fetch(`/catalog/${id}`).then((result) => setValue(result));",
+    "const pending = fetch(`/catalog/${id}`); pending.then((result) => setValue(result));",
+    "fetch(`/catalog/${id}`).then((result) => setValue(result), reportError);",
+    "const controller = new AbortController(); fetch(id, { signal: controller.signal }).then((result) => setValue(result)); return () => controller.abort();",
+    "const controller = new AbortController(); const request = new Request(`/catalog/${id}`, { signal: controller.signal }); fetch(request).then((result) => setValue(result)); return () => controller.abort();",
+    "const controller = new AbortController(); fetch(new Request(`/catalog/${id}`, { signal: controller.signal })).then((result) => setValue(result)); return () => controller.abort();",
+    "const load = () => { fetch(`/catalog/${id}`).then((result) => setValue(result)); }; if (false) load();",
+    "fetch(id).then((result) => setValue(result));",
+  ])("preserves guarded or unproved continuations: %s", (effectBody) => {
+    const result = runFetchContinuation(effectBody);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["[]", "[setValue]"])("preserves stable dependencies: %s", (dependencies) => {
+    const result = runFetchContinuation(
+      'fetch("/catalog").then((result) => setValue(result));',
+      dependencies,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

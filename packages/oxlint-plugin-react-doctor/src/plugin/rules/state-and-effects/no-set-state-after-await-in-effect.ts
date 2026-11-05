@@ -33,6 +33,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveStateWriteSite } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { getDirectNativeFetchFulfillmentCall } from "./utils/get-direct-native-fetch-fulfillment-call.js";
 
 const MESSAGE =
   "This setter runs after `await`, so overlapping re-runs of the effect can resolve out of order and write stale state; gate it behind a cancellation/ignore flag or return a cleanup that cancels the work.";
@@ -402,8 +403,9 @@ const collectCleanupFunctionsAfterInvocations = (
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
     if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const reachableReturns = new Set(returnsAfterInvocation);
     const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      returnsAfterInvocation.includes(returnStatement),
+      reachableReturns.has(returnStatement),
     );
     const cleanupReturnStatements = new Set(
       cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
@@ -1339,13 +1341,26 @@ const analyzeAsyncStatements = (
   return { states, hasUnsafeSetter: false };
 };
 
+const getProvenEffectContinuationCall = (
+  callback: EsTreeNode,
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+) => {
+  const deferredCall = getDeferredEffectCallbackCall(callback, context.scopes);
+  if (deferredCall) return deferredCall;
+  const fetchContinuation = getDirectNativeFetchFulfillmentCall(callback, context.scopes);
+  return fetchContinuation && findEnclosingFunction(fetchContinuation) === effectCallback
+    ? fetchContinuation
+    : null;
+};
+
 const hasUnsafePostAwaitSetter = (
   asyncFunction: EsTreeNode,
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): boolean => {
   if (!isFunctionLike(asyncFunction)) return false;
-  const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
+  const deferredCall = getProvenEffectContinuationCall(asyncFunction, effectCallback, context);
   if (deferredCall && !isNodeReachableWithinFunction(deferredCall, context)) return false;
   if (!asyncFunction.async && !deferredCall) return false;
   const firstSuspensionStart = deferredCall
@@ -1434,7 +1449,7 @@ export const noSetStateAfterAwaitInEffect = defineRule({
         ) {
           context.report({
             node,
-            message: getDeferredEffectCallbackCall(asyncFunction, context.scopes)
+            message: getProvenEffectContinuationCall(asyncFunction, callback, context)
               ? DEFERRED_MESSAGE
               : MESSAGE,
           });

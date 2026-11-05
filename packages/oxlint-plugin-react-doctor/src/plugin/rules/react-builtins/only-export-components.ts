@@ -795,7 +795,7 @@ export const onlyExportComponents = defineRule({
       FunctionExpression: pushComponentCandidate,
       VariableDeclarator: pushComponentCandidate,
       ClassDeclaration: pushComponentCandidate,
-      "Program:exit"() {
+      "Program:exit"(programNode: EsTreeNode) {
         if (shouldUseCuratedBehavior && hasRootMount) return;
         if (!shouldUseCuratedBehavior && settings.checkJS && !hasReactImport) return;
         // Module-scope component bindings (exported or not) — a component
@@ -958,8 +958,44 @@ export const onlyExportComponents = defineRule({
         let hasAnyExports = false;
         const isExportedNodeIds = new WeakSet<object>();
 
+        const implementedDefaultOverloads = new Set<EsTreeNode>();
+        if (
+          shouldUseCuratedBehavior &&
+          isNodeOfType(programNode, "Program") &&
+          exportNodes.some(
+            (node) =>
+              isNodeOfType(node, "ExportDefaultDeclaration") &&
+              isNodeOfType(node.declaration, "TSDeclareFunction"),
+          )
+        ) {
+          let implementationName: string | undefined;
+          for (
+            let statementIndex = programNode.body.length - 1;
+            statementIndex >= 0;
+            statementIndex -= 1
+          ) {
+            const statement = programNode.body[statementIndex];
+            const declaration = isNodeOfType(statement, "ExportDefaultDeclaration")
+              ? statement.declaration
+              : null;
+            if (isNodeOfType(declaration, "FunctionDeclaration")) {
+              implementationName = declaration.id?.name;
+            } else if (
+              implementationName &&
+              isNodeOfType(declaration, "TSDeclareFunction") &&
+              !declaration.declare &&
+              declaration.id?.name === implementationName
+            ) {
+              implementedDefaultOverloads.add(statement);
+            } else {
+              implementationName = undefined;
+            }
+          }
+        }
+
         // First pass: collect exports.
         for (const child of exportNodes) {
+          if (implementedDefaultOverloads.has(child)) continue;
           if (isNodeOfType(child, "ExportAllDeclaration")) {
             // `export type * from '…'` is TS-type-only; skip.
             if ((child as { exportKind?: string }).exportKind === "type") continue;

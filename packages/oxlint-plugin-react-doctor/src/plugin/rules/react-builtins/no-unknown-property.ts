@@ -11,6 +11,7 @@ import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { isReactThreeFiberCanvasOwnedLine } from "../../utils/is-react-three-fiber-canvas-owned-line.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
@@ -130,6 +131,14 @@ export const noUnknownProperty = defineRule({
           const actualName = getJsxAttributeName(attribute.name);
           if (!actualName) continue;
           if (ignoreSet.has(actualName)) continue;
+          if (
+            shouldUseCuratedBehavior &&
+            node.name.name === "line" &&
+            actualName === "onUpdate" &&
+            isReactThreeFiberCanvasOwnedLine(node, context.scopes)
+          ) {
+            continue;
+          }
 
           if (isValidDataAttribute(actualName)) {
             if (requireDataLowercase && hasUppercaseChar(actualName)) {

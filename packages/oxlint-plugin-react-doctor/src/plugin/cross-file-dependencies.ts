@@ -634,6 +634,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "anchor-target-exists",
   "nextjs-no-img-element",
+  "no-array-index-as-key",
   "no-img-without-dimensions",
   "no-loading-flag-reset-outside-finally",
   "only-export-components",

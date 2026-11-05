@@ -4,6 +4,7 @@ import { hasPossibleStaticPropertyMutationOrEscapeBefore } from "../../utils/has
 import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isGuardedLogicalAnchorRel } from "../../utils/is-guarded-logical-anchor-rel.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -661,7 +662,15 @@ export const jsxNoTargetBlank = defineRule({
             }
             return;
           }
-          if (targetTuple.combined && !relTuple.combined) {
+          if (
+            targetTuple.combined &&
+            !relTuple.combined &&
+            !(
+              shouldUseCuratedBehavior &&
+              !tagIsForm &&
+              isGuardedLogicalAnchorRel(node, context.scopes, settings.allowReferrer)
+            )
+          ) {
             context.report({
               node: targetReportNode,
               message: settings.allowReferrer ? NOOPENER_MESSAGE : NOREFERRER_MESSAGE,

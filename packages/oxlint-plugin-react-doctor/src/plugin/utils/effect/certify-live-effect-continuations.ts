@@ -25,6 +25,7 @@ import { stripParenExpression } from "../strip-paren-expression.js";
 import { walkAst } from "../walk-ast.js";
 import { walkOwnFunctionScope } from "../walk-own-function-scope.js";
 import { certifyImperativeStateCall } from "./certify-imperative-state-call.js";
+import { certifyDirectStateArgument } from "./certify-direct-state-argument.js";
 import {
   certifyNativeSignalDelay,
   hasClosedNativeDelayGlobals,
@@ -682,11 +683,22 @@ const evaluateCall = (
   if (isDispatcher || isImperativeWrite) {
     certificate.sawWrite = true;
     if (isDispatcher && call.arguments.length !== 1) certificate.failed = true;
-    const evaluatedStates = isImperativeWrite
-      ? states
-      : evaluateList(call.arguments, states, certificate);
+    const isCertifiedStateArgument =
+      isDispatcher &&
+      certifyDirectStateArgument({
+        call,
+        context,
+        project: certificate.project,
+      });
+    const evaluatedStates =
+      isImperativeWrite || isCertifiedStateArgument
+        ? states
+        : evaluateList(call.arguments, states, certificate);
     for (const state of evaluatedStates) {
-      if ((state.suspended && !state.live) || (!isImperativeWrite && !state.value.primitive))
+      if (
+        (state.suspended && !state.live) ||
+        (!isImperativeWrite && !isCertifiedStateArgument && !state.value.primitive)
+      )
         certificate.failed = true;
     }
     return evaluatedStates.map((state) => withValue(state, primitiveValue(false)));

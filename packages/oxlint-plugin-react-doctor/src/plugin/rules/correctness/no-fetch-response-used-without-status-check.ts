@@ -1,16 +1,21 @@
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
@@ -23,6 +28,39 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
 const PROMISE_CHAIN_METHODS = new Set(["then", "catch", "finally"]);
+const BODY_RECOVERY_PROVIDER_NAMES = new Set([
+  "Response",
+  "Promise",
+  "Object",
+  "Reflect",
+  "document",
+  "window",
+  "globalThis",
+  "self",
+  "global",
+  "require",
+  "module",
+  "process",
+  "arguments",
+  "eval",
+  "Function",
+]);
+const BODY_RECOVERY_REALM_NAMES = new Set(["top", "parent", "frames"]);
+const BODY_RECOVERY_PROVIDER_PROPERTIES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "caller",
+  "defaultView",
+  "contentWindow",
+  "parentWindow",
+]);
+const BODY_RECOVERY_MUTATION_PROPERTIES = new Set(["fetch", "json", "ok", "then", "catch"]);
+const closedBodyRecoveryProvidersByScope = new WeakMap<ScopeAnalysis, boolean>();
 // `data:` / `blob:` URLs decode in-process — they can never produce an
 // HTTP 4xx/5xx, so the Response is always ok and a status check is noise.
 const INERT_URL_SCHEME_PATTERN = /^(?:data|blob):/i;
@@ -431,6 +469,191 @@ const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNod
   return false;
 };
 
+const hasClosedBodyRecoveryProviders = (fetchCall: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (
+    !isNodeOfType(fetchCall, "CallExpression") ||
+    !isProvenUnmodifiedGlobalNamespaceReference(fetchCall.callee, "fetch", scopes, undefined, true)
+  )
+    return false;
+  const cached = closedBodyRecoveryProvidersByScope.get(scopes);
+  if (cached !== undefined) return cached;
+  let closed = true;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (!closed) return false;
+    if (
+      isNodeOfType(node, "ImportExpression") ||
+      isNodeOfType(node, "TSImportEqualsDeclaration") ||
+      isNodeOfType(node, "WithStatement")
+    ) {
+      closed = false;
+    } else if (isNodeOfType(node, "Identifier") && scopes.referenceFor(node)) {
+      closed =
+        !BODY_RECOVERY_PROVIDER_NAMES.has(node.name) && !BODY_RECOVERY_REALM_NAMES.has(node.name);
+    } else if (
+      isNodeOfType(node, "MemberExpression") ||
+      (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern"))
+    ) {
+      const propertyName = getStaticPropertyKeyName(node, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
+      closed =
+        propertyName !== null &&
+        !BODY_RECOVERY_PROVIDER_NAMES.has(propertyName) &&
+        !BODY_RECOVERY_PROVIDER_PROPERTIES.has(propertyName) &&
+        !(
+          BODY_RECOVERY_MUTATION_PROPERTIES.has(propertyName) &&
+          (isNodeOfType(node, "Property") || isWithinAssignmentTarget(node))
+        );
+    }
+    return closed;
+  });
+  closedBodyRecoveryProvidersByScope.set(scopes, closed);
+  return closed;
+};
+
+const caughtJsonResultIsGuardedBeforeUse = (
+  consumption: EsTreeNode,
+  fetchCall: EsTreeNode,
+  response: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(consumption, "CallExpression") || consumption.optional) return false;
+  const jsonMember = stripGroupingParens(consumption.callee);
+  if (
+    !isNodeOfType(jsonMember, "MemberExpression") ||
+    jsonMember.optional ||
+    jsonMember.computed ||
+    getStaticPropertyName(jsonMember) !== "json" ||
+    consumption.arguments.length !== 0
+  )
+    return false;
+  const receiver = stripGroupingParens(jsonMember.object);
+  if (!isNodeOfType(receiver, "Identifier") || context.scopes.symbolFor(receiver) !== response)
+    return false;
+
+  const catchMember = getMeaningfulParent(consumption);
+  if (
+    !isNodeOfType(catchMember, "MemberExpression") ||
+    catchMember.optional ||
+    catchMember.computed ||
+    stripGroupingParens(catchMember.object) !== consumption ||
+    getStaticPropertyName(catchMember) !== "catch"
+  )
+    return false;
+  const catchCall = getMeaningfulParent(catchMember);
+  if (
+    !isNodeOfType(catchCall, "CallExpression") ||
+    catchCall.optional ||
+    stripGroupingParens(catchCall.callee) !== catchMember ||
+    catchCall.arguments.length !== 1
+  )
+    return false;
+  const fallback = stripGroupingParens(catchCall.arguments[0]);
+  if (
+    !isNodeOfType(fallback, "ArrowFunctionExpression") ||
+    fallback.async ||
+    fallback.params.length
+  )
+    return false;
+  const fallbackBody = stripGroupingParens(fallback.body);
+  if (!isNodeOfType(fallbackBody, "ObjectExpression") || fallbackBody.properties.length)
+    return false;
+
+  const awaitedResult = getMeaningfulParent(catchCall);
+  if (
+    !isNodeOfType(awaitedResult, "AwaitExpression") ||
+    stripGroupingParens(awaitedResult.argument) !== catchCall
+  )
+    return false;
+  const declarator = getMeaningfulParent(awaitedResult);
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !declarator.init ||
+    stripGroupingParens(declarator.init) !== awaitedResult ||
+    !isNodeOfType(declarator.id, "Identifier")
+  )
+    return false;
+  const result = context.scopes.symbolFor(declarator.id);
+  const resultStatement = declarator.parent;
+  const block = resultStatement?.parent;
+  if (
+    !result ||
+    getDirectConstInitializer(result) !== declarator.init ||
+    !isNodeOfType(resultStatement, "VariableDeclaration") ||
+    resultStatement.declarations.length !== 1 ||
+    !isNodeOfType(block, "BlockStatement") ||
+    (isNodeOfType(block.parent, "TryStatement") && block.parent.finalizer === block)
+  )
+    return false;
+
+  const responseInitializer = getDirectConstInitializer(response);
+  const responseStatement = response.declarationNode.parent;
+  const resultIndex = block.body.findIndex((statement) => statement === resultStatement);
+  if (
+    !isNodeOfType(responseInitializer, "AwaitExpression") ||
+    stripGroupingParens(responseInitializer.argument) !== fetchCall ||
+    !isNodeOfType(responseStatement, "VariableDeclaration") ||
+    responseStatement.declarations.length !== 1 ||
+    block.body[resultIndex - 1] !== responseStatement
+  )
+    return false;
+
+  const guard = block.body[resultIndex + 1];
+  if (!isNodeOfType(guard, "IfStatement") || guard.alternate) return false;
+  const exit =
+    isNodeOfType(guard.consequent, "BlockStatement") && guard.consequent.body.length === 1
+      ? guard.consequent.body[0]
+      : guard.consequent;
+  const test = stripGroupingParens(guard.test);
+  if (
+    !isNodeOfType(exit, "ReturnStatement") ||
+    exit.argument ||
+    !isNodeOfType(test, "UnaryExpression") ||
+    test.operator !== "!"
+  )
+    return false;
+  const status = stripGroupingParens(test.argument);
+  if (
+    !isNodeOfType(status, "MemberExpression") ||
+    status.optional ||
+    status.computed ||
+    getStaticPropertyName(status) !== "ok"
+  )
+    return false;
+  const statusReceiver = stripGroupingParens(status.object);
+  const owner = context.cfg.enclosingFunction(awaitedResult);
+  const useIsOutsideFinally = (reference: EsTreeNode): boolean => {
+    let current = reference;
+    while (current !== block && current.parent) {
+      const parent = current.parent;
+      if (isNodeOfType(parent, "TryStatement") && parent.finalizer === current) return false;
+      current = parent;
+    }
+    return current === block;
+  };
+  return (
+    owner !== null &&
+    context.scopes.symbolFor(statusReceiver) === response &&
+    response.references.length === 2 &&
+    response.references.every(
+      (reference) =>
+        reference.flag === "read" &&
+        (reference.identifier === receiver || reference.identifier === statusReceiver),
+    ) &&
+    result.references.length > 0 &&
+    result.references.every(
+      (reference) =>
+        reference.flag === "read" &&
+        reference.identifier.range[0] >= guard.range[1] &&
+        context.cfg.enclosingFunction(reference.identifier) === owner &&
+        useIsOutsideFinally(reference.identifier) &&
+        statusCheckGuardsNode([status], reference.identifier),
+    ) &&
+    hasClosedBodyRecoveryProviders(fetchCall, context.scopes)
+  );
+};
+
 const expressionReadsStatusProperty = (
   expression: EsTreeNode,
   parameterSymbolId: number,
@@ -788,6 +1011,7 @@ const reportUnguarded = ({
     consumption: EsTreeNode,
     statusReferences: EsTreeNode[],
   ): boolean => {
+    if (caughtJsonResultIsGuardedBeforeUse(consumption, reportNode, symbol, context)) return true;
     let resultExpression = findTransparentExpressionRoot(consumption);
     if (
       resultExpression.parent &&

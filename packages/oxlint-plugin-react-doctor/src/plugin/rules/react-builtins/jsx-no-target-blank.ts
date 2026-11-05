@@ -5,6 +5,7 @@ import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -229,10 +230,14 @@ const resolveConditionalPredicate = (
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = scopes.symbolFor(unwrappedExpression);
-  if (!symbol) {
-    return { isNegated: false, key: `unresolved:${unwrappedExpression.name}` };
+  if (
+    !symbol ||
+    symbol.kind === "import" ||
+    symbol.kind === "ts-import-equals" ||
+    !isSymbolReadOnly(symbol)
+  ) {
+    return null;
   }
-  if (symbol.references.some((reference) => reference.flag !== "read")) return null;
   if (
     symbol.kind === "const" &&
     symbol.initializer &&

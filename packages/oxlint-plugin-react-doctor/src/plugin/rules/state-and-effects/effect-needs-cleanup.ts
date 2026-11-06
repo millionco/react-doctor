@@ -71,6 +71,7 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { resolveRenderWrittenTimerCleanupCallback } from "./utils/resolve-render-written-timer-cleanup-callback.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
@@ -3275,11 +3276,32 @@ const doesCleanupFunctionReleaseUsage = (
     }
     if (!isNodeOfType(cleanupCall, "CallExpression")) return;
     const stableHelperValue = resolveStableValue(cleanupCall.callee, context);
-    const helperFunction = isNodeOfType(stableHelperValue, "Identifier")
+    const stableHelperFunction = isNodeOfType(stableHelperValue, "Identifier")
       ? resolveSingleAssignedCleanupFunction(stableHelperValue, usage, context)
       : stableHelperValue
         ? resolveRefOwnedCleanupFunction(stableHelperValue, context)
         : null;
+    const timerCallbackFromRef =
+      !stableHelperFunction &&
+      usage.kind === "timer" &&
+      !cleanupFunction.async &&
+      !cleanupFunction.generator &&
+      isNodeOfType(cleanupFunction.parent, "ReturnStatement") &&
+      findEnclosingFunction(cleanupFunction) === findEnclosingFunction(usage.node) &&
+      (cleanupFunction.body === cleanupCall ||
+        (isNodeOfType(cleanupCall.parent, "ExpressionStatement") &&
+          isNodeOfType(cleanupFunction.body, "BlockStatement") &&
+          cleanupFunction.body.body.length === 1 &&
+          cleanupFunction.body.body[0] === cleanupCall.parent))
+        ? resolveRenderWrittenTimerCleanupCallback(
+            cleanupCall,
+            cleanupFunction.parent,
+            usage.node,
+            context,
+            (release) => doesReleaseCallMatchUsage(release, usage, context),
+          )
+        : null;
+    const helperFunction = stableHelperFunction ?? timerCallbackFromRef;
     const helperParameterSubstitutions =
       helperFunction && isFunctionLike(helperFunction)
         ? resolveCleanupHelperParameterSubstitutions(
@@ -3301,7 +3323,7 @@ const doesCleanupFunctionReleaseUsage = (
         context,
         new Set(visitedFunctions),
         helperParameterSubstitutions,
-        requireExhaustivePaths,
+        requireExhaustivePaths || timerCallbackFromRef !== null,
       )
     ) {
       const handleGuard =
@@ -4237,6 +4259,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4246,7 +4269,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4295,6 +4318,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4310,7 +4334,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -9165,6 +9189,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9192,7 +9217,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

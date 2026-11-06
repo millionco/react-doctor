@@ -98,14 +98,218 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags an explicit invalid literal type alongside a spread", () => {
+  it("still flags an explicit invalid literal type after a known unrelated spread", () => {
     const result = runRule(
       buttonHasType,
-      `const Button = (props) => <button {...props} type="foo" />;`,
+      `const Button = () => <button {...{ disabled: true }} type="foo" />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it.each(["curated", "strict"])(
+    "reports only the final invalid type in %s mode",
+    (portedRuleMode) => {
+      const result = runRule(
+        buttonHasType,
+        `import React from "react";
+      const Buttons = (props) => <form>
+        <button type="invalid" {...{ type: "button" }} />
+        <button type="button" {...{ type: "invalid" }} />
+        {React.createElement("button", { type: "invalid", ...{ type: "button" } })}
+        {React.createElement("button", { type: "button", ...{ type: "invalid" } })}
+        <button {...{ type: "invalid" }} type="button" />
+        <button {...{ type: "button" }} type="invalid" />
+        <button type="invalid" {...props} />
+        <button type="invalid" {...{ disabled: true }} />
+      </form>;`,
+        { settings: { "react-doctor": { portedRuleMode } }, includeLocations: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([4, 6, 8, 10]);
+    },
+  );
+
+  it.each([
+    ["nested JSX spread", `<button type="button" {...{ ...{ type: "invalid" } }} />`, 1],
+    ["nested props spread", `React.createElement("button", { ...{ ...{ type: "invalid" } } })`, 1],
+    ["duplicate type key", `React.createElement("button", { type: "invalid", type: "button" })`, 0],
+    [
+      "invalid duplicate type",
+      `React.createElement("button", { type: "button", type: "invalid" })`,
+      1,
+    ],
+    [
+      "opaque later object spread",
+      `React.createElement("button", { type: "invalid", ...props })`,
+      0,
+    ],
+    ["opaque nested spread", `<button type="invalid" {...{ ...props }} />`, 0],
+    ["later write after opaque nested spread", `<button {...{ ...props, type: "invalid" }} />`, 0],
+    [
+      "unrelated nested spread",
+      `React.createElement("button", { type: "invalid", ...{ ...{ disabled: true } } })`,
+      1,
+    ],
+    ["getter of type", `<button type="invalid" {...{ get type() { return props.type; } }} />`, 0],
+    [
+      "getter before the final data property",
+      `React.createElement("button", { ...{ get type() { return "button"; } }, type: "invalid" })`,
+      1,
+    ],
+    [
+      "dynamic computed key",
+      `React.createElement("button", { type: "invalid", [props.key]: "button" })`,
+      0,
+    ],
+    ["static computed type key", `<button type="invalid" {...{ ["type"]: "button" }} />`, 0],
+    ["known unrelated computed key", `<button type="invalid" {...{ ["disabled"]: true }} />`, 1],
+    ["null spread", `<button type="invalid" {...null} />`, 1],
+    ["string spread", `<button type="invalid" {..."button"} />`, 1],
+    ["negative number spread", `<button type="invalid" {...(-1)} />`, 1],
+    ["unary plus spread", `<button type="invalid" {...(+1)} />`, 1],
+    ["negative bigint spread", `<button type="invalid" {...(-1n)} />`, 1],
+    ["boolean negation spread", `<button type="invalid" {...(!false)} />`, 1],
+    ["typeof spread", `<button type="invalid" {...(typeof false)} />`, 1],
+    ["bitwise negation spread", `React.createElement("button", { type: "invalid", ...(~0) })`, 1],
+    ["regular expression spread", `<button type="invalid" {.../x/} />`, 1],
+    [
+      "regular expression computed key has unknown coercion",
+      `React.createElement("button", { type: "invalid", [/x/]: "button" })`,
+      0,
+    ],
+    ["boolean props spread", `React.createElement("button", { type: "invalid", ...false })`, 1],
+    ["setter-only type", `React.createElement("button", { set type(value) {} })`, 1],
+    ["setter-only type in JSX spread", `<button {...{ set type(value) {} }} />`, 1],
+    [
+      "paired getter and setter type stays unknown",
+      `React.createElement("button", { get type() { return "button"; }, set type(value) {} })`,
+      0,
+    ],
+    [
+      "setter replaces a spread data property",
+      `React.createElement("button", { ...{ get type() { return "button"; } }, set type(value) {} })`,
+      1,
+    ],
+    [
+      "later valid data property replaces a setter",
+      `React.createElement("button", { set type(value) {}, type: "button" })`,
+      0,
+    ],
+    [
+      "getter replacing an invalid type before it is copied",
+      `<button {...{ get disabled() { this.type = "button"; return false; }, type: "invalid" }} />`,
+      0,
+    ],
+    [
+      "getter replacing a valid type before it is copied",
+      `React.createElement("button", { get disabled() { this.type = "invalid"; return false; }, type: "button" })`,
+      0,
+    ],
+    [
+      "getter copied before the final JSX attribute",
+      `<button {...{ get disabled() { this.type = "button"; return false; }, type: "button" }} type="invalid" />`,
+      1,
+    ],
+    ["mixed direct JSX spellings", `<button type="invalid" TYPE="button" />`, 0],
+    ["mixed spread JSX spellings", `<button type="invalid" {...{ ...{ TYPE: "button" } }} />`, 0],
+    [
+      "same uppercase JSX spelling, final valid",
+      `<button TYPE="invalid" {...{ TYPE: "button" }} />`,
+      0,
+    ],
+    [
+      "same uppercase JSX spelling, final invalid",
+      `<button TYPE="button" {...{ ...{ TYPE: "invalid" } }} />`,
+      1,
+    ],
+    ["uppercase object type is present", `React.createElement("button", { TYPE: "button" })`, 0],
+    [
+      "same uppercase object spelling, final invalid",
+      `React.createElement("button", { TYPE: "button", ...{ TYPE: "invalid" } })`,
+      1,
+    ],
+    ["earlier opaque JSX spread can reserve key order", `<button {...props} type="invalid" />`, 0],
+    [
+      "earlier opaque object spread can reserve key order",
+      `React.createElement("button", { ...props, type: "invalid" })`,
+      0,
+    ],
+    [
+      "computed JSX key can collide with duplicate type",
+      `<button {...{ type: "submit", [props.key]: "button", type: "invalid" }} />`,
+      0,
+    ],
+    [
+      "computed object key can collide with duplicate type",
+      `React.createElement("button", { type: "submit", [props.key]: "button", type: "invalid" })`,
+      0,
+    ],
+    ["known numeric key", `<button type="invalid" {...{ 0: "unrelated" }} />`, 1],
+    ["known computed numeric key", `<button type="invalid" {...{ [0]: "unrelated" }} />`, 1],
+    ["known computed boolean key", `<button type="invalid" {...{ [false]: "unrelated" }} />`, 1],
+    [
+      "known computed numeric object key",
+      `React.createElement("button", { type: "invalid", [0]: "unrelated" })`,
+      1,
+    ],
+    [
+      "mixed object spellings",
+      `React.createElement("button", { type: "invalid", ["TYPE"]: "button" })`,
+      0,
+    ],
+    [
+      "own prototype setter",
+      `React.createElement("button", { ...{ ["__proto__"]: { set type(value) {} } }, type: "invalid" })`,
+      0,
+    ],
+    [
+      "object spread ignores inherited type",
+      `<button type="invalid" {...{ __proto__: { type: "button" } }} />`,
+      1,
+    ],
+    [
+      "exact createElement type key",
+      `React.createElement("button", { Type: "invalid", type: "button" })`,
+      0,
+    ],
+    ["case-insensitive JSX attribute", `<button Type="invalid" />`, 1],
+    [
+      "consumer-provided type in nested spread",
+      `<button type="invalid" {...{ ...{ type: props.type } }} />`,
+      0,
+    ],
+    [
+      "type-free nested props in form",
+      `React.createElement("button", { ...{ ...{ disabled: true } } })`,
+      1,
+    ],
+  ])("preserves the precedence boundary for %s", (_name, button, expectedCount) => {
+    const result = runRule(buttonHasType, `const Buttons = (props) => <form>{${button}}</form>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+
+  it.each(["curated", "strict"])(
+    "stays quiet for object rest that can still override an HTML type in %s mode",
+    (portedRuleMode) => {
+      const result = runRule(
+        buttonHasType,
+        `const Button = ({ type, ...rest }) => {
+          const alias = type;
+          return <button type={alias} {...rest} />;
+        };
+        <Button type="invalid" TYPE="button" />;
+        const EvalButton = ({ type, ...rest }) => {
+          eval('rest.type = "button"');
+          return <button type="invalid" {...rest} />;
+        };`,
+        { settings: { "react-doctor": { portedRuleMode } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
 
   // A local const that resolves to a provably valid literal type is
   // correct — resolve the identifier to its initializer before failing.
@@ -274,10 +478,10 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags createElement('button', { type: 'foo' }) with an invalid type", () => {
+  it("still flags createElement with an invalid type after a known unrelated spread", () => {
     const result = runRule(
       buttonHasType,
-      `React.createElement("button", { ...rest, type: "foo" });`,
+      `React.createElement("button", { ...{ disabled: true }, type: "foo" });`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

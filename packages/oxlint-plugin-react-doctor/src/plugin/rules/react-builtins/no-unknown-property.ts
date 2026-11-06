@@ -12,6 +12,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isStencilComponentJsx } from "../../utils/is-stencil-component-jsx.js";
+import { hasConfiguredClassicJsxFactory } from "../../utils/resolve-tsconfig-alias.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
@@ -95,6 +97,7 @@ export const noUnknownProperty = defineRule({
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreSet = new Set(ignore);
+    let hasStencilFactory: boolean | undefined;
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -130,6 +133,16 @@ export const noUnknownProperty = defineRule({
           const actualName = getJsxAttributeName(attribute.name);
           if (!actualName) continue;
           if (ignoreSet.has(actualName)) continue;
+          if (
+            shouldUseCuratedBehavior &&
+            actualName === "class" &&
+            isValidHtmlTag &&
+            context.filename &&
+            isStencilComponentJsx(node, context)
+          ) {
+            hasStencilFactory ??= hasConfiguredClassicJsxFactory(context.filename, "h");
+            if (hasStencilFactory) continue;
+          }
 
           if (isValidDataAttribute(actualName)) {
             if (requireDataLowercase && hasUppercaseChar(actualName)) {

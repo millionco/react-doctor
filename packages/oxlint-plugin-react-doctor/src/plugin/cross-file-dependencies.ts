@@ -14,10 +14,11 @@ import {
   DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
 } from "./constants/thresholds.js";
 import { INK_RULE_IDS } from "./constants/ink.js";
+import { STENCIL_CORE_PACKAGE } from "./constants/stencil.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
+import { captureCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
@@ -94,7 +95,7 @@ interface CrossFileDependencyCollectorInput {
   readonly getProgram: () => EsTreeNode;
 }
 
-type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void;
+type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void | false;
 
 interface ImportEntryName {
   readonly source: string;
@@ -573,6 +574,37 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectStencilJsxDependencies: CrossFileDependencyCollector = ({
+  staticImports,
+  getProgram,
+}) => {
+  let hasComponent = false;
+  let hasFactory = false;
+  for (const { moduleRequest, entries } of staticImports) {
+    if (moduleRequest.value !== STENCIL_CORE_PACKAGE) continue;
+    for (const { importName, localName, isType } of entries) {
+      if (isType || importName.name !== localName.value) continue;
+      hasComponent ||= localName.value === "Component";
+      hasFactory ||= localName.value === "h";
+    }
+  }
+  if (!hasComponent || !hasFactory) return;
+  let hasComponentDecorator = false;
+  walkAst(getProgram(), (node) => {
+    if (hasComponentDecorator) return false;
+    if (
+      isNodeOfType(node, "Decorator") &&
+      isNodeOfType(node.expression, "CallExpression") &&
+      isNodeOfType(node.expression.callee, "Identifier") &&
+      node.expression.callee.name === "Component"
+    ) {
+      hasComponentDecorator = true;
+    }
+  });
+  // A new named config can change ownership without touching any known config path.
+  if (hasComponentDecorator) return false;
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -593,6 +625,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
+    ["no-unknown-property", collectStencilJsxDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
@@ -653,7 +686,7 @@ export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
  *
  * Returns `null` (caller must treat the file as unfingerprintable and always
  * re-lint it) when the file has a fatal parse error — an execution the
- * collectors cannot mirror — or when a requested rule has no collector.
+ * collectors cannot mirror — or when a collector cannot fingerprint the current file.
  */
 export const collectCrossFileDependencyProbes = (input: {
   absoluteFilePath: string;
@@ -689,7 +722,11 @@ export const collectCrossFileDependencyProbes = (input: {
     staticImports,
     getProgram,
   };
-  return collectCrossFileProbes(() => {
-    for (const collector of collectors) collector(collectorInput);
+  const { value: isFingerprintable, trace } = captureCrossFileProbes(() => {
+    for (const collector of collectors) {
+      if (collector(collectorInput) === false) return false;
+    }
+    return true;
   });
+  return isFingerprintable ? trace : null;
 };

@@ -44,6 +44,7 @@ import {
   resolveStateWriteSite,
   type ResolvedStateWriteSite,
 } from "./utils/collect-effect-state-write-facts.js";
+import { isClosedInvariantBooleanReset } from "./utils/is-closed-invariant-boolean-reset.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
@@ -1345,6 +1346,18 @@ const findPropUsedToResetAllState = (
   if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
 
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
+  if (
+    componentFunctionNode &&
+    isClosedInvariantBooleanReset({
+      context,
+      owner: componentFunctionNode,
+      effectCall: useEffectNode,
+      effectFunction: effectFn,
+      setterCalls: stateSetterRefs.map((setterReference) => getCallExpr(setterReference)),
+    })
+  ) {
+    return null;
+  }
   if (
     componentFunctionNode &&
     areAllResetStateReadsHiddenUntilReset(

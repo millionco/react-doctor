@@ -30,6 +30,37 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags missing types for a form ID read through const aliases", () => {
+    const result = runRule(
+      buttonHasType,
+      `const formId = "settings";
+      const associatedForm = formId;
+      const Controls = () => <>
+        <form id={formId} />
+        <button form={associatedForm}>Save</button>
+        {React.createElement("button", { form: associatedForm }, "Save")}
+        <button form={associatedForm} type="button">Cancel</button>
+      </>;`,
+      { includeLocations: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([5, 6]);
+  });
+
+  it("does not infer an explicit form owner from an uncertain value", () => {
+    const result = runRule(
+      buttonHasType,
+      `const formId = "settings";
+      const Controls = ({ enabled, props }) => <>
+        <button form={enabled ? formId : ""}>No guaranteed association</button>
+        <button form={formId} {...props}>Unknown final association</button>
+        {React.createElement("button", { form: formId, ...props }, "Unknown final association")}
+      </>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not invent a form owner from a custom component", () => {
     const result = runRule(
       buttonHasType,

@@ -59,6 +59,9 @@ import {
 } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 import { isComparisonMemoizerHookName } from "./utils/is-comparison-memoizer-hook-name.js";
+import { createCancellationRegistrationProof } from "./utils/create-cancellation-registration-proof.js";
+import { getOwnedAbortSignalCommandProof } from "./utils/is-owned-abort-signal-command.js";
+import type { OwnedAbortSignalCommandProof } from "./utils/is-owned-abort-signal-command.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
@@ -1599,6 +1602,39 @@ export const noPassDataToParent = defineRule({
         if (!effectFnRefs) return;
         const effectFn = getEffectFn(analysis, node);
         if (!effectFn) return;
+        const signalProofByCall = new Map<EsTreeNode, OwnedAbortSignalCommandProof | null>();
+        const getSignalProof = (call: EsTreeNode): OwnedAbortSignalCommandProof | null => {
+          if (signalProofByCall.has(call)) return signalProofByCall.get(call) ?? null;
+          const proof = getOwnedAbortSignalCommandProof({
+            call,
+            context,
+            isParentCallbackExpression: (expression) =>
+              getParentCallbackPropNames({
+                analysis,
+                expression,
+                scopes: context.scopes,
+              }) !== null,
+          });
+          signalProofByCall.set(call, proof);
+          return proof;
+        };
+        const getCancellationRegistrationProof = createCancellationRegistrationProof(
+          analysis,
+          context.scopes,
+          getSignalProof,
+        );
+        const certifiedArgumentFunctionReferences = new Set<EsTreeNode>();
+        for (const effectReference of effectFnRefs) {
+          for (const upstreamReference of getUpstreamRefs(analysis, effectReference)) {
+            const candidate = getCallExpr(upstreamReference);
+            if (!candidate) continue;
+            const proof = getSignalProof(candidate);
+            if (!proof) continue;
+            for (const reference of proof.argumentFunctionReferences) {
+              certifiedArgumentFunctionReferences.add(reference);
+            }
+          }
+        }
 
         for (const ref of effectFnRefs) {
           const callExpr = getCallExpr(ref);
@@ -1741,6 +1777,7 @@ export const noPassDataToParent = defineRule({
           }
           const isLeafRef = (argRef: Reference): boolean =>
             getUpstreamRefs(analysis, argRef).length === 1;
+          if (getSignalProof(callExpr)) continue;
           const argsUpstreamRefs = (callExpr.arguments ?? [])
             .flatMap((argument) => {
               // A function-valued argument is a callback handed up for
@@ -1796,7 +1833,21 @@ export const noPassDataToParent = defineRule({
             calleeNode === identifier &&
             isWrapperHookCallbackRef(analysis, ref, context.scopes)
           ) {
-            const wrapperUpstreamRefs = getArgsUpstreamRefs(analysis, ref);
+            const isLocalCancellationParameter = getCancellationRegistrationProof(ref, callExpr);
+            const wrapperUpstreamRefs = getArgsUpstreamRefs(analysis, ref, {
+              shouldSkipCall: (candidate) => getSignalProof(candidate) !== null,
+              shouldSkipArgumentUpstreamReference: (argumentReference, argument) =>
+                isFunctionLike(stripParenExpression(argument)) &&
+                (certifiedArgumentFunctionReferences.has(
+                  argumentReference.identifier as unknown as EsTreeNode,
+                ) ||
+                  Boolean(
+                    isLocalCancellationParameter?.(
+                      argumentReference,
+                      stripParenExpression(argument),
+                    ),
+                  )),
+            });
             argsUpstreamRefs.push(
               ...wrapperUpstreamRefs.filter(
                 (upstreamRef) =>

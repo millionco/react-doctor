@@ -192,14 +192,26 @@ export const getCallExpr = (
   return null;
 };
 
-export const getArgsUpstreamRefs = (analysis: ProgramAnalysis, ref: Reference): Reference[] => {
+interface ArgsUpstreamRefsOptions {
+  shouldSkipCall?: (call: EsTreeNode) => boolean;
+  shouldSkipArgumentUpstreamReference?: (reference: Reference, argument: EsTreeNode) => boolean;
+}
+
+export const getArgsUpstreamRefs = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  options: ArgsUpstreamRefsOptions = {},
+): Reference[] => {
   const result: Reference[] = [];
   for (const upRef of getUpstreamRefs(analysis, ref)) {
     const callExpr = getCallExpr(upRef);
     if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+    if (options.shouldSkipCall?.(callExpr)) continue;
     for (const argument of callExpr.arguments ?? []) {
       for (const argRef of getDownstreamRefs(analysis, argument as EsTreeNode)) {
         for (const innerRef of getUpstreamRefs(analysis, argRef)) {
+          if (options.shouldSkipArgumentUpstreamReference?.(innerRef, argument as EsTreeNode))
+            continue;
           result.push(innerRef);
         }
       }

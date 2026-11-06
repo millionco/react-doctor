@@ -1,5 +1,6 @@
 ---
 "oxlint-plugin-react-doctor": patch
+"eslint-plugin-react-doctor": patch
 ---
 
-Report unguarded state writes from direct native fetch fulfillment callbacks when the URL is a string literal or template and effect dependencies can change.
+Report unguarded state writes in direct callbacks on native Fetch promises without an abort signal.

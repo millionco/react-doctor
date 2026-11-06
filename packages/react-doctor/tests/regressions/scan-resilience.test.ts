@@ -29,6 +29,7 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import {
   batchIncludePaths,
+  checkSecurityScan,
   createOxlintConfig,
   OXLINT_MAX_FILES_PER_BATCH,
   runOxlint,
@@ -913,6 +914,34 @@ describe("issue #921: non-string `projects` config entry crashes selectProjects"
     clearConfigCache();
     const loaded = await loadConfigWithSource(projectDir);
     expect(loaded?.config.projects).toBeUndefined();
+  });
+});
+
+describe("issue #1982: security scan reports findings from .open-next build output", () => {
+  it("skips build output while retaining findings in application source", () => {
+    const insecureSource = `import { createHash } from "node:crypto";
+export const hashPassword = (password) => createHash("md5").update(password).digest("hex");`;
+    const projectDirectory = setupReactProject(tempRoot, "issue-1982-opennext", {
+      files: {
+        "src/app/page.tsx": "export const Page = () => <div>Hello</div>;",
+        "src/server/auth.ts": insecureSource,
+        "src/open-next-handler.ts": insecureSource,
+        ".next/static/chunks/bundle.js": insecureSource,
+        ".open-next/assets/_next/static/chunks/bundle.js": insecureSource,
+        ".open-next/server-functions/default/handler.mjs": insecureSource,
+        ".vercel/output/bundle.js": insecureSource,
+      },
+    });
+
+    const diagnostics = checkSecurityScan(projectDirectory);
+
+    expect(diagnostics.map((diagnostic) => diagnostic.filePath).sort()).toEqual([
+      "src/open-next-handler.ts",
+      "src/server/auth.ts",
+    ]);
+    expect(diagnostics.every((diagnostic) => diagnostic.rule === "insecure-crypto-risk")).toBe(
+      true,
+    );
   });
 });
 

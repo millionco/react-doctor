@@ -24,9 +24,11 @@ import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { getCapabilities } from "../../project-info/capabilities.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { columnOfUtf8Offset } from "../../utils/column-of-utf8-offset.js";
+import { createDiagnosticContextReader } from "../../utils/create-diagnostic-context-reader.js";
 import { mapPreparedSourceLabels } from "../../utils/map-prepared-source-labels.js";
 import type { PreparedSourceMap } from "../../utils/prepare-lint-sources.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
+import { bridgeReactCompilerDiagnostic } from "./bridge-react-compiler-diagnostic.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
 import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
@@ -347,6 +349,7 @@ export const parseOxlintOutput = (
   rootDirectory: string,
   sourcePathByLintPath?: ReadonlyMap<string, string>,
   sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>,
+  diagnosticContextDirectory?: string,
 ): Diagnostic[] => {
   if (!stdout) return [];
 
@@ -444,10 +447,24 @@ export const parseOxlintOutput = (
     return minified;
   };
 
-  const sourceMappedDiagnostics = parsed.diagnostics.flatMap((diagnostic) => {
+  const readContextRanges = createDiagnosticContextReader(diagnosticContextDirectory);
+  const sourceMappedDiagnostics = parsed.diagnostics.flatMap((unbridgedDiagnostic) => {
+    if (!isMappableOxlintDiagnostic(unbridgedDiagnostic)) return [];
+    const rawDiagnostic = bridgeReactCompilerDiagnostic(unbridgedDiagnostic);
+    const { plugin, rule } = parseRuleCode(rawDiagnostic.code);
+    const primarySpan = rawDiagnostic.labels[0]?.span;
+    const contextRanges =
+      diagnosticContextDirectory && plugin === "react-doctor" && primarySpan
+        ? readContextRanges({
+            filename: resolveAbsolutePath(rawDiagnostic.filename),
+            rule,
+            offset: primarySpan.offset,
+            message: rawDiagnostic.message,
+          })
+        : [];
+    const diagnostic = { ...rawDiagnostic, contextRanges };
     const preparedSourceMap = resolvePreparedSourceMap(diagnostic.filename);
     if (preparedSourceMap === undefined) return [diagnostic];
-    const { plugin, rule } = parseRuleCode(diagnostic.code);
     // HACK: Astro's canonical TSX conversion adds wrapper fragments and keeps
     // HTML attribute names. Only design-tagged rules consume this shadow;
     // native Astro linting still handles scripts and every other rule.
@@ -458,13 +475,12 @@ export const parseOxlintOutput = (
     const sourceFilename = resolveMappedSourceFilename(diagnostic.filename);
     return labels === null || sourceFilename === undefined
       ? []
-      : [{ ...diagnostic, filename: sourceFilename, labels }];
+      : [{ ...diagnostic, filename: sourceFilename, labels, contextRanges: [] }];
   });
 
   const mappedDiagnostics = sourceMappedDiagnostics
     .filter(
       (diagnostic) =>
-        isMappableOxlintDiagnostic(diagnostic) &&
         isLintableSourceFile(resolveSourceFilename(diagnostic.filename)) &&
         !(
           TYPESCRIPT_DECLARATION_FILE_PATTERN.test(diagnostic.filename) &&
@@ -547,6 +563,7 @@ export const parseOxlintOutput = (
             }
           : {}),
         category,
+        ...(diagnostic.contextRanges.length > 0 ? { contextRanges: diagnostic.contextRanges } : {}),
         ...(matchByOccurrence ? { matchByOccurrence: true } : {}),
         ...(relatedLocations.length > 0 ? { relatedLocations } : {}),
       };

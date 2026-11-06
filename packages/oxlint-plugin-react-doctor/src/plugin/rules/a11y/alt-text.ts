@@ -208,6 +208,7 @@ const inputTypeImageRule = (
 // Port of `oxc_linter::rules::jsx_a11y::alt_text`.
 export const altText = defineRule({
   id: "alt-text",
+  diffScope: "jsx-element",
   title: "Image missing alt text",
   tags: ["react-jsx-only"],
   severity: "error",

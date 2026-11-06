@@ -5,6 +5,7 @@ export const SECURITY_SCAN_MAX_DIRECTORY_DEPTH = 8;
 
 export const SKIPPED_DIRECTORY_NAMES = new Set([
   ".git",
+  ".open-next",
   ".turbo",
   ".vercel",
   "coverage",

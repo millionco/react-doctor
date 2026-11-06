@@ -42,11 +42,19 @@ const parseScoreResult = (value: unknown): ScoreResult | null =>
 
 const sanitizeScoreDiagnostics = (
   diagnostics: ReadonlyArray<Diagnostic>,
-): ReadonlyArray<Omit<Diagnostic, "fileContext" | "fixGroupId">> =>
-  diagnostics.map(({ filePath, fileContext: _fileContext, fixGroupId: _fixGroupId, ...rest }) => ({
-    ...rest,
-    filePath: redactSensitiveText(scrubSensitivePaths(filePath)),
-  }));
+): ReadonlyArray<Omit<Diagnostic, "fileContext" | "fixGroupId" | "contextRanges">> =>
+  diagnostics.map(
+    ({
+      filePath,
+      fileContext: _fileContext,
+      fixGroupId: _fixGroupId,
+      contextRanges: _contextRanges,
+      ...rest
+    }) => ({
+      ...rest,
+      filePath: redactSensitiveText(scrubSensitivePaths(filePath)),
+    }),
+  );
 
 const isPresentMetadataValue = (value: unknown): boolean => {
   if (value === undefined || value === null) return false;

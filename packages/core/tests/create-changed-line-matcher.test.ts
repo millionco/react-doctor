@@ -24,6 +24,7 @@ interface MatchInput {
   deletionLines?: number[];
   contextual?: boolean;
   file?: string;
+  contextRanges?: Diagnostic["contextRanges"];
 }
 
 const match = ({
@@ -35,6 +36,7 @@ const match = ({
   deletionLines,
   contextual = true,
   file = "app.tsx",
+  contextRanges,
 }: MatchInput): boolean => {
   fs.writeFileSync(path.join(directory, file), source);
   const position = source.indexOf(anchor);
@@ -48,6 +50,7 @@ const match = ({
     message: "Finding",
     help: "",
     category: "Performance",
+    contextRanges,
     line: prefix.split("\n").length,
     column: prefix.length - prefix.lastIndexOf("\n"),
     offset: Buffer.byteLength(prefix),
@@ -263,5 +266,137 @@ describe("contextual diff scope", () => {
     expect(
       createChangedLineMatcher({ directory, contextual: true, changedLineRanges: [] })(diagnostic),
     ).toBe(false);
+  });
+});
+
+describe("explicit contextual ownership", () => {
+  const source = [
+    'const heading = "é😀";',
+    "export const App = ({ value }) => {",
+    "  const callback = () => {",
+    "    console.log(value);",
+    '    console.log("editing here");',
+    "  };",
+    "  useEffect(callback, []);",
+    "  useEffect(() => {",
+    '    console.log("unrelated effect");',
+    "  }, []);",
+    "  return <div />;",
+    "};",
+  ].join("\n");
+  const contextRanges = [
+    {
+      offset: Buffer.byteLength(
+        source.slice(0, source.indexOf("() => {", source.indexOf("callback"))),
+      ),
+      length: Buffer.byteLength(
+        source.slice(
+          source.indexOf("() => {", source.indexOf("callback")),
+          source.indexOf("  };", source.indexOf("callback")) + 3,
+        ),
+      ),
+    },
+    {
+      offset: Buffer.byteLength(source.slice(0, source.indexOf("useEffect(callback"))),
+      length: Buffer.byteLength("useEffect(callback, [])"),
+    },
+  ];
+
+  it.each<[number, boolean]>([
+    [4, true],
+    [5, true],
+    [9, false],
+    [11, false],
+    [1, false],
+  ])("matches only explicit owners for an edit on line %s", (changedLine, expected) => {
+    expect(
+      match({
+        source,
+        anchor: "[]",
+        rule: "exhaustive-deps",
+        contextRanges,
+        ranges: [[changedLine, changedLine]],
+      }),
+    ).toBe(expected);
+  });
+
+  it("includes a deletion within an explicit owner", () => {
+    expect(
+      match({ source, anchor: "[]", rule: "exhaustive-deps", contextRanges, deletionLines: [4] }),
+    ).toBe(true);
+  });
+
+  it("keeps line mode unchanged", () => {
+    expect(
+      match({
+        source,
+        anchor: "[]",
+        rule: "exhaustive-deps",
+        contextRanges,
+        ranges: [[5, 5]],
+        contextual: false,
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    [{ offset: -1, length: 10 }],
+    [{ offset: 0, length: source.length * 2 }],
+    [{ offset: 0, length: 0 }],
+  ])("rejects invalid ownership ranges: %j", (...ranges) => {
+    expect(
+      match({
+        source,
+        anchor: "[]",
+        rule: "exhaustive-deps",
+        contextRanges: ranges,
+        ranges: [[5, 5]],
+      }),
+    ).toBe(false);
+    expect(
+      match({
+        source,
+        anchor: "[]",
+        rule: "exhaustive-deps",
+        contextRanges: ranges,
+        ranges: [[7, 7]],
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps unknown rules on line scope even with ownership metadata", () => {
+    expect(
+      match({ source, anchor: "[]", rule: "unknown-rule", contextRanges, ranges: [[5, 5]] }),
+    ).toBe(false);
+  });
+});
+
+describe("expanded shorthand coverage", () => {
+  it("uses function ownership for hook ordering", () => {
+    expect(
+      match({
+        source: FUNCTION_SOURCE,
+        anchor: "expensive()",
+        rule: "rules-of-hooks",
+        ranges: [[7, 7]],
+      }),
+    ).toBe(true);
+    expect(
+      match({
+        source: FUNCTION_SOURCE,
+        anchor: "expensive()",
+        rule: "rules-of-hooks",
+        ranges: [[10, 10]],
+      }),
+    ).toBe(false);
+  });
+
+  it.each(["alt-text", "click-events-have-key-events"])("uses element ownership for %s", (rule) => {
+    expect(match({ source: JSX_SOURCE, anchor: "button className", rule, ranges: [[4, 4]] })).toBe(
+      true,
+    );
+    expect(match({ source: JSX_SOURCE, anchor: "button className", rule, ranges: [[9, 9]] })).toBe(
+      false,
+    );
   });
 });

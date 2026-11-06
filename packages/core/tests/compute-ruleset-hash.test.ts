@@ -61,6 +61,20 @@ const hash = (
   });
 
 describe("computeRulesetHash", () => {
+  it("ignores the temporary ownership transport directory", () => {
+    const project = makeProject("/repo");
+    const first = createOxlintConfig({
+      pluginPath: PLUGIN_PATH,
+      project,
+      diagnosticContextDirectory: "/tmp/first",
+    });
+    const second = createOxlintConfig({
+      pluginPath: PLUGIN_PATH,
+      project,
+      diagnosticContextDirectory: "/tmp/second",
+    });
+    expect(hash({ config: first })).toBe(hash({ config: second }));
+  });
   it("is deterministic for identical inputs", () => {
     const project = makeProject("/repo/a");
     const first = hash({ config: cacheableConfig(project), ignorePatterns: ["dist/"] });

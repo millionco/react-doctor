@@ -458,6 +458,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const configPath = path.join(configDirectory, "oxlintrc.json");
 
   try {
+    const diagnosticContextDirectory = path.join(configDirectory, "contexts");
+    fs.mkdirSync(diagnosticContextDirectory);
     const oxlintBinary = resolveOxlintBinary();
     // Args shared by every batch regardless of which oxlintrc is active, so
     // the cache path can point separate `-c` configs at the same tsconfig +
@@ -557,6 +559,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     }) =>
       createOxlintConfig({
         pluginPath,
+        diagnosticContextDirectory,
         project: lintProject,
         customRulesOnly,
         extendsPaths: overrides.extendsPaths,
@@ -646,6 +649,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           project: lintProject,
           sourcePathByLintPath: preparedLintSources.sourcePathByLintPath,
           sourceMapByLintPath: preparedLintSources.sourceMapByLintPath,
+          diagnosticContextDirectory,
           onPartialFailure: reportPartialFailure,
           onAnalyzedFiles: (filePaths) => {
             analyzedFiles = filePaths;
@@ -1059,6 +1063,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         project: lintProject,
         sourcePathByLintPath: preparedLintSources.sourcePathByLintPath,
         sourceMapByLintPath: preparedLintSources.sourceMapByLintPath,
+        diagnosticContextDirectory,
         onPartialFailure,
         onAnalyzedFiles: (filePaths) => {
           analyzedFiles = filePaths;

@@ -42,6 +42,12 @@ The playbook is the single source of truth — a scan → filter → triage → 
 
 Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md` (fetched on demand inside the playbook) so each fix uses the canonical, reviewer-tested recipe.
 
+Use `--scope contextual --base origin/main` when a team wants existing findings
+in the code it is editing. Rules can select an element, function, file, or an
+explicit set of related nodes. For `exhaustive-deps`, edits in the hook call or a
+resolved local callback can surface a finding on an unchanged dependency array.
+Rules without wider ownership keep changed-line filtering.
+
 ## Configuring or explaining rules
 
 When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), read [references/explain.md](references/explain.md) and follow it. Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).

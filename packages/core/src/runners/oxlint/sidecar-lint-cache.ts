@@ -7,7 +7,7 @@ import {
   SIDECAR_LINT_CACHE_FILENAME,
   SIDECAR_LINT_CACHE_SCHEMA_VERSION,
 } from "../../constants.js";
-import { Diagnostic as DiagnosticSchema } from "../../schemas.js";
+import { CachedDiagnostic } from "./cached-diagnostic.js";
 import { atomicWriteJson } from "../../utils/atomic-write-json.js";
 import { failOpenReadJson } from "../../utils/fail-open-read-json.js";
 import { isRecord } from "../../utils/is-record.js";
@@ -120,7 +120,7 @@ interface ProbeTable {
   ) => number;
 }
 
-const validateDiagnostic = Schema.decodeUnknownSync(DiagnosticSchema);
+const validateDiagnostic = Schema.decodeUnknownSync(CachedDiagnostic);
 
 const isProbeKind = (value: unknown): value is SidecarDependencyProbe["kind"] =>
   value === "content" || value === "exists";

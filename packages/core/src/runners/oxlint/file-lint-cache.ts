@@ -7,7 +7,7 @@ import {
   FILE_LINT_CACHE_MAX_RULESET_COUNT,
   FILE_LINT_CACHE_SCHEMA_VERSION,
 } from "../../constants.js";
-import { Diagnostic as DiagnosticSchema } from "../../schemas.js";
+import { CachedDiagnostic } from "./cached-diagnostic.js";
 import { atomicWriteJson } from "../../utils/atomic-write-json.js";
 import { failOpenReadJson } from "../../utils/fail-open-read-json.js";
 import { isRecord } from "../../utils/is-record.js";
@@ -44,7 +44,7 @@ interface PersistedFileLintCache {
   readonly rulesets: Record<string, PersistedRuleset>;
 }
 
-const validateDiagnostic = Schema.decodeUnknownSync(DiagnosticSchema);
+const validateDiagnostic = Schema.decodeUnknownSync(CachedDiagnostic);
 
 const decodeDiagnostic = (raw: unknown): Diagnostic => {
   const diagnostic = validateDiagnostic(raw);

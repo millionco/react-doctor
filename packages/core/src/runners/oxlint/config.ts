@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import {
   CROSS_FILE_RULE_IDS,
+  REACT_COMPILER_BRIDGE_RULES,
   REACT_COMPILER_RULES,
   REACT_DOCTOR_RULES,
   REACT_DOCTOR_RULE_REGISTRY,
@@ -18,6 +19,7 @@ import type { UnpluginAutoImportGlobalScope } from "./collect-unplugin-auto-impo
 
 export interface OxlintConfigOptions {
   pluginPath: string;
+  diagnosticContextDirectory?: string;
   project: ProjectInfo;
   customRulesOnly?: boolean;
   extendsPaths?: string[];
@@ -67,6 +69,11 @@ export interface OxlintConfigOptions {
    */
   sidecarRuleIdFilter?: ReadonlySet<string>;
 }
+
+const REACT_COMPILER_BRIDGE_RULE_BY_KEY: ReadonlyMap<
+  string,
+  (typeof REACT_COMPILER_BRIDGE_RULES)[number]
+> = new Map(REACT_COMPILER_BRIDGE_RULES.map((bridgeRule) => [bridgeRule.key, bridgeRule]));
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
   if (!fs.existsSync(rootDirectory)) return rootDirectory;
@@ -125,6 +132,7 @@ const buildUserPluginRules = (
 
 export const createOxlintConfig = ({
   pluginPath,
+  diagnosticContextDirectory,
   project,
   customRulesOnly = false,
   extendsPaths = [],
@@ -143,25 +151,27 @@ export const createOxlintConfig = ({
   sidecarRuleIdFilter,
 }: OxlintConfigOptions) => {
   const hasIncludedTags = includedTags.size > 0;
-  // The sidecar carries only cross-file react-doctor rules — the React
-  // Compiler frontend isn't cross-file, so it never belongs there.
-  const reactHooksJsPlugin =
-    disableReactHooksJsPlugin || ruleSelection === "sidecar" || hasIncludedTags
+  const resolvedReactHooksJsPlugin =
+    disableReactHooksJsPlugin || hasIncludedTags
       ? null
       : resolveReactHooksJsPlugin(
           project.hasReactCompiler || project.hasReactCompilerLintPlugin === true,
           customRulesOnly,
         );
-  const reactCompilerRules = reactHooksJsPlugin
+  // The sidecar carries only cross-file react-doctor rules — the React
+  // Compiler frontend isn't cross-file, so it never belongs there.
+  const reactHooksJsPlugin = ruleSelection === "sidecar" ? null : resolvedReactHooksJsPlugin;
+  const reactCompilerRuleSeverities = resolvedReactHooksJsPlugin
     ? applyRuleSeverityControls(
         filterRulesToAvailable(
           REACT_COMPILER_RULES,
           "react-hooks-js",
-          reactHooksJsPlugin.availableRuleNames,
+          resolvedReactHooksJsPlugin.availableRuleNames,
         ),
         severityControls,
       )
     : {};
+  const reactCompilerRules = reactHooksJsPlugin ? reactCompilerRuleSeverities : {};
 
   const jsPlugins: JsPluginEntry[] = [];
   if (reactHooksJsPlugin) jsPlugins.push(reactHooksJsPlugin.entry);
@@ -198,6 +208,18 @@ export const createOxlintConfig = ({
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
     if (rule.isScanRule || rule.isProjectRule === true) continue;
+    const bridgeRule = REACT_COMPILER_BRIDGE_RULE_BY_KEY.get(registryEntry.key);
+    if (bridgeRule) {
+      const compilerSeverity = reactCompilerRuleSeverities[bridgeRule.compilerKey];
+      const bridgeOverride = resolveRuleSeverityOverride(
+        { ruleKey: registryEntry.key },
+        severityControls,
+      );
+      if (compilerSeverity !== undefined && bridgeOverride !== "off") {
+        enabledReactDoctorRules[registryEntry.key] = compilerSeverity;
+      }
+      continue;
+    }
     if (registryEntry.id === "no-multi-component-file" && shouldUseExplicitNoMultiCompPolicy)
       continue;
     if (rule.framework !== "global" && !rule.requires) continue;
@@ -290,6 +312,7 @@ export const createOxlintConfig = ({
       ...adoptedSettings,
       "react-doctor": {
         portedRuleMode: "curated",
+        ...(diagnosticContextDirectory ? { diagnosticContextDirectory } : {}),
         framework: project.framework,
         rootDirectory: settingsRootDirectory,
         // The framework-capability vocabulary, available to any rule via

@@ -54,6 +54,25 @@ const result = (overrides: Partial<InspectResult> = {}): InspectResult => ({
 });
 
 describe("buildJsonReport", () => {
+  it("keeps contextual ownership out of the public JSON report", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        {
+          directory: "/repo",
+          result: result({
+            diagnostics: [{ ...errorDiagnostic, contextRanges: [{ offset: 12, length: 34 }] }],
+          }),
+        },
+      ],
+      totalElapsedMilliseconds: 1000,
+    });
+    expect(report.diagnostics[0]).not.toHaveProperty("contextRanges");
+    expect(report.projects[0].diagnostics[0]).not.toHaveProperty("contextRanges");
+  });
   it("preserves each project's source-filter metadata without requiring it for older producers", () => {
     const report = buildJsonReport({
       version: "1.2.3",

@@ -3,7 +3,10 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
-import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
+import {
+  __clearParseSourceFileCacheForTests,
+  parseSourceFile,
+} from "../../utils/parse-source-file.js";
 import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noHydrationBranchOnBrowserGlobal } from "./no-hydration-branch-on-browser-global.js";
 
@@ -284,6 +287,125 @@ describe("proven server snapshot gates", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+});
+
+describe("direct eval in a server snapshot supplier", () => {
+  const hookSource = `
+    import { useSyncExternalStore } from 'react';
+    export function useReady() {
+      return useSyncExternalStore(() => () => {}, () => true, () => false);
+    }
+  `;
+
+  const writeSnapshotSupplier = (relativePath: string, source: string): void => {
+    expect(parseSourceFile(writeFile(relativePath, source))).not.toBeNull();
+  };
+
+  const runSnapshotConsumer = (supplierPath = "./ready"): ReturnType<typeof runRule> => {
+    writeFile("src/available.ts", `export const available = () => typeof window !== 'undefined';`);
+    return runConsumer(`
+      import { useReady } from '${supplierPath}';
+      import { available } from './available';
+      const Panel = () => {
+        const ready = useReady();
+        return ready && available() ? <main /> : <aside />;
+      };
+    `);
+  };
+
+  it.each([
+    `eval('useReady = () => true');`,
+    `(eval)('useReady = () => true');`,
+    String.raw`\u0065val('useReady = () => true');`,
+    `(eval as (source: string) => unknown)('useReady = () => true');`,
+    `(() => eval('useReady = () => true'))();`,
+    `eval?.('useReady = () => true');`,
+    `(eval as (source: string) => unknown)?.('useReady = () => true');`,
+    `eval === null || eval === void 0 ? void 0 : eval('useReady = () => true');`,
+  ])("keeps the warning when eval can reach the export: %s", (evaluation) => {
+    writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${evaluation}`);
+
+    const result = runSnapshotConsumer();
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `(0, eval)('void 0');`,
+    `const evaluate = eval; evaluate('void 0');`,
+    `globalThis['eval']('void 0');`,
+    `eval.call(undefined, 'void 0');`,
+    `(0, eval)?.('void 0');`,
+    `globalThis.eval?.('void 0');`,
+    `eval();`,
+    `const local = { eval: (value: string) => value }; local.eval('void 0');`,
+  ])("preserves the snapshot proof without direct lexical evaluation: %s", (evaluation) => {
+    writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${evaluation}`);
+
+    const result = runSnapshotConsumer();
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      location: "the hook supplier",
+      supplierEval: `eval('useReady = () => true');`,
+      barrelEval: "",
+      count: 1,
+    },
+    { location: "only the barrel", supplierEval: "", barrelEval: `eval('void 0');`, count: 0 },
+  ])(
+    "uses the defining module when direct eval is in $location",
+    ({ supplierEval, barrelEval, count }) => {
+      writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${supplierEval}`);
+      writeSnapshotSupplier("src/barrel.ts", `export { useReady } from './ready';\n${barrelEval}`);
+
+      const result = runSnapshotConsumer("./barrel");
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(count);
+    },
+  );
+
+  it.each([
+    { location: "outer", innerEval: "", outerEval: `eval('useReady = () => true');`, count: 1 },
+    { location: "inner", innerEval: `eval('useReady = () => true');`, outerEval: "", count: 1 },
+    { location: "neither", innerEval: "", outerEval: "", count: 0 },
+  ])(
+    "checks each supplying module in a hook chain: $location",
+    ({ innerEval, outerEval, count }) => {
+      writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${innerEval}`);
+      writeSnapshotSupplier(
+        "src/wrapper.ts",
+        `import { useReady as useInnerReady } from './ready';
+      export function useReady() { return useInnerReady(); }
+      ${outerEval}`,
+      );
+
+      const result = runSnapshotConsumer("./wrapper");
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(count);
+    },
+  );
+
+  it.each(["available()", "available() === true", "true && available()"])(
+    "still follows a browser predicate from a module containing eval: %s",
+    (condition) => {
+      writeSnapshotSupplier(
+        "src/available.ts",
+        `export function available() { return typeof window !== 'undefined'; }
+        eval('void 0');`,
+      );
+      const result = runConsumer(`
+        import React from 'react';
+        import { available } from './available';
+        const Panel = () => ${condition} ? <main /> : <aside />;
+      `);
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
 });
 
 describe("native server snapshot return completion", () => {

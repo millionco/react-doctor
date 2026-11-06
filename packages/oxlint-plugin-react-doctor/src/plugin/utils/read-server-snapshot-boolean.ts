@@ -6,6 +6,7 @@ import {
 } from "../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "./component-or-hook-display-name.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
+import { containsPotentialDirectEval } from "./contains-potential-direct-eval.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { resolveImportedExportName } from "./find-exported-function-body.js";
@@ -287,7 +288,11 @@ const readServerSnapshotBooleanInternal = (
       importedHookBinding.source,
       importedHookBinding.exportedName,
     );
-    if (resolvedHook && !resolvedHook.filePath.split(path.sep).includes("node_modules")) {
+    if (
+      resolvedHook &&
+      !resolvedHook.filePath.split(path.sep).includes("node_modules") &&
+      !containsPotentialDirectEval(resolvedHook.programNode)
+    ) {
       const resolvedScopes = getCrossFileScopes(resolvedHook.programNode);
       const displayName =
         componentOrHookDisplayNameForFunction(resolvedHook.functionNode) ??

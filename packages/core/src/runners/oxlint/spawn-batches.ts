@@ -47,6 +47,7 @@ const isParallelismRelatedSpawnError = (error: unknown): boolean => {
 export interface SpawnLintBatchesInput {
   readonly baseArgs: ReadonlyArray<string>;
   readonly fileBatches: ReadonlyArray<string[]>;
+  readonly diagnosticContextDirectory?: string;
   readonly rootDirectory: string;
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
@@ -301,6 +302,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           rootDirectory,
           sourcePathByLintPath,
           sourceMapByLintPath,
+          input.diagnosticContextDirectory,
         );
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;

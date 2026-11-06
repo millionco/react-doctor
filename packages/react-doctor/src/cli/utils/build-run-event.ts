@@ -363,6 +363,9 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     }),
     ...withNamespace("diag", {
       total: summary.totalDiagnosticCount,
+      withExplicitContext: result.diagnostics.filter((diagnostic) =>
+        Boolean(diagnostic.contextRanges?.length),
+      ).length,
       errors: summary.errorCount,
       warnings: summary.warningCount,
       affectedFiles: summary.affectedFileCount,

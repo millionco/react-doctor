@@ -66,6 +66,16 @@ const answerFromProbes =
     probes.find((probe) => probe.kind === kind && probe.path === probePath)?.answer ?? "absent";
 
 describe("createSidecarLintCache", () => {
+  it("preserves explicit ownership through disk replay", () => {
+    const cacheDirectory = makeCacheDir();
+    const expected = diagnostic({ contextRanges: [{ offset: 12, length: 34 }] });
+    const writer = createSidecarLintCache(cacheDirectory, "ownership");
+    writer.store("app hash", { probeIds: [], diagnostics: [expected] });
+    writer.persist();
+    expect(
+      createSidecarLintCache(cacheDirectory, "ownership").lookup("app hash")?.diagnostics[0],
+    ).toMatchObject(expected);
+  });
   it("round-trips probes + diagnostics across a persist + reload", () => {
     const cacheDir = makeCacheDir();
     const writer = createSidecarLintCache(cacheDir, "ruleset-1");

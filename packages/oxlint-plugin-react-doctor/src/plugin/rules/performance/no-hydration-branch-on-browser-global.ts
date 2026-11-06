@@ -3,6 +3,7 @@ import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-str
 import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 import { analyzeControlFlow, type ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
+import { containsPotentialDirectEval } from "../../utils/contains-potential-direct-eval.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -666,6 +667,7 @@ const readHydrationConditionResult = (
       ? null
       : resolveImportedHydrationFunction(callee, context);
     if (importedHelper) {
+      if (containsPotentialDirectEval(importedHelper.context.scopes.rootScope.node)) return null;
       helperContext = importedHelper.context;
       helperFunction = importedHelper.functionNode;
     }

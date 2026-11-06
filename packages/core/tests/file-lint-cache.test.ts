@@ -35,6 +35,16 @@ const diagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
 });
 
 describe("createFileLintCache", () => {
+  it("preserves explicit ownership through disk replay", () => {
+    const cacheDirectory = makeCacheDir();
+    const expected = diagnostic({ contextRanges: [{ offset: 12, length: 34 }] });
+    const writer = createFileLintCache(cacheDirectory, "ownership");
+    writer.store("app hash", [expected]);
+    writer.persist();
+    expect(createFileLintCache(cacheDirectory, "ownership").lookup("app hash")?.[0]).toMatchObject(
+      expected,
+    );
+  });
   it("round-trips stored diagnostics across a persist + reload", () => {
     const cacheDir = makeCacheDir();
     const writer = createFileLintCache(cacheDir, "ruleset-1");

@@ -40,7 +40,7 @@ export const DOCUMENTATION_CONTEXT_PATTERN =
 // are third-party code the project does not own; their internals (cipher
 // tables, exec helpers) are not this repository's security posture.
 export const GENERATED_SOURCE_CONTEXT_PATTERN =
-  /(?:^|\/)(?:generated|__generated__|dist|build|coverage|out|storybook-static|vendor|vendors|third[-_]?party|libraries)(?:\/|$)|(?:^|\/)\.next\/|(?:^|\/)\.yarn\/|(?:^|\/)public\/(?:chunks?|assets?|build|dist|static)\/|(?:generated|\.gen)\.[cm]?[jt]sx?$|@\d+\.\d+\.\d+(?:[-.][\w.]+)?\.[cm]?js$|[.-]min\.[cm]?js$|\.asm\.js$|(?:^|\/)[\w-]+[.@-]\d+\.\d+\.\d+(?:[-.][\w.]+)?\//i;
+  /(?:^|\/)(?:generated|__generated__|dist|build|coverage|out|storybook-static|vendor|vendors|third[-_]?party|libraries)(?:\/|$)|(?:^|\/)\.next\/|(?:^|\/)\.open-next\/|(?:^|\/)\.yarn\/|(?:^|\/)public\/(?:chunks?|assets?|build|dist|static)\/|(?:generated|\.gen)\.[cm]?[jt]sx?$|@\d+\.\d+\.\d+(?:[-.][\w.]+)?\.[cm]?js$|[.-]min\.[cm]?js$|\.asm\.js$|(?:^|\/)[\w-]+[.@-]\d+\.\d+\.\d+(?:[-.][\w.]+)?\//i;
 
 // Filename-only bundle test (the walker content-sniffs minified files
 // separately). Distinct from @react-doctor/core's same-named pattern,

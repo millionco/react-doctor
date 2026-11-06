@@ -274,6 +274,7 @@ const isHoverSelectionListItem = (
 // handled by the `react-jsx-only` tag via `defineRule`.
 export const clickEventsHaveKeyEvents = defineRule({
   id: "click-events-have-key-events",
+  diffScope: "jsx-element",
   title: "Click handler missing keyboard handler",
   tags: ["react-jsx-only"],
   severity: "warn",

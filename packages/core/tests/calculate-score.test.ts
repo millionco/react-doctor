@@ -127,6 +127,7 @@ describe("calculateScore", () => {
       filePath: `/Users/jane/projects/ghp_${"a".repeat(36)}/src/App.tsx`,
       fileContext: "test",
       fixGroupId: "abcdef1234",
+      contextRanges: [{ offset: 12, length: 34 }],
     };
     await calculateScore([localFieldsDiagnostic]);
 
@@ -136,6 +137,7 @@ describe("calculateScore", () => {
     expect(parsedBody.diagnostics[0]?.filePath).toBe("~/projects/ghp_<redacted>/src/App.tsx");
     expect(parsedBody.diagnostics[0]).not.toHaveProperty("fileContext");
     expect(parsedBody.diagnostics[0]).not.toHaveProperty("fixGroupId");
+    expect(parsedBody.diagnostics[0]).not.toHaveProperty("contextRanges");
   });
 
   it("issue #302: tags the score request with ?ci=1 when isCi is true", async () => {

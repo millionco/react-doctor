@@ -5,6 +5,8 @@ import { getRuleMetadata } from "../rule-metadata.js";
 import type { ChangedFileLineRanges, Diagnostic } from "../types/index.js";
 import { doesContextIntersectChanges } from "./does-context-intersect-changes.js";
 import { diagnosticIntersectsLineRanges } from "./diagnostic-intersects-line-ranges.js";
+import { getOwnedContext } from "./get-owned-context.js";
+import { lineOfUtf8Offset } from "./line-of-utf8-offset.js";
 import { getTypescriptScriptKind } from "./get-typescript-script-kind.js";
 import { utf8OffsetFromSourcePosition } from "./utf8-offset-from-source-position.js";
 
@@ -33,9 +35,12 @@ export const createChangedLineMatcher = ({
     if (!changes) return false;
     if (diagnosticIntersectsLineRanges(diagnostic, changes.ranges)) return true;
     if (!contextual) return false;
-    const scope = getRuleMetadata(diagnostic.plugin, diagnostic.rule)?.diffScope ?? "line";
-    if (scope === "file") return true;
-    if (scope === "line" || !/\.[cm]?[jt]sx?$/i.test(filePath)) return false;
+    const ruleMetadata = getRuleMetadata(diagnostic.plugin, diagnostic.rule);
+    const scope = ruleMetadata?.diffScope ?? "line";
+    const explicitContextRanges = ruleMetadata ? diagnostic.contextRanges : undefined;
+    if (!explicitContextRanges && scope === "file") return true;
+    if ((!explicitContextRanges && scope === "line") || !/\.[cm]?[jt]sx?$/i.test(filePath))
+      return false;
 
     if (!sourceFiles.has(filePath)) {
       try {
@@ -58,6 +63,24 @@ export const createChangedLineMatcher = ({
     const sourceFile = sourceFiles.get(filePath);
     if (!sourceFile) return false;
     const sourceBuffer = Buffer.from(sourceFile.text);
+    if (explicitContextRanges) {
+      const contexts = explicitContextRanges
+        .filter(
+          ({ offset, length }) =>
+            Number.isSafeInteger(offset) &&
+            Number.isSafeInteger(length) &&
+            offset >= 0 &&
+            length > 0 &&
+            offset + length <= sourceBuffer.length,
+        )
+        .map(({ offset, length }) => ({
+          range: [
+            lineOfUtf8Offset(sourceBuffer, offset),
+            lineOfUtf8Offset(sourceBuffer, offset + length - 1),
+          ] satisfies readonly [number, number],
+        }));
+      return doesContextIntersectChanges({ contexts, changes });
+    }
     const byteOffset =
       diagnostic.offset ??
       utf8OffsetFromSourcePosition(sourceBuffer, diagnostic.line, diagnostic.column - 1);
@@ -75,6 +98,9 @@ export const createChangedLineMatcher = ({
     };
     findOwner(sourceFile);
     if (!owner) return false;
-    return doesContextIntersectChanges({ sourceFile, owner, changes, isBoundary });
+    return doesContextIntersectChanges({
+      contexts: [getOwnedContext({ sourceFile, owner, isBoundary })],
+      changes,
+    });
   };
 };

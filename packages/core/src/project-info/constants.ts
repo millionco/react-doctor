@@ -77,6 +77,7 @@ export const IGNORED_DIRECTORIES = new Set([
   ".next",
   ".nuxt",
   ".nx",
+  ".open-next",
   ".output",
   ".parcel-cache",
   ".serverless",

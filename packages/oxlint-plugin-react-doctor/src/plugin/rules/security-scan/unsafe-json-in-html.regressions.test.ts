@@ -89,4 +89,69 @@ describe("security-scan/unsafe-json-in-html — regressions", () => {
 `;
     expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
   });
+
+  it("stays silent when replaceAll escapes < with \\u003c", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll("<", "\\u003c")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx")).toHaveLength(0);
+  });
+
+  it("stays silent when replaceAll escapes < with \\u003C (uppercase)", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll("<", "\\u003C")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx")).toHaveLength(0);
+  });
+
+  it("stays silent when replaceAll escapes < with &lt;", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll("<", "&lt;")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx")).toHaveLength(0);
+  });
+
+  it("still flags replaceAll with wrong search character", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll(">", "\\u003c")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
+
+  it("still flags replaceAll with non-escaping replacement", () => {
+    const content = `export const Seo = ({ jsonLd }: { jsonLd: object }) => (
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(jsonLd).replaceAll("<", "<")
+    }}
+  />
+);
+`;
+    expect(scan(content, "src/seo.tsx").length).toBeGreaterThan(0);
+  });
 });

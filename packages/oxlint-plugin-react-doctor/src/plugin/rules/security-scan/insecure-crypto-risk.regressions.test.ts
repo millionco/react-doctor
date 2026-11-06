@@ -52,6 +52,32 @@ describe("security-scan/insecure-crypto-risk — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it.each([
+    ".open-next/assets/_next/static/chunks/bundle.js",
+    ".open-next/server-functions/default/handler.mjs",
+    "apps/web/.open-next/server-functions/default/handler.mjs",
+  ])("skips weak cryptography in OpenNext output: %s", (relativePath) => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath,
+      content: `import { createHash } from "node:crypto";
+export const hashPassword = (password) => createHash("md5").update(password).digest("hex");`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "src/open-next-handler.ts",
+    "src/.open-next-source/auth.ts",
+    "src/prefix.open-next/auth.ts",
+  ])("retains weak-crypto findings outside the OpenNext directory: %s", (relativePath) => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath,
+      content: `import { createHash } from "node:crypto";
+export const hashPassword = (password) => createHash("md5").update(password).digest("hex");`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("flags a weak cipher algorithm passed to createCipheriv", () => {
     const findings = runScanRule(insecureCryptoRisk, {
       relativePath: "src/server/encrypt.ts",

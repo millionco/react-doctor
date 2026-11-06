@@ -1,6 +1,10 @@
 import { CORE_REACT_DOCTOR_RULES, CORE_RULE_REGISTRY } from "./plugin/core-rule-registry.js";
 
-export { EXTERNAL_RULES, REACT_COMPILER_RULES } from "./external-rules.js";
+export {
+  EXTERNAL_RULES,
+  REACT_COMPILER_BRIDGE_RULES,
+  REACT_COMPILER_RULES,
+} from "./external-rules.js";
 
 export const REACT_DOCTOR_RULES = CORE_REACT_DOCTOR_RULES;
 export const REACT_DOCTOR_PROJECT_RULES = CORE_REACT_DOCTOR_RULES.filter(
@@ -42,6 +46,11 @@ export {
   REACT_NATIVE_DEPENDENCY_PREFIXES,
   isReactNativeDependencyName,
 } from "./react-native-dependency-names.js";
+
+export { atomicWriteFile } from "./plugin/utils/atomic-write-file.js";
+export type { DiagnosticContextIdentity } from "./plugin/utils/get-diagnostic-context-path.js";
+export { getDiagnosticContextPath } from "./plugin/utils/get-diagnostic-context-path.js";
+export type { DiagnosticContextRange } from "./plugin/utils/diagnostic-context-range.js";
 
 export { FRAMEWORK_TOKENS } from "./plugin/utils/capability.js";
 export type { Capability, CapabilityQuery, FrameworkToken } from "./plugin/utils/capability.js";

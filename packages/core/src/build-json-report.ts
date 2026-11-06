@@ -73,12 +73,13 @@ const toJsonReportDiagnostic = (
   projectRoot: string,
   reportRoot: string,
 ): JsonReportDiagnosticV3 => {
+  const { contextRanges: _contextRanges, ...publicDiagnostic } = diagnostic;
   const resolvedFilePath = resolveCandidateReadPath(projectRoot, diagnostic.filePath);
   const normalizedFilePath = toNormalizedRelativePath(resolvedFilePath, projectRoot);
   const reportRelativeFilePath = toNormalizedRelativePath(resolvedFilePath, reportRoot);
   const ruleIdentity = getDiagnosticRuleIdentity(diagnostic);
   return {
-    ...diagnostic,
+    ...publicDiagnostic,
     id: buildDiagnosticIdentity({
       filePath: reportRelativeFilePath,
       line: diagnostic.line,

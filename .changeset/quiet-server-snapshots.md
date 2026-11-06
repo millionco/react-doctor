@@ -4,4 +4,4 @@
 "react-doctor": patch
 ---
 
-Avoid hydration branch warnings when a proven server snapshot keeps the initial server and client output the same. Keep warnings when the hook binding is reassigned.
+Avoid hydration branch warnings when a proven server snapshot keeps the initial server and client output the same. Keep warnings when the hook binding is reassigned or its defining module may use direct `eval` to change it.

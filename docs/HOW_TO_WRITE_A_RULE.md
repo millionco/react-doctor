@@ -88,6 +88,47 @@ Required questions:
 - What similar-looking code is valid?
 - What should v1 intentionally skip?
 
+## Choose contextual ownership
+
+Choose a `diffScope` for each new AST rule: `line`, `jsx-element`, `function`, or `file`.
+Use the smallest scope that lets someone fix the finding while editing its owner.
+Rules without a wider policy keep line matching.
+
+For an element attribute rule, set `diffScope: "jsx-element"`.
+
+When the diagnostic location does not identify its owner, pass `contextNodes` to
+`context.report`. A dependency finding can point at the array while belonging to
+both the callback and its dependencies:
+
+```ts
+context.report({
+  node: dependencyArray,
+  contextNodes: [callback, dependencyArray],
+  message,
+});
+```
+
+Explicit nodes override the rule's scope for that finding. Each node includes its
+whole subtree; list separate nodes to include related code without including the
+code between them. A resolved local callback can own a finding at a different
+location in the same file. Imported callbacks cannot provide same-file ownership.
+
+`node` still determines the underline and diagnostic identity. `contextNodes`
+affects only `--scope contextual`; other scopes keep their existing behavior.
+Shorthand scopes keep excluding nested functions or child JSX owners. When the
+matcher cannot resolve an owner, it keeps line matching. Ownership is internal and is
+omitted from the public JSON report and score requests.
+
+Test an edit inside the owner, an edit in an unrelated sibling, and a deletion.
+Use the actual rule output in an integration test when the owner differs from the
+reported location. The shared matcher handles Git ranges; rule detectors should
+not read the diff.
+
+The existing `scan.scope` attribute measures adoption. `diag.withExplicitContext`
+counts reported findings with explicit owners. After two releases, review this
+count and contextual-scope feedback; narrow an ownership policy if three
+independent reports show it pulling unrelated code into a change.
+
 ## Research the Problem
 
 Inspect existing React Doctor rule patterns before implementation.

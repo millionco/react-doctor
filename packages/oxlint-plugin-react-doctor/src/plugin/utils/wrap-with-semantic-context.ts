@@ -1,3 +1,4 @@
+import { recordDiagnosticContext } from "./record-diagnostic-context.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { Rule } from "./rule.js";
 import type { BaseRuleContext, RuleContext } from "./rule-context.js";
@@ -66,9 +67,12 @@ class SemanticRuleContext implements RuleContext {
   private resolvedScopes: ScopeAnalysis | undefined;
   private resolvedControlFlow: ControlFlowAnalysis | undefined;
 
-  constructor(baseContext: BaseRuleContext) {
+  constructor(baseContext: BaseRuleContext, rule: string) {
     this.baseContext = baseContext;
-    this.report = baseContext.report;
+    this.report = (descriptor) => {
+      baseContext.report({ node: descriptor.node, message: descriptor.message });
+      recordDiagnosticContext({ context: baseContext, rule, descriptor });
+    };
     this.settings = baseContext.settings;
     this.programRoot = baseContext.sourceCode?.ast ?? null;
   }
@@ -115,7 +119,7 @@ class SemanticRuleContext implements RuleContext {
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
   ...rule,
   create: (baseContext: BaseRuleContext): RuleVisitors => {
-    const enrichedContext = new SemanticRuleContext(baseContext);
+    const enrichedContext = new SemanticRuleContext(baseContext, rule.id);
     const visitors = rule.create(enrichedContext);
     if (visitors === EMPTY_RULE_VISITORS || enrichedContext.programRoot) return visitors;
     // Program enter fires before every other visitor, so capturing the root

@@ -29,6 +29,7 @@ import { FIRST_ARGUMENT_INDEX, SECOND_ARGUMENT_INDEX } from "./constants.js";
 import { getAstChildKeys } from "./get-ast-child-keys.js";
 import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
 import { isProvenNativeReadMethod } from "./is-proven-native-read-method.js";
+import { isNoOpCleanupFunction } from "./is-no-op-cleanup-function.js";
 
 // 1:1 port of upstream `src/util/react.js` from
 // `eslint-plugin-react-you-might-not-need-an-effect`. See `./ast.ts`
@@ -787,16 +788,35 @@ export const getUseStateDecl = (analysis: ProgramAnalysis, ref: Reference): EsTr
 };
 
 const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
-  if (isFunctionLike(node)) return true;
+  if (isFunctionLike(node)) return !isNoOpCleanupFunction(analysis, node);
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
     const ref = getRef(analysis, node);
-    if (ref && (hasParameterDefinition(ref) || resolveToFunction(ref))) return true;
+    if (!ref) return false;
+    if (hasParameterDefinition(ref)) return true;
+    const resolvedFunction = resolveToFunction(ref);
+    if (!resolvedFunction) return false;
+    const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
+    if (
+      !isNodeOfType(definitionNode, "VariableDeclarator") ||
+      !isNodeOfType(definitionNode.parent, "VariableDeclaration") ||
+      definitionNode.parent.kind !== "const" ||
+      definitionNode.init !== resolvedFunction
+    ) {
+      return true;
+    }
+    return !isNoOpCleanupFunction(analysis, resolvedFunction);
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
+    const branches = [node.consequent as EsTreeNode, node.alternate as EsTreeNode];
+    if (branches.some((branch) => isCleanupReturnArgument(analysis, branch))) return true;
     return (
-      isCleanupReturnArgument(analysis, node.consequent as EsTreeNode) ||
-      isCleanupReturnArgument(analysis, node.alternate as EsTreeNode)
+      branches.some((branch) => {
+        if (isFunctionLike(branch)) return true;
+        if (!isNodeOfType(branch, "Identifier")) return false;
+        const branchReference = getRef(analysis, branch);
+        return Boolean(branchReference && resolveToFunction(branchReference));
+      }) && branches.some((branch) => isNodeOfType(branch, "CallExpression"))
     );
   }
   return false;

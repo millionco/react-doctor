@@ -38,6 +38,7 @@ const normalizeConfigForHash = (config: RulesetHashInput["config"]): unknown => 
   const clone = JSON.parse(JSON.stringify(config));
   if (clone?.settings?.["react-doctor"]) {
     const reactDoctorSettings = clone.settings["react-doctor"];
+    delete reactDoctorSettings.diagnosticContextDirectory;
     reactDoctorSettings.rootDirectory = ROOT_DIRECTORY_PLACEHOLDER;
     if (Array.isArray(reactDoctorSettings.unpluginAutoImportRootDirectories)) {
       reactDoctorSettings.unpluginAutoImportRootDirectories = [ROOT_DIRECTORY_PLACEHOLDER];

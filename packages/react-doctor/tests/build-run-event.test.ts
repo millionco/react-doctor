@@ -95,6 +95,20 @@ const baseInput = (overrides: Partial<RunEventInput> = {}): RunEventInput => ({
 });
 
 describe("buildRunEventAttributes", () => {
+  it("counts findings with explicit owners without emitting their ranges", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          diagnostics: [
+            buildDiagnostic({ contextRanges: [{ offset: 12, length: 34 }] }),
+            buildDiagnostic(),
+          ],
+        }),
+      }),
+    );
+    expect(attributes["diag.withExplicitContext"]).toBe(1);
+    expect(JSON.stringify(attributes)).not.toContain("contextRanges");
+  });
   it("records contextual scope for adoption measurement", () => {
     expect(buildRunEventAttributes(baseInput({ scope: "contextual" }))["scan.scope"]).toBe(
       "contextual",

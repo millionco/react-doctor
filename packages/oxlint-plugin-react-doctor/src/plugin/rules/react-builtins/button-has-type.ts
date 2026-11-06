@@ -1,3 +1,4 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -5,10 +6,12 @@ import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import {
+  getJsxPropStaticStringValues,
+  getStaticStringExpressionValues,
+} from "../../utils/get-jsx-prop-static-string-values.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
-import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
-import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
@@ -465,18 +468,22 @@ const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTre
 
 const jsxButtonHasAssociatedForm = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const formAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "form", false);
-  return Boolean(formAttribute && getStringLiteralAttributeValue(formAttribute)?.trim());
+  const formIds = formAttribute && getJsxPropStaticStringValues(formAttribute, scopes);
+  return Boolean(formIds?.every((formId) => formId.trim()));
 };
 
 const createElementButtonHasAssociatedForm = (
   propsArgument: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const formPropertyValue = propsArgument
     ? getStaticObjectPropertyValue(propsArgument, "form")
     : undefined;
-  return Boolean(getStaticStringExpression(formPropertyValue)?.trim());
+  const formIds = formPropertyValue && getStaticStringExpressionValues(formPropertyValue, scopes);
+  return Boolean(formIds?.every((formId) => formId.trim()));
 };
 
 const isFormCreateElementCall = (node: EsTreeNode): boolean => {
@@ -531,7 +538,7 @@ export const buttonHasType = defineRule({
         if (!typeAttr) {
           if (
             shouldUseCuratedBehavior &&
-            !jsxButtonHasAssociatedForm(node) &&
+            !jsxButtonHasAssociatedForm(node, context.scopes) &&
             !hasStaticFormAncestor(node)
           ) {
             return;
@@ -584,7 +591,9 @@ export const buttonHasType = defineRule({
         }
         const propsArgument = node.arguments[1];
         const hasFormOwner =
-          createElementButtonHasAssociatedForm(propsArgument) || hasStaticFormAncestor(node);
+          !shouldUseCuratedBehavior ||
+          createElementButtonHasAssociatedForm(propsArgument, context.scopes) ||
+          hasStaticFormAncestor(node);
         // No props (`createElement("button")`) or explicitly nullish props
         // (`…, null)`, `…, undefined)`, `…, void 0)`) carry no `type` — unlike
         // an opaque bag, which may forward one at runtime → missing.

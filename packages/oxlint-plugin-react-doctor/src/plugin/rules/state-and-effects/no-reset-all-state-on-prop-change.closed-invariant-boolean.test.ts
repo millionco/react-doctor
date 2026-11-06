@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { noResetAllStateOnPropChange } from "./no-reset-all-state-on-prop-change.js";
 import { isClosedInvariantBooleanReset } from "./utils/is-closed-invariant-boolean-reset.js";
@@ -13,21 +14,31 @@ const certificateProbe = defineRule({
   recommendation: "Probe the closed Boolean reset certificate.",
   create: (context) => ({
     IfStatement(node) {
-      const consequent = isNodeOfType(node.consequent, "BlockStatement")
-        ? node.consequent.body[0]
-        : node.consequent;
-      if (!isNodeOfType(consequent, "ExpressionStatement")) return;
       const effectFunction = findEnclosingFunction(node);
       const owner = effectFunction ? findEnclosingFunction(effectFunction) : null;
       const effectCall = effectFunction?.parent;
-      if (!effectFunction || !owner || !effectCall) return;
+      if (
+        !isFunctionLike(effectFunction) ||
+        !owner ||
+        !effectCall ||
+        !isNodeOfType(effectFunction.body, "BlockStatement") ||
+        effectFunction.body.body[0] !== node
+      )
+        return;
+      const setterCalls = effectFunction.body.body.map((guard) => {
+        if (!isNodeOfType(guard, "IfStatement")) return null;
+        const consequent = isNodeOfType(guard.consequent, "BlockStatement")
+          ? guard.consequent.body[0]
+          : guard.consequent;
+        return isNodeOfType(consequent, "ExpressionStatement") ? consequent.expression : null;
+      });
       if (
         isClosedInvariantBooleanReset({
           context,
           owner,
           effectCall,
           effectFunction,
-          setterCall: consequent.expression,
+          setterCalls,
         })
       ) {
         context.report({ node, message: "Closed Boolean reset certificate accepted." });
@@ -162,8 +173,8 @@ const cases = [
     input:
       'import { useEffect, useLayoutEffect, useState } from "react";\n\ninterface IndicatorProps {\n  readonly identity: string;\n  readonly beforeReset?: () => void;\n  readonly accept?: (setter: (next: boolean) => void) => void;\n}\n\nexport const Indicator = ({ identity, beforeReset, accept }: IndicatorProps) => {\n  const [active, setActive] = useState(false); const [ready, setReady] = useState(false);\n  useEffect(() => {\n    if (!active) setActive(false); if (!ready) setReady(false);\n  }, [identity]);\n  return <output>{active ? "active" : ready ? "ready" : "idle"}</output>;\n};\n',
     filename: "multiple-state-slots.tsx",
-    certificateExpected: false,
-    expectedResetCount: 1,
+    certificateExpected: true,
+    expectedResetCount: 0,
   },
   {
     name: "lazy-initializer",
@@ -359,6 +370,22 @@ const cases = [
   },
 ];
 
+const closedThreeSlots = `
+  import { useEffect, useState } from "react";
+
+  export function Indicator({ revision }: { revision: string }) {
+    const [active, setActive] = useState(false);
+    const [ready, setReady] = useState(true);
+    const [idle, setIdle] = useState(false);
+    useEffect(() => {
+      if (ready) setReady(true);
+      if (!idle) setIdle(false);
+      if (!active) setActive(false);
+    }, [revision]);
+    return <output>{active ? "active" : ready ? "ready" : idle ? "idle" : "unset"}</output>;
+  }
+`;
+
 describe("closed invariant Boolean resets", () => {
   it.each(cases)("certifies only the finite shape: $name", (testCase) => {
     const result = runRule(certificateProbe, testCase.input, { filename: testCase.filename });
@@ -372,6 +399,35 @@ describe("closed invariant Boolean resets", () => {
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(testCase.expectedResetCount);
+  });
+
+  it("accepts three closed slots with independent initializer values and guard order", () => {
+    const certificate = runRule(certificateProbe, closedThreeSlots);
+    const result = runRule(noResetAllStateOnPropChange, closedThreeSlots);
+    expect(certificate.parseErrors).toEqual([]);
+    expect(certificate.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps the warning when an event can mutate one of the three slots", () => {
+    const input = closedThreeSlots.replace("<output>", "<output onClick={() => setReady(false)}>");
+    const certificate = runRule(certificateProbe, input);
+    const result = runRule(noResetAllStateOnPropChange, input);
+    expect(certificate.parseErrors).toEqual([]);
+    expect(certificate.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps the warning when one guard reads the wrong state slot", () => {
+    const input = closedThreeSlots.replace(
+      "if (ready) setReady(true)",
+      "if (active) setReady(true)",
+    );
+    const certificate = runRule(certificateProbe, input);
+    const result = runRule(noResetAllStateOnPropChange, input);
+    expect(certificate.parseErrors).toEqual([]);
+    expect(certificate.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("ignores erased type-only code and provider references", () => {

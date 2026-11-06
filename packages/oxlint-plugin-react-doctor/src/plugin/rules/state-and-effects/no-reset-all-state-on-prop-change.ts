@@ -1348,13 +1348,12 @@ const findPropUsedToResetAllState = (
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
   if (
     componentFunctionNode &&
-    stateSetterRefs.length === 1 &&
     isClosedInvariantBooleanReset({
       context,
       owner: componentFunctionNode,
       effectCall: useEffectNode,
       effectFunction: effectFn,
-      setterCall: getCallExpr(stateSetterRefs[0]),
+      setterCalls: stateSetterRefs.map((setterReference) => getCallExpr(setterReference)),
     })
   ) {
     return null;

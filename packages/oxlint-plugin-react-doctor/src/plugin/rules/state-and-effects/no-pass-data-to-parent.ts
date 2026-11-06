@@ -59,6 +59,7 @@ import {
 } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 import { isComparisonMemoizerHookName } from "./utils/is-comparison-memoizer-hook-name.js";
+import { createCancellationRegistrationProof } from "./utils/create-cancellation-registration-proof.js";
 import { getOwnedAbortSignalCommandProof } from "./utils/is-owned-abort-signal-command.js";
 import type { OwnedAbortSignalCommandProof } from "./utils/is-owned-abort-signal-command.js";
 
@@ -1617,6 +1618,11 @@ export const noPassDataToParent = defineRule({
           signalProofByCall.set(call, proof);
           return proof;
         };
+        const getCancellationRegistrationProof = createCancellationRegistrationProof(
+          analysis,
+          context.scopes,
+          getSignalProof,
+        );
         const certifiedArgumentFunctionReferences = new Set<EsTreeNode>();
         for (const effectReference of effectFnRefs) {
           for (const upstreamReference of getUpstreamRefs(analysis, effectReference)) {
@@ -1827,13 +1833,20 @@ export const noPassDataToParent = defineRule({
             calleeNode === identifier &&
             isWrapperHookCallbackRef(analysis, ref, context.scopes)
           ) {
+            const isLocalCancellationParameter = getCancellationRegistrationProof(ref, callExpr);
             const wrapperUpstreamRefs = getArgsUpstreamRefs(analysis, ref, {
               shouldSkipCall: (candidate) => getSignalProof(candidate) !== null,
               shouldSkipArgumentUpstreamReference: (argumentReference, argument) =>
                 isFunctionLike(stripParenExpression(argument)) &&
-                certifiedArgumentFunctionReferences.has(
+                (certifiedArgumentFunctionReferences.has(
                   argumentReference.identifier as unknown as EsTreeNode,
-                ),
+                ) ||
+                  Boolean(
+                    isLocalCancellationParameter?.(
+                      argumentReference,
+                      stripParenExpression(argument),
+                    ),
+                  )),
             });
             argsUpstreamRefs.push(
               ...wrapperUpstreamRefs.filter(

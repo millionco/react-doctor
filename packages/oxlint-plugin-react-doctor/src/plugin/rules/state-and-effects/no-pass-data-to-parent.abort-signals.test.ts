@@ -114,6 +114,48 @@ describe("no-pass-data-to-parent — owned cancellation commands", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    ["records local settlement", "state.current = accepted ? 'ready' : 'failed';", "", 0],
+    ["forwards actual parent data", "onResult(accepted);", "", 1],
+    ["exports the callback with data", "retain({ onResult, accepted });", "", 1],
+    [
+      "lets a thenable observe child data",
+      "state.current = accepted ? 'ready' : 'failed';",
+      "return state.current;",
+      1,
+    ],
+  ])(
+    "separates a cancellation handoff from a wrapper that %s",
+    (_label, settlement, continuation, expected) => {
+      const source = `
+import { useCallback, useEffect, useRef } from "react";
+import { retain } from "external-source";
+export const Panel = ({ tabs, onInspect, onResult }) => {
+  const hasVisibleTab = tabs.some((tab) => tab.visible);
+  const active = useRef<AbortController | null>(null);
+  const state = useRef("idle");
+  const begin = useCallback(() => {
+    if (!hasVisibleTab) return;
+    const request = new AbortController();
+    active.current = request;
+    const completion = onInspect(request.signal);
+    const settle = (accepted: boolean) => {
+      if (active.current !== request) return;
+      ${settlement}
+    };
+    completion.then(() => { if (!request.signal.aborted) settle(true); ${continuation} });
+    completion.catch(() => { if (!request.signal.aborted) settle(false); });
+  }, [hasVisibleTab, onInspect, onResult]);
+  useEffect(() => { begin(); }, [begin]);
+  useEffect(() => () => { active.current?.abort(); }, []);
+  return null;
+};`;
+      const result = runRule(noPassDataToParent, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+    },
+  );
+
   it("certifies settlement identity and cancellation reads", () => {
     const result = runRule(
       cancellationProofRule,

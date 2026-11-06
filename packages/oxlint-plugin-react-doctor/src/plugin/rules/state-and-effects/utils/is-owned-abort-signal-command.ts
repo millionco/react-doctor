@@ -24,6 +24,7 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 
 export interface OwnedAbortSignalCommandProof {
+  readonly ownedRef: SymbolDescriptor | null;
   readonly argumentFunctionReferences: ReadonlyArray<EsTreeNode>;
 }
 
@@ -431,6 +432,7 @@ export const getOwnedAbortSignalCommandProof = ({
   const ownedRefInitializer = ownedRef ? getDirectConstInitializer(ownedRef) : null;
   return hasOnlyOwnedUses
     ? {
+        ownedRef,
         argumentFunctionReferences: [
           creation.callee,
           controller.bindingIdentifier,

@@ -13,7 +13,7 @@ describe("memoized positional characters", () => {
       `${imports}
 const Caption = ({ label }: { label: string }) => {
   const letters = ${initializer};
-  return letters.map((letter, index) => <Glyph key={index} value={letter} />);
+  return letters.map((letter, index) => <span key={index}>{letter}</span>);
 };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -27,9 +27,105 @@ const Caption = ({ label }: { label: string }) => {
 interface CaptionProps { label: string; enabled: boolean; }
 const Caption = ({ label, enabled }: CaptionProps) => {
   const letters = useMemo(() => Array.from(label), [label]);
-  if (enabled) return letters.map((letter, index) => <Glyph key={index} value={letter} />);
+  if (enabled) return letters.map((letter, index) => <span key={index}>{letter}</span>);
   return null;
 };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["stateful child", "<Glyph key={index} value={letter} />"],
+    ["member child", "<Motion.span key={index}>{letter}</Motion.span>"],
+    ["spread attributes", "<span key={index} {...props}>{letter}</span>"],
+    ["callback ref", "<span key={index} ref={rememberNode}>{letter}</span>"],
+    ["event handler", "<span key={index} onClick={handleClick}>{letter}</span>"],
+    ["nested custom element", "<span key={index}><x-glyph>{letter}</x-glyph></span>"],
+    ["opaque child", "<span key={index}>{format(letter)}</span>"],
+    ["cloned element", "cloneElement(element, { key: index })"],
+  ])("keeps memoized positions reportable for %s", (_label, child) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `import { cloneElement, useMemo, useState } from "react";
+const Glyph = ({ value }: { value: string }) => {
+  const [first] = useState(value);
+  return <span>{first}:{value}</span>;
+};
+const Caption = ({ label }: { label: string }) => {
+  const letters = useMemo(() => Array.from(label), [label]);
+  return letters.map((letter, index) => ${child});
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["const field = 'rows';", "{ field: string; rows: ReactNode[] }", "[field]: value"],
+    ["const field = Symbol();", "{ field: string; [field]: ReactNode[] }", "[field]: value"],
+    ["const field = 'other';", "{ [field]: string; field: ReactNode[] }", "field: value"],
+    ["", "{ field?: string }", "field: value = ''"],
+  ])("keeps uncertain memo property identity reportable: %s %s %s", (setup, props, binding) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `import { useMemo, type ReactNode } from "react";
+${setup}
+const Caption = ({ ${binding} }: ${props}) => {
+  const letters = useMemo(() => Array.from(value), [value]);
+  return letters.map((letter, index) => <span key={index}>{letter}</span>);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["interface Props { readonly label: string }", "label: value"],
+    ["type TextProps = { readonly 'label': string }; type Props = TextProps;", "'label': value"],
+  ])("accepts an exact readonly string property: %s", (declaration, binding) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `import { useMemo } from "react";
+${declaration}
+const Caption = ({ ${binding} }: Props) => {
+  const letters = useMemo(() => Array.from(value), [value]);
+  return letters.map((letter, index) => <span key={index}>{letter}</span>);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "type Contents = { readonly label: string }; type Props<Contents> = Contents;",
+      "Props<{ label: ReactNode[] }>",
+    ],
+    [
+      "type Contents = { readonly label: string }; type Props<Contents = { label: ReactNode[] }> = Contents;",
+      "Props",
+    ],
+    ["interface Props<Unused = never> { readonly label: string }", "Props"],
+  ])("keeps generic memo property types reportable: %s", (declaration, props) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `import { useMemo, type ReactNode } from "react";
+${declaration}
+const Caption = ({ label: value }: ${props}) => {
+  const letters = useMemo(() => Array.from(value), [value]);
+  return letters.map((letter, index) => <span key={index}>{letter}</span>);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps the existing direct character behavior", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `const Caption = ({ label }: { label: string }) =>
+  Array.from(label).map((letter, index) => <Glyph key={index} value={letter} />);`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);

@@ -6,6 +6,7 @@ import { getSingleReturnExpression } from "./get-single-return-expression.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasClosedMemoProviderIntegrity } from "./has-closed-memo-provider-integrity.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isProvenGlobalNamespaceReference } from "./is-proven-global-namespace-reference.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -91,7 +92,7 @@ export const getClosedMemoArrayFromSource = (
     arrayCall.arguments.length !== 1 ||
     !isNodeOfType(arrayCall.callee, "MemberExpression") ||
     getStaticPropertyName(arrayCall.callee) !== "from" ||
-    !isProvenUnmodifiedGlobalNamespaceReference(arrayCall.callee.object, "Array", scopes, "from")
+    !isProvenGlobalNamespaceReference(arrayCall.callee.object, "Array", scopes)
   )
     return null;
   const source = stripParenExpression(arrayCall.arguments[0]);
@@ -127,5 +128,10 @@ export const getClosedMemoArrayFromSource = (
     if ("typeParameters" in ancestor && ancestor.typeParameters) return null;
     ancestor = ancestor.parent;
   }
-  return hasClosedMemoProviderIntegrity(scopes) ? source : null;
+  if (
+    !hasClosedMemoProviderIntegrity(scopes) ||
+    !isProvenUnmodifiedGlobalNamespaceReference(arrayCall.callee.object, "Array", scopes, "from")
+  )
+    return null;
+  return source;
 };

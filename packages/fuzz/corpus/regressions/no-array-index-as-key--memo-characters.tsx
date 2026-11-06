@@ -1,6 +1,6 @@
 // rule: no-array-index-as-key
 // weakness: wrapper-transparency
-// source: synthetic memoized character projection
+// source: synthetic memoized native text projection
 // verdict: pass
 import { useMemo } from "react";
 
@@ -10,5 +10,5 @@ interface CaptionProps {
 
 export const Caption = ({ label }: CaptionProps) => {
   const letters = useMemo(() => Array.from(label), [label]);
-  return letters.map((letter, index) => <Glyph key={index} value={letter} />);
+  return letters.map((letter, index) => <span key={index}>{letter}</span>);
 };

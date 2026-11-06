@@ -79,6 +79,7 @@ import { forbidDomProps } from "./rules/react-builtins/forbid-dom-props.js";
 import { forbidElements } from "./rules/react-builtins/forbid-elements.js";
 import { formControlRequiresName } from "./rules/a11y/form-control-requires-name.js";
 import { forwardRefUsesRef } from "./rules/react-builtins/forward-ref-uses-ref.js";
+import { forwardedSetStateInEffect } from "./rules/state-and-effects/forwarded-set-state-in-effect.js";
 import { gitProviderUrlInjectionRisk } from "./rules/security-scan/git-provider-url-injection-risk.js";
 import { headingHasContent } from "./rules/a11y/heading-has-content.js";
 import { hookImportRenameLosesUsePrefix } from "./rules/react-builtins/hook-import-rename-loses-use-prefix.js";
@@ -1786,6 +1787,18 @@ export const reactDoctorRules: ReadonlyArray<RuleRegistryEntry> = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(forwardRefUsesRef.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/forwarded-set-state-in-effect",
+    id: "forwarded-set-state-in-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...forwardedSetStateInEffect,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(forwardedSetStateInEffect.requires ?? [])])],
     },
   },
   {

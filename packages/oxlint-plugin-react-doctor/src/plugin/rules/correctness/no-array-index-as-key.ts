@@ -4,7 +4,9 @@ import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getStaticKeyName } from "../../utils/get-static-key-name.js";
 import { getClosedMemoArrayFromSource } from "../../utils/get-closed-memo-array-from-source.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -616,18 +618,36 @@ const typeDeclaresStringProperty = (
   propertyName: string,
   referenceNode: EsTreeNode,
   depth: number,
+  requireExactPropertyIdentity = false,
 ): boolean => {
   if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  if (
+    requireExactPropertyIdentity &&
+    (isNodeOfType(typeNode, "TSTypeAliasDeclaration") ||
+      isNodeOfType(typeNode, "TSInterfaceDeclaration")) &&
+    typeNode.typeParameters
+  )
+    return false;
   let members: ReadonlyArray<EsTreeNode> | null = null;
   if (isNodeOfType(typeNode, "TSTypeLiteral")) members = typeNode.members;
   else if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) members = typeNode.body.body;
   if (members) {
+    let matchedStringProperty = false;
     for (const member of members) {
       if (!isNodeOfType(member, "TSPropertySignature")) continue;
-      if (!isNodeOfType(member.key, "Identifier") || member.key.name !== propertyName) continue;
-      return isStringKeywordAnnotation(member.typeAnnotation);
+      if (requireExactPropertyIdentity && member.computed) return false;
+      const memberName = requireExactPropertyIdentity
+        ? getStaticKeyName(member.key)
+        : isNodeOfType(member.key, "Identifier")
+          ? member.key.name
+          : null;
+      if (memberName !== propertyName) continue;
+      const isStringProperty = isStringKeywordAnnotation(member.typeAnnotation);
+      if (!requireExactPropertyIdentity) return isStringProperty;
+      if (matchedStringProperty || member.optional || !isStringProperty) return false;
+      matchedStringProperty = true;
     }
-    return false;
+    return matchedStringProperty;
   }
   if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
     return typeDeclaresStringProperty(
@@ -635,11 +655,21 @@ const typeDeclaresStringProperty = (
       propertyName,
       referenceNode,
       depth + 1,
+      requireExactPropertyIdentity,
     );
   }
   if (isNodeOfType(typeNode, "TSTypeReference") && isNodeOfType(typeNode.typeName, "Identifier")) {
-    return findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name).some((declaration) =>
-      typeDeclaresStringProperty(declaration, propertyName, referenceNode, depth + 1),
+    const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
+    if (requireExactPropertyIdentity && (typeNode.typeArguments || declarations.length !== 1))
+      return false;
+    return declarations.some((declaration) =>
+      typeDeclaresStringProperty(
+        declaration,
+        propertyName,
+        referenceNode,
+        depth + 1,
+        requireExactPropertyIdentity,
+      ),
     );
   }
   return false;
@@ -649,19 +679,30 @@ const typeDeclaresStringProperty = (
 // identifier is destructured from an object pattern whose annotation
 // (inline type literal, or same-file interface / type alias) declares
 // the property as `string`.
-const isDestructuredFromStringTypedPattern = (bindingIdentifier: EsTreeNode): boolean => {
+const isDestructuredFromStringTypedPattern = (
+  bindingIdentifier: EsTreeNode,
+  requireExactPropertyIdentity = false,
+): boolean => {
   const property = bindingIdentifier.parent;
   if (!property || !isNodeOfType(property, "Property")) return false;
-  if (!isNodeOfType(property.key, "Identifier")) return false;
+  if (requireExactPropertyIdentity && (property.computed || property.value !== bindingIdentifier))
+    return false;
+  const propertyName = requireExactPropertyIdentity
+    ? getStaticKeyName(property.key)
+    : isNodeOfType(property.key, "Identifier")
+      ? property.key.name
+      : null;
+  if (propertyName === null) return false;
   const pattern = property.parent;
   if (!pattern || !isNodeOfType(pattern, "ObjectPattern")) return false;
   const typeAnnotation = pattern.typeAnnotation;
   if (!typeAnnotation || !isNodeOfType(typeAnnotation, "TSTypeAnnotation")) return false;
   return typeDeclaresStringProperty(
     typeAnnotation.typeAnnotation,
-    property.key.name,
+    propertyName,
     bindingIdentifier,
     0,
+    requireExactPropertyIdentity,
   );
 };
 
@@ -1925,21 +1966,13 @@ const hasAriaHiddenAncestor = (attributeNode: EsTreeNode): boolean => {
   return false;
 };
 
-const getReportableIndexUse = (
-  key: EsTreeNode,
-  node: EsTreeNode,
-  context: RuleContext,
-): PositionalIndexUse | null => {
+const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalIndexUse | null => {
   const indexUse = findPositionalIndexUse(key, 0);
   if (!indexUse || methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return null;
   if (isNumericPlaceholderLoopCounter(indexUse.binding.loopCounter ?? indexUse.identifier))
     return null;
   if (indexUse.binding.iteratorCall && iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall))
     return null;
-  const memoSource = indexUse.binding.iteratorCall
-    ? getClosedMemoArrayFromSource(indexUse.binding.iteratorCall, context.scopes)
-    : null;
-  if (memoSource && isProvablyStringValued(memoSource, 0)) return null;
   const keyTemplate = resolveKeyTemplateLiteral(key);
   if (keyTemplate && templateHasOuterMemberIdentity(keyTemplate, indexUse.binding.bindingFunction))
     return null;
@@ -1968,7 +2001,7 @@ export const noArrayIndexAsKey = defineRule({
         if (!overrides) return;
         const key = getStaticObjectPropertyValue(overrides, "key");
         if (!key) return;
-        const indexUse = getReportableIndexUse(key, node, context);
+        const indexUse = getReportableIndexUse(key, node);
         if (!indexUse) return;
         reportIndexKey(key, indexUse.identifier.name);
       },
@@ -1976,7 +2009,7 @@ export const noArrayIndexAsKey = defineRule({
         if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-        const indexUse = getReportableIndexUse(node.value.expression, node, context);
+        const indexUse = getReportableIndexUse(node.value.expression, node);
         if (!indexUse) return;
         if (
           indexUse.binding.iteratorCall &&
@@ -2044,6 +2077,29 @@ export const noArrayIndexAsKey = defineRule({
                     keyTemplate,
                     itemNames,
                   );
+                const { iteratorCall, bindingFunction } = indexUse.binding;
+                if (
+                  primitiveItemNames.size === 0 &&
+                  isInlineTextRun &&
+                  iteratorCall &&
+                  bindingFunction &&
+                  iteratorCall.arguments[0] === bindingFunction &&
+                  getSingleReturnExpression(bindingFunction) === jsxElement &&
+                  openingElement.attributes.length === 1 &&
+                  jsxElement.children.length === 1 &&
+                  elementHasDirectItemChild(openingElement, itemNames)
+                ) {
+                  const memoSource = getClosedMemoArrayFromSource(iteratorCall, context.scopes);
+                  const memoSourceBinding =
+                    memoSource && context.scopes.symbolFor(memoSource)?.bindingIdentifier;
+                  if (
+                    isNodeOfType(memoSourceBinding, "Identifier") &&
+                    (isStringKeywordAnnotation(memoSourceBinding.typeAnnotation) ||
+                      isDestructuredFromStringTypedPattern(memoSourceBinding, true))
+                  ) {
+                    primitiveItemNames = itemNames;
+                  }
+                }
                 const isStateful =
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||

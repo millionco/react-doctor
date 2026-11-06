@@ -10,7 +10,7 @@ import { walkAst } from "./walk-ast.js";
 
 it("checks shared provider and symbol facts once per immutable analysis", () => {
   for (const fixture of [
-    { exposure: "", parameterWrite: "", programReads: 1, parameterReads: 1 },
+    { exposure: "", parameterWrite: "", programReads: 2, parameterReads: 1 },
     {
       exposure: "const nativeArray = Array;",
       parameterWrite: "",
@@ -19,7 +19,7 @@ it("checks shared provider and symbol facts once per immutable analysis", () => 
     },
     { exposure: "consume(useMemo);", parameterWrite: "", programReads: 0, parameterReads: 0 },
     { exposure: "", parameterWrite: 'label = "changed";', programReads: 0, parameterReads: 1 },
-    { exposure: "", parameterWrite: "", programReads: 1, parameterReads: 1 },
+    { exposure: "", parameterWrite: "", programReads: 2, parameterReads: 1 },
   ]) {
     const declarations = Array.from(
       { length: 4 },

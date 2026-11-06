@@ -21,6 +21,7 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { splitCssTopLevel } from "./utils/split-css-top-level.js";
 import { isOwnedAsyncResultPlaceholder } from "./utils/is-owned-async-result-placeholder.js";
+import { isOwnedEventPendingPulse } from "./utils/is-owned-event-pending-pulse.js";
 
 const BUSY_TEXT_PATTERN = /\b(?:loading|processing|saving|syncing|uploading)\b/i;
 const CURSOR_GLYPH_PATTERN = /^[_|▀-▟■▮❙❚｜]$/u;
@@ -303,6 +304,7 @@ export const noDecorativePulse = defineRule({
       if (!text || BUSY_TEXT_PATTERN.test(text)) return;
       if (isBusyStatus(openingElement)) return;
       if (isOwnedAsyncResultPlaceholder(node, context.scopes)) return;
+      if (isOwnedEventPendingPulse(node, context.scopes)) return;
       context.report({
         node: openingElement,
         message:

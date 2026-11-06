@@ -3,6 +3,7 @@ import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-str
 import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 import { analyzeControlFlow, type ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
+import { containsPotentialDirectEval } from "../../utils/contains-potential-direct-eval.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -15,7 +16,10 @@ import { hasClientRenderEvidence } from "../../utils/has-client-render-evidence.
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isAfterFalsyServerSnapshotEarlyReturn } from "../../utils/is-after-falsy-server-snapshot-early-return.js";
+import { isGatedByFalsyServerSnapshot } from "../../utils/is-gated-by-falsy-server-snapshot.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
@@ -28,6 +32,8 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
+import { readServerSnapshotBoolean } from "../../utils/read-server-snapshot-boolean.js";
 import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
@@ -104,6 +110,15 @@ const resolveImportedHydrationFunction = (
   if (!scopes) {
     scopes = analyzeScopes(resolvedExport.programNode);
     importedScopeAnalysisByProgram.set(resolvedExport.programNode, scopes);
+  }
+  if (
+    getFunctionBindingSymbols(resolvedExport.node, scopes).some((bindingSymbol) =>
+      bindingSymbol.references.some(
+        (reference) => reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+      ),
+    )
+  ) {
+    return null;
   }
   let cfg = importedControlFlowByProgram.get(resolvedExport.programNode);
   if (!cfg) {
@@ -583,7 +598,9 @@ const readHydrationConditionResult = (
   const unwrappedExpression = stripParenExpression(expression);
   const predicateMatch = matchBrowserPredicate(unwrappedExpression, context);
   if (predicateMatch) return predicateMatch[`${runtime}Result`];
-  const staticResult = readInitialStateBoolean(unwrappedExpression, context.scopes);
+  const staticResult =
+    readInitialStateBoolean(unwrappedExpression, context.scopes) ??
+    readServerSnapshotBoolean(unwrappedExpression, context.scopes, context.filename);
   if (staticResult !== null) return staticResult;
   const expressionSymbol = isNodeOfType(unwrappedExpression, "Identifier")
     ? context.scopes.symbolFor(unwrappedExpression)
@@ -650,6 +667,7 @@ const readHydrationConditionResult = (
       ? null
       : resolveImportedHydrationFunction(callee, context);
     if (importedHelper) {
+      if (containsPotentialDirectEval(importedHelper.context.scopes.rootScope.node)) return null;
       helperContext = importedHelper.context;
       helperFunction = importedHelper.functionNode;
     }
@@ -1247,7 +1265,9 @@ const matchHydrationConditionInternal = (
     return matchHydrationConditionInternal(unwrappedExpression.argument, context, state);
   }
   if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-    const staticTestResult = readInitialStateBoolean(unwrappedExpression.test, context.scopes);
+    const staticTestResult =
+      readInitialStateBoolean(unwrappedExpression.test, context.scopes) ??
+      readServerSnapshotBoolean(unwrappedExpression.test, context.scopes, context.filename);
     if (staticTestResult !== null) {
       return matchHydrationConditionInternal(
         staticTestResult ? unwrappedExpression.consequent : unwrappedExpression.alternate,
@@ -2089,6 +2109,16 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         return;
       }
       if (isAfterClientOnlyEarlyReturn(conditionNode, componentOrHookNode, context.scopes)) return;
+      if (isGatedByFalsyServerSnapshot(conditionNode, context.scopes, context.filename)) return;
+      if (
+        isAfterFalsyServerSnapshotEarlyReturn(
+          conditionNode,
+          componentOrHookNode,
+          context.scopes,
+          context.filename,
+        )
+      )
+        return;
       const openingElement = findEnclosingJsxOpeningElement(conditionNode);
       if (
         hasSuppressHydrationWarningAttribute(openingElement) &&

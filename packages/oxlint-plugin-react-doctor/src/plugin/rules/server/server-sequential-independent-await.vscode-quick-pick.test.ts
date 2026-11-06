@@ -16,6 +16,32 @@ describe("server-sequential-independent-await VS Code QuickPick", () => {
     `import type { QuickPickItem } from "unrelated-types";
      import * as editorApi from "vscode";
      export const choose = async () => {${quickPickPair}};`,
+    `import fs = require("node:fs");
+     import * as editorApi from "vscode";
+     export const exists = fs.existsSync;
+     export const choose = async () => {${quickPickPair}};`,
+    `import type EditorTypes = require("vscode");
+     import * as editorApi from "vscode";
+     export interface Options { item: EditorTypes.QuickPickItem }
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import { createRequire as createLoader } from "node:module";
+     const load = createLoader(__filename);
+     export const readFile = load("node:fs").readFile;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import * as nodeModule from "module";
+     export const unrelated = (nodeModule) => nodeModule.createRequire(__filename)("vscode");
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import { Module as NodeModule } from "node:module";
+     export const readFile = NodeModule.createRequire(import.meta.url)("node:" + "fs").readFile;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import nodeModule = require("foreign-loader");
+     const {Module: NodeModule} = nodeModule;
+     NodeModule.createRequire(__filename)("vscode").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
     `import * as editorApi from "vscode";
      export const announce = () => editorApi.window.showInformationMessage("Ready");
      export const choose = async () => {${quickPickPair}};`,
@@ -108,6 +134,58 @@ describe("server-sequential-independent-await VS Code QuickPick", () => {
     `import * as editorApi from "vscode";
      const otherApi = require("vscode");
      otherApi.window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import otherApi = require("vscode");
+     otherApi.window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import { createRequire as createLoader } from "node:module";
+     const load = createLoader(__filename);
+     const otherApi = load("vscode");
+     otherApi.window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import * as nodeModule from "module";
+     const load = nodeModule.createRequire(import.meta.url);
+     const loadProvider = load;
+     const provider = "vscode";
+     const otherApi = loadProvider(provider);
+     otherApi.window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import nodeModule = require("node:module");
+     nodeModule.createRequire(__filename)("vscode").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import nodeModule = require("node:module");
+     const makeLoader = nodeModule.createRequire;
+     const load = makeLoader(__filename);
+     load("vscode").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import nodeModule = require("module");
+     const { createRequire: makeLoader } = nodeModule;
+     const load = makeLoader(__filename);
+     load("vscode").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import { Module as NodeModule } from "node:module";
+     NodeModule.createRequire(import.meta.url)("vscode").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import * as nodeModule from "node:module";
+     nodeModule.Module.createRequire(import.meta.url)("vscode").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import { createRequire } from "node:module";
+     createRequire(import.meta.url)("vs" + "code").window.showQuickPick = replacement;
+     export const choose = async () => {${quickPickPair}};`,
+    `import * as editorApi from "vscode";
+     import nodeModule = require("node:module");
+     const {Module: NodeModule} = nodeModule;
+     const {createRequire: makeLoader} = NodeModule;
+     makeLoader(__filename)("vscode").window.showQuickPick = replacement;
      export const choose = async () => {${quickPickPair}};`,
     `import * as editorApi from "vscode";
      const otherApi = await import("vscode");

@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.22
+
+### Patch Changes
+
+- [#2326](https://github.com/millionco/react-doctor/pull/2326) [`ad51b5a`](https://github.com/millionco/react-doctor/commit/ad51b5a6b1a67106fce8015439f868940cc884f4) Thanks [@aidenybai](https://github.com/aidenybai)! - Treat an effect cleanup that only reads a proven local runtime binding as empty. Preserve cleanup exemptions for global identifiers and member reads that can run getters, and keep no-op filtering conservative in other rules. `no-mirror-prop-effect`, `no-event-trigger-state`, `no-effect-event-handler`, `no-effect-chain` and `rendering-hydration-no-flicker` also stop skipping effects with proven empty or read-only inline cleanups. Unknown cleanup factories and other effectful returns remain conservative.
+
 ## 0.9.21
 
 ### Patch Changes

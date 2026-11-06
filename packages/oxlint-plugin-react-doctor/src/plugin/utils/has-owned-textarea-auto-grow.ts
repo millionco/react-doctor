@@ -1,5 +1,6 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import { HTML_TAGS } from "../constants/html-tags.js";
+import { getEffectiveStylePropertyAmong } from "../rules/design/utils/get-effective-style-property-among.js";
 import { getInlineStyleExpression } from "../rules/design/utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "../rules/design/utils/get-string-from-class-name-attr.js";
 import { getStylePropertyKey } from "../rules/design/utils/get-style-property-key.js";
@@ -135,32 +136,74 @@ const hasHeightConstraint = (node: EsTreeNodeOfType<"JSXOpeningElement">): boole
   );
 };
 
-const hasUnsupportedBoxSizing = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+const boxSizingPropertyNames = new Set(["all", "boxSizing"]);
+
+const isConflictingBoxSizingUtility = (utility: string): boolean =>
+  utility === "box-border" ||
+  /^\[all:/i.test(utility) ||
+  (/^\[box-sizing:/i.test(utility) && utility.toLowerCase() !== "[box-sizing:content-box]");
+
+const hasDescendantBoxSizingOverride = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  nativeDepth: number,
+): boolean => {
   const className = getStringFromClassNameAttr(node);
-  if (
-    splitTailwindClassName(className ?? "")
-      .map(parseTailwindClassNameToken)
-      .some(
-        ({ utility }) =>
-          utility === "box-border" ||
-          (/^\[box-sizing:/i.test(utility) && utility.toLowerCase() !== "[box-sizing:content-box]"),
-      )
-  ) {
-    return true;
-  }
+  return splitTailwindClassName(className ?? "")
+    .map(parseTailwindClassNameToken)
+    .some(({ utility, variants }) => {
+      if (!isConflictingBoxSizingUtility(utility)) return false;
+      let minimumDepth = 0;
+      let hasDescendantVariant = false;
+      for (const variant of variants) {
+        if (variant === "**" || /^\[&_(?:textarea|\*)\]$/i.test(variant)) {
+          minimumDepth += 1;
+          hasDescendantVariant = true;
+        } else if (variant === "*" || /^\[&_?>_?(?:textarea|\*)\]$/i.test(variant)) {
+          minimumDepth += 1;
+        }
+      }
+      return (
+        minimumDepth > 0 &&
+        (hasDescendantVariant ? nativeDepth >= minimumDepth : nativeDepth === minimumDepth)
+      );
+    });
+};
+
+const hasExplicitContentBoxSizing = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const className = getStringFromClassNameAttr(node);
+  const tokens = splitTailwindClassName(className ?? "").map(parseTailwindClassNameToken);
+  if (tokens.some(({ utility }) => isConflictingBoxSizingUtility(utility))) return false;
   const style = findJsxAttribute(node.attributes, "style");
   const expression = style ? getInlineStyleExpression(style) : null;
-  return Boolean(
-    expression?.properties.some(
-      (property) =>
-        getStylePropertyKey(property) === "boxSizing" &&
-        getStylePropertyStringValue(property)?.toLowerCase() !== "content-box",
-    ),
+  if (
+    expression?.properties.some((property) => {
+      const propertyName = getStylePropertyKey(property);
+      return (
+        propertyName !== null &&
+        boxSizingPropertyNames.has(propertyName) &&
+        getStylePropertyStringValue(property) === null
+      );
+    })
+  ) {
+    return false;
+  }
+  const boxSizing = getEffectiveStylePropertyAmong(expression?.properties, boxSizingPropertyNames);
+  if (boxSizing) {
+    return (
+      getStylePropertyKey(boxSizing) === "boxSizing" &&
+      getStylePropertyStringValue(boxSizing)?.toLowerCase() === "content-box"
+    );
+  }
+  return tokens.some(
+    ({ utility, variants }) =>
+      variants.length === 0 &&
+      (utility === "box-content" || utility.toLowerCase() === "[box-sizing:content-box]"),
   );
 };
 
 const hasStableNativePlacement = (node: EsTreeNode, component: EsTreeNode): boolean => {
   let current: EsTreeNode | null = node.parent ?? null;
+  let nativeDepth = 0;
   while (current) {
     if (isNodeOfType(current, "JSXElement")) {
       const opening = current.openingElement;
@@ -168,6 +211,7 @@ const hasStableNativePlacement = (node: EsTreeNode, component: EsTreeNode): bool
         !isNodeOfType(opening.name, "JSXIdentifier") ||
         !HTML_TAGS.has(opening.name.name) ||
         hasHeightConstraint(opening) ||
+        (nativeDepth > 0 && hasDescendantBoxSizingOverride(opening, nativeDepth)) ||
         opening.attributes.some(
           (attribute) =>
             !isNodeOfType(attribute, "JSXAttribute") ||
@@ -180,6 +224,7 @@ const hasStableNativePlacement = (node: EsTreeNode, component: EsTreeNode): bool
         )
       )
         return false;
+      nativeDepth += 1;
     } else if (!isNodeOfType(current, "JSXFragment")) return false;
     const root = findTransparentExpressionRoot(current);
     const parent = root.parent;
@@ -209,7 +254,7 @@ export const hasOwnedTextareaAutoGrow = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   scopes: ScopeAnalysis,
 ): boolean => {
-  if (hasHeightConstraint(node) || hasUnsupportedBoxSizing(node)) return false;
+  if (hasHeightConstraint(node) || !hasExplicitContentBoxSizing(node)) return false;
   const attributeNames = new Set<string>();
   for (const attribute of node.attributes) {
     if (!isNodeOfType(attribute, "JSXAttribute") || !isNodeOfType(attribute.name, "JSXIdentifier"))

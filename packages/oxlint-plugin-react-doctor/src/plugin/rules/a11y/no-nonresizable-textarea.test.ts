@@ -53,7 +53,7 @@ describe("no-nonresizable-textarea", () => {
           setDraft("");
           if (field.current) field.current.style.height = "auto";
         };
-        return <form><div><textarea ref={field} value={draft} onChange={edit} className="resize-none" /></div></form>;
+        return <form><div><textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /></div></form>;
       });`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -96,7 +96,7 @@ describe("no-nonresizable-textarea", () => {
           setDraft(event.target.value);
           if (field.current) { ${body} }
         };
-        return <textarea ref={field} value={draft} onChange={edit} className="resize-none" />;
+        return <textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" />;
       };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -126,11 +126,72 @@ describe("no-nonresizable-textarea", () => {
   });
 
   it.each([
-    ["legacy sizing", `style={{ resize: "none" }}`, "", 0],
+    ["unknown sizing", `style={{ resize: "none" }}`, "", 1],
+    ["externally styled field", `className="resize-none app-field"`, "", 1],
     [
       "literal content-box with borders",
       `style={{ resize: "none", boxSizing: "content-box", border: "20px solid", padding: 0, overflow: "hidden" }}`,
       "",
+      0,
+    ],
+    [
+      "later inline all reset",
+      `className="resize-none" style={{ boxSizing: "content-box", all: "inherit" }}`,
+      `style={{ boxSizing: "border-box" }}`,
+      1,
+    ],
+    [
+      "earlier literal all reset",
+      `className="resize-none" style={{ all: "inherit", boxSizing: "content-box" }}`,
+      `style={{ boxSizing: "border-box" }}`,
+      0,
+    ],
+    [
+      "inline all reset that may be introduced on a later render",
+      `className="resize-none" style={{ all: reset, boxSizing: "content-box" }}`,
+      `style={{ boxSizing: "border-box" }}`,
+      1,
+    ],
+    [
+      "important all class reset",
+      `className="resize-none md:[all:inherit]!" style={{ boxSizing: "content-box" }}`,
+      `style={{ boxSizing: "border-box" }}`,
+      1,
+    ],
+    [
+      "arbitrary all class reset",
+      `className="resize-none box-content [all:inherit]"`,
+      `style={{ boxSizing: "border-box" }}`,
+      1,
+    ],
+    [
+      "ancestor arbitrary direct-child reset",
+      `style={{ resize: "none", boxSizing: "content-box" }}`,
+      `className="[&>textarea]:[all:inherit]!" style={{ boxSizing: "border-box" }}`,
+      1,
+    ],
+    [
+      "ancestor child utility overrides inline sizing",
+      `style={{ resize: "none", boxSizing: "content-box" }}`,
+      `className="*:box-border!"`,
+      1,
+    ],
+    [
+      "ancestor selector targets a different element",
+      `style={{ resize: "none", boxSizing: "content-box" }}`,
+      `className="[&>button]:[all:inherit]!"`,
+      0,
+    ],
+    [
+      "overwritten dynamic inline sizing may still run",
+      `className="resize-none" style={{ boxSizing: mutateSizing(), ["boxSizing"]: "content-box" }}`,
+      "",
+      1,
+    ],
+    [
+      "stacked descendant utility cannot target a direct child",
+      `style={{ resize: "none", boxSizing: "content-box" }}`,
+      `className="**:*:[all:inherit]!"`,
       0,
     ],
     ["case-insensitive content-box", `style={{ resize: "none", boxSizing: "CONTENT-BOX" }}`, "", 0],
@@ -165,21 +226,26 @@ describe("no-nonresizable-textarea", () => {
       "responsive arbitrary content-box",
       `className="resize-none md:![box-sizing:content-box]"`,
       "",
-      0,
+      1,
     ],
     [
       "ancestor-only border-box",
-      `style={{ resize: "none" }}`,
+      `style={{ resize: "none", boxSizing: "content-box" }}`,
       `style={{ boxSizing: "border-box" }}`,
       0,
     ],
     [
       "ancestor-only unknown sizing",
-      `style={{ resize: "none" }}`,
+      `style={{ resize: "none", boxSizing: "content-box" }}`,
       `style={{ boxSizing: sizing }}`,
       0,
     ],
-    ["ancestor-only box-border class", `className="resize-none"`, `className="md:!box-border"`, 0],
+    [
+      "ancestor-only box-border class",
+      `className="resize-none box-content"`,
+      `className="md:!box-border"`,
+      0,
+    ],
   ])(
     "preserves the %s box-model boundary",
     (_description, attributes, ancestorAttributes, expectedDiagnosticCount) => {
@@ -205,37 +271,45 @@ describe("no-nonresizable-textarea", () => {
   );
 
   it.each([
-    ["fixed height", `className="resize-none h-20"`, ""],
-    ["maximum height", `className="resize-none md:max-h-40"`, ""],
-    ["inline ceiling", `className="resize-none" style={{ maxHeight: 160 }}`, ""],
-    ["dynamic style", `className="resize-none" style={theme}`, ""],
-    ["dynamic class", `className={theme} style={{ resize: "none" }}`, ""],
-    ["overridden editing handler", `className="resize-none" onChange={externalEdit}`, ""],
-    ["overridden ref", `className="resize-none" ref={externalRef}`, ""],
-    ["keyed remount", `className="resize-none" key={recordId}`, ""],
-    ["other editing handler", `className="resize-none" onInput={alterHeight}`, ""],
+    ["fixed height", `className="resize-none box-content h-20"`, ""],
+    ["maximum height", `className="resize-none box-content md:max-h-40"`, ""],
+    ["inline ceiling", `className="resize-none box-content" style={{ maxHeight: 160 }}`, ""],
+    ["dynamic style", `className="resize-none box-content" style={theme}`, ""],
+    ["dynamic class", `className={theme} style={{ resize: "none", boxSizing: "content-box" }}`, ""],
+    [
+      "overridden editing handler",
+      `className="resize-none box-content" onChange={externalEdit}`,
+      "",
+    ],
+    ["overridden ref", `className="resize-none box-content" ref={externalRef}`, ""],
+    ["keyed remount", `className="resize-none box-content" key={recordId}`, ""],
+    ["other editing handler", `className="resize-none box-content" onInput={alterHeight}`, ""],
     [
       "controlled external update",
-      `className="resize-none"`,
+      `className="resize-none box-content"`,
       `const replace = () => setDraft(externalText);`,
     ],
-    ["escaped setter", `className="resize-none"`, `observe(setDraft);`],
-    ["escaped ref", `className="resize-none"`, `observe(field);`],
-    ["shared ref", `className="resize-none"`, `const preview = <div ref={field} />;`],
-    ["shared handler", `className="resize-none"`, `const preview = <input onChange={edit} />;`],
+    ["escaped setter", `className="resize-none box-content"`, `observe(setDraft);`],
+    ["escaped ref", `className="resize-none box-content"`, `observe(field);`],
+    ["shared ref", `className="resize-none box-content"`, `const preview = <div ref={field} />;`],
+    [
+      "shared handler",
+      `className="resize-none box-content"`,
+      `const preview = <input onChange={edit} />;`,
+    ],
     [
       "external height overwrite",
-      `className="resize-none"`,
+      `className="resize-none box-content"`,
       `const shrink = () => { field.current.style.height = "40px"; };`,
     ],
     [
       "unpaired height reset",
-      `className="resize-none"`,
+      `className="resize-none box-content"`,
       `const shrink = () => { field.current.style.height = "auto"; };`,
     ],
     [
       "delayed reset",
-      `className="resize-none"`,
+      `className="resize-none box-content"`,
       `const clear = async () => { setDraft(""); await finish(); if (field.current) field.current.style.height = "auto"; };`,
     ],
   ])("keeps reporting %s ownership boundaries", (_description, attributes, extra) => {
@@ -275,7 +349,7 @@ describe("no-nonresizable-textarea", () => {
             field.current.style.height = ${pixelExpression};
           }
         };
-        return <textarea ref={field} value={draft} onChange={edit} style={{ resize: "none" }} />;
+        return <textarea ref={field} value={draft} onChange={edit} style={{ resize: "none", boxSizing: "content-box" }} />;
       };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -307,7 +381,7 @@ describe("no-nonresizable-textarea", () => {
             field.current.style.height = field.current.scrollHeight + "px";
           }
         }, []);
-        return <textarea ref={field} value={draft} onChange={edit} className="resize-none" />;
+        return <textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" />;
       };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -329,7 +403,7 @@ describe("no-nonresizable-textarea", () => {
             field.current.style.height = field.current.scrollHeight + "px";
           }
         }, []);
-        return <textarea ref={field} value={draft} onChange={edit} className="resize-none" />;
+        return <textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" />;
       };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -340,38 +414,43 @@ describe("no-nonresizable-textarea", () => {
     [
       "conditional mount",
       "visible ?",
-      '<textarea ref={field} value={draft} onChange={edit} className="resize-none" /> : null',
+      '<textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /> : null',
     ],
     [
       "alternative return",
       "",
-      '<textarea ref={field} value={draft} onChange={edit} className="resize-none" />',
+      '<textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" />',
       "if (!visible) return null;",
     ],
     [
       "keyed native ancestor",
       "",
-      '<div key={recordId}><textarea ref={field} value={draft} onChange={edit} className="resize-none" /></div>',
+      '<div key={recordId}><textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /></div>',
     ],
     [
       "opaque wrapper",
       "",
-      '<Boundary><textarea ref={field} value={draft} onChange={edit} className="resize-none" /></Boundary>',
+      '<Boundary><textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /></Boundary>',
     ],
     [
       "ancestor ref callback",
       "",
-      '<div ref={(element) => { element.querySelector("textarea").style.height = "20px"; }}><textarea ref={field} value={draft} onChange={edit} className="resize-none" /></div>',
+      '<div ref={(element) => { element.querySelector("textarea").style.height = "20px"; }}><textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /></div>',
     ],
     [
       "editable ancestor",
       "",
-      '<div contentEditable><textarea ref={field} value={draft} onChange={edit} className="resize-none" /></div>',
+      '<div contentEditable><textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /></div>',
+    ],
+    [
+      "stacked descendant utility overrides a nested textarea",
+      "",
+      '<div className="**:*:[all:inherit]!"><section><textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" /></section></div>',
     ],
     [
       "provider alias write",
       "",
-      '<textarea ref={field} value={draft} onChange={edit} className="resize-none" />',
+      '<textarea ref={field} value={draft} onChange={edit} className="resize-none box-content" />',
       "React.useCallback = replacement;",
     ],
   ])("keeps reporting %s lifetime boundaries", (_description, prefix, output, extra = "") => {

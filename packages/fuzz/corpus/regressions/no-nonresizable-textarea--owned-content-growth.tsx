@@ -14,5 +14,5 @@ export const NoteInput = () => {
       input.current.style.height = input.current.scrollHeight + "px";
     }
   };
-  return <textarea ref={input} value={note} onChange={edit} className="resize-none" />;
+  return <textarea ref={input} value={note} onChange={edit} className="resize-none box-content" />;
 };

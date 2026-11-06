@@ -23,9 +23,9 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
       "Canonical eslint-plugin-react-hooks treats Hooks in try blocks as conditional because an earlier throw changes Hook order; OXC 1.77 incorrectly accepts them.",
   },
   "button-has-type": {
-    failSkips: [0, 15, 16, 27],
+    failSkips: [0, 15, 16, 27, 28],
     reason:
-      "Intentional: a missing button type only matters when the button has a static form owner.",
+      "Intentional: missing types require a static form owner in curated mode. A later opaque spread can override a type, even when object rest excludes the lowercase key but retains another HTML spelling.",
   },
   "jsx-no-target-blank": {
     failSkips: [31],

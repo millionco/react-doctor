@@ -3,6 +3,34 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { buttonHasType } from "./button-has-type.js";
 
 describe("react-builtins/button-has-type — regressions", () => {
+  it("accepts ASCII case variants of native button type keywords", () => {
+    const result = runRule(
+      buttonHasType,
+      'const reset = "ReSeT"; <form><button type="BUTTON">Cancel</button>{React.createElement("button", { type: reset }, "Reset")}<button type="SuBmIt">Save</button></form>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not normalize whitespace or non-ASCII characters", () => {
+    const result = runRule(
+      buttonHasType,
+      '<form><button type=" BUTTON">Cancel</button><button type="ſubmit">Send</button></form>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("applies configured restrictions to case variants", () => {
+    const result = runRule(
+      buttonHasType,
+      '<form><button type="SuBmIt">Save</button><button type="BUTTON">Cancel</button></form>;',
+      { settings: { "react-doctor": { buttonHasType: { submit: false } } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a button without a form owner", () => {
     const result = runRule(
       buttonHasType,

@@ -5,6 +5,8 @@ import {
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
+import { getPackageScriptTsconfigPaths } from "./get-package-script-tsconfig-paths.js";
+import { isPathInside } from "./is-path-inside.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
@@ -103,6 +105,265 @@ const resolveExtendsPath = (extendsValue: string, fromConfigDirectory: string): 
   // Bare specifier (e.g. `@tsconfig/next/tsconfig.json`): resolve from
   // the config dir's node_modules. Bounded, best-effort.
   return path.join(fromConfigDirectory, "node_modules", withExtension);
+};
+
+interface ConfigFileSelection {
+  readonly directory: string;
+  readonly paths: ReadonlyArray<string>;
+}
+
+interface JsxCompilerProject {
+  readonly jsx?: string;
+  readonly jsxFactory?: string;
+  readonly jsxImportSource?: string;
+  readonly outDir?: string;
+  readonly declarationDir?: string;
+  readonly files?: ConfigFileSelection;
+  readonly include?: ConfigFileSelection;
+  readonly exclude?: ConfigFileSelection;
+}
+
+const readFileSelection = (
+  value: unknown,
+  directory: string,
+): ConfigFileSelection | null | undefined => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string" && entry !== "")) {
+    return null;
+  }
+  return { directory, paths: value };
+};
+
+const readJsxCompilerProject = (
+  configFilePath: string,
+  extendsDepth = 0,
+): JsxCompilerProject | null => {
+  if (extendsDepth > TSCONFIG_EXTENDS_MAX_DEPTH) return null;
+  const config = parseTsconfigFile(configFilePath, []);
+  if (!config || config.references !== undefined) return null;
+  const directory = path.dirname(configFilePath);
+  let inherited: JsxCompilerProject = {};
+  if (config.extends !== undefined) {
+    if (
+      typeof config.extends !== "string" ||
+      (!config.extends.startsWith("./") && !config.extends.startsWith("../"))
+    ) {
+      return null;
+    }
+    const parentPath = resolveExtendsPath(config.extends, directory);
+    const parent = parentPath && readJsxCompilerProject(parentPath, extendsDepth + 1);
+    if (!parent) return null;
+    inherited = parent;
+  }
+
+  const files = readFileSelection(config.files, directory);
+  const include = readFileSelection(config.include, directory);
+  const exclude = readFileSelection(config.exclude, directory);
+  if (files === null || include === null || exclude === null) return null;
+
+  const compilerOptions = config.compilerOptions === undefined ? {} : config.compilerOptions;
+  if (!isObjectRecord(compilerOptions) || Array.isArray(compilerOptions)) return null;
+  const { jsx, jsxFactory, jsxImportSource, outDir, declarationDir } = compilerOptions;
+  if (
+    (jsx !== undefined && typeof jsx !== "string") ||
+    (jsxFactory !== undefined && typeof jsxFactory !== "string") ||
+    (jsxImportSource !== undefined && typeof jsxImportSource !== "string") ||
+    (outDir !== undefined &&
+      (typeof outDir !== "string" || outDir === "" || outDir.includes("${"))) ||
+    (declarationDir !== undefined &&
+      (typeof declarationDir !== "string" ||
+        declarationDir === "" ||
+        declarationDir.includes("${")))
+  ) {
+    return null;
+  }
+  return {
+    jsx: jsx ?? inherited.jsx,
+    jsxFactory: jsxFactory ?? inherited.jsxFactory,
+    jsxImportSource: jsxImportSource ?? inherited.jsxImportSource,
+    outDir: outDir === undefined ? inherited.outDir : path.resolve(directory, outDir),
+    declarationDir:
+      declarationDir === undefined
+        ? inherited.declarationDir
+        : path.resolve(directory, declarationDir),
+    files: files ?? inherited.files,
+    include: include ?? inherited.include,
+    exclude: exclude ?? inherited.exclude,
+  };
+};
+
+const FILE_SELECTION_WILDCARD_PATTERN = /[*?]/;
+const RECURSIVE_FILE_SELECTION_PATTERN = /^(?:(.*?)\/)?\*\*\/\*(\.tsx?)?$/u;
+const JSX_PROJECT_CONFIG_NAME_PATTERN = /^(?:ts|js)config(?:[.-].+)?\.json$/u;
+const DEFAULT_EXCLUDED_PROJECT_DIRECTORIES = new Set([
+  "node_modules",
+  "bower_components",
+  "jspm_packages",
+]);
+
+const isVisibleFileSelectionDescendant = (filename: string, directory: string): boolean =>
+  isPathInside(filename, directory) &&
+  !path
+    .relative(directory, filename)
+    .split(path.sep)
+    .some((segment) => segment.startsWith("."));
+
+const matchesSupportedFileSelection = (
+  filename: string,
+  directory: string,
+  selectionPath: string,
+  isExclusion = false,
+): boolean | null => {
+  if (selectionPath.includes("${")) return null;
+  const normalizedPath = selectionPath.replaceAll("\\", "/");
+  if (!FILE_SELECTION_WILDCARD_PATTERN.test(normalizedPath)) {
+    const target = path.resolve(directory, normalizedPath);
+    return (
+      filename === target ||
+      (isExclusion
+        ? isPathInside(filename, target)
+        : !path.basename(target).includes(".") &&
+          isVisibleFileSelectionDescendant(filename, target))
+    );
+  }
+  const recursivePath = RECURSIVE_FILE_SELECTION_PATTERN.exec(normalizedPath);
+  const basePath = recursivePath?.[1] ?? "";
+  if (!recursivePath || FILE_SELECTION_WILDCARD_PATTERN.test(basePath)) return null;
+  const extension = recursivePath[2];
+  if (extension && !filename.endsWith(extension)) return false;
+  const target = path.resolve(directory, basePath);
+  return isExclusion
+    ? isPathInside(filename, target)
+    : isVisibleFileSelectionDescendant(filename, target);
+};
+
+const jsxProjectOwnsFile = (
+  filename: string,
+  nearestConfigDirectory: string,
+  project: JsxCompilerProject,
+): boolean => {
+  if (
+    [project.outDir, project.declarationDir].some(
+      (directory) => directory !== undefined && isPathInside(filename, directory),
+    ) ||
+    path
+      .relative(nearestConfigDirectory, filename)
+      .split(path.sep)
+      .some((segment) => DEFAULT_EXCLUDED_PROJECT_DIRECTORIES.has(segment))
+  ) {
+    return false;
+  }
+  const { files, include, exclude } = project;
+  if (
+    exclude?.paths.some(
+      (entry) => matchesSupportedFileSelection(filename, exclude.directory, entry, true) !== false,
+    )
+  ) {
+    return false;
+  }
+  if (files?.paths.some((entry) => path.resolve(files.directory, entry) === filename)) return true;
+
+  const isSelected = include
+    ? include.paths.some(
+        (entry) => matchesSupportedFileSelection(filename, include.directory, entry) === true,
+      )
+    : files === undefined && isVisibleFileSelectionDescendant(filename, nearestConfigDirectory);
+  if (!isSelected) return false;
+
+  const sameBasenameTypeScriptFile = filename.replace(/\.tsx$/u, ".ts");
+  if (!fs.statSync(sameBasenameTypeScriptFile, { throwIfNoEntry: false })?.isFile()) return true;
+  if (
+    files?.paths.some(
+      (entry) => path.resolve(files.directory, entry) === sameBasenameTypeScriptFile,
+    )
+  ) {
+    return false;
+  }
+  if (
+    exclude?.paths.some(
+      (entry) =>
+        matchesSupportedFileSelection(
+          sameBasenameTypeScriptFile,
+          exclude.directory,
+          entry,
+          true,
+        ) === true,
+    )
+  ) {
+    return true;
+  }
+  return Boolean(
+    include &&
+    include.paths.every(
+      (entry) =>
+        matchesSupportedFileSelection(sameBasenameTypeScriptFile, include.directory, entry) ===
+        false,
+    ),
+  );
+};
+
+const isClassicJsxFactory = (project: JsxCompilerProject, factory: string): boolean =>
+  project.jsx === "react" &&
+  project.jsxFactory === factory &&
+  project.jsxImportSource === undefined;
+
+const hasConflictingJsxProject = (
+  filename: string,
+  selectedConfigPath: string,
+  factory: string,
+): boolean => {
+  const inspectedConfigPaths = new Set([selectedConfigPath]);
+  let directory = path.dirname(filename);
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    const entries = fs.readdirSync(directory);
+    const configPaths = entries
+      .filter((entry) => JSX_PROJECT_CONFIG_NAME_PATTERN.test(entry))
+      .map((entry) => path.join(directory, entry));
+    if (entries.includes("package.json")) {
+      const scriptConfigPaths = getPackageScriptTsconfigPaths(directory);
+      if (!scriptConfigPaths) return true;
+      configPaths.push(...scriptConfigPaths);
+    }
+    for (const configPath of configPaths) {
+      if (inspectedConfigPaths.has(configPath)) continue;
+      inspectedConfigPaths.add(configPath);
+      const project = readJsxCompilerProject(configPath);
+      if (!project || (project.jsx !== undefined && !isClassicJsxFactory(project, factory))) {
+        return true;
+      }
+    }
+    const parent = path.dirname(directory);
+    if (entries.includes(".git") || parent === directory) return false;
+    directory = parent;
+  }
+  return true;
+};
+
+export const hasConfiguredClassicJsxFactory = (filename: string, factory: string): boolean => {
+  if (!path.isAbsolute(filename) || !filename.endsWith(".tsx")) return false;
+  let directory = path.dirname(filename);
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    const configPath = path.join(directory, "tsconfig.json");
+    try {
+      const entry = fs.statSync(configPath, { throwIfNoEntry: false });
+      if (entry) {
+        if (!entry.isFile()) return false;
+        const options = readJsxCompilerProject(configPath);
+        return (
+          options !== null &&
+          isClassicJsxFactory(options, factory) &&
+          jsxProjectOwnsFile(filename, directory, options) &&
+          !hasConflictingJsxProject(filename, configPath, factory)
+        );
+      }
+    } catch {
+      return false;
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) return false;
+    directory = parent;
+  }
+  return false;
 };
 
 const parsePathsField = (pathsField: unknown): Map<string, readonly string[]> => {

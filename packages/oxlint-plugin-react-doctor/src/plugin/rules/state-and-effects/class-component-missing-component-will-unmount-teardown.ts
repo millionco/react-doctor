@@ -1,3 +1,7 @@
+import {
+  TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
+  TIMER_CLEANUP_CALLEE_NAMES,
+} from "../../constants/dom.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -10,6 +14,7 @@ import {
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getClosedGlobalTimerCall } from "../../utils/get-closed-global-timer-call.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
@@ -20,6 +25,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -270,6 +276,50 @@ const getTimerCalleeName = (node: EsTreeNode, scopes: ScopeAnalysis): string | n
   return getStaticPropertyName(callee);
 };
 
+const timerHandleReleaseKeys = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  timerCalleeName: string,
+  handleKey: string | null,
+  scopes: ScopeAnalysis,
+  classBody: EsTreeNode | null,
+): ReadonlyArray<string> => {
+  if (!handleKey) return [];
+  const exactReleaseName =
+    timerCalleeName === "setInterval"
+      ? "clearInterval"
+      : timerCalleeName === "setTimeout"
+        ? "clearTimeout"
+        : timerCalleeName;
+  const releaseKeys = [`timer:${exactReleaseName}:${handleKey}`];
+  if (
+    call.optional ||
+    (TIMER_CLEANUP_CALLEE_NAMES.has(timerCalleeName) && call.arguments.length !== 1) ||
+    !classBody ||
+    getClassBodyIndex(classBody).hasOpaqueTimerInstanceAccess
+  ) {
+    return releaseKeys;
+  }
+
+  if (TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(timerCalleeName)) {
+    const enclosingMember = getEnclosingClassMember(call, classBody);
+    const memberName = enclosingMember ? getClassMemberName(enclosingMember) : null;
+    if (
+      !enclosingMember ||
+      (memberName !== "constructor" && memberName !== "componentDidMount") ||
+      findEnclosingFunction(call) !== getMemberFunction(enclosingMember) ||
+      findEnclosingRepeatingLoop(call)
+    ) {
+      return releaseKeys;
+    }
+  }
+
+  const timer = getClosedGlobalTimerCall(call, scopes);
+  if (timer?.name === timerCalleeName) {
+    releaseKeys.push(`timer:timeout-or-interval:${timer.realm}:${handleKey}`);
+  }
+  return releaseKeys;
+};
+
 const getClassMemberName = (member: EsTreeNode): string | null => {
   if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
     return "constructor";
@@ -287,6 +337,7 @@ interface ClassBodyIndex {
   readonly accessorNames: ReadonlySet<string>;
   readonly memberFunctionsByName: ReadonlyMap<string, EsTreeNode>;
   readonly instanceWritesByName: ReadonlyMap<string, ReadonlyArray<ClassInstanceWrite>>;
+  readonly hasOpaqueTimerInstanceAccess: boolean;
 }
 
 const classBodyIndexCache = new WeakMap<EsTreeNode, ClassBodyIndex>();
@@ -303,6 +354,8 @@ const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
   const accessorNames = new Set<string>();
   const memberFunctionsByName = new Map<string, EsTreeNode>();
   const instanceWritesByName = new Map<string, ClassInstanceWrite[]>();
+  const calledInstanceMemberNames = new Set<string>();
+  let hasOpaqueTimerInstanceAccess = false;
   if (isNodeOfType(classBody, "ClassBody")) {
     for (const member of classBody.body) {
       const memberName = getClassMemberName(member);
@@ -322,6 +375,33 @@ const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
       }
     }
     walkAst(classBody, (candidate) => {
+      if (isNodeOfType(candidate, "ThisExpression")) {
+        const receiver = findTransparentExpressionRoot(candidate);
+        const member = receiver.parent;
+        if (!isNodeOfType(member, "MemberExpression") || member.object !== receiver) {
+          hasOpaqueTimerInstanceAccess = true;
+        } else {
+          const memberName = getStaticPropertyName(member);
+          const memberReference = findTransparentExpressionRoot(member);
+          const consumer = memberReference.parent;
+          if (!memberName || memberName === "componentDidMount" || memberName === "constructor") {
+            hasOpaqueTimerInstanceAccess = true;
+          } else if (
+            isNodeOfType(consumer, "CallExpression") &&
+            consumer.callee === memberReference
+          ) {
+            calledInstanceMemberNames.add(memberName);
+          } else if (
+            isWithinAssignmentTarget(memberReference) &&
+            !(
+              isNodeOfType(consumer, "AssignmentExpression") && consumer.left === memberReference
+            ) &&
+            !isNodeOfType(consumer, "UpdateExpression")
+          ) {
+            hasOpaqueTimerInstanceAccess = true;
+          }
+        }
+      }
       const target = isNodeOfType(candidate, "AssignmentExpression")
         ? stripParenExpression(candidate.left)
         : isNodeOfType(candidate, "UpdateExpression")
@@ -349,6 +429,15 @@ const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
     accessorNames,
     memberFunctionsByName,
     instanceWritesByName,
+    hasOpaqueTimerInstanceAccess:
+      hasOpaqueTimerInstanceAccess ||
+      [...calledInstanceMemberNames].some(
+        (memberName) =>
+          accessorNames.has(memberName) ||
+          instanceWritesByName.has(memberName) ||
+          (!memberFunctionsByName.has(memberName) &&
+            !COMPONENT_MUTATION_METHOD_NAMES.has(memberName)),
+      ),
   };
   classBodyIndexCache.set(classBody, index);
   return index;
@@ -1166,7 +1255,7 @@ const cleanupReleaseKeys = (
     !isNodeOfType(handleArgument, "SpreadElement")
   ) {
     const handleKey = serializeLifecycleReference(handleArgument, scopes, classBody);
-    return handleKey ? [`timer:${timerCalleeName}:${handleKey}`] : [];
+    return timerHandleReleaseKeys(call, timerCalleeName, handleKey, scopes, classBody);
   }
   return [];
 };
@@ -1802,7 +1891,7 @@ const isMountHazard = (
       node,
       listenerIdentityKey: null,
       registrationCount: 1,
-      releaseKeys: handleKey ? [`timer:clearInterval:${handleKey}`] : [],
+      releaseKeys: timerHandleReleaseKeys(node, timerCalleeName, handleKey, scopes, classBody),
     };
   }
   if (timerCalleeName === "setTimeout" && node.arguments?.[0]) {
@@ -1814,7 +1903,7 @@ const isMountHazard = (
       node,
       listenerIdentityKey: null,
       registrationCount: 1,
-      releaseKeys: handleKey ? [`timer:clearTimeout:${handleKey}`] : [],
+      releaseKeys: timerHandleReleaseKeys(node, timerCalleeName, handleKey, scopes, classBody),
     };
   }
   return null;

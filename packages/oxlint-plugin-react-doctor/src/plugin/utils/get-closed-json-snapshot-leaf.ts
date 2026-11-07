@@ -11,6 +11,7 @@ import { getImportBindingForName } from "./find-import-source-for-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { stripGroupingParens } from "./strip-grouping-parens.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import {
@@ -94,14 +95,13 @@ const readParameterPath = (
 
 const readDirectCallbackElement = (callback: EsTreeNode): EsTreeNodeOfType<"JSXElement"> | null => {
   if (!isFunctionLike(callback) || callback.async || callback.generator) return null;
-  if (isNodeOfType(callback.body, "JSXElement")) return callback.body;
-  if (!isNodeOfType(callback.body, "BlockStatement") || callback.body.body.length !== 1)
-    return null;
-  const statement = callback.body.body[0];
-  return isNodeOfType(statement, "ReturnStatement") &&
-    isNodeOfType(statement.argument, "JSXElement")
-    ? statement.argument
-    : null;
+  const body = stripGroupingParens(callback.body);
+  if (isNodeOfType(body, "JSXElement")) return body;
+  if (!isNodeOfType(body, "BlockStatement") || body.body.length !== 1) return null;
+  const statement = body.body[0];
+  if (!isNodeOfType(statement, "ReturnStatement") || !statement.argument) return null;
+  const returned = stripGroupingParens(statement.argument);
+  return isNodeOfType(returned, "JSXElement") ? returned : null;
 };
 
 const hasClosedParameterReads = (

@@ -62,7 +62,7 @@ interface SnapshotDependencyRole {
   packageName: string;
   minimum?: number[];
   maximum?: number[];
-  allowedExactVersions?: readonly string[];
+  allowedExactVersions?: ReadonlySet<string>;
   requireExactVersion?: boolean;
 }
 
@@ -76,13 +76,13 @@ const dependencyRoles: SnapshotDependencyRole[] = [
     packageName: "axios",
     minimum: SNAPSHOT_ROLE_AXIOS_MINIMUM,
     maximum: SNAPSHOT_ROLE_AXIOS_MAXIMUM,
-    allowedExactVersions: SNAPSHOT_ROLE_HISTORICAL_AXIOS_VERSIONS,
+    allowedExactVersions: new Set(SNAPSHOT_ROLE_HISTORICAL_AXIOS_VERSIONS),
   },
   {
     packageName: "react-router-dom",
     minimum: SNAPSHOT_ROLE_ROUTER_MINIMUM,
     maximum: SNAPSHOT_ROLE_ROUTER_MAXIMUM,
-    allowedExactVersions: [SNAPSHOT_ROLE_LEGACY_ROUTER_VERSION],
+    allowedExactVersions: new Set([SNAPSHOT_ROLE_LEGACY_ROUTER_VERSION]),
   },
 ];
 
@@ -297,8 +297,7 @@ const isReviewedDependencyVersion = (
     role.maximum !== undefined &&
     comparePackageVersions(version, createVersion(role.minimum)) >= 0 &&
     comparePackageVersions(version, createVersion(role.maximum)) < 0) ||
-  (role.allowedExactVersions?.includes(`${version.major}.${version.minor}.${version.patch}`) ??
-    false);
+  (role.allowedExactVersions?.has(`${version.major}.${version.minor}.${version.patch}`) ?? false);
 
 const readSnapshotDependencyEvidence = (
   projectDirectory: string,
@@ -311,7 +310,7 @@ const readSnapshotDependencyEvidence = (
   if (!intervals) return null;
   const declarationContained = intervals.every((interval) => {
     const exactVersion = getIntervalExactVersion(interval);
-    if (exactVersion && role.allowedExactVersions?.includes(exactVersion)) return true;
+    if (exactVersion && role.allowedExactVersions?.has(exactVersion)) return true;
     if (!role.minimum || !role.maximum || !interval.upper) return false;
     return (
       comparePackageVersions(interval.lower.version, createVersion(role.minimum)) >= 0 &&

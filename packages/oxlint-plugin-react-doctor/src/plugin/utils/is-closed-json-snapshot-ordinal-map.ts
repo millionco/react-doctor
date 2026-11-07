@@ -166,7 +166,7 @@ const getConsumers = (
           : isNodeOfType(specifier, "ImportSpecifier")
             ? getModuleSpecifierName(specifier.imported)
             : null;
-        if (!exportedName || !exportNames.includes(exportedName)) continue;
+        if (!exportedName || !exportNames.has(exportedName)) continue;
         const symbol = consumerModule.scopes.symbolFor(specifier.local);
         if (!symbol) return null;
         for (const reference of symbol.references) {
@@ -326,32 +326,27 @@ const hasEmptyGate = (
     child = ancestor;
     ancestor = ancestor.parent;
   }
+  let routeStatement: EsTreeNode | undefined | null = route;
+  while (routeStatement && routeStatement.parent !== owner.body)
+    routeStatement = routeStatement.parent;
+  let hasPriorEmptyReturn = false;
   for (const statement of owner.body.body) {
+    if (statement === routeStatement) return hasPriorEmptyReturn;
     if (
-      isNodeOfType(statement, "IfStatement") &&
-      isEmptyStateTest(statement.test, state, module, hasLodashEmptiness)
-    ) {
-      const consequent =
-        isNodeOfType(statement.consequent, "BlockStatement") &&
-        statement.consequent.body.length === 1
-          ? statement.consequent.body[0]
-          : statement.consequent;
-      if (
-        isNodeOfType(consequent, "ReturnStatement") &&
-        isNodeOfType(consequent.argument, "Literal") &&
-        consequent.argument.value === null &&
-        !statement.alternate
-      ) {
-        let current: EsTreeNode | undefined | null = route;
-        while (current && current.parent !== owner.body) current = current.parent;
-        if (
-          current &&
-          owner.body.body.findIndex((candidate) => candidate === current) >
-            owner.body.body.indexOf(statement)
-        )
-          return true;
-      }
-    }
+      hasPriorEmptyReturn ||
+      !isNodeOfType(statement, "IfStatement") ||
+      !isEmptyStateTest(statement.test, state, module, hasLodashEmptiness)
+    )
+      continue;
+    const consequent =
+      isNodeOfType(statement.consequent, "BlockStatement") && statement.consequent.body.length === 1
+        ? statement.consequent.body[0]
+        : statement.consequent;
+    hasPriorEmptyReturn =
+      isNodeOfType(consequent, "ReturnStatement") &&
+      isNodeOfType(consequent.argument, "Literal") &&
+      consequent.argument.value === null &&
+      !statement.alternate;
   }
   return false;
 };
@@ -405,7 +400,7 @@ const isClosedSnapshotCarrierOpening = (
         (isNodeOfType(candidate, "ClassDeclaration") ||
           isNodeOfType(candidate, "ClassExpression")) &&
         isClosedModuleComponent(imported, candidate) &&
-        getClosedJsonSnapshotComponentExportNames(imported, candidate).includes(
+        getClosedJsonSnapshotComponentExportNames(imported, candidate).has(
           binding.exportedName ?? "",
         )
       )
@@ -898,7 +893,7 @@ export const createClosedJsonSnapshotOrdinalMap = (context: RuleContext) => {
     const module = project.modules.get(normalizeFilename(context.filename));
     if (!module) return false;
     if (
-      getClosedJsonSnapshotComponentExportNames(module, leaf.componentFunction).length > 0 &&
+      getClosedJsonSnapshotComponentExportNames(module, leaf.componentFunction).size > 0 &&
       isClosedJsonSnapshotPublicEntry({ project, filePath: module.filePath })
     )
       return false;

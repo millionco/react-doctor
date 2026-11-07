@@ -47,11 +47,12 @@ export const filterSourceFiles = (filePaths: ReadonlyArray<string>): string[] =>
 export const getBaselineDiffPlan = (
   directory: string,
   ref: string,
+  untrackedRenamePaths?: ReadonlyArray<string>,
 ): Promise<GitBaselineDiffPlan | null> =>
   Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Git;
-      return yield* git.baselineDiffPlan({ directory, ref });
+      return yield* git.baselineDiffPlan({ directory, ref, untrackedRenamePaths });
     }).pipe(Effect.provide(Git.layerNode)),
   );
 

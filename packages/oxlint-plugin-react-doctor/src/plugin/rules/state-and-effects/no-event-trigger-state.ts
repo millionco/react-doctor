@@ -1,6 +1,5 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -17,6 +16,7 @@ import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isState } from "./utils/effect/react.js";
 import { getComponentRenderDependencyAnalysis } from "./utils/get-component-render-dependency-analysis.js";
 import { isStateWrittenOnlyFromEventHandlers } from "./utils/is-state-written-only-from-event-handlers.js";
+import { getEffectStatementsWithoutEmptyCleanup } from "./utils/get-effect-statements-without-empty-cleanup.js";
 
 // HACK: §6 of "You Might Not Need an Effect" — sending a POST request:
 //
@@ -142,7 +142,7 @@ export const noEventTriggerState = defineRule({
         const callback = getEffectCallback(effectCall);
         if (!callback) return;
 
-        const bodyStatements = getCallbackStatements(callback);
+        const bodyStatements = getEffectStatementsWithoutEmptyCleanup(effectCall, callback);
         if (bodyStatements.length !== 1) return;
         const soleStatement = bodyStatements[0];
         if (!isNodeOfType(soleStatement, "IfStatement")) return;

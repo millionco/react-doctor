@@ -116,6 +116,44 @@ describe("getClosedJsonSnapshotLeaf", () => {
     expect(certificate?.localTargetPath).toEqual(["details", "articles"]);
   });
 
+  it.each([`((<p key={position}>{article}</p>))`, `{ return (<p key={position}>{article}</p>); }`])(
+    "certifies a parenthesized direct callback return: %s",
+    (body) => {
+      const certificate = inspectLeaf(
+        `export const Leaf = props => <section>{props.articles.map((article, position) => ${body})}</section>;`,
+      );
+      expect(certificate?.targetPath).toEqual(["articles"]);
+    },
+  );
+
+  it.each([
+    `(observe(), <p key={position}>{article}</p>)`,
+    `{ observe(); return (<p key={position}>{article}</p>); }`,
+    `(<p key={position} {...attributes}>{article}</p>)`,
+  ])("declines a parenthesized callback with effects or opaque props: %s", (body) => {
+    expect(
+      inspectLeaf(
+        `export const Leaf = props => <section>{props.articles.map((article, position) => ${body})}</section>;`,
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    `((<p key={position}>{article}</p>) as JSX.Element)`,
+    `(<p key={position}>{article}</p> satisfies JSX.Element)`,
+    `((<p key={position}>{article}</p>)!)`,
+    `(wrapper?.render(<p key={position}>{article}</p>))`,
+  ])("declines a parenthesized callback with another wrapper: %s", (body) => {
+    expect(
+      inspectLeaf(
+        `export const Leaf = props => <section>{props.articles.map((article, position) => ${body})}</section>;`,
+        false,
+        false,
+        "leaf.tsx",
+      ),
+    ).toBeNull();
+  });
+
   it("resolves directly destructured target props", () => {
     const certificate = inspectLeaf(
       `export const Leaf = ({ paragraphs }) => <div>{paragraphs.map((article, position) => <p key={position} title={\`Paragraph \${position + 1}\`}>{article}</p>)}</div>;`,

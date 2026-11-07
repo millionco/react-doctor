@@ -8,12 +8,12 @@ import { isNodeOfType } from "./is-node-of-type.js";
 export const getClosedJsonSnapshotComponentExportNames = (
   module: ClosedJsonSnapshotModule,
   component: EsTreeNode,
-): ReadonlyArray<string> => {
-  if (!isNodeOfType(module.program, "Program")) return [];
+): ReadonlySet<string> => {
+  if (!isNodeOfType(module.program, "Program")) return new Set();
   const names = new Set(getFunctionExportNames(module.program, component));
-  if (!isNodeOfType(component, "ClassDeclaration")) return [...names];
+  if (!isNodeOfType(component, "ClassDeclaration")) return names;
   const binding = getClassBindingSymbol(component, module.scopes);
-  if (!binding) return [...names];
+  if (!binding) return names;
   for (const statement of module.program.body) {
     if (
       isNodeOfType(statement, "ExportDefaultDeclaration") &&
@@ -33,5 +33,5 @@ export const getClosedJsonSnapshotComponentExportNames = (
       if (name) names.add(name);
     }
   }
-  return [...names];
+  return names;
 };

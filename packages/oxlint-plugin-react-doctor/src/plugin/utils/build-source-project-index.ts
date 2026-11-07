@@ -271,12 +271,10 @@ export const buildSourceProjectIndex = ({
     Buffer.byteLength(currentSourceText) > CROSS_FILE_PARSE_MAX_BYTES
   )
     return null;
-  if (
-    requiredModuleSources.length > 0 &&
-    knownModuleSources !== undefined &&
-    !requiredModuleSources.some((moduleSource) => knownModuleSources.includes(moduleSource))
-  ) {
-    return null;
+  if (requiredModuleSources.length > 0 && knownModuleSources !== undefined) {
+    const requiredModuleSourceSet = new Set(requiredModuleSources);
+    if (!knownModuleSources.some((moduleSource) => requiredModuleSourceSet.has(moduleSource)))
+      return null;
   }
   const productionSourceFiles = listProductionSourceFiles(
     rootDirectory,

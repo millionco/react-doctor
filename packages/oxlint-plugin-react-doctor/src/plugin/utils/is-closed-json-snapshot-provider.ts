@@ -110,6 +110,18 @@ const SNAPSHOT_SHARED_PROTOTYPE_NAMES = new Set([
   "__defineGetter__",
   "__defineSetter__",
 ]);
+const SNAPSHOT_UNSUPPORTED_GLOBAL_NAMES = new Set([
+  "eval",
+  "Function",
+  "Reflect",
+  "parent",
+  "top",
+  "opener",
+  "frames",
+  "global",
+  "event",
+  "addEventListener",
+]);
 const SNAPSHOT_GLOBAL_GATEWAY_NAMES = new Set([
   "defaultView",
   "parentWindow",
@@ -716,7 +728,7 @@ const getClosedSnapshotProviderPreludeRequest = (
   declarations: ReadonlyArray<EsTreeNode>,
   request: EsTreeNode,
   module: ClosedJsonSnapshotModule,
-  owners: ReadonlyArray<EsTreeNode>,
+  owners: readonly [EsTreeNode, EsTreeNode],
   clients: ReadonlyMap<SymbolDescriptor, SnapshotClientBinding>,
   argument?: SnapshotRequestArgument,
 ): SnapshotApprovedRequest | null => {
@@ -724,6 +736,7 @@ const getClosedSnapshotProviderPreludeRequest = (
   if (declarations.length === 0) return { module, call: request, preludeLetSymbols };
   if (declarations.length > CLOSED_JSON_SNAPSHOT_PROVIDER_MAX_PRELUDE_DECLARATION_COUNT)
     return null;
+  const [helperOwner, executorOwner] = owners;
   const requestMember = request.type === "CallExpression" ? request.callee : null;
   const clientSymbol =
     requestMember?.type === "MemberExpression" && requestMember.object.type === "Identifier"
@@ -791,7 +804,7 @@ const getClosedSnapshotProviderPreludeRequest = (
         statement.declarations[0] !== declaration ||
         body?.type !== "BlockStatement" ||
         !owner ||
-        !owners.includes(owner) ||
+        (owner !== helperOwner && owner !== executorOwner) ||
         !isFunctionLike(owner) ||
         owner.body !== body ||
         owners.some(
@@ -1457,21 +1470,7 @@ const hasClosedProviderGlobals = (
         )
           isClosed = false;
       }
-      if (
-        [
-          "eval",
-          "Function",
-          "Reflect",
-          "parent",
-          "top",
-          "opener",
-          "frames",
-          "global",
-          "event",
-          "addEventListener",
-        ].includes(node.name)
-      )
-        isClosed = false;
+      if (SNAPSHOT_UNSUPPORTED_GLOBAL_NAMES.has(node.name)) isClosed = false;
       if (node.name === "module" && !isClosedModuleHotReference(node)) isClosed = false;
       if (node.name === "process") {
         const environmentMember = node.parent;

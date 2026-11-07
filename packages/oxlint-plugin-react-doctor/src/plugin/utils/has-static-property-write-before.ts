@@ -332,7 +332,7 @@ const isStableStaticPropertyReference = (identifier: EsTreeNode): boolean => {
   return Boolean(
     memberExpression &&
     isNodeOfType(memberExpression, "MemberExpression") &&
-    stripParenExpression(memberExpression.object) === identifierRoot,
+    memberExpression.object === identifierRoot,
   );
 };
 
@@ -343,7 +343,7 @@ const isNonMutatingStaticPropertyReference = (identifier: EsTreeNode): boolean =
   if (
     !memberExpression ||
     !isNodeOfType(memberExpression, "MemberExpression") ||
-    stripParenExpression(memberExpression.object) !== identifierRoot
+    memberExpression.object !== identifierRoot
   ) {
     return false;
   }

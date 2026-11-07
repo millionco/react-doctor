@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
+import { isReactHookCapabilityValue } from "../../utils/is-react-hook-capability-value.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import {
   REACT_ECOSYSTEM_PACKAGE_NAMES,
@@ -23,13 +24,8 @@ import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-e
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
-import { getImportedName } from "../../utils/get-imported-name.js";
-import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import {
-  hasPossibleStaticPropertyMutationOrEscape,
-  hasPossibleStaticPropertyWriteBefore,
-} from "../../utils/has-static-property-write-before.js";
+import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
@@ -399,56 +395,6 @@ const inferDestructureSourceKey = (bindingIdentifier: EsTreeNode): string | null
 // only recognized exception. We still require it to be inside a
 // component / custom hook scope.
 const isReactUseHook = (hookName: string): boolean => hookName === "use";
-
-const isReactHookCapabilityValue = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): boolean => {
-  const unwrappedExpression = stripParenExpression(expression);
-  if (isNodeOfType(unwrappedExpression, "Identifier")) {
-    const symbol = scopes.symbolFor(unwrappedExpression);
-    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
-    visitedSymbolIds.add(symbol.id);
-    if (symbol.kind === "import") {
-      return (
-        isReactImport(symbol) && isReactHookName(getImportedName(symbol.declarationNode) ?? "")
-      );
-    }
-    if (
-      symbol.kind !== "const" ||
-      !symbol.initializer ||
-      !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
-    ) {
-      return false;
-    }
-    const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
-    if (destructuredPropertyName) {
-      const namespaceExpression = stripParenExpression(symbol.initializer);
-      return (
-        isReactHookName(destructuredPropertyName) &&
-        isNodeOfType(namespaceExpression, "Identifier") &&
-        isReactNamespaceImport(namespaceExpression, scopes) &&
-        !hasPossibleStaticPropertyMutationOrEscape(
-          namespaceExpression,
-          destructuredPropertyName,
-          scopes,
-        )
-      );
-    }
-    if (symbol.declarationNode.id !== symbol.bindingIdentifier) return false;
-    return isReactHookCapabilityValue(symbol.initializer, scopes, visitedSymbolIds);
-  }
-  if (!isNodeOfType(unwrappedExpression, "MemberExpression")) return false;
-  const propertyName = getStaticPropertyName(unwrappedExpression);
-  if (!propertyName || !isReactHookName(propertyName)) return false;
-  const namespaceExpression = stripParenExpression(unwrappedExpression.object);
-  return (
-    isNodeOfType(namespaceExpression, "Identifier") &&
-    isReactNamespaceImport(namespaceExpression, scopes) &&
-    !hasPossibleStaticPropertyMutationOrEscape(namespaceExpression, propertyName, scopes)
-  );
-};
 
 const isReactHookCapabilityComparisonOperand = (
   expression: EsTreeNode,

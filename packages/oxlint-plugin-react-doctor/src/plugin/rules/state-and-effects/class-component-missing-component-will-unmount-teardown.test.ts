@@ -1255,6 +1255,240 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(unrelatedReceiver.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    ["setInterval", "clearTimeout(this.timer);"],
+    ["setTimeout", "clearInterval(this.timer);"],
+    ["window.setInterval", 'window["clearTimeout"](this.timer);'],
+    ["window.setTimeout", "window.clearInterval(this.timer);"],
+    ["self.setInterval", "self.clearTimeout(this.timer);"],
+    ["globalThis.setTimeout", "clearInterval(this.timer);"],
+    [
+      "setInterval",
+      "if (this.props.fast) clearInterval(this.timer); else clearTimeout(this.timer);",
+    ],
+  ])("accepts shared native timer cleanup for %s with %s", (schedule, cleanup) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Clock extends React.Component {
+        componentDidMount() {
+          this.timer = ${schedule}(() => this.setState({ tick: true }), 100);
+        }
+        componentWillUnmount() { ${cleanup} }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["", "clearTimeout(this.otherTimer);"],
+    ["", "this.scheduler.clearTimeout(this.timer);"],
+    ["", "window.clearTimeout(this.timer);"],
+    ["", "const clearTimeout = () => {}; clearTimeout(this.timer);"],
+    ["", "const window = this.scheduler; window.clearTimeout(this.timer);"],
+    ["", "if (this.props.fast) clearTimeout(this.timer);"],
+    ["", "clearImmediate(this.timer);"],
+    ["", "cancelAnimationFrame(this.timer);"],
+    ["", "this.timer = this.otherTimer; clearTimeout(this.timer);"],
+    ["", "clearTimeout?.(this.timer);"],
+    ["", "clearTimeout(this.timer, throwNow());"],
+    ["", "const owner = this; owner.timer = 0; clearTimeout(this.timer);"],
+    ["", "Object.assign(this, { timer: 0 }); clearTimeout(this.timer);"],
+    ["", "delete this.timer; clearTimeout(this.timer);"],
+    ["", "this.reset(); clearTimeout(this.timer);"],
+    [
+      "const box = { host: globalThis }; box.host.clearTimeout = () => {};",
+      "clearTimeout(this.timer);",
+    ],
+    [
+      "let target; target = globalThis; target.clearTimeout = () => {};",
+      "clearTimeout(this.timer);",
+    ],
+    ["globalThis.clearTimeout = () => {};", "globalThis.clearTimeout(this.timer);"],
+    ["globalThis.clearTimeout = () => {};", "clearTimeout(this.timer);"],
+    ["document.defaultView.clearTimeout = () => {};", "clearTimeout(this.timer);"],
+    [
+      'Object.defineProperty(frames, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    [
+      'Reflect.defineProperty(top, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    ["Object.assign(parent, { clearTimeout: () => {} });", "clearTimeout(this.timer);"],
+    [
+      'const realm = frames; Object.defineProperty(realm, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    [
+      'Object.defineProperty(window.frames, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    [
+      'Reflect.defineProperty(globalThis.top, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    ["Object.assign(self.parent, { clearTimeout: () => {} });", "clearTimeout(this.timer);"],
+    [
+      'const realm = "defaultView"; document[realm].clearTimeout = () => {};',
+      "clearTimeout(this.timer);",
+    ],
+    ["document[realmKey][methodKey] = () => {};", "clearTimeout(this.timer);"],
+    ['const method = "clearTimeout"; host[method] = () => {};', "clearTimeout(this.timer);"],
+    ["const { defaultView: host } = ownerDocument; useHost(host);", "clearTimeout(this.timer);"],
+    ["globalThis.window = otherWindow;", "window.clearTimeout(this.timer);"],
+    ["globalThis.setInterval = customScheduler;", "clearTimeout(this.timer);"],
+  ])("still reports an invalid cross-method cleanup: %s %s", (setup, cleanup) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      ${setup}
+      class Clock extends React.Component {
+        componentDidMount() {
+          this.timer = setInterval(() => this.setState({ tick: true }), 100);
+        }
+        componentWillUnmount() { ${cleanup} }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["frames", "top", "parent"])("ignores a shadowed local timer realm name: %s", (name) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const ${name} = {};
+      Object.defineProperty(${name}, "clearTimeout", { value: () => {} });
+      class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { clearTimeout(this.timer); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores non-reference realm names in properties, methods, and JSX", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const record = { parent: 1, frames() { return 1; } };
+      void record.parent;
+      const marker = <span parent="label" />;
+      class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { clearTimeout(this.timer); }
+        render() { return marker; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves same-method cleanup despite an unrelated opaque clearer", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `Object.defineProperty(frames, "clearTimeout", { value: () => {} });
+      class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { clearInterval(this.timer); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept a cross-method cleanup from an unrelated realm", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { otherRealm.clearTimeout(this.timer); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a loop",
+      "for (let count = 0; count < 2; count += 1) this.timer = setInterval(() => {}, 100);",
+      "",
+    ],
+    [
+      "a repeated instance helper",
+      "this.start(); this.start();",
+      "start() { this.timer = setInterval(() => {}, 100); }",
+    ],
+    [
+      "a repeated local helper",
+      "const start = () => { this.timer = setInterval(() => {}, 100); }; start(); start();",
+      "",
+    ],
+    [
+      "a visible direct lifecycle invocation",
+      "this.timer = setInterval(() => {}, 100);",
+      "componentDidUpdate() { this.componentDidMount(); }",
+    ],
+  ])("does not accept a cross-method clear after %s", (_shape, mount, member) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Clock extends React.Component {
+        componentDidMount() { ${mount} }
+        ${member}
+        componentWillUnmount() { clearTimeout(this.timer); }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a single direct constructor timer with cross-method cleanup", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Clock extends React.Component {
+        constructor(props) {
+          super(props);
+          this.timer = setInterval(() => {}, 100);
+        }
+        componentWillUnmount() { clearTimeout(this.timer); }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not use a different global timer namespace for cross-method cleanup", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Clock extends React.Component {
+        componentDidMount() {
+          this.timer = window.setInterval(() => this.setState({ tick: true }), 100);
+        }
+        componentWillUnmount() { globalThis.clearTimeout(this.timer); }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("tracks transparent wrappers around timer callees", () => {
     const wrappedBareTimer = runRule(
       classComponentMissingComponentWillUnmountTeardown,

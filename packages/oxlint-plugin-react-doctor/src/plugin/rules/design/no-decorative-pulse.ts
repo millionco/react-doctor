@@ -304,7 +304,7 @@ export const noDecorativePulse = defineRule({
       if (!text || BUSY_TEXT_PATTERN.test(text)) return;
       if (isBusyStatus(openingElement)) return;
       if (isOwnedAsyncResultPlaceholder(node, context.scopes)) return;
-      if (isOwnedEventPendingPulse(node, context.scopes)) return;
+      if (isOwnedEventPendingPulse(node, context)) return;
       context.report({
         node: openingElement,
         message:

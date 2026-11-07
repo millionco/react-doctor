@@ -246,3 +246,182 @@ describe("no-decorative-pulse event pending ownership", () => {
     expect(result.diagnostics).toHaveLength(expectedDiagnostics);
   });
 });
+
+describe("effective native pending triggers", () => {
+  it.each([
+    [
+      "a spread that removes the handler",
+      "<button onClick={send} {...{ onClick: undefined }}>Send</button>",
+      1,
+    ],
+    [
+      "a spread without an event override",
+      '<button onClick={send} {...{ id: "send" }}>Send</button>',
+      0,
+    ],
+    ["a native disabled button", "<button disabled onClick={send}>Send</button>", 1],
+    [
+      "a disabled fieldset",
+      "<fieldset disabled><button onClick={send}>Send</button></fieldset>",
+      1,
+    ],
+    [
+      "a fieldset with effective disabled=false",
+      "<fieldset disabled {...{ disabled: false }}><button onClick={send}>Send</button></fieldset>",
+      0,
+    ],
+    [
+      "the first literal legend",
+      "<fieldset disabled><legend><button onClick={send}>Send</button></legend></fieldset>",
+      0,
+    ],
+    [
+      "a later legend",
+      "<fieldset disabled><legend>Other</legend><legend><button onClick={send}>Send</button></legend></fieldset>",
+      1,
+    ],
+  ])("handles %s", (_name, trigger, expectedDiagnostics) => {
+    const result = runRule(
+      noDecorativePulse,
+      `import { useState } from "react";
+import { requestAnswer } from "./operation";
+export function Panel() {
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await requestAnswer(); } finally { setBusy(false); }
+  };
+  return <section>
+    ${trigger}
+    {busy && <div className="animate-pulse">Thinking…</div>}
+  </section>;
+}`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedDiagnostics);
+  });
+});
+
+describe("statically inactive native pending triggers", () => {
+  it.each([
+    {
+      name: "disabled const",
+      setup: "const blocked = true;",
+      trigger: "<button disabled={blocked} onClick={send} />",
+      expected: 1,
+    },
+    {
+      name: "enabled const",
+      setup: "const blocked = false;",
+      trigger: "<button disabled={blocked} onClick={send} />",
+      expected: 0,
+    },
+    {
+      name: "dynamic state",
+      setup: "const [blocked] = useState(true);",
+      trigger: "<button disabled={blocked} onClick={send} />",
+      expected: 0,
+    },
+    {
+      name: "literal false branch",
+      setup: "",
+      trigger: "{false && <button onClick={send} />}",
+      expected: 1,
+    },
+    {
+      name: "literal true branch",
+      setup: "",
+      trigger: "{true && <button onClick={send} />}",
+      expected: 0,
+    },
+    {
+      name: "hidden input",
+      setup: "",
+      trigger: '<input type="hidden" onKeyDown={() => send()} />',
+      expected: 1,
+    },
+    {
+      name: "text input",
+      setup: "",
+      trigger: '<input type="text" onKeyDown={() => send()} />',
+      expected: 0,
+    },
+    {
+      name: "inert React 19.2 ancestor",
+      setup: "",
+      trigger: "<div inert><button onClick={send} /></div>",
+      expected: 1,
+    },
+    {
+      name: "inert React 18 ancestor",
+      setup: "",
+      trigger: "<div inert><button onClick={send} /></div>",
+      reactCapability: "react:18",
+      expected: 0,
+    },
+    {
+      name: "inert with only React 19 major metadata",
+      setup: "",
+      trigger: "<div inert><button onClick={send} /></div>",
+      reactCapability: "react:19",
+      expected: 0,
+    },
+    {
+      name: "inert false",
+      setup: "",
+      trigger: "<div inert={false}><button onClick={send} /></div>",
+      expected: 0,
+    },
+    {
+      name: "dialog can escape ancestor inertness",
+      setup: "",
+      trigger: "<div inert><dialog><button onClick={send} /></dialog></div>",
+      expected: 0,
+    },
+    {
+      name: "dialog directly inert",
+      setup: "",
+      trigger: "<dialog inert><button onClick={send} /></dialog>",
+      expected: 1,
+    },
+    {
+      name: "hidden can be styled back into view",
+      setup: "",
+      trigger: '<div hidden style={{ display: "block" }}><button onClick={send} /></div>',
+      expected: 0,
+    },
+    {
+      name: "hidden can be revealed",
+      setup: "",
+      trigger: '<div hidden="until-found"><button onClick={send} /></div>',
+      expected: 0,
+    },
+  ])("handles $name", ({ setup, trigger, reactCapability = "react:19.2", expected }) => {
+    const result = runRule(
+      noDecorativePulse,
+      `import { useState } from "react";
+import { requestAnswer } from "./operation";
+export function Panel() {
+  ${setup}
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await requestAnswer(); } finally { setBusy(false); }
+  };
+  return <section>
+    ${trigger}
+    {busy && <div className="animate-pulse">Thinking…</div>}
+  </section>;
+}`,
+      {
+        forceJsx: true,
+        settings: { "react-doctor": { capabilities: ["react", reactCapability] } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

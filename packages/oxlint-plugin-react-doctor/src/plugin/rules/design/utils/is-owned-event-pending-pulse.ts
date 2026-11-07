@@ -5,13 +5,23 @@ import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
+import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
+import { getDirectConstInitializer } from "../../../utils/get-direct-const-initializer.js";
+import { getNodeStartIndex } from "../../../utils/get-node-start-index.js";
+import { hasCapability } from "../../../utils/get-react-doctor-setting.js";
+import { getStaticDirectJsxElements } from "../../../utils/get-static-direct-jsx-elements.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isSymbolReadOnly } from "../../../utils/is-symbol-read-only.js";
 import { isTypeScriptTypePosition } from "../../../utils/is-typescript-type-position.js";
 import { resolveImportedApiReference } from "../../../utils/resolve-imported-api-reference.js";
 import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
+import { resolveStaticJsxAttribute } from "../../../utils/resolve-static-jsx-attribute.js";
+import type { RuleContext } from "../../../utils/rule-context.js";
+import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 
 const THINKING_STATUS_PATTERN = /^thinking[\s\p{P}\p{S}]*$/iu;
@@ -206,12 +216,111 @@ const isReturnedIntrinsicTree = (
   }
 };
 
+const getEffectiveInteractionLiteral = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  name: string,
+  scopes?: ScopeAnalysis,
+): boolean | string | number | bigint | null | undefined => {
+  const { attribute, expression, isPresent, isUnknown } = resolveStaticJsxAttribute(
+    openingElement.attributes,
+    name,
+  );
+  if (isUnknown) return undefined;
+  if (!isPresent) return false;
+  if (attribute && !attribute.value) return true;
+  const value = attribute?.value ?? expression;
+  if (!value) return undefined;
+  let resolved = stripParenExpression(
+    isNodeOfType(value, "JSXExpressionContainer") ? value.expression : value,
+  );
+  if (scopes && isNodeOfType(resolved, "Identifier")) {
+    const symbol = scopes.symbolFor(resolved);
+    const initializer = symbol && getDirectConstInitializer(symbol);
+    if (
+      !symbol ||
+      !initializer ||
+      !isSymbolReadOnly(symbol) ||
+      getNodeStartIndex(symbol.bindingIdentifier) < 0 ||
+      getNodeStartIndex(symbol.bindingIdentifier) >= getNodeStartIndex(resolved)
+    ) {
+      return undefined;
+    }
+    resolved = stripParenExpression(initializer);
+  }
+  if (!isNodeOfType(resolved, "Literal")) return undefined;
+  const literal = resolved.value;
+  return literal === null ||
+    typeof literal === "boolean" ||
+    typeof literal === "string" ||
+    typeof literal === "number" ||
+    typeof literal === "bigint"
+    ? literal
+    : undefined;
+};
+
+const getEffectiveDisabledState = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
+): boolean | null => {
+  const value = getEffectiveInteractionLiteral(openingElement, "disabled", scopes);
+  return value === undefined ? null : Boolean(value);
+};
+
+const hasBlockingFieldsetAncestor = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  owner: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let ancestor = element.parent;
+  while (ancestor && ancestor !== owner) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      isIntrinsicName(ancestor, "fieldset") &&
+      getEffectiveDisabledState(ancestor.openingElement, scopes) !== false
+    ) {
+      if (
+        !ancestor.children.every(
+          (child) =>
+            isNodeOfType(child, "JSXText") ||
+            (isNodeOfType(child, "JSXElement") &&
+              isNodeOfType(child.openingElement.name, "JSXIdentifier") &&
+              INTRINSIC_TAG_PATTERN.test(child.openingElement.name.name)),
+        )
+      ) {
+        return true;
+      }
+      const firstLegend = getStaticDirectJsxElements(ancestor).find((child) =>
+        isIntrinsicName(child, "legend"),
+      );
+      if (!firstLegend || !isAstDescendant(element, firstLegend)) return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const hasBlockingInertAncestor = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  owner: EsTreeNode,
+): boolean => {
+  let current: EsTreeNode | null | undefined = element;
+  while (current && current !== owner) {
+    if (isNodeOfType(current, "JSXElement")) {
+      if (getEffectiveInteractionLiteral(current.openingElement, "inert") === true) return true;
+      if (isIntrinsicName(current, "dialog")) return false;
+    }
+    current = current.parent;
+  }
+  return false;
+};
+
 const isNativeInteractionValue = (
   value: EsTreeNode,
   owner: EsTreeNode,
   ownerBody: EsTreeNodeOfType<"BlockStatement">,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
+  const { scopes } = context;
   const container = value.parent;
   const attribute = container?.parent;
   if (
@@ -234,6 +343,19 @@ const isNativeInteractionValue = (
   ) {
     return false;
   }
+  const inputType = isIntrinsicName(element, "input")
+    ? getEffectiveInteractionLiteral(attribute.parent, "type")
+    : null;
+  if (
+    getAuthoritativeJsxAttribute(attribute.parent.attributes, attribute.name.name) !== attribute ||
+    !isNodeReachableWithinFunction(attribute, context) ||
+    getEffectiveDisabledState(attribute.parent, scopes) === true ||
+    (typeof inputType === "string" && inputType.toLowerCase() === "hidden") ||
+    hasBlockingFieldsetAncestor(element, owner, scopes) ||
+    (hasCapability(context.settings, "react:19.2") && hasBlockingInertAncestor(element, owner))
+  ) {
+    return false;
+  }
   const eventOwner = findEnclosingFunction(attribute);
   if (eventOwner === owner) return isReturnedIntrinsicTree(element, ownerBody);
   return Boolean(
@@ -247,8 +369,9 @@ const isClosedNativeInteraction = (
   handler: EsTreeNodeOfType<"ArrowFunctionExpression">,
   owner: EsTreeNode,
   ownerBody: EsTreeNodeOfType<"BlockStatement">,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
+  const { scopes } = context;
   const declarator = handler.parent;
   if (
     !isNodeOfType(declarator, "VariableDeclarator") ||
@@ -267,7 +390,7 @@ const isClosedNativeInteraction = (
     references.length > 0 &&
     references.every(({ identifier, flag }) => {
       if (flag !== "read") return false;
-      if (isNativeInteractionValue(identifier, owner, ownerBody, scopes)) return true;
+      if (isNativeInteractionValue(identifier, owner, ownerBody, context)) return true;
       const call = identifier.parent;
       if (!isNodeOfType(call, "CallExpression") || call.callee !== identifier || call.optional) {
         return false;
@@ -276,7 +399,7 @@ const isClosedNativeInteraction = (
       return (
         isNodeOfType(callback, "ArrowFunctionExpression") &&
         !callback.async &&
-        isNativeInteractionValue(callback, owner, ownerBody, scopes)
+        isNativeInteractionValue(callback, owner, ownerBody, context)
       );
     })
   );
@@ -352,8 +475,9 @@ const hasDirectAwaitedLocalCall = (
 
 export const isOwnedEventPendingPulse = (
   element: EsTreeNodeOfType<"JSXElement">,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): boolean => {
+  const { scopes } = context;
   const [text, ...otherChildren] = element.children;
   if (
     (!isIntrinsicName(element, "div") && !isIntrinsicName(element, "span")) ||
@@ -411,7 +535,7 @@ export const isOwnedEventPendingPulse = (
     !isNodeOfType(handler, "ArrowFunctionExpression") ||
     !handler.async ||
     !isNodeOfType(handler.body, "BlockStatement") ||
-    !isClosedNativeInteraction(handler, owner, owner.body, scopes) ||
+    !isClosedNativeInteraction(handler, owner, owner.body, context) ||
     !isBusyExit(handler.body.body[0], state, scopes)
   ) {
     return false;

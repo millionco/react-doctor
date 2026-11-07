@@ -409,6 +409,13 @@ describe("no-boolean-toggle-without-functional-update", () => {
 
   it.each([
     "document.defaultView.clearTimeout = () => {};",
+    'Object.defineProperty(frames, "clearTimeout", { value: () => {} });',
+    'Reflect.defineProperty(top, "clearTimeout", { value: () => {} });',
+    "Object.assign(parent, { clearTimeout: () => {} });",
+    'const realm = frames; Object.defineProperty(realm, "clearTimeout", { value: () => {} });',
+    'Object.defineProperty(window.frames, "clearTimeout", { value: () => {} });',
+    'Reflect.defineProperty(globalThis.top, "clearTimeout", { value: () => {} });',
+    "Object.assign(self.parent, { clearTimeout: () => {} });",
     'const realm = "defaultView"; document[realm].clearTimeout = () => {};',
     "document[realmKey][methodKey] = () => {};",
     'const method = "clearTimeout"; host[method] = () => {};',
@@ -426,6 +433,79 @@ describe("no-boolean-toggle-without-functional-update", () => {
          }, [open]);
          return null;
        };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["frames", "top", "parent"])("ignores a shadowed local timer realm name: %s", (name) => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+      const ${name} = {};
+      Object.defineProperty(${name}, "clearTimeout", { value: () => {} });
+      const Signal = () => {
+        const [active, setActive] = useState(false);
+        useLayoutEffect(() => {
+          const timer = setInterval(() => setActive(!active), 100);
+          return () => clearTimeout(timer);
+        }, [active]);
+        return active ? "on" : "off";
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores non-reference realm names in properties, methods, and JSX", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+      const record = { parent: 1, frames() { return 1; } };
+      void record.parent;
+      const Signal = () => {
+        const [active, setActive] = useState(false);
+        useLayoutEffect(() => {
+          const timer = setInterval(() => setActive(!active), 100);
+          return () => clearTimeout(timer);
+        }, [active]);
+        return <span parent="label">{active ? "on" : "off"}</span>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves same-method cleanup despite an unrelated opaque clearer", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+      Object.defineProperty(frames, "clearTimeout", { value: () => {} });
+      const Signal = () => {
+        const [active, setActive] = useState(false);
+        useLayoutEffect(() => {
+          const timer = setInterval(() => setActive(!active), 100);
+          return () => clearInterval(timer);
+        }, [active]);
+        return active ? "on" : "off";
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept a cross-method cleanup from an unrelated realm", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `import { useLayoutEffect, useState } from "react";
+      const Signal = () => {
+        const [active, setActive] = useState(false);
+        useLayoutEffect(() => {
+          const timer = setInterval(() => setActive(!active), 100);
+          return () => otherRealm.clearTimeout(timer);
+        }, [active]);
+        return active ? "on" : "off";
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

@@ -13,6 +13,7 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
 const GLOBAL_TIMER_RECEIVER_NAMES = new Set(["globalThis", "global", "self", "window"]);
+const OPAQUE_GLOBAL_TIMER_RECEIVER_NAMES = new Set(["frames", "top", "parent"]);
 const NATIVE_TIMER_API_NAMES = new Set([
   ...TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
   ...TIMER_CLEANUP_CALLEE_NAMES,
@@ -67,6 +68,7 @@ const hasOnlyDirectGlobalTimerUses = (scopes: ScopeAnalysis): boolean => {
         return false;
       }
       if (resolvedSymbol) continue;
+      if (OPAQUE_GLOBAL_TIMER_RECEIVER_NAMES.has(identifier.name)) return false;
       if (identifier.name === "document") {
         const member = expression.parent;
         if (

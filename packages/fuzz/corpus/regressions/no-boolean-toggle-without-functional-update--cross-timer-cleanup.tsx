@@ -1,6 +1,7 @@
 // rule: no-boolean-toggle-without-functional-update
 // weakness: library-idiom
 // source: synthetic
+// verdict: pass
 import { useLayoutEffect, useState } from "react";
 
 export const Signal = () => {

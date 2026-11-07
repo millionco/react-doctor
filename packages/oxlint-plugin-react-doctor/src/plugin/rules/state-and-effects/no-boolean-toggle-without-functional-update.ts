@@ -4,6 +4,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findContainingBlock } from "../../utils/find-containing-block.js";
+import { getClosedGlobalTimerCall } from "../../utils/get-closed-global-timer-call.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -513,8 +515,95 @@ const registrationHasCleanup = (
   return false;
 };
 
+const getSoleCallbackExpression = (callback: EsTreeNode): EsTreeNode | null => {
+  if (!isFunctionLike(callback)) return null;
+  const statement =
+    isNodeOfType(callback.body, "BlockStatement") && callback.body.body.length === 1
+      ? callback.body.body[0]
+      : null;
+  const expression = isNodeOfType(statement, "ExpressionStatement")
+    ? statement.expression
+    : getSingleReturnExpression(callback);
+  return expression ? stripParenExpression(expression) : null;
+};
+
+const registrationHasInterchangeableTimerCleanup = (
+  registration: EsTreeNodeOfType<"CallExpression">,
+  effectCall: EsTreeNodeOfType<"CallExpression">,
+  effectCallback: EsTreeNode,
+  toggleCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const setup = effectCall.arguments[0];
+  if (
+    !setup ||
+    stripParenExpression(setup) !== effectCallback ||
+    toggleCall.optional ||
+    toggleCall.arguments.length !== 1 ||
+    isNodeOfType(toggleCall.arguments[0], "SpreadElement") ||
+    !isFunctionLike(effectCallback) ||
+    effectCallback.async ||
+    effectCallback.generator ||
+    effectCallback.params.length ||
+    !isNodeOfType(effectCallback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const [allocation, cleanupReturn] = effectCallback.body.body;
+  if (
+    effectCallback.body.body.length !== 2 ||
+    !isNodeOfType(allocation, "VariableDeclaration") ||
+    allocation.kind !== "const" ||
+    allocation.declarations.length !== 1 ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+    !cleanupReturn.argument
+  ) {
+    return false;
+  }
+  const [handle] = allocation.declarations;
+  if (!handle || handle.init !== registration || !isNodeOfType(handle.id, "Identifier")) {
+    return false;
+  }
+  const callback = registration.arguments[0];
+  if (!callback) return false;
+  const timerCallback = stripParenExpression(callback);
+  if (
+    !isFunctionLike(timerCallback) ||
+    timerCallback.async ||
+    timerCallback.generator ||
+    timerCallback.params.length ||
+    getSoleCallbackExpression(timerCallback) !== toggleCall
+  ) {
+    return false;
+  }
+  const cleanup = stripParenExpression(cleanupReturn.argument);
+  if (!isFunctionLike(cleanup) || cleanup.async || cleanup.generator || cleanup.params.length) {
+    return false;
+  }
+  const clearCall = getSoleCallbackExpression(cleanup);
+  if (!isNodeOfType(clearCall, "CallExpression") || clearCall.arguments.length !== 1) return false;
+  const [argument] = clearCall.arguments;
+  if (!argument) return false;
+  const handleReference = stripParenExpression(argument);
+  if (
+    !isNodeOfType(handleReference, "Identifier") ||
+    context.scopes.symbolFor(handleReference)?.bindingIdentifier !== handle.id
+  ) {
+    return false;
+  }
+  const scheduledTimer = getClosedGlobalTimerCall(registration, context.scopes);
+  const clearedTimer = getClosedGlobalTimerCall(clearCall, context.scopes);
+  return Boolean(
+    scheduledTimer &&
+    clearedTimer &&
+    scheduledTimer.realm === clearedTimer.realm &&
+    ((scheduledTimer.name === "setTimeout" && clearedTimer.name === "clearInterval") ||
+      (scheduledTimer.name === "setInterval" && clearedTimer.name === "clearTimeout")),
+  );
+};
+
 const effectResubscribesWithCleanup = (
-  node: EsTreeNode,
+  node: EsTreeNodeOfType<"CallExpression">,
   stateSymbolId: number,
   deferredFunctions: ReadonlySet<EsTreeNode>,
   registrationCallsByCallback: ReadonlyMap<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>,
@@ -546,7 +635,14 @@ const effectResubscribesWithCleanup = (
     registrationCalls.every(
       (registrationCall) =>
         context.cfg.enclosingFunction(registrationCall) === effectCallback &&
-        registrationHasCleanup(registrationCall, effectCallback, context),
+        (registrationHasCleanup(registrationCall, effectCallback, context) ||
+          registrationHasInterchangeableTimerCleanup(
+            registrationCall,
+            effectCall,
+            effectCallback,
+            node,
+            context,
+          )),
     )
   );
 };

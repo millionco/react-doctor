@@ -9,6 +9,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { findJsxAttribute } from "./find-jsx-attribute.js";
 import { hasSameFileSnapshot } from "./has-same-file-snapshot.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { parseSourceText } from "./parse-source-file.js";
 import { walkAst } from "./walk-ast.js";
 
@@ -26,7 +27,7 @@ const parseAstroProgram = (filename: string): EsTreeNode | null => {
   try {
     const astroCompiler = (compiler ??= requireCompiler("@astrojs/compiler/sync"));
     const converted = astroCompiler.convertToTSX(fs.readFileSync(filename, "utf8"), {
-      filename,
+      filename: normalizeFilename(filename),
       includeScripts: true,
       sourcemap: false,
     });

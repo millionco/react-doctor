@@ -73,7 +73,7 @@ describe("react-builtins/react-in-jsx-scope — JSX runtime advice", () => {
     expect(reactInJsxScope.severity).toBe("warn");
     expect(reactInJsxScope.title).toBe("JSX may need a React binding");
     expect(reactInJsxScope.recommendation).toBe(
-      "Import or provide `React` only when the selected JSX transform requires that binding. Disable this rule for automatic runtimes, build-injected React factories, or custom factories that do not use `React`.",
+      "Check your JSX transform and direct `React` references before adding an import. Leave this rule disabled when your build already handles them.",
     );
   });
 
@@ -96,6 +96,18 @@ describe("react-builtins/react-in-jsx-scope — JSX runtime advice", () => {
         nodeType: "JSXIdentifier",
       },
     ]);
+  });
+
+  it("reports an unbound React member even with the automatic transform", () => {
+    const unbound = runJsx("/** @jsxRuntime automatic */\nconst App = () => <React.Fragment />;");
+    const bound = runJsx(
+      '/** @jsxRuntime automatic */\nimport React from "react";\nconst App = () => <React.Fragment />;',
+    );
+
+    expect(unbound.parseErrors).toEqual([]);
+    expect(unbound.diagnostics.map(({ nodeType }) => nodeType)).toEqual(["JSXMemberExpression"]);
+    expect(bound.parseErrors).toEqual([]);
+    expect(bound.diagnostics).toEqual([]);
   });
 
   it("preserves each fragment and element location with the same conditional message", () => {

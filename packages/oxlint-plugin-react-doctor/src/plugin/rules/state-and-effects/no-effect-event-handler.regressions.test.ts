@@ -3,6 +3,50 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEffectEventHandler } from "./no-effect-event-handler.js";
 
 describe("state-and-effects/no-effect-event-handler regressions", () => {
+  const buildProductPage = (cleanup: string): string => `const ProductPage = ({ product }) => {
+  useEffect(() => {
+    if (product.isInCart) {
+      toast("Added " + product.name + "!");
+    }
+    ${cleanup}
+  }, [product]);
+  return null;
+};`;
+
+  it.each([
+    ["an empty arrow", "return () => {};"],
+    ["an arrow that only reads a binding", "return () => { product; };"],
+  ])("flags an event-like effect that returns %s as its cleanup", (_label, cleanup) => {
+    const result = runRule(noEffectEventHandler, buildProductPage(cleanup));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an event-like effect that returns a cleanup that does work", () => {
+    const result = runRule(
+      noEffectEventHandler,
+      buildProductPage("return () => { cancelled = true; };"),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "return () => cleanupSignal;",
+    "return () => void cleanupSignal;",
+    "return subscribe();",
+    "return (() => connection.close()) as (() => void);",
+  ])("retains meaningful or unproved cleanup work: %s", (cleanup) => {
+    const result = runRule(
+      noEffectEventHandler,
+      `Object.defineProperty(globalThis, "cleanupSignal", {
+        get() { connection.close(); }
+      });\n${buildProductPage(cleanup)}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag a guarded effect returning an unknown cleanup parameter", () => {
     const result = runRule(
       noEffectEventHandler,

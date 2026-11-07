@@ -1,3 +1,4 @@
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -71,7 +72,7 @@ export const noDerivedState = defineRule({
     return {
       ...componentTracker.visitors,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isReactHookCall(node, "useEffect", context.scopes)) return;
+        if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
         for (const fact of collectEffectStateWriteFacts(

@@ -26,7 +26,7 @@ export const reactInJsxScope = defineRule({
   // you're stuck on the classic transform.
   defaultEnabled: false,
   recommendation:
-    "Import or provide `React` only when the selected JSX transform requires that binding. Disable this rule for automatic runtimes, build-injected React factories, or custom factories that do not use `React`.",
+    "Check your JSX transform and direct `React` references before adding an import. Leave this rule disabled when your build already handles them.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (findVariableInitializer(node, "React")) return;

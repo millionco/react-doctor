@@ -1309,6 +1309,36 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     ],
     ["globalThis.clearTimeout = () => {};", "globalThis.clearTimeout(this.timer);"],
     ["globalThis.clearTimeout = () => {};", "clearTimeout(this.timer);"],
+    ["document.defaultView.clearTimeout = () => {};", "clearTimeout(this.timer);"],
+    [
+      'Object.defineProperty(frames, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    [
+      'Reflect.defineProperty(top, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    ["Object.assign(parent, { clearTimeout: () => {} });", "clearTimeout(this.timer);"],
+    [
+      'const realm = frames; Object.defineProperty(realm, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    [
+      'Object.defineProperty(window.frames, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    [
+      'Reflect.defineProperty(globalThis.top, "clearTimeout", { value: () => {} });',
+      "clearTimeout(this.timer);",
+    ],
+    ["Object.assign(self.parent, { clearTimeout: () => {} });", "clearTimeout(this.timer);"],
+    [
+      'const realm = "defaultView"; document[realm].clearTimeout = () => {};',
+      "clearTimeout(this.timer);",
+    ],
+    ["document[realmKey][methodKey] = () => {};", "clearTimeout(this.timer);"],
+    ['const method = "clearTimeout"; host[method] = () => {};', "clearTimeout(this.timer);"],
+    ["const { defaultView: host } = ownerDocument; useHost(host);", "clearTimeout(this.timer);"],
     ["globalThis.window = otherWindow;", "window.clearTimeout(this.timer);"],
     ["globalThis.setInterval = customScheduler;", "clearTimeout(this.timer);"],
   ])("still reports an invalid cross-method cleanup: %s %s", (setup, cleanup) => {
@@ -1324,6 +1354,64 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         render() { return null; }
       }
       `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["frames", "top", "parent"])("ignores a shadowed local timer realm name: %s", (name) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const ${name} = {};
+      Object.defineProperty(${name}, "clearTimeout", { value: () => {} });
+      class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { clearTimeout(this.timer); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores non-reference realm names in properties, methods, and JSX", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const record = { parent: 1, frames() { return 1; } };
+      void record.parent;
+      const marker = <span parent="label" />;
+      class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { clearTimeout(this.timer); }
+        render() { return marker; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves same-method cleanup despite an unrelated opaque clearer", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `Object.defineProperty(frames, "clearTimeout", { value: () => {} });
+      class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { clearInterval(this.timer); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept a cross-method cleanup from an unrelated realm", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() { this.timer = setInterval(() => {}, 100); }
+        componentWillUnmount() { otherRealm.clearTimeout(this.timer); }
+        render() { return null; }
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

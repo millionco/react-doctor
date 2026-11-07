@@ -14,6 +14,7 @@ import {
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getClosedGlobalTimerCall } from "../../utils/get-closed-global-timer-call.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
@@ -44,10 +45,6 @@ const MESSAGE =
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
-const NATIVE_TIMER_API_NAMES = new Set([
-  ...TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
-  ...TIMER_CLEANUP_CALLEE_NAMES,
-]);
 const STABLE_GLOBAL_MEMBER_NAMES = new Set(["body", "documentElement", "visualViewport"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
@@ -279,63 +276,6 @@ const getTimerCalleeName = (node: EsTreeNode, scopes: ScopeAnalysis): string | n
   return getStaticPropertyName(callee);
 };
 
-const closedGlobalTimerUsesByScope = new WeakMap<ScopeAnalysis, boolean>();
-
-const hasClosedGlobalTimerUses = (scopes: ScopeAnalysis): boolean => {
-  const cachedResult = closedGlobalTimerUsesByScope.get(scopes);
-  if (cachedResult !== undefined) return cachedResult;
-  const pendingScopes = [scopes.rootScope];
-  while (pendingScopes.length > 0) {
-    const scope = pendingScopes.pop();
-    if (!scope) break;
-    if (scope.kind === "with") {
-      closedGlobalTimerUsesByScope.set(scopes, false);
-      return false;
-    }
-    for (const child of scope.children) pendingScopes.push(child);
-    for (const { identifier, flag, resolvedSymbol } of scope.references) {
-      if (!isNodeOfType(identifier, "Identifier")) continue;
-      const expression = findTransparentExpressionRoot(identifier);
-      if (
-        (identifier.name === "eval" &&
-          (!resolvedSymbol ||
-            (isNodeOfType(expression.parent, "CallExpression") &&
-              expression.parent.callee === expression))) ||
-        (identifier.name === "Function" && !resolvedSymbol)
-      ) {
-        closedGlobalTimerUsesByScope.set(scopes, false);
-        return false;
-      }
-      if (resolvedSymbol) continue;
-      let timerReference = expression;
-      if (GLOBAL_OBJECT_NAMES.has(identifier.name)) {
-        const member = expression.parent;
-        if (
-          !isNodeOfType(member, "MemberExpression") ||
-          member.object !== expression ||
-          !NATIVE_TIMER_API_NAMES.has(getStaticPropertyName(member) ?? "")
-        ) {
-          closedGlobalTimerUsesByScope.set(scopes, false);
-          return false;
-        }
-        timerReference = findTransparentExpressionRoot(member);
-      } else if (!NATIVE_TIMER_API_NAMES.has(identifier.name)) {
-        continue;
-      }
-      if (
-        flag !== "read" ||
-        !isNodeOfType(timerReference.parent, "CallExpression") ||
-        timerReference.parent.callee !== timerReference
-      ) {
-        closedGlobalTimerUsesByScope.set(scopes, false);
-        return false;
-      }
-    }
-  }
-  closedGlobalTimerUsesByScope.set(scopes, true);
-  return true;
-};
-
 const timerHandleReleaseKeys = (
   call: EsTreeNodeOfType<"CallExpression">,
   timerCalleeName: string,
@@ -355,8 +295,7 @@ const timerHandleReleaseKeys = (
     call.optional ||
     (TIMER_CLEANUP_CALLEE_NAMES.has(timerCalleeName) && call.arguments.length !== 1) ||
     !classBody ||
-    getClassBodyIndex(classBody).hasOpaqueTimerInstanceAccess ||
-    !hasClosedGlobalTimerUses(scopes)
+    getClassBodyIndex(classBody).hasOpaqueTimerInstanceAccess
   ) {
     return releaseKeys;
   }
@@ -374,24 +313,10 @@ const timerHandleReleaseKeys = (
     }
   }
 
-  const callee = stripParenExpression(call.callee);
-  let timerNamespace = "globalThis";
-  if (isNodeOfType(callee, "MemberExpression")) {
-    const receiver = stripParenExpression(callee.object);
-    if (
-      callee.optional ||
-      !isNodeOfType(receiver, "Identifier") ||
-      !GLOBAL_OBJECT_NAMES.has(receiver.name) ||
-      !scopes.isGlobalReference(receiver)
-    ) {
-      return releaseKeys;
-    }
-    timerNamespace = receiver.name;
-  } else if (!isNodeOfType(callee, "Identifier") || !scopes.isGlobalReference(callee)) {
-    return releaseKeys;
+  const timer = getClosedGlobalTimerCall(call, scopes);
+  if (timer?.name === timerCalleeName) {
+    releaseKeys.push(`timer:timeout-or-interval:${timer.realm}:${handleKey}`);
   }
-
-  releaseKeys.push(`timer:timeout-or-interval:${timerNamespace}:${handleKey}`);
   return releaseKeys;
 };
 

@@ -1,6 +1,7 @@
 // rule: class-component-missing-component-will-unmount-teardown
 // weakness: library-idiom
 // source: synthetic
+// verdict: pass
 import { Component } from "react";
 
 class Clock extends Component {

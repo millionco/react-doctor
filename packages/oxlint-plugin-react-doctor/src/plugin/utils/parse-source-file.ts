@@ -51,9 +51,10 @@ interface CrossFileParseOptions extends ParserOptions {
 const buildCrossFileParseOptions = (
   filename: string,
   useRawTransfer: boolean,
+  language?: ParserOptions["lang"],
 ): CrossFileParseOptions => ({
   astType: "ts",
-  lang: resolveLang(filename),
+  lang: language ?? resolveLang(filename),
   experimentalRawTransfer: useRawTransfer,
 });
 
@@ -62,15 +63,16 @@ const buildCrossFileParseOptions = (
 export const parseCrossFileSource = (
   filename: string,
   sourceText: string,
+  language?: ParserOptions["lang"],
 ): ReturnType<typeof parseSync> => {
   if (shouldUseRawTransfer) {
     try {
-      return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, true));
+      return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, true, language));
     } catch {
       shouldUseRawTransfer = false;
     }
   }
-  return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, false));
+  return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, false, language));
 };
 
 interface CacheEntry {
@@ -83,15 +85,17 @@ export interface ParseSourceTextInput {
   readonly filename: string;
   readonly sourceText: string;
   readonly shouldAttachParentReferences?: boolean;
+  readonly language?: ParserOptions["lang"];
 }
 
 export const parseSourceText = ({
   filename,
   sourceText,
   shouldAttachParentReferences = true,
+  language,
 }: ParseSourceTextInput): EsTreeNode | null => {
   try {
-    const result = parseCrossFileSource(filename, sourceText);
+    const result = parseCrossFileSource(filename, sourceText, language);
     const hasFatalError = result.errors.some((parseError) => parseError.severity === "Error");
     if (hasFatalError) return null;
     const parsedProgram = result.program as unknown as EsTreeNode;

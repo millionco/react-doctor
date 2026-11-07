@@ -8,7 +8,8 @@ import { isEverySpecifierInlineType, isTypeOnlyImport } from "./is-type-only-imp
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isTestlikeFilename } from "./is-testlike-filename.js";
 import { normalizeFilename } from "./normalize-filename.js";
-import { parseSourceFile } from "./parse-source-file.js";
+import { parseSourceFile, parseSourceText } from "./parse-source-file.js";
+import { CROSS_FILE_PARSE_MAX_BYTES } from "../constants/thresholds.js";
 import { resolveModulePath } from "./resolve-module-path.js";
 import { walkAst } from "./walk-ast.js";
 
@@ -16,6 +17,14 @@ export interface SourceProjectModule {
   readonly filePath: string;
   readonly programNode: EsTreeNodeOfType<"Program">;
   readonly scopes: ScopeAnalysis;
+  readonly sourceText?: string;
+}
+
+export interface SourceProjectBounds {
+  readonly maximumFiles: number;
+  readonly maximumEntries: number;
+  readonly maximumDepth: number;
+  readonly maximumBytes: number;
 }
 
 export interface SourceProjectIndex {
@@ -24,6 +33,7 @@ export interface SourceProjectIndex {
   readonly consumerModulesByFilePath: ReadonlyMap<string, ReadonlySet<SourceProjectModule>>;
   readonly resolvedSourcePathByNode: WeakMap<EsTreeNode, string>;
   readonly unresolvedRuntimeSources: ReadonlySet<string>;
+  readonly unresolvedRuntimeSourcesByFilePath: ReadonlyMap<string, ReadonlySet<string>>;
   readonly hasOpaqueMdxConsumerSurface: boolean;
 }
 
@@ -32,8 +42,18 @@ export interface SourceProjectIndexInput {
   readonly currentFilePath: string;
   readonly currentProgramNode: EsTreeNodeOfType<"Program">;
   readonly currentScopes: ScopeAnalysis;
+  readonly currentSourceText?: string;
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
+  readonly fresh?: boolean;
+  readonly allowJsxInJs?: boolean;
+  readonly includeNonProductionFiles?: boolean;
+  readonly bounds?: SourceProjectBounds;
+  readonly resolveSource?: (
+    filePath: string,
+    source: string,
+    modulesByFilePath: ReadonlyMap<string, SourceProjectModule>,
+  ) => string | null;
 }
 
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
@@ -73,6 +93,8 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
 
 const listProductionSourceFiles = (
   rootDirectory: string,
+  bounds: SourceProjectBounds | undefined,
+  includeNonProductionFiles: boolean,
 ): {
   sourceFilePaths: ReadonlyArray<string>;
   htmlFilePaths: ReadonlyArray<string>;
@@ -80,31 +102,40 @@ const listProductionSourceFiles = (
 } | null => {
   const sourceFilePaths: string[] = [];
   const htmlFilePaths: string[] = [];
-  const pendingDirectories = [rootDirectory];
+  const pendingDirectories = [{ directoryPath: rootDirectory, depth: 0 }];
   let hasOpaqueMdxConsumerSurface = false;
+  let totalEntries = 0;
+  let totalBytes = 0;
 
   while (pendingDirectories.length > 0) {
     const currentDirectory = pendingDirectories.pop();
     if (!currentDirectory) continue;
     let entries: fs.Dirent[];
     try {
-      entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+      entries = fs.readdirSync(currentDirectory.directoryPath, { withFileTypes: true });
     } catch {
       return null;
     }
+    totalEntries += entries.length;
+    if (bounds && totalEntries > bounds.maximumEntries) return null;
     for (const entry of entries) {
-      const absolutePath = path.join(currentDirectory, entry.name);
+      const absolutePath = path.join(currentDirectory.directoryPath, entry.name);
       const isIgnoredDirectoryName =
-        SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
-        (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook");
+        entry.name === "node_modules" ||
+        entry.name === ".git" ||
+        (!includeNonProductionFiles &&
+          (SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
+            (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook")));
       if (entry.isSymbolicLink() && isIgnoredDirectoryName) continue;
       if (entry.isSymbolicLink()) return null;
       if (entry.isDirectory()) {
         if (isIgnoredDirectoryName) continue;
-        pendingDirectories.push(absolutePath);
+        if (bounds && currentDirectory.depth >= bounds.maximumDepth) return null;
+        pendingDirectories.push({ directoryPath: absolutePath, depth: currentDirectory.depth + 1 });
         continue;
       }
-      if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
+      if (!entry.isFile() || (!includeNonProductionFiles && isTestlikeFilename(absolutePath)))
+        continue;
       if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
         hasOpaqueMdxConsumerSurface = true;
         continue;
@@ -115,6 +146,17 @@ const listProductionSourceFiles = (
       }
       if (!SOURCE_PROJECT_FILE_PATTERN.test(entry.name)) continue;
       if (SOURCE_PROJECT_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
+      if (bounds) {
+        if (sourceFilePaths.length >= bounds.maximumFiles) return null;
+        let fileSize: number;
+        try {
+          fileSize = fs.statSync(absolutePath).size;
+        } catch {
+          return null;
+        }
+        totalBytes += fileSize;
+        if (fileSize > CROSS_FILE_PARSE_MAX_BYTES || totalBytes > bounds.maximumBytes) return null;
+      }
       sourceFilePaths.push(normalizeFilename(absolutePath));
     }
   }
@@ -142,7 +184,7 @@ const sourceFilesMayImportRequiredModule = (
   return false;
 };
 
-const getRuntimeModuleSource = (node: EsTreeNode): string | null => {
+export const getRuntimeModuleSource = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "ImportDeclaration")) {
     if (isTypeOnlyImport(node)) return null;
     return typeof node.source.value === "string" ? node.source.value : null;
@@ -184,13 +226,22 @@ const indexModuleSources = (
   consumerModulesByFilePath: Map<string, Set<SourceProjectModule>>,
   resolvedSourcePathByNode: WeakMap<EsTreeNode, string>,
   unresolvedRuntimeSources: Set<string>,
+  unresolvedRuntimeSourcesByFilePath: Map<string, Set<string>>,
+  modulesByFilePath: ReadonlyMap<string, SourceProjectModule>,
+  resolveSource: SourceProjectIndexInput["resolveSource"],
 ): void => {
   walkAst(module.programNode, (node) => {
     const source = getRuntimeModuleSource(node);
     if (!source) return;
-    const resolvedSourcePath = resolveModulePath(module.filePath, source);
+    const resolvedSourcePath = resolveSource
+      ? resolveSource(module.filePath, source, modulesByFilePath)
+      : resolveModulePath(module.filePath, source);
     if (!resolvedSourcePath) {
       unresolvedRuntimeSources.add(source);
+      const unresolvedSources =
+        unresolvedRuntimeSourcesByFilePath.get(module.filePath) ?? new Set();
+      unresolvedSources.add(source);
+      unresolvedRuntimeSourcesByFilePath.set(module.filePath, unresolvedSources);
       return;
     }
     const normalizedSourcePath = normalizeFilename(resolvedSourcePath);
@@ -206,17 +257,30 @@ export const buildSourceProjectIndex = ({
   currentFilePath,
   currentProgramNode,
   currentScopes,
+  currentSourceText,
   requiredModuleSources = [],
   knownModuleSources,
+  fresh = false,
+  allowJsxInJs = false,
+  includeNonProductionFiles = false,
+  bounds,
+  resolveSource,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
   if (
-    requiredModuleSources.length > 0 &&
-    knownModuleSources !== undefined &&
-    !requiredModuleSources.some((moduleSource) => knownModuleSources.includes(moduleSource))
-  ) {
+    currentSourceText !== undefined &&
+    Buffer.byteLength(currentSourceText) > CROSS_FILE_PARSE_MAX_BYTES
+  )
     return null;
+  if (requiredModuleSources.length > 0 && knownModuleSources !== undefined) {
+    const requiredModuleSourceSet = new Set(requiredModuleSources);
+    if (!knownModuleSources.some((moduleSource) => requiredModuleSourceSet.has(moduleSource)))
+      return null;
   }
-  const productionSourceFiles = listProductionSourceFiles(rootDirectory);
+  const productionSourceFiles = listProductionSourceFiles(
+    rootDirectory,
+    bounds,
+    includeNonProductionFiles,
+  );
   if (!productionSourceFiles) return null;
   if (
     requiredModuleSources.length > 0 &&
@@ -235,27 +299,49 @@ export const buildSourceProjectIndex = ({
         filePath,
         programNode: currentProgramNode,
         scopes: currentScopes,
+        sourceText: currentSourceText,
       });
       continue;
     }
-    const parsedProgram = parseSourceFile(filePath);
+    let sourceText: string | undefined;
+    if (fresh) {
+      try {
+        sourceText = fs.readFileSync(filePath, "utf8");
+      } catch {
+        return null;
+      }
+    }
+    const parsedProgram =
+      sourceText === undefined
+        ? parseSourceFile(filePath)
+        : parseSourceText({
+            filename: filePath,
+            sourceText,
+            language:
+              allowJsxInJs && path.extname(filePath).toLowerCase() === ".js" ? "jsx" : undefined,
+          });
     if (!parsedProgram || !isNodeOfType(parsedProgram, "Program")) return null;
     modulesByFilePath.set(filePath, {
       filePath,
       programNode: parsedProgram,
-      scopes: getSourceProjectModuleScopes(parsedProgram),
+      scopes: fresh ? analyzeScopes(parsedProgram) : getSourceProjectModuleScopes(parsedProgram),
+      sourceText,
     });
   }
 
   const consumerModulesByFilePath = new Map<string, Set<SourceProjectModule>>();
   const resolvedSourcePathByNode = new WeakMap<EsTreeNode, string>();
   const unresolvedRuntimeSources = new Set<string>();
+  const unresolvedRuntimeSourcesByFilePath = new Map<string, Set<string>>();
   for (const module of modulesByFilePath.values()) {
     indexModuleSources(
       module,
       consumerModulesByFilePath,
       resolvedSourcePathByNode,
       unresolvedRuntimeSources,
+      unresolvedRuntimeSourcesByFilePath,
+      modulesByFilePath,
+      resolveSource,
     );
   }
 
@@ -265,6 +351,7 @@ export const buildSourceProjectIndex = ({
     consumerModulesByFilePath,
     resolvedSourcePathByNode,
     unresolvedRuntimeSources,
+    unresolvedRuntimeSourcesByFilePath,
     hasOpaqueMdxConsumerSurface: productionSourceFiles.hasOpaqueMdxConsumerSurface,
   };
 };

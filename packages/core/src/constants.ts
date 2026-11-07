@@ -179,12 +179,11 @@ export const AXIOM_DATASET_HEADER = "X-Axiom-Dataset";
 
 export const AXIOM_METRICS_DATASET_HEADER = "x-axiom-metrics-dataset";
 
-// The CLI is a short-lived process: a scan usually finishes before any
-// periodic export would fire, so telemetry is delivered by the flush that
-// runs when the layer's scope closes. The interval is set well past a
-// realistic run so the periodic path stays out of the way rather than
-// racing that flush.
-export const TELEMETRY_EXPORT_INTERVAL_MS = 600_000;
+// Periodic export interval for OTLP telemetry. Set to 30s so spans and metrics
+// are flushed during longer scans instead of buffering everything until shutdown,
+// which prevents unbounded memory growth during protobuf serialization and HTTPS
+// POST. Scans shorter than 30s still export everything at shutdown via scope close.
+export const TELEMETRY_EXPORT_INTERVAL_MS = 30_000;
 
 // Caps how long CLI exit may block on the final telemetry flush.
 //

@@ -86,7 +86,25 @@ export const HOOK_NAME_PATTERN = /^use[A-Z]/;
 export const HANDLER_FUNCTION_NAME_PATTERN = /^(?:on|handle)[A-Z]/;
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
+
+export const REACT_COMPILER_EFFECT_HOOK_NAMES = new Set([
+  "useEffect",
+  "useInsertionEffect",
+  "useLayoutEffect",
+]);
+export const REACT_COMPILER_SET_STATE_IN_EFFECT_REASON =
+  "Calling setState synchronously within an effect can trigger cascading renders";
+export const REACT_COMPILER_SET_STATE_IN_EFFECT_DESCRIPTION =
+  "Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. " +
+  "In general, the body of an effect should do one or both of the following:\n" +
+  "* Update external systems with the latest state from React.\n" +
+  "* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\n" +
+  "Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. " +
+  "(https://react.dev/learn/you-might-not-need-an-effect)";
+
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+
+export const REDUCER_HOOK_NAMES: ReadonlySet<string> = new Set(["useReducer"]);
 
 // React's own built-in hooks — the complement of "custom hook" when a
 // callee name already matches the hook naming convention

@@ -521,16 +521,18 @@ const isCachedAsyncResultIdentityStampProof = (
   )
     return false;
   const effectStatements = effectFunction.body.body;
+  const effectStatementIndexes = new Map<EsTreeNode, number>();
+  for (const [index, statement] of effectStatements.entries()) {
+    if (!effectStatementIndexes.has(statement)) effectStatementIndexes.set(statement, index);
+  }
+  const hitIndex = effectStatementIndexes.get(hitIf);
+  if (hitIndex === undefined) return false;
   for (const binding of [capturedKeySymbol, cachedPayloadSymbol]) {
     const statement = binding.declarationNode.parent;
-    if (
-      !isNodeOfType(statement, "VariableDeclaration") ||
-      statement.parent !== effectFunction.body ||
-      effectStatements.findIndex((candidate) => candidate === statement) >=
-        effectStatements.findIndex((candidate) => candidate === hitIf) ||
-      effectStatements.findIndex((candidate) => candidate === statement) < 0
-    )
+    if (!isNodeOfType(statement, "VariableDeclaration") || statement.parent !== effectFunction.body)
       return false;
+    const statementIndex = effectStatementIndexes.get(statement);
+    if (statementIndex === undefined || statementIndex >= hitIndex) return false;
   }
   const bindings: IdentityStampBindings = {
     permitted: new Map(),
@@ -605,11 +607,11 @@ const isCachedAsyncResultIdentityStampProof = (
       : invocationRoot.parent;
   if (
     !isNodeOfType(invocationStatement, "ExpressionStatement") ||
-    invocationStatement.parent !== effectFunction.body ||
-    effectStatements.findIndex((statement) => statement === invocationStatement) <=
-      effectStatements.findIndex((statement) => statement === hitIf)
+    invocationStatement.parent !== effectFunction.body
   )
     return false;
+  const invocationIndex = effectStatementIndexes.get(invocationStatement);
+  if (invocationIndex === undefined || invocationIndex <= hitIndex) return false;
   walkAst(asyncFunction.body, (node) => {
     if (node !== asyncFunction.body && isFunctionLike(node)) return false;
     if (

@@ -99,7 +99,7 @@ importers:
         specifier: 4.0.0-beta.102
         version: 4.0.0-beta.102
       eslint-plugin-react-hooks:
-        specifier: ^7.1.1
+        specifier: 7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))
       fast-glob:
         specifier: ^3.3.3
@@ -266,7 +266,7 @@ importers:
         specifier: ^0.2.4
         version: 0.2.4
       eslint-plugin-react-hooks:
-        specifier: ^7.1.1
+        specifier: 7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))
       is-unicode-supported:
         specifier: ^2.1.0

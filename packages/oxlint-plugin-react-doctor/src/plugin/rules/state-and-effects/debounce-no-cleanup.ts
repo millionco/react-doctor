@@ -3,14 +3,22 @@ import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cl
 import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getEquivalentSymbols } from "../../utils/get-equivalent-symbols.js";
+import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNoOpStatement } from "../../utils/is-no-op-statement.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { hasPossibleStaticPropertyWrite } from "../../utils/has-static-property-write-before.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
 import {
   isProvenEffectHookCall,
   isProvenReactHookCall,
@@ -21,15 +29,21 @@ import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callba
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 
 const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set(["useMemo", "useCallback", "useRef"]);
+const USE_MEMO_HOOK_NAMES = new Set(["useMemo"]);
+const PASSIVE_EFFECT_HOOK_NAMES = new Set(["useEffect"]);
+const LAYOUT_EFFECT_HOOK_NAMES = new Set(["useLayoutEffect"]);
 const USE_REF_HOOK_NAMES = new Set(["useRef"]);
 const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
 const DEBOUNCE_RELEASE_METHOD_NAMES = new Set(["cancel", "flush"]);
+const NO_OP_STATEMENT_OPTIONS = { isNoOpIdentifier: () => false };
 const BROWSER_GLOBAL_NAMES = new Set(["document", "window"]);
 const PROMISE_CHAIN_METHOD_NAMES = new Set(["then", "catch", "finally"]);
 
@@ -38,9 +52,26 @@ type FunctionEsTreeNode = EsTreeNodeOfType<
 >;
 
 interface DebounceFunctionUsageIndex {
+  effectCallbacks: FunctionEsTreeNode[];
   escapedSymbolIds: Set<number>;
   invokedSymbolIds: Set<number>;
   releasedSymbolIds: Set<number>;
+}
+
+interface CompatEffectRegistration {
+  effect: FunctionEsTreeNode;
+  phase: "layout" | "passive";
+  dependencies: EsTreeNodeOfType<"ArrayExpression"> | undefined;
+}
+
+interface CompatCleanupGuard {
+  identity: SymbolDescriptor | EsTreeNode;
+  value: boolean;
+}
+
+interface CompatGuardedAction {
+  action: "schedule" | "release";
+  guard?: CompatCleanupGuard;
 }
 
 const isLodashModuleSource = (source: string | null): boolean =>
@@ -87,7 +118,43 @@ const isLodashDebounceCall = (callExpression: EsTreeNode): boolean => {
   return false;
 };
 
-const findDebounceCallInHookInitializer = (hookCall: EsTreeNode): EsTreeNode | null => {
+const isCompatDebounceCall = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (
+    !isNodeOfType(expression, "CallExpression") ||
+    expression.optional ||
+    expression.arguments.length !== 2 ||
+    isNodeOfType(expression.arguments[0], "SpreadElement")
+  ) {
+    return false;
+  }
+  const wait = stripParenExpression(expression.arguments[1]);
+  if (
+    !isNodeOfType(wait, "Literal") ||
+    typeof wait.value !== "number" ||
+    !Number.isFinite(wait.value) ||
+    wait.value < 0
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(expression.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const specifier = scopes.symbolFor(callee)?.declarationNode;
+  if (!isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind === "type") {
+    return false;
+  }
+  const declaration = specifier.parent;
+  return (
+    isNodeOfType(declaration, "ImportDeclaration") &&
+    declaration.importKind !== "type" &&
+    declaration.source.value === "es-toolkit/compat" &&
+    getImportedName(specifier) === "debounce"
+  );
+};
+
+const findDebounceCallInHookInitializer = (
+  hookCall: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
   if (!isNodeOfType(hookCall, "CallExpression")) return null;
   const firstArgument = hookCall.arguments?.[0];
   if (!firstArgument) return null;
@@ -99,14 +166,31 @@ const findDebounceCallInHookInitializer = (hookCall: EsTreeNode): EsTreeNode | n
   ) {
     return null;
   }
+  const allowsCompatFactory =
+    !strippedArgument.async &&
+    !strippedArgument.generator &&
+    isProvenReactHookCall(hookCall, USE_MEMO_HOOK_NAMES, scopes);
   if (!isNodeOfType(strippedArgument.body, "BlockStatement")) {
     const returned = stripParenExpression(strippedArgument.body);
-    return isLodashDebounceCall(returned) ? returned : null;
+    return isLodashDebounceCall(returned) ||
+      (allowsCompatFactory && isCompatDebounceCall(returned, scopes))
+      ? returned
+      : null;
   }
+  const significantStatements = strippedArgument.body.body.filter(
+    (statement) => !isNoOpStatement(statement, NO_OP_STATEMENT_OPTIONS),
+  );
   for (const statement of strippedArgument.body.body ?? []) {
     if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
       const returned = stripParenExpression(statement.argument);
-      if (isLodashDebounceCall(returned)) return returned;
+      if (
+        isLodashDebounceCall(returned) ||
+        (allowsCompatFactory &&
+          significantStatements.length === 1 &&
+          isCompatDebounceCall(returned, scopes))
+      ) {
+        return returned;
+      }
     }
   }
   return null;
@@ -205,6 +289,7 @@ const buildFunctionUsageIndex = (
   const escapedSymbolIds = new Set<number>();
   const invokedSymbolIds = new Set<number>();
   const releasedSymbolIds = new Set<number>();
+  const effectCallbacks: FunctionEsTreeNode[] = [];
 
   walkAst(enclosingFunction, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
@@ -213,6 +298,8 @@ const buildFunctionUsageIndex = (
       const effectArgument = child.arguments?.[0];
       const effectCallback = effectArgument ? stripParenExpression(effectArgument) : null;
       if (effectCallback && isFunctionLike(effectCallback)) {
+        if (findEnclosingFunction(child) === enclosingFunction)
+          effectCallbacks.push(effectCallback);
         walkSynchronousCallbackFlow(effectCallback, (effectChild: EsTreeNode) => {
           if (!isNodeOfType(effectChild, "CallExpression")) return;
           const symbolId = symbolIdForReferenceExpression(effectChild.callee as EsTreeNode, scopes);
@@ -302,7 +389,646 @@ const buildFunctionUsageIndex = (
     });
   });
 
-  return { escapedSymbolIds, invokedSymbolIds, releasedSymbolIds };
+  return { effectCallbacks, escapedSymbolIds, invokedSymbolIds, releasedSymbolIds };
+};
+
+const getStableCompatSymbolId = (expression: EsTreeNode, scopes: ScopeAnalysis): number | null => {
+  const symbol = resolveConstIdentifierAlias(stripParenExpression(expression), scopes);
+  return symbol?.kind === "const" && isSymbolReadOnly(symbol) ? symbol.id : null;
+};
+
+const hasCompatReleaseWrite = (
+  receiver: EsTreeNode,
+  method: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (hasPossibleStaticPropertyWrite(receiver, method, scopes)) return true;
+  const mutations = getSymbolMutationInspector(scopes);
+  return getEquivalentSymbols(receiver, scopes).some((symbol) =>
+    symbol.references.some((reference) => {
+      const properties = mutations.getMutationPropertyNames(reference.identifier);
+      return properties === null || Boolean(properties?.has(method));
+    }),
+  );
+};
+
+const hasCompatContainerEscape = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+  effectCallbacks: ReadonlyArray<FunctionEsTreeNode>,
+): boolean => {
+  const symbolId = getStableCompatSymbolId(identifier, scopes);
+  const owner = findEnclosingFunction(identifier);
+  if (symbolId === null || !owner) return true;
+  const inlineEffectCallbacks = effectCallbacks.filter((effect) => {
+    const callback = findTransparentExpressionRoot(effect);
+    const call = callback.parent;
+    return (
+      isNodeOfType(call, "CallExpression") &&
+      call.arguments[0] === callback &&
+      isProvenEffectHookCall(call, scopes)
+    );
+  });
+  const allowedCapturingFunctions = new Set<EsTreeNode>([
+    owner,
+    ...inlineEffectCallbacks,
+    ...inlineEffectCallbacks.flatMap((effect) =>
+      collectReturnedCleanupFunctions(effect, scopes).filter((cleanup) => {
+        const returned = findTransparentExpressionRoot(cleanup);
+        const statement = returned.parent;
+        return (
+          returned === effect.body ||
+          (isNodeOfType(statement, "ReturnStatement") &&
+            statement.argument === returned &&
+            findEnclosingFunction(statement) === effect)
+        );
+      }),
+    ),
+  ]);
+  let didEscape = false;
+  walkAst(owner, (node) => {
+    if (didEscape) return false;
+    if (
+      (isNodeOfType(node, "CallExpression") || isNodeOfType(node, "NewExpression")) &&
+      !(isNodeOfType(node, "CallExpression") && isProvenEffectHookCall(node, scopes))
+    ) {
+      for (const [argumentIndex, argument] of node.arguments.entries()) {
+        if (
+          argumentIndex === 1 &&
+          isNodeOfType(node, "CallExpression") &&
+          isProvenReactHookCall(node, DEBOUNCE_WRAPPER_HOOK_NAMES, scopes)
+        ) {
+          continue;
+        }
+        const localFunction = resolveExactLocalFunction(argument, scopes);
+        walkAst(localFunction ?? argument, (child) => {
+          if (
+            isNodeOfType(child, "Identifier") &&
+            (getStableCompatSymbolId(child, scopes) === symbolId ||
+              isClosedCompatReleaseAlias(child, symbolId, scopes))
+          ) {
+            didEscape = true;
+          }
+          return !didEscape;
+        });
+        if (didEscape) return false;
+      }
+    }
+    if (
+      !isNodeOfType(node, "Identifier") ||
+      (getStableCompatSymbolId(node, scopes) !== symbolId &&
+        !isClosedCompatReleaseAlias(node, symbolId, scopes))
+    ) {
+      return;
+    }
+    const capturingFunction = findEnclosingFunction(node);
+    if (!capturingFunction || !allowedCapturingFunctions.has(capturingFunction)) {
+      didEscape = true;
+      return false;
+    }
+    let root = findTransparentExpressionRoot(node);
+    if (isNodeOfType(root.parent, "MemberExpression") && root.parent.object === root) {
+      if (!DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(root.parent) ?? "")) {
+        didEscape = true;
+        return false;
+      }
+      root = findTransparentExpressionRoot(root.parent);
+    }
+    const container = root.parent;
+    if (isNodeOfType(container, "ArrayExpression")) {
+      const array = findTransparentExpressionRoot(container);
+      const hook = array.parent;
+      didEscape = !(
+        isNodeOfType(hook, "CallExpression") &&
+        hook.arguments[1] === array &&
+        (isProvenEffectHookCall(hook, scopes) ||
+          isProvenReactHookCall(hook, DEBOUNCE_WRAPPER_HOOK_NAMES, scopes))
+      );
+      return;
+    }
+    didEscape = Boolean(
+      ((isNodeOfType(container, "CallExpression") || isNodeOfType(container, "NewExpression")) &&
+        container.arguments.some((argument) => argument === root)) ||
+      (isNodeOfType(container, "Property") &&
+        container.value === root &&
+        isNodeOfType(container.parent, "ObjectExpression")) ||
+      (isNodeOfType(container, "AssignmentExpression") && container.right === root) ||
+      (isNodeOfType(container, "VariableDeclarator") &&
+        container.init === root &&
+        isNodeOfType(container.parent, "VariableDeclaration") &&
+        container.parent.kind !== "const") ||
+      (isNodeOfType(container, "ReturnStatement") && findEnclosingFunction(node) === owner) ||
+      isNodeOfType(container, "SpreadElement") ||
+      isNodeOfType(container, "JSXExpressionContainer"),
+    );
+  });
+  return didEscape;
+};
+
+const isStableCompatReleaseMember = (
+  expression: EsTreeNode,
+  symbolId: number,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const member = stripParenExpression(expression);
+  if (!isNodeOfType(member, "MemberExpression")) return false;
+  const method = getStaticPropertyName(member);
+  const receiver = stripParenExpression(member.object);
+  return (
+    method !== null &&
+    DEBOUNCE_RELEASE_METHOD_NAMES.has(method) &&
+    getStableCompatSymbolId(receiver, scopes) === symbolId &&
+    !hasCompatReleaseWrite(receiver, method, scopes)
+  );
+};
+
+const isClosedCompatReleaseAlias = (
+  expression: EsTreeNode,
+  symbolId: number,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const symbol = resolveConstIdentifierAlias(stripParenExpression(expression), scopes, true);
+  if (
+    symbol?.kind !== "const" ||
+    !isSymbolReadOnly(symbol) ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
+  ) {
+    return false;
+  }
+  const declaration = symbol.declarationNode;
+  if (!declaration.init) return false;
+  const initializer = stripParenExpression(declaration.init);
+  let receiver: EsTreeNode;
+  let method: string | null;
+  if (declaration.id === symbol.bindingIdentifier) {
+    if (!isNodeOfType(initializer, "MemberExpression")) return false;
+    receiver = initializer.object;
+    method = getStaticPropertyName(initializer);
+  } else {
+    const assignment = symbol.bindingIdentifier.parent;
+    const binding =
+      isNodeOfType(assignment, "AssignmentPattern") && assignment.left === symbol.bindingIdentifier
+        ? assignment
+        : symbol.bindingIdentifier;
+    const property = binding.parent;
+    if (
+      !isNodeOfType(declaration.id, "ObjectPattern") ||
+      !isNodeOfType(property, "Property") ||
+      property.parent !== declaration.id ||
+      property.value !== binding
+    ) {
+      return false;
+    }
+    receiver = initializer;
+    method = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
+  }
+  return (
+    method !== null &&
+    DEBOUNCE_RELEASE_METHOD_NAMES.has(method) &&
+    getStableCompatSymbolId(receiver, scopes) === symbolId &&
+    !hasCompatReleaseWrite(stripParenExpression(receiver), method, scopes)
+  );
+};
+
+const getStableCompatValueBinding = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  const readBinding = (value: EsTreeNode): SymbolDescriptor | null => {
+    const identifier = stripParenExpression(value);
+    if (!isNodeOfType(identifier, "Identifier")) return null;
+    const symbol = scopes.symbolFor(identifier);
+    return symbol && symbol.kind !== "import" && symbol.kind !== "var" && isSymbolReadOnly(symbol)
+      ? symbol
+      : null;
+  };
+  let binding = readBinding(expression);
+  const visited = new Set<number>();
+  while (binding) {
+    if (visited.has(binding.id)) return null;
+    visited.add(binding.id);
+    const initializer = getDirectConstInitializer(binding);
+    const source = initializer && readBinding(initializer);
+    if (!source) return binding;
+    binding = source;
+  }
+  return null;
+};
+
+const summarizeCompatGuardedActions = (
+  actions: ReadonlyArray<CompatGuardedAction>,
+): CompatGuardedAction["action"] | "none" => {
+  const remainingGuards = new Map<CompatCleanupGuard["identity"], boolean>();
+  for (let index = actions.length - 1; index >= 0; index -= 1) {
+    const step = actions[index];
+    if (!step.guard) return step.action;
+    const { identity, value } = step.guard;
+    const required = remainingGuards.get(identity);
+    if (required !== undefined && required !== value) continue;
+    if (step.action === "schedule") return "schedule";
+    if (required === value) return "release";
+    remainingGuards.set(identity, !value);
+  }
+  return "none";
+};
+
+const getCompatSetupAction = (
+  effect: FunctionEsTreeNode,
+  symbolId: number,
+  scopes: ScopeAnalysis,
+  onSchedule?: () => void,
+  allowConditionalCleanup = false,
+): CompatGuardedAction["action"] | "none" | null => {
+  if (effect.async || effect.generator) return null;
+  const isSameInstance = (expression: EsTreeNode): boolean =>
+    getStableCompatSymbolId(expression, scopes) === symbolId;
+  const referencesInstance = (expression: EsTreeNode): boolean => {
+    let references = false;
+    walkAst(expression, (child) => {
+      if (isNodeOfType(child, "Identifier") && isSameInstance(child)) {
+        references = true;
+      }
+      return !references;
+    });
+    return references;
+  };
+  const actions: CompatGuardedAction[] = [];
+  const readCall = (expression: EsTreeNode): CompatGuardedAction["action"] | null => {
+    const call = stripParenExpression(expression);
+    if (!isNodeOfType(call, "CallExpression")) return null;
+    const callee = stripParenExpression(call.callee);
+    if (call.arguments.some((argument) => referencesInstance(argument))) return null;
+    if (isNodeOfType(callee, "Identifier") && isSameInstance(callee)) {
+      onSchedule?.();
+      return "schedule";
+    }
+    if (
+      isClosedCompatReleaseAlias(callee, symbolId, scopes) ||
+      isStableCompatReleaseMember(callee, symbolId, scopes)
+    ) {
+      return "release";
+    }
+    return null;
+  };
+  const isPlainGuardValue = (expression: EsTreeNode): boolean => {
+    const value = stripParenExpression(expression);
+    const operand =
+      isNodeOfType(value, "UnaryExpression") && value.operator === "!"
+        ? stripParenExpression(value.argument)
+        : value;
+    return (
+      isNodeOfType(operand, "Literal") ||
+      (isNodeOfType(operand, "Identifier") &&
+        Boolean(scopes.symbolFor(operand)) &&
+        !isSameInstance(operand) &&
+        !isClosedCompatReleaseAlias(operand, symbolId, scopes))
+    );
+  };
+  const readExpression = (
+    expression: EsTreeNode,
+  ): CompatGuardedAction["action"] | "none" | null => {
+    const value = stripParenExpression(expression);
+    if (
+      allowConditionalCleanup &&
+      isNodeOfType(value, "AssignmentExpression") &&
+      value.operator === "=" &&
+      isNodeOfType(value.left, "Identifier") &&
+      isPlainGuardValue(value.left) &&
+      isPlainGuardValue(value.right)
+    ) {
+      return "none";
+    }
+    return readCall(value);
+  };
+  const record = (
+    action: CompatGuardedAction["action"] | "none" | null,
+    guard?: CompatCleanupGuard,
+  ): boolean => {
+    if (action === null) return false;
+    if (action !== "none") actions.push(guard ? { action, guard } : { action });
+    return true;
+  };
+  const readCleanupBranch = (
+    statement: EsTreeNode | null | undefined,
+  ): CompatGuardedAction["action"] | "none" | null => {
+    if (!statement) return "none";
+    const statements = isNodeOfType(statement, "BlockStatement") ? statement.body : [statement];
+    let latest: CompatGuardedAction["action"] | "none" = "none";
+    for (const child of statements) {
+      if (isNoOpStatement(child, NO_OP_STATEMENT_OPTIONS)) continue;
+      if (!isNodeOfType(child, "ExpressionStatement")) return null;
+      const action = readExpression(child.expression);
+      if (action === null) return null;
+      if (action !== "none") latest = action;
+    }
+    return latest;
+  };
+  const readConditional = (statement: EsTreeNodeOfType<"IfStatement">): boolean => {
+    const condition = stripParenExpression(statement.test);
+    const isNegated = isNodeOfType(condition, "UnaryExpression") && condition.operator === "!";
+    const operand = isNegated ? stripParenExpression(condition.argument) : condition;
+    let knownValue: boolean | undefined;
+    let identity: CompatCleanupGuard["identity"] = statement;
+    if (isNodeOfType(operand, "Literal") && typeof operand.value === "boolean") {
+      knownValue = operand.value;
+    } else if (isNodeOfType(operand, "Identifier")) {
+      const symbol = getStableCompatValueBinding(operand, scopes);
+      if (isSameInstance(operand) || isClosedCompatReleaseAlias(operand, symbolId, scopes))
+        return false;
+      if (!symbol) return false;
+      identity = symbol;
+      if (symbol.kind !== "parameter") {
+        const initializer = getDirectConstInitializer(symbol);
+        const value = initializer && stripParenExpression(initializer);
+        if (!isNodeOfType(value, "Literal") || typeof value.value !== "boolean") return false;
+        knownValue = value.value;
+      }
+    } else {
+      return false;
+    }
+    if (knownValue !== undefined) {
+      return record(
+        readCleanupBranch(knownValue !== isNegated ? statement.consequent : statement.alternate),
+      );
+    }
+    return (
+      record(readCleanupBranch(statement.consequent), { identity, value: !isNegated }) &&
+      record(readCleanupBranch(statement.alternate), { identity, value: isNegated })
+    );
+  };
+
+  if (!isNodeOfType(effect.body, "BlockStatement")) {
+    return record(readExpression(effect.body)) ? summarizeCompatGuardedActions(actions) : null;
+  }
+  for (const statement of effect.body.body) {
+    if (isNoOpStatement(statement, NO_OP_STATEMENT_OPTIONS)) continue;
+    if (
+      isNodeOfType(statement, "ExpressionStatement") &&
+      record(readExpression(statement.expression))
+    )
+      continue;
+    if (
+      allowConditionalCleanup &&
+      isNodeOfType(statement, "IfStatement") &&
+      readConditional(statement)
+    )
+      continue;
+    if (
+      isNodeOfType(statement, "VariableDeclaration") &&
+      statement.declarations.every(
+        (declaration) =>
+          isNodeOfType(declaration.id, "Identifier") &&
+          declaration.init &&
+          ((statement.kind === "const" &&
+            (isNodeOfType(stripParenExpression(declaration.init), "Identifier") ||
+              isClosedCompatReleaseAlias(declaration.id, symbolId, scopes))) ||
+            (allowConditionalCleanup &&
+              (statement.kind === "const" || statement.kind === "let") &&
+              isPlainGuardValue(declaration.init))),
+      )
+    )
+      continue;
+    if (isNodeOfType(statement, "ReturnStatement")) {
+      const returned = statement.argument && stripParenExpression(statement.argument);
+      if (allowConditionalCleanup && isNodeOfType(returned, "CallExpression")) {
+        return record(readExpression(returned)) ? summarizeCompatGuardedActions(actions) : null;
+      }
+      return !returned || isFunctionLike(returned) || isNodeOfType(returned, "Identifier")
+        ? summarizeCompatGuardedActions(actions)
+        : null;
+    }
+    return null;
+  }
+  return summarizeCompatGuardedActions(actions);
+};
+
+const getCompatCleanupAction = (
+  effect: FunctionEsTreeNode,
+  symbolId: number,
+  scopes: ScopeAnalysis,
+): "schedule" | "release" | "none" | null => {
+  if (effect.async || effect.generator) return null;
+  let returned: EsTreeNode;
+  if (isNodeOfType(effect.body, "BlockStatement")) {
+    const statements = effect.body.body.filter(
+      (statement) => !isNoOpStatement(statement, NO_OP_STATEMENT_OPTIONS),
+    );
+    const final = statements.at(-1);
+    if (
+      !isNodeOfType(final, "ReturnStatement") ||
+      !final.argument ||
+      !statements
+        .slice(0, -1)
+        .every(
+          (statement) =>
+            isNodeOfType(statement, "ExpressionStatement") ||
+            isNodeOfType(statement, "VariableDeclaration"),
+        )
+    ) {
+      return null;
+    }
+    returned = stripParenExpression(final.argument);
+  } else {
+    returned = stripParenExpression(effect.body);
+  }
+  if (
+    isClosedCompatReleaseAlias(returned, symbolId, scopes) ||
+    isStableCompatReleaseMember(returned, symbolId, scopes)
+  ) {
+    return "release";
+  }
+  const cleanup = isNodeOfType(returned, "Identifier")
+    ? resolveExactLocalFunction(returned, scopes)
+    : returned;
+  return isFunctionLike(cleanup)
+    ? getCompatSetupAction(cleanup, symbolId, scopes, undefined, true)
+    : null;
+};
+
+const isClosedOptionalCompatEffect = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const binding = resolveConstIdentifierAlias(callee, scopes);
+  const specifier = binding?.declarationNode;
+  if (!isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind === "type") return false;
+  const declaration = specifier.parent;
+  return (
+    isNodeOfType(declaration, "ImportDeclaration") &&
+    declaration.importKind !== "type" &&
+    declaration.source.value === "react" &&
+    (getImportedName(specifier) === "useEffect" || getImportedName(specifier) === "useLayoutEffect")
+  );
+};
+
+const getCompatEffectRegistration = (
+  effect: FunctionEsTreeNode,
+  enclosingFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): CompatEffectRegistration | null => {
+  const parentCall = findTransparentExpressionRoot(effect).parent;
+  if (!isNodeOfType(parentCall, "CallExpression") || !isFunctionLike(enclosingFunction))
+    return null;
+  const statement = findTransparentExpressionRoot(parentCall).parent;
+  if (
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    statement.parent !== enclosingFunction.body ||
+    stripParenExpression(statement.expression) !== parentCall ||
+    (parentCall.optional && !isClosedOptionalCompatEffect(parentCall, scopes)) ||
+    (parentCall.arguments.length !== 1 && parentCall.arguments.length !== 2) ||
+    getEffectCallback(parentCall) !== effect
+  ) {
+    return null;
+  }
+  const phase = isProvenReactHookCall(parentCall, PASSIVE_EFFECT_HOOK_NAMES, scopes)
+    ? "passive"
+    : isProvenReactHookCall(parentCall, LAYOUT_EFFECT_HOOK_NAMES, scopes)
+      ? "layout"
+      : null;
+  if (!phase) return null;
+  const argument = parentCall.arguments[1];
+  if (!argument) return { effect, phase, dependencies: undefined };
+  const dependencies = stripParenExpression(argument);
+  return isNodeOfType(dependencies, "ArrayExpression") ? { effect, phase, dependencies } : null;
+};
+
+const getCompatDependencyIdentity = (
+  dependency: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | string | number | boolean | null | undefined => {
+  if (!dependency) return undefined;
+  const expression = stripParenExpression(dependency);
+  if (isNodeOfType(expression, "Identifier")) {
+    return getStableCompatValueBinding(expression, scopes) ?? undefined;
+  }
+  if (!isNodeOfType(expression, "Literal")) return undefined;
+  const { value } = expression;
+  return value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+    ? value
+    : undefined;
+};
+
+const activatesWithCompatSetup = (
+  owner: CompatEffectRegistration,
+  following: CompatEffectRegistration,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (owner.phase !== following.phase) return false;
+  if (!following.dependencies) return true;
+  if (!owner.dependencies) return false;
+  const ownerDependencies = owner.dependencies.elements.map((item) =>
+    getCompatDependencyIdentity(item, scopes),
+  );
+  const followingDependencies = following.dependencies.elements.map((item) =>
+    getCompatDependencyIdentity(item, scopes),
+  );
+  return (
+    !ownerDependencies.includes(undefined) &&
+    !followingDependencies.includes(undefined) &&
+    ownerDependencies.every((dependency) =>
+      followingDependencies.some((followingDependency) =>
+        Object.is(followingDependency, dependency),
+      ),
+    )
+  );
+};
+
+const leavesCompatInvocationPending = (
+  scheduling: FunctionEsTreeNode,
+  initialAction: "schedule" | "release" | "none",
+  effects: ReadonlyArray<FunctionEsTreeNode>,
+  enclosingFunction: EsTreeNode,
+  symbolId: number,
+  hasStableMemoInstance: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    effects.some(
+      (effect) =>
+        getCompatCleanupAction(effect, symbolId, scopes) === null &&
+        (isNodeOfType(effect.body, "BlockStatement")
+          ? collectFunctionReturnStatements(effect).some((statement) => Boolean(statement.argument))
+          : getCompatSetupAction(effect, symbolId, scopes) === null),
+    )
+  ) {
+    return false;
+  }
+  const registrations = effects.flatMap((effect) => {
+    const registration = getCompatEffectRegistration(effect, enclosingFunction, scopes);
+    return registration ? [registration] : [];
+  });
+  const ownerIndex = registrations.findIndex((registration) => registration.effect === scheduling);
+  const owner = registrations[ownerIndex];
+  if (!owner) {
+    const cleanup = getCompatCleanupAction(scheduling, symbolId, scopes);
+    return cleanup === "schedule" || (initialAction === "schedule" && cleanup !== "release");
+  }
+  const isMountOnly = (registration: CompatEffectRegistration): boolean =>
+    registration.dependencies?.elements.length === 0;
+  const tracksInstance = (registration: CompatEffectRegistration): boolean =>
+    !registration.dependencies ||
+    registration.dependencies.elements.some(
+      (dependency) =>
+        dependency &&
+        (getStableCompatSymbolId(dependency, scopes) === symbolId ||
+          isClosedCompatReleaseAlias(dependency, symbolId, scopes)),
+    );
+  const sameGeneration = (
+    first: CompatEffectRegistration,
+    second: CompatEffectRegistration,
+  ): boolean =>
+    first === second ||
+    hasStableMemoInstance ||
+    (isMountOnly(first) && isMountOnly(second)) ||
+    (tracksInstance(first) && tracksInstance(second));
+  const pending = new Map<CompatEffectRegistration, "setup" | "cleanup">();
+  if (initialAction === "schedule") pending.set(owner, "setup");
+  const apply = (
+    registration: CompatEffectRegistration,
+    action: "schedule" | "release" | "none" | null,
+    phase: "setup" | "cleanup",
+  ): void => {
+    if (action === "schedule") {
+      pending.set(registration, phase);
+    } else if (action === "release") {
+      for (const [source, sourcePhase] of pending) {
+        if (
+          sourcePhase === "cleanup" &&
+          source.phase === "layout" &&
+          registration.phase === "passive"
+        )
+          continue;
+        if (
+          (phase === "setup" && sourcePhase === "setup") ||
+          sameGeneration(source, registration)
+        ) {
+          pending.delete(source);
+        }
+      }
+    }
+  };
+  for (const registration of registrations.slice(ownerIndex + 1)) {
+    if (activatesWithCompatSetup(owner, registration, scopes)) {
+      apply(registration, getCompatSetupAction(registration.effect, symbolId, scopes), "setup");
+    }
+  }
+  for (const phase of ["layout", "passive"]) {
+    for (const registration of registrations) {
+      if (registration.phase === phase) {
+        apply(
+          registration,
+          getCompatCleanupAction(registration.effect, symbolId, scopes),
+          "cleanup",
+        );
+      }
+    }
+  }
+  return pending.size > 0;
 };
 
 const resolveWrappedCallbackFunction = (
@@ -377,7 +1103,10 @@ const chainEndsInCatch = (callNode: EsTreeNode): boolean => {
   );
 };
 
-const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
+const hasAsyncOrDomWork = (
+  wrappedFunction: FunctionEsTreeNode,
+  skipNestedFunctions = false,
+): boolean => {
   if (wrappedFunction.async) return true;
   // A callback param shadowing a browser global (`(document) => ...` for a
   // domain noun) is a different binding entirely.
@@ -388,6 +1117,7 @@ const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
   let didFindWork = false;
   walkAst(wrappedFunction, (child: EsTreeNode) => {
     if (didFindWork) return false;
+    if (skipNestedFunctions && child !== wrappedFunction && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "AwaitExpression")) {
       didFindWork = true;
       return false;
@@ -563,8 +1293,9 @@ export const debounceNoCleanup = defineRule({
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isProvenReactHookCall(node, DEBOUNCE_WRAPPER_HOOK_NAMES, context.scopes)) return;
-        const debounceCall = findDebounceCallInHookInitializer(node);
+        const debounceCall = findDebounceCallInHookInitializer(node, context.scopes);
         if (!debounceCall) return;
+        const isCompat = isCompatDebounceCall(debounceCall, context.scopes);
         if (hasTrailingFalseOption(debounceCall, context.scopes, node)) return;
 
         const initializerRoot = findTransparentExpressionRoot(node);
@@ -595,6 +1326,7 @@ export const debounceNoCleanup = defineRule({
           }),
         );
         if (
+          !isCompat &&
           [...aliasSymbolIds].some((symbolId) => functionUsageIndex.releasedSymbolIds.has(symbolId))
         ) {
           return;
@@ -604,19 +1336,64 @@ export const debounceNoCleanup = defineRule({
         ) {
           return;
         }
-        if (
+        if (isCompat) {
+          const symbolId = getStableCompatSymbolId(declarator.id, context.scopes);
+          const dependencies = node.arguments[1] && stripParenExpression(node.arguments[1]);
+          const hasStableMemoInstance =
+            isNodeOfType(dependencies, "ArrayExpression") && dependencies.elements.length === 0;
+          if (
+            symbolId === null ||
+            [...DEBOUNCE_RELEASE_METHOD_NAMES].some((releaseMethod) =>
+              hasCompatReleaseWrite(declarator.id, releaseMethod, context.scopes),
+            ) ||
+            hasCompatContainerEscape(
+              declarator.id,
+              context.scopes,
+              functionUsageIndex.effectCallbacks,
+            ) ||
+            !functionUsageIndex.effectCallbacks.some((effect) => {
+              const registration = findTransparentExpressionRoot(effect).parent;
+              let didSchedule = false;
+              const setup = getCompatSetupAction(effect, symbolId, context.scopes, () => {
+                didSchedule = true;
+              });
+              return (
+                isNodeOfType(registration, "CallExpression") &&
+                (!registration.optional ||
+                  isClosedOptionalCompatEffect(registration, context.scopes)) &&
+                didSchedule &&
+                setup !== null &&
+                leavesCompatInvocationPending(
+                  effect,
+                  setup,
+                  functionUsageIndex.effectCallbacks,
+                  enclosingFunction,
+                  symbolId,
+                  hasStableMemoInstance,
+                  context.scopes,
+                )
+              );
+            })
+          ) {
+            return;
+          }
+        } else if (
           ![...aliasSymbolIds].some((symbolId) => functionUsageIndex.invokedSymbolIds.has(symbolId))
         ) {
           return;
         }
 
-        const wrappedCallback = resolveWrappedCallbackFunction(
-          debounceCall,
-          enclosingFunction,
-          context.scopes,
-        );
-        if (!wrappedCallback) return;
-        if (!hasAsyncOrDomWork(wrappedCallback)) return;
+        const argument =
+          isCompat && isNodeOfType(debounceCall, "CallExpression") && debounceCall.arguments[0];
+        const compatCallback = argument ? stripParenExpression(argument) : null;
+        const wrappedCallback = isCompat
+          ? compatCallback &&
+            (isNodeOfType(compatCallback, "Identifier") || isFunctionLike(compatCallback))
+            ? resolveExactLocalFunction(compatCallback, context.scopes)
+            : null
+          : resolveWrappedCallbackFunction(debounceCall, enclosingFunction, context.scopes);
+        if (!isFunctionLike(wrappedCallback) || (isCompat && wrappedCallback.generator)) return;
+        if (!hasAsyncOrDomWork(wrappedCallback, isCompat)) return;
         if (startsWithNullRefGuard(wrappedCallback, context.scopes)) return;
 
         context.report({

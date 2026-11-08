@@ -83,19 +83,34 @@ const computeClosedLocalUtilityCalls = (
   functionNode: EsTreeNode,
   context: RuleContext,
 ): ReadonlyArray<EsTreeNodeOfType<"CallExpression">> | null => {
+  const program = findProgramRoot(functionNode);
+  const hasRuntimeModuleMarker =
+    isNodeOfType(program, "Program") &&
+    program.sourceType === "module" &&
+    program.body.some(
+      (statement) =>
+        (isNodeOfType(statement, "ImportDeclaration") &&
+          statement.importKind !== "type" &&
+          statement.specifiers.length === 0) ||
+        (isNodeOfType(statement, "ExportNamedDeclaration") &&
+          statement.exportKind !== "type" &&
+          !statement.declaration &&
+          !statement.source &&
+          statement.specifiers.length === 0),
+    );
+  const isModuleLevelFunction = hasRuntimeModuleMarker && functionNode.parent === program;
   if (
     !isNodeOfType(functionNode, "FunctionDeclaration") ||
-    !isNodeOfType(functionNode.parent, "BlockStatement") ||
+    (!isNodeOfType(functionNode.parent, "BlockStatement") && !isModuleLevelFunction) ||
     !functionNode.body ||
     functionNode.async ||
     functionNode.generator ||
     functionNode.returnType ||
-    !findEnclosingFunction(functionNode) ||
-    !hasExplicitStrictScope(functionNode)
+    (!findEnclosingFunction(functionNode) && !isModuleLevelFunction) ||
+    (!hasExplicitStrictScope(functionNode) && !hasRuntimeModuleMarker)
   )
     return null;
   const binding = getDirectFunctionBindingIdentifier(functionNode);
-  const program = findProgramRoot(functionNode);
   const scopes = context.scopes;
   if (
     !binding ||

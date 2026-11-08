@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../../test-utils/run-rule.js";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { runRuleOnParsedFixture, runRule } from "../../../test-utils/run-rule.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getDirectFunctionBindingIdentifier } from "../../utils/get-direct-function-binding-identifier.js";
 import { getClosedLocalUtilityCalls } from "../../utils/get-closed-local-utility-calls.js";
@@ -512,8 +514,189 @@ strictControls.push(
   },
 );
 
+const moduleCases: LocalUtilityCase[] = [
+  {
+    name: "module-private-fresh",
+    source: "export {};function Drain(rows){rows.sort()}Drain([]);",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 0,
+  },
+  {
+    name: "side-effect-import-private-fresh",
+    source: 'import "runtime";function Drain(rows){rows.sort()}Drain([]);',
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 0,
+  },
+  {
+    name: "module-props-actual",
+    source:
+      "export {};function Drain(rows){rows.sort()}function View(props){Drain(props.rows);return null}export {View};",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-hook-actual",
+    source:
+      'import {useState} from "react";export {};function Drain(rows){rows.sort()}function View(){const [rows]=useState([]);Drain(rows);return null}export {View};',
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-mixed-actual",
+    source:
+      "export {};function Drain(rows){rows.sort()}Drain([]);function View(props){Drain(props.rows);return null}export {View};",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-export-specifier",
+    source: "export {};function Drain(rows){rows.sort()}Drain([]);export {Drain};",
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-export-default",
+    source: "export {};function Drain(rows){rows.sort()}Drain([]);export default Drain;",
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-higher-order",
+    source: "export {};function Drain(rows){rows.sort()}external(Drain);Drain([]);",
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-call-alias",
+    source: "export {};function Drain(rows){rows.sort()}const alias=Drain;alias([]);",
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-type-only-marker",
+    source: 'import type {Item} from "types";function Drain(rows){rows.sort()}Drain([]);',
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-inline-type-only-marker",
+    source: 'import {type Item} from "types";function Drain(rows){rows.sort()}Drain([]);',
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-type-export-only-marker",
+    source: 'export type {Item} from "types";function Drain(rows){rows.sort()}Drain([]);',
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-inline-type-export-only-marker",
+    source: 'export {type Item} from "types";function Drain(rows){rows.sort()}Drain([]);',
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "dynamic-import-only",
+    source: 'import("runtime");function Drain(rows){rows.sort()}Drain([]);',
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-flag-alone",
+    source: "function Drain(rows){rows.sort()}Drain([]);",
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-nested-implicit-strict-fresh",
+    source: "export {};function drive(){function Drain(rows){rows.sort()}Drain([])}drive();",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 0,
+  },
+  {
+    name: "no-marker-nested-nonstrict-fresh",
+    source: "function drive(){function Drain(rows){rows.sort()}Drain([])}drive();",
+    selectedName: "Drain",
+    certificate: false,
+    warnings: 1,
+  },
+  {
+    name: "module-caller-property-replaced",
+    source:
+      "export {};function Drain(value){value.items.reverse()}export function View(props){const request={items:[]};request.items=props.items;Drain(request);return null}",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-caller-container-escapes",
+    source:
+      "export {};function Drain(value){value.items.reverse()}export function View(props){const request={items:[]};mutate(request);Drain(request);return null}",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-parameter-reassigned",
+    source:
+      "export {};function Drain(rows,shared){rows=shared;rows.reverse()}export function View(props){Drain([],props.items);return null}",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-property-replaced",
+    source:
+      "export {};function Drain(request,shared){request.items=shared;request.items.reverse()}export function View(props){Drain({items:[]},props.items);return null}",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-container-escapes",
+    source:
+      "export {};function Drain(request){mutate(request);request.items.reverse()}Drain({items:[]});",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+  {
+    name: "module-owned-object-projection",
+    source:
+      "export {};function Drain(request){request.items.reverse()}const request={items:[]};Drain(request);",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 0,
+  },
+  {
+    name: "module-nested-property-replaced",
+    source:
+      "export {};export function View(props){function Drain(request){request.items=props.items;request.items.reverse()}Drain({items:[]});return null}",
+    selectedName: "Drain",
+    certificate: true,
+    warnings: 1,
+  },
+];
+
 describe("closed local utility parameter roles", () => {
-  it.each([...cases, ...strictControls])(
+  it.each([...cases, ...strictControls, ...moduleCases])(
     "$name",
     ({ source, selectedName, certificate, warnings }) => {
       let didCertify = false;
@@ -568,4 +751,26 @@ it("keeps declaration-only and with syntax outside the certificate", () => {
       "declare function Drain(rows: string[]): void;",
     ).diagnostics,
   ).toEqual([]);
+});
+
+it("keeps true classic scripts outside module lexical privacy", () => {
+  const source = '"use strict";function Drain(rows){rows.sort()}Drain([]);';
+  const parsed = parseFixture(source, { filename: "fixture.cjs", sourceType: "script" });
+  expect(parsed.errors).toEqual([]);
+  if (!isNodeOfType(parsed.program, "Program")) throw new Error("Expected a program");
+  expect(parsed.program.sourceType).toBe("script");
+  expect(
+    runRuleOnParsedFixture(noMutatingArrayMethodOnPropOrHookResult, source, parsed).diagnostics,
+  ).toHaveLength(1);
+});
+
+it("does not treat a parser module flag as a runtime module marker", () => {
+  const source = "function Drain(rows){rows.sort()}Drain([]);";
+  const parsed = parseFixture(source);
+  expect(parsed.errors).toEqual([]);
+  if (!isNodeOfType(parsed.program, "Program")) throw new Error("Expected a program");
+  parsed.program.sourceType = "module";
+  expect(
+    runRuleOnParsedFixture(noMutatingArrayMethodOnPropOrHookResult, source, parsed).diagnostics,
+  ).toHaveLength(1);
 });

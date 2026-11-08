@@ -1,9 +1,11 @@
 import { resolveLang } from "../plugin/utils/resolve-lang.js";
 import { parseSync } from "oxc-parser";
+import type { ParserOptions } from "oxc-parser";
 import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
 
 interface ParseFixtureOptions {
   filename?: string;
+  sourceType?: ParserOptions["sourceType"];
   // HACK: The filename normally drives `lang` derivation, but tests for
   // rules like jsx-filename-extension want to parse JSX in a file named
   // `Foo.js` to reproduce the diagnostic. Setting `forceJsx: true`
@@ -29,7 +31,12 @@ export const parseFixture = (
 ): ParseFixtureResult => {
   const filename = options.filename ?? "fixture.tsx";
   const lang = options.forceJsx ? "tsx" : resolveLang(filename);
-  const result = parseSync(filename, code, { astType: "ts", lang, preserveParens: false });
+  const result = parseSync(filename, code, {
+    astType: "ts",
+    lang,
+    preserveParens: false,
+    sourceType: options.sourceType,
+  });
   return {
     program: result.program as unknown as EsTreeNode,
     errors: result.errors.map((parseError) => ({ message: parseError.message })),

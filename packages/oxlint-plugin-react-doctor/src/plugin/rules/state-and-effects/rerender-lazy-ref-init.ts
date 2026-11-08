@@ -17,7 +17,7 @@ export const rerenderLazyRefInit = defineRule({
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Initialize the ref lazily so expensive values are not rebuilt and discarded on every render.",
+    "If initialization is expensive and safe to run during render, guard it so it runs only while the ref is uninitialized. Use a guard value that cannot be a valid result. See https://react.dev/reference/react/useRef#avoiding-recreating-the-ref-contents",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isReactHookCall(node, "useRef", context.scopes) || !node.arguments?.length) return;
@@ -56,7 +56,7 @@ export const rerenderLazyRefInit = defineRule({
 
       context.report({
         node: initializer,
-        message: `useRef(${callShape}) rebuilds this value on every render & throws it away.`,
+        message: `The initializer in useRef(${callShape}) is evaluated on every render. React uses its result only to initialize the ref.`,
       });
     },
   }),

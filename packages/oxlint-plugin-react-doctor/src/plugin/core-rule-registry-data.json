@@ -11369,7 +11369,7 @@
       "id": "rerender-lazy-ref-init",
       "title": "Ref initializer runs on every render",
       "severity": "warn",
-      "recommendation": "Initialize the ref lazily so expensive values are not rebuilt and discarded on every render.",
+      "recommendation": "If initialization is expensive and safe to run during render, guard it so it runs only while the ref is uninitialized. Use a guard value that cannot be a valid result. See https://react.dev/reference/react/useRef#avoiding-recreating-the-ref-contents",
       "category": "Performance",
       "framework": "global",
       "requires": ["react"],

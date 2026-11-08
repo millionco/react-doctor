@@ -24,6 +24,861 @@ describe("debounce-no-cleanup", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    "; scheduled(query);",
+    "void 0; scheduled(query);",
+    "; (scheduled).cancel(); scheduled(query);",
+    "; (scheduled as any).cancel(); scheduled(query);",
+    "; scheduled!.cancel(); scheduled(query);",
+  ])("keeps pending invocations visible through inert setup statements: %s", (setup) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const scheduled = useMemo(() => debounce(async value => { await load(value); }, 250), []);
+        useEffect(() => { ${setup} }, [query, scheduled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([";", "void 0;", "; void 0;"])("ignores inert memo factory prologues: %s", (prologue) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const scheduled = useMemo(() => { ${prologue} return debounce(async value => { void 0; await load(value); }, 250); ${prologue} }, []);
+        useEffect(() => { void 0; scheduled(query); }, [query, scheduled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "return scheduled(query);",
+    "void 0; return scheduled(query);",
+    "; return scheduled(query);",
+    "return (scheduled(query));",
+  ])("recognizes returned known cleanup calls that rearm after release: %s", (cleanup) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const scheduled = useMemo(() => debounce(async value => { await load(value); }, 250), []);
+        useEffect(() => { scheduled(query); return () => scheduled.cancel(); }, [query, scheduled]);
+        useEffect(() => { void 0; return () => { ${cleanup} }; ; }, [query, scheduled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "; (scheduled).cancel();",
+    "void 0; return scheduled.cancel();",
+    "void 0; return stop();",
+  ])("retains proven releases through inert cleanup statements: %s", (cleanup) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const scheduled = useMemo(() => debounce(async value => { await load(value); }, 250), []);
+        const stop = scheduled.cancel;
+        useEffect(() => { scheduled(query); return () => { ${cleanup} }; }, [query, scheduled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("retains a directly returned release alias after inert effect statements", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const scheduled = useMemo(() => debounce(async value => { await load(value); }, 250), []);
+        const stop = scheduled.cancel;
+        useEffect(() => { ; scheduled(query); void 0; return stop; ; }, [query, scheduled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    "return releaseUnknown();",
+    "void 0; return releaseUnknown();",
+    "void scheduled.cancel();",
+    "void 0; void scheduled.cancel();",
+  ])("keeps opaque returned calls and effectful void expressions unsupported: %s", (cleanup) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      import { releaseUnknown } from './synthetic-owner';
+      function Search({ query }) {
+        const scheduled = useMemo(() => debounce(async value => { await load(value); }, 250), []);
+        useEffect(() => { scheduled(query); return () => { ${cleanup} }; }, [query, scheduled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["void releaseUnknown();", "void 0; void releaseUnknown();", "undefined;"])(
+    "declines unmodeled factory prologues rather than treating them as inert: %s",
+    (prologue) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { useEffect, useMemo } from 'react';
+        import { debounce } from 'es-toolkit/compat';
+        import { releaseUnknown } from './synthetic-owner';
+        function Search({ query }) {
+          const undefined = releaseUnknown;
+          const scheduled = useMemo(() => { ${prologue} return debounce(async value => { await load(value); }, 250); }, []);
+          useEffect(() => { scheduled(query); }, [query, scheduled]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["", "return () => {};", 1],
+    ["", "return () => { if (enabled) stop(); };", 1],
+    ["", "return () => { if (enabled) stop(); else search.cancel(); };", 0],
+    ["", "return () => externalCleanup();", 0],
+    ["globalThis.finish = () => stop();", "", 0],
+    ["const finishLocal = () => stop(); globalThis.finish = finishLocal;", "", 0],
+    [
+      "const inner = () => stop(); const finishLocal = () => inner(); globalThis.finish = finishLocal;",
+      "",
+      0,
+    ],
+    ["const truthy = () => {};", "return () => { if (truthy) stop(); };", 0],
+    ["const truthy = {};", "return () => { if (truthy) stop(); };", 0],
+    ["const truthy = [];", "return () => { if (truthy) stop(); };", 0],
+    ["globalThis.finish = () => stop();", "return () => finish();", 0],
+    [
+      "const finishLocal = () => stop(); globalThis.finish = finishLocal;",
+      "return () => finish();",
+      0,
+    ],
+    ["const guard = () => true;", "return () => { if (guard()) stop(); };", 0],
+    [
+      "const truthy = () => {}; const guard = () => truthy;",
+      "return () => { if (guard()) stop(); };",
+      0,
+    ],
+    ["const helper = () => stop();", "return () => toggle(helper());", 0],
+    ["const helper = () => stop();", "return () => toggle(helper);", 0],
+    ["const helper = () => stop();", "return () => { if (next(helper())) stop(); };", 0],
+    ["const guard = async () => { return true; };", "return () => { if (guard()) stop(); };", 0],
+    ["function* guard() { return true; }", "return () => { if (guard()) stop(); };", 0],
+    ["", `return () => eval("stop()");`, 0],
+    ["", `return () => { if (eval("stop(); false")) stop(); };`, 0],
+    ["const finish = () => stop();", "return () => finish();", 0],
+    ["const inner = () => stop(); const finish = () => inner();", "return () => finish();", 0],
+    ["const finish = () => stop();", "finish(); return () => {};", 0],
+    [
+      "const inner = () => { stop(); return false; }; const guard = () => inner();",
+      "return () => { if (guard()) stop(); };",
+      0,
+    ],
+    ["const finish = enabled ? stop : externalCleanup;", "return () => finish();", 0],
+    [
+      "let state = false; const next = () => { state = !state; return state; };",
+      "return () => { if (next()) stop(); };",
+      0,
+    ],
+    [
+      "const guard = enabled ? () => true : externalCleanup;",
+      "return () => { if (guard()) stop(); };",
+      0,
+    ],
+  ])(
+    "separates recognized finite cleanup from opaque ownership: %s %s",
+    (declarations, cleanup, expected) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      import { externalCleanup } from './external-cleanup';
+      function Search({ query, enabled }) {
+        const search = useMemo(() => debounce(async value => { await load(value); }, 500), []);
+        const stop = search.cancel;
+        ${declarations}
+        useEffect(() => { search(query); ${cleanup} }, [search]);
+        return null;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+    },
+  );
+
+  it.each([
+    ["import { debounce } from 'es-toolkit/compat';", "debounce"],
+    ["import { debounce as postpone } from 'es-toolkit/compat';", "postpone"],
+  ])("reports effect-driven named compat debounce: %s", (imports, factory) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${imports}
+      function Search({ query }) {
+        const search = useMemo(() => ${factory}(async (value) => {
+          await fetchResults(value);
+        }, 500), []);
+        useEffect(() => { search(query); }, [query, search]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "useEffect(() => { search(query); return () => search.cancel(); }, [query, search]); return null;",
+    "return <input onChange={() => search(query)} />;",
+  ])("keeps cancelled and event-only compat debounce quiet: %s", (usage) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { debounce as postpone } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => { return postpone(async (value) => {
+          await fetchResults(value);
+        }, 500); }, []);
+        ${usage}
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "unsupported other-instance member call",
+      `import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await fetchResults(value); }, 500), []);
+        const unrelated = debounce(() => {}, 500);
+        const stop = () => search.cancel();
+        useEffect(() => { search(query); unrelated.cancel(); }, [query, search]);
+        return null;
+      }`,
+    ],
+    [
+      "unsupported detached other-instance call",
+      `import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        const other = debounce(() => {}, 500);
+        const stop = other.cancel;
+        useEffect(() => { search(query); stop(); }, [query, search]);
+        return null;
+      }`,
+    ],
+  ])(
+    "declines other-instance calls outside the finite cleanup contract: %s",
+    (_caseName, source) => {
+      const result = runRule(debounceNoCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it("declines an unused release-capturing helper outside the finite ownership contract", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await fetchResults(value); }, 500), []);
+        const unrelated = debounce(() => {}, 500);
+        const stop = () => search.cancel();
+        useEffect(() => { search.cancel(); search(query); }, [query, search]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["search.cancel();", 0],
+    ["search.flush();", 0],
+    ["search.bind(null, query);", 0],
+    ["search(query); search.cancel();", 0],
+    ["search(query); search.flush();", 0],
+    ["const alias = search; search(query); alias.cancel();", 0],
+    ["search(query); stop();", 0],
+    ["search.cancel(); search(query);", 1],
+    ["search(query); search.cancel(); search(query);", 1],
+    ["const alias = search; alias(query);", 1],
+  ])(
+    "checks directly owned compat scheduling without an unused captured helper: %s",
+    (setup, expected) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await fetchResults(value); }, 500), []);
+        const unrelated = debounce(() => {}, 500);
+        ${setup.includes("stop()") ? "const stop = () => search.cancel();" : ""}
+        useEffect(() => { ${setup} }, [query, search]);
+        return null;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+    },
+  );
+
+  it.each([
+    [
+      "const read = (value) => value;",
+      "const read = async (value) => { await load(value); };",
+      "",
+      0,
+    ],
+    [
+      "const read = async (value) => { await load(value); };",
+      "const read = (value) => value;",
+      "",
+      1,
+    ],
+    ["const read = async (value) => { await load(value); };", "", "search = () => {};", 0],
+  ])(
+    "uses the lexical compat callback and closed wrapper: %s",
+    (resolved, shadow, reassign, expected) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        function nested() { ${shadow} }
+        ${resolved}
+        ${reassign ? "let" : "const"} search = useMemo(() => debounce(read, 500), []);
+        ${reassign}
+        useEffect(() => { search(query); }, [query, search]);
+        return null;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+    },
+  );
+
+  it.each([
+    ["import { throttle as debounce } from 'es-toolkit/compat';", "debounce"],
+    ["import { debounce } from 'es-toolkit';", "debounce"],
+    ["import { debounce } from './debounce';", "debounce"],
+    ["import debounce from 'es-toolkit/compat';", "debounce"],
+    ["import * as compat from 'es-toolkit/compat';", "compat.debounce"],
+    ["import { type debounce } from 'es-toolkit/compat';", "debounce"],
+    ["import type { debounce } from 'es-toolkit/compat';", "debounce"],
+  ])("ignores unproven debounce imports: %s", (imports, factory) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${imports}
+      function Search({ query }) {
+        const search = useMemo(() => ${factory}(async (value) => {
+          await fetchResults(value);
+        }, 500), []);
+        useEffect(() => { search(query); }, [query, search]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const search = useMemo(() => debounce(async () => { await load(); }, 500, options), []);",
+    "const search = useMemo(() => debounce(async () => { await load(); }, delay), []);",
+    "const search = useMemo(async () => debounce(async () => { await load(); }, 500), []);",
+    "const search = useCallback(() => debounce(async () => { await load(); }, 500), []);",
+    "const search = useMemo(debounce(async () => { await load(); }, 500), []);",
+    "const search = useMemo((debounce) => debounce(async () => { await load(); }, 500), []);",
+  ])(
+    "does not infer a compat lifetime for opaque or different factory shapes: %s",
+    (initializer) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { debounce } from 'es-toolkit/compat';
+      function Search({ query, delay, options }) {
+        ${initializer}
+        useEffect(() => { search(query); }, [query, search]);
+        return null;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["const stop = search.cancel;", "search(query); stop();", 0],
+    ["const { cancel: stop } = search;", "search(query); stop();", 0],
+    ["const flush = search.flush; const finish = flush;", "search(query); finish();", 0],
+    ["const stop = search.cancel;", "search(query); return stop;", 0],
+    ["const stop = search.cancel;", "search(query); return () => stop();", 0],
+    ["const stop = search.cancel;", "search(query); stop(); search(query);", 1],
+  ])("resolves a detached compat release on the exact instance: %s", (alias, setup, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        const other = debounce(() => {}, 500);
+        ${alias}
+        useEffect(() => { ${setup} }, [query, search]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    ["useEffect(() => { search(query); }, []); useEffect(() => { search.cancel(); }, []);", 0],
+    ["useEffect(() => { search.cancel(); }, []); useEffect(() => { search(query); }, []);", 1],
+    ["useEffect(() => { search(query); }, [query]); useEffect(() => { search.cancel(); }, []);", 1],
+    [
+      "useEffect(() => { search(query); }, []); useLayoutEffect(() => { search.cancel(); }, []);",
+      1,
+    ],
+    [
+      "useEffect(() => { search(query); }, []); useEffect(() => { search.cancel(); search(query); }, []);",
+      1,
+    ],
+  ])("only transfers release to the following passive mount effect: %s", (effects, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useLayoutEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        ${effects}
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    [
+      "const stop = search.cancel; useEffect(() => { search(query); }, [query, search]); useEffect(() => () => stop(), [search]);",
+      0,
+    ],
+    [
+      "const stop = search.cancel; useEffect(() => { search(query); }, [query, search]); useEffect(() => stop, [stop]);",
+      0,
+    ],
+    [
+      "const stop = search.cancel; useEffect(() => { search(query); }, []); useEffect(() => stop, []);",
+      0,
+    ],
+    [
+      "const stop = search.cancel; useEffect(() => { search(query); return () => stop?.(); }, [query, search]);",
+      0,
+    ],
+    [
+      "const stop = search.cancel; useEffect(() => { search(query); }, []); useEffect?.(() => { stop(); }, []);",
+      0,
+    ],
+    [
+      "const { cancel: stop = () => {} } = search; useEffect(() => { search(query); stop(); }, [query, search]);",
+      0,
+    ],
+    ["useEffect(() => { search?.(query); }, [query, search]);", 1],
+    [
+      "useEffect(() => { search(query); return () => { search.cancel(); search(query); }; }, [query, search]);",
+      1,
+    ],
+    [
+      "const alias = search; alias.cancel = () => {}; useEffect(() => { search(query); return () => search.cancel(); }, [query, search]);",
+      0,
+    ],
+    [
+      "const cache = { search }; cache.search.cancel = () => {}; useEffect(() => { search(query); return () => search.cancel(); }, [query, search]);",
+      0,
+    ],
+    [
+      "const stop = search.cancel; search.cancel = () => {}; useEffect(() => { search(query); return stop; }, [query, search]);",
+      0,
+    ],
+  ])("proves compat teardown without relying on legacy releases: %s", (effects, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        ${effects}
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    [
+      "useEffect(() => { search(query); }, [search]); useEffect(() => stop, [stop]); useEffect(() => () => search(query), [search]);",
+      "[]",
+      1,
+    ],
+    [
+      "useEffect(() => { search(query); }, [search]); useEffect(() => () => search(query), [search]); useEffect(() => stop, [stop]);",
+      "[]",
+      0,
+    ],
+    [
+      "useEffect(() => { search(query); return stop; }, [search]); useEffect(() => () => search(query), [search]);",
+      "[]",
+      1,
+    ],
+    [
+      "useEffect(() => { search(query); stop(); }, []); useEffect(() => () => search(query), []);",
+      "[]",
+      1,
+    ],
+    ["useEffect(() => { search(query); }, [query, search]); useEffect(() => stop, []);", "[]", 0],
+    [
+      "useEffect(() => { search(query); }, [query, search]); useEffect(() => stop, []);",
+      "[query]",
+      1,
+    ],
+    ["useEffect(() => { search(query); }, [query, search]); useEffect(() => stop);", "[query]", 0],
+    [
+      "useEffect(() => { search(query); }, [query, search]); useLayoutEffect?.(() => stop, [stop]);",
+      "[]",
+      0,
+    ],
+    [
+      "useEffect(() => { search(query); }, []); useEffect(() => {}, []); useEffect(() => { stop(); }, []);",
+      "[]",
+      0,
+    ],
+    [
+      "useEffect(() => { search(query); }, []); useEffect(() => { stop(); }, []); useEffect(() => { search(query); }, []);",
+      "[]",
+      1,
+    ],
+  ])("replays each compat wrapper's setup and teardown order: %s", (effects, memo, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useLayoutEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), ${memo});
+        const stop = search?.cancel;
+        ${effects}
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    [
+      "useEffect(() => { search(query); }, [query, search]); useEffect(() => { stop(); }, [query, search]);",
+      0,
+    ],
+    ["useEffect(() => { search(query); }); useEffect(() => { stop(); });", 0],
+    [
+      "useEffect(() => { search(query); }, [query, search]); useEffect(() => { stop(); }, [query, search, enabled]);",
+      0,
+    ],
+    [
+      "useEffect(() => { search(query); }, [query, search, enabled]); useEffect(() => { stop(); }, [query, search]);",
+      1,
+    ],
+    [
+      "useEffect(() => { stop(); }, [query, search]); useEffect(() => { search(query); }, [query, search]);",
+      1,
+    ],
+    [
+      "useEffect(() => { search(query); }, [search]); useEffect(() => stop, [stop]); useEffect(() => () => { if (enabled) search(query); }, [search]);",
+      1,
+    ],
+    [
+      "useEffect(() => { search(query); }, [search]); useEffect(() => () => { if (enabled) search(query); }, [search]); useEffect(() => stop, [stop]);",
+      0,
+    ],
+    [
+      "const disabled = false; useEffect(() => { search(query); }, [search]); useEffect(() => stop, [stop]); useEffect(() => () => { if (disabled) search(query); }, [search]);",
+      0,
+    ],
+    [
+      "useEffect(() => { search(query); return () => { if (enabled) stop(); else search.cancel(); }; }, [search]);",
+      0,
+    ],
+    ["useEffect(() => { search(query); return () => { if (enabled) stop(); }; }, [search]);", 1],
+  ])(
+    "requires setup co-activation and release on all cleanup branches: %s",
+    (effects, expected) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query, enabled }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        const stop = search.cancel;
+        ${effects}
+        return null;
+      }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+    },
+  );
+
+  it.each([
+    [
+      "unsupported changing local call guard",
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query, enabled, other }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        let state = false;
+        const next = () => { state = !state; return state; };
+        useEffect(() => {
+          search(query);
+          return () => { search.cancel(); if (next()) search(query); if (next()) search.cancel(); };
+        }, [query,search,enabled,other]);
+        return null;
+      }`,
+    ],
+    [
+      "unsupported mutable local guard",
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query, enabled, other }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        let state = false;
+        const next = () => { state = !state; return state; };
+        useEffect(() => {
+          search(query);
+          return () => { search.cancel(); let flag = enabled; if (flag) search(query); flag = !flag; if (flag) search.cancel(); };
+        }, [query,search,enabled,other]);
+        return null;
+      }`,
+    ],
+    [
+      "unsupported mutable snapshot guards",
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      import { active as imported, toggle } from './live-state';
+      function Search({ query, enabled }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        useEffect(() => {
+          search(query);
+          return () => { search.cancel(); let live = enabled; const before = live; if (before) search(query); live = !live; const after = live; if (after) search.cancel(); };
+        }, [query,search,enabled]);
+        return null;
+      }`,
+    ],
+    [
+      "unsupported imported guard and opaque call",
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      import { active as imported, toggle } from './live-state';
+      function Search({ query, enabled }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        useEffect(() => {
+          search(query);
+          return () => { search.cancel(); if (imported) search(query); toggle(); if (imported) search.cancel(); };
+        }, [query,search,enabled]);
+        return null;
+      }`,
+    ],
+  ])("declines guards and calls outside the finite cleanup contract: %s", (_name, source) => {
+    const result = runRule(debounceNoCleanup, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["if (enabled) search(query); if (enabled) search.cancel();", 0],
+    ["const flag = enabled; if (enabled) search(query); if (flag) search.cancel();", 0],
+    ["if (!enabled) search(query); if (!enabled) search.cancel();", 0],
+    ["if (enabled) search(query); if (!enabled) search.cancel();", 1],
+    ["if (enabled) search(query); if (other) search.cancel();", 1],
+    ["if (enabled) search(query); else search.cancel(); if (enabled) search.cancel();", 0],
+  ])("correlates only repeated immutable cleanup guards: %s", (cleanup, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query, enabled, other }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        let state = false;
+        const next = () => { state = !state; return state; };
+        useEffect(() => {
+          search(query);
+          return () => { search.cancel(); ${cleanup} };
+        }, [query,search,enabled,other]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    [
+      "let live = enabled; const snapshot = live; if (snapshot) search(query); live = !live; if (snapshot) search.cancel();",
+      0,
+    ],
+    [
+      "let live = enabled; const snapshot = live; const alias = snapshot; if (snapshot) search(query); live = !live; if (alias) search.cancel();",
+      0,
+    ],
+    [
+      "const snapshot = imported; if (snapshot) search(query); toggle(); if (snapshot) search.cancel();",
+      0,
+    ],
+    [
+      "const snapshot = imported; const alias = snapshot; if (snapshot) search(query); toggle(); if (alias) search.cancel();",
+      0,
+    ],
+  ])("uses an actual compat cleanup snapshot rather than a live value: %s", (cleanup, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      import { active as imported, toggle } from './live-state';
+      function Search({ query, enabled }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        useEffect(() => {
+          search(query);
+          return () => { search.cancel(); ${cleanup} };
+        }, [query,search,enabled]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    [
+      "var value = enabled; useEffect(() => { search(query); }, [value]); var value = false; useEffect(() => { search.cancel(); }, [value]);",
+      1,
+    ],
+    [
+      "var value = enabled; const snapshot = value; const alias = snapshot; useEffect(() => { search(query); }, [snapshot]); var value = false; useEffect(() => { search.cancel(); }, [alias]);",
+      0,
+    ],
+    [
+      "var value = enabled; const before = value; useEffect(() => { search(query); }, [before]); var value = false; const after = value; useEffect(() => { search.cancel(); }, [after]);",
+      1,
+    ],
+  ])("does not equate separate reads across a var redeclaration: %s", (effects, expected) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from 'react';
+      import { debounce } from 'es-toolkit/compat';
+      function Search({ query, enabled }) {
+        const search = useMemo(() => debounce(async (value) => { await load(value); }, 500), []);
+        ${effects}
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
+    "const stop = search.cancel; search.cancel = () => {};",
+    "const { cancel: stop } = search; search.cancel = () => {};",
+    "const neverCalled = () => { search.cancel = () => {}; }; const stop = search.cancel;",
+    "const neverCalled = () => { (search as any).flush = () => {}; }; const stop = search.cancel;",
+    "search.cancel = () => {}; const stop = search.cancel;",
+    "(search as any).cancel = () => {}; const stop = search.cancel;",
+  ])("declines ambiguous compat release writes instead of proving missing cleanup: %s", (setup) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from "react";
+       import { debounce } from "es-toolkit/compat";
+       function Search({ query }) {
+         const search = useMemo(() => debounce(async value => { await load(value); }, 500), []);
+         ${setup}
+         useEffect(() => { search(query); return stop; }, [query, search]);
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const stop = takeOwnership(search);",
+    "const stop = new Owner(search).cancel;",
+    "const stop = search.cancel; takeOwnership(stop);",
+    "const { cancel: stop } = search; takeOwnership(stop);",
+    "const stop = search.cancel; const finish = stop; new Owner(finish);",
+    "const stop = takeOwnership(search.cancel);",
+    "let alias = search; const stop = takeOwnership(alias);",
+    "const stop = takeOwnership(() => search.cancel());",
+    "const release = () => search.cancel(); const stop = takeOwnership(release);",
+    "const release = () => search.cancel(); const finish = release; const stop = new Owner(finish).cancel;",
+  ])("declines opaque compat scheduler and release ownership handoffs: %s", (setup) => {
+    const result = runRule(
+      debounceNoCleanup,
+      `import { useEffect, useMemo } from "react";
+       import { debounce } from "es-toolkit/compat";
+       import { takeOwnership, Owner } from "./owner";
+       function Search({ query }) {
+         const search = useMemo(() => debounce(async value => { await load(value); }, 500), []);
+         ${setup}
+         useEffect(() => { search(query); return stop; }, [query, search]);
+         return null;
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "useEffect(() => { search(query); return externalCleanup; }, [query, search]);",
+    "useEffect(() => { search(query); }, [query, search]); useEffect(() => externalCleanup, [search]);",
+    "useEffect(() => { search(query); return () => externalCleanup(); }, [query, search]);",
+  ])(
+    "declines an unproven returned compat cleanup instead of assuming it cannot release: %s",
+    (effects) => {
+      const result = runRule(
+        debounceNoCleanup,
+        `import { useEffect, useMemo } from "react";
+       import { debounce } from "es-toolkit/compat";
+       import { externalCleanup } from "./owner";
+       function Search({ query }) {
+         const search = useMemo(() => debounce(async value => { await load(value); }, 500), []);
+         ${effects}
+         return null;
+       }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("flags a useRef debounce doing DOM work, driven from an effect, with no cancel cleanup", () => {
     const result = runRule(
       debounceNoCleanup,

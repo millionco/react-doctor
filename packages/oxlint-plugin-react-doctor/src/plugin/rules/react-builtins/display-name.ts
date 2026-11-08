@@ -607,6 +607,7 @@ export const displayName = defineRule({
         if (shouldUseCuratedBehavior) return;
         if (!isNodeOfType(node.parent, "ExportDefaultDeclaration")) return;
         if (!functionContainsReactRenderOutput(node, context.scopes, context.cfg)) return;
+        if (ignoreNamed && isNamedFunctionLike(node)) return;
         if (node.id) {
           const programRoot = findProgramRoot(node);
           if (programRoot && hasDisplayNameAssignment(node.id.name, programRoot)) return;

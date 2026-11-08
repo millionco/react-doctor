@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../../test-utils/run-rule.js";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
+import { runRule, runRuleOnParsedFixture } from "../../../test-utils/run-rule.js";
 import { noFetchResponseUsedWithoutStatusCheck } from "./no-fetch-response-used-without-status-check.js";
 
 describe("no-fetch-response-used-without-status-check", () => {
@@ -264,6 +265,210 @@ describe("no-fetch-response-used-without-status-check", () => {
       async function load() {
         const response = await fetch("/api/keys");
         if (!responseSucceeded(response)) throw new Error("Unable to refresh");
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `function inspectHttpResponse(response) {
+      if (!response.ok) throw new Error("Request failed");
+    }`,
+    `const inspectHttpResponse = (response) => {
+      if (!response.ok) throw new Error("Request failed");
+    };`,
+    `function inspectHttpResponse(response, message = "Request failed") {
+      if (!response.ok) {
+        if (response.status === 401) throw new Error("Unauthorized");
+        throw new Error(message);
+      }
+    }`,
+  ])("recognizes a synchronous throwing local status helper: %s", (helper) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `${helper}
+      export async function load() {
+        const response = await fetch("/api/items");
+        inspectHttpResponse(response);
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `async function inspectHttpResponse(response) {
+      if (!response.ok) throw new Error("Request failed");
+    }`,
+    `function* inspectHttpResponse(response) {
+      if (!response.ok) throw new Error("Request failed");
+    }`,
+    `function inspectHttpResponse(response) {
+      if (!response.ok) return false;
+    }`,
+    `function inspectHttpResponse(response) {
+      if (!response.ok && enabled) throw new Error("Request failed");
+    }`,
+    `function inspectHttpResponse(response) {
+      if (response.ok) throw new Error("Request failed");
+    }`,
+    `function inspectHttpResponse(response) {
+      if (enabled) return;
+      if (!response.ok) throw new Error("Request failed");
+    }`,
+    `function inspectHttpResponse(response) {
+      if (!response.ok) {
+        try { throw new Error("Request failed"); } catch {}
+      }
+    }`,
+    `function inspectHttpResponse(response) {
+      if (!response.ok) {
+        try { throw new Error("Request failed"); } finally { return; }
+      }
+    }`,
+    `function inspectHttpResponse(response, replacement = (response = fallback)) {
+      if (!response.ok) throw new Error("Request failed");
+    }`,
+  ])("retains unchecked consumption for an unproven local helper: %s", (helper) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `${helper}
+      export async function load() {
+        const response = await fetch("/api/items");
+        inspectHttpResponse(response);
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `try { inspectHttpResponse(response); } catch {}`,
+    `try { inspectHttpResponse(response); } finally { return response.json(); }`,
+    `if (enabled) inspectHttpResponse(response);`,
+    `queueMicrotask(() => inspectHttpResponse(response));`,
+  ])("retains unchecked consumption when the helper does not guard it: %s", (call) => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function inspectHttpResponse(response) {
+        if (!response.ok) throw new Error("Request failed");
+      }
+      export async function load() {
+        const response = await fetch("/api/items");
+        ${call}
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not confuse a prebound Response with the supplied response", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function inspectHttpResponse(response) {
+        if (!response.ok) throw new Error("Request failed");
+      }
+      const inspectBoundResponse = inspectHttpResponse.bind(null, successfulResponse);
+      export async function load() {
+        const response = await fetch("/api/items");
+        inspectBoundResponse(response);
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not count an erased TypeScript this parameter as a runtime argument", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function inspectHttpResponse(this: unknown, response: Response, ignored?: unknown) {
+        if (!response.ok) throw new Error("Request failed");
+      }
+      export async function load() {
+        const response = await fetch("/api/items");
+        inspectHttpResponse(successfulResponse, response);
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not guard consumption while evaluating the helper's arguments", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function inspectHttpResponse(response, payload) {
+        if (!response.ok) throw new Error("Request failed");
+      }
+      export async function load() {
+        const response = await fetch("/api/items");
+        inspectHttpResponse(response, response.json().then(render));
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains unchecked consumption when eval can replace the helper", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function inspectHttpResponse(response) {
+        if (!response.ok) throw new Error("Request failed");
+      }
+      export async function load() {
+        const response = await fetch("/api/items");
+        eval("inspectHttpResponse = () => {}");
+        inspectHttpResponse(response);
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `function inspectHttpResponse(response) {
+      if (!response.ok) throw new Error("Request failed");
+    }
+    globalThis.inspectHttpResponse = () => {};
+    async function load() {
+      const response = await fetch("/api/items");
+      inspectHttpResponse(response);
+      return response.json();
+    }`,
+    `async function load() {
+      function inspectHttpResponse(response, response) {
+        if (!response.ok) throw new Error("Request failed");
+      }
+      const response = await fetch("/api/items");
+      inspectHttpResponse(response, successfulResponse);
+      return response.json();
+    }`,
+  ])("retains unchecked consumption for mutable script bindings: %s", (source) => {
+    const parsed = parseFixture(source, { filename: "fixture.js", sourceType: "script" });
+    expect(parsed.errors).toEqual([]);
+    const result = runRuleOnParsedFixture(noFetchResponseUsedWithoutStatusCheck, source, parsed, {
+      filename: "fixture.js",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks a stable Response alias in the helper's second argument", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function inspectHttpResponse(message, response) {
+        if (!response.ok) throw new Error(message);
+      }
+      export async function load() {
+        const response = await fetch("/api/items");
+        const responseAlias = response;
+        inspectHttpResponse("Request failed", responseAlias);
         return response.json();
       }`,
     );

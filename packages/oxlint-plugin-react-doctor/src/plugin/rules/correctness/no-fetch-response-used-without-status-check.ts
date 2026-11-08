@@ -13,6 +13,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -457,6 +458,7 @@ const localValidatorChecksResponseStatus = (
   call: EsTreeNodeOfType<"CallExpression">,
   responseReference: EsTreeNode,
   context: RuleContext,
+  canUseThrowingGuard: boolean,
 ): boolean => {
   const responseArgumentIndex = call.arguments.findIndex(
     (argument) => argument === responseReference,
@@ -468,6 +470,101 @@ const localValidatorChecksResponseStatus = (
   if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
   const parameterSymbol = context.scopes.symbolFor(parameter);
   if (!parameterSymbol) return false;
+  const callStatement = getMeaningfulParent(call);
+  const caller = context.cfg.enclosingFunction(call);
+  const calleeSymbol = isNodeOfType(call.callee, "Identifier")
+    ? context.scopes.symbolFor(call.callee)
+    : null;
+  const directValidator =
+    calleeSymbol?.kind === "function"
+      ? calleeSymbol.declarationNode
+      : calleeSymbol?.kind === "const" && calleeSymbol.initializer
+        ? stripGroupingParens(calleeSymbol.initializer)
+        : null;
+  const program = context.scopes.rootScope.node;
+  const isMutableGlobalFunction =
+    isNodeOfType(program, "Program") &&
+    program.sourceType === "script" &&
+    calleeSymbol?.kind === "function" &&
+    calleeSymbol.scope === context.scopes.rootScope;
+  const firstStatement = isNodeOfType(validator.body, "BlockStatement")
+    ? validator.body.body[0]
+    : null;
+  const parameterNames = validator.params.flatMap((formal) =>
+    isNodeOfType(formal, "Identifier")
+      ? [formal.name]
+      : isNodeOfType(formal, "AssignmentPattern") && isNodeOfType(formal.left, "Identifier")
+        ? [formal.left.name]
+        : [],
+  );
+  if (
+    canUseThrowingGuard &&
+    !isMutableGlobalFunction &&
+    directValidator === validator &&
+    !validator.async &&
+    !validator.generator &&
+    !call.optional &&
+    call.arguments.every((argument) => !isNodeOfType(argument, "SpreadElement")) &&
+    parameterSymbol.references.every((reference) => reference.flag === "read") &&
+    new Set(parameterNames).size === validator.params.length &&
+    !parameterNames.includes("this") &&
+    validator.params.every(
+      (formal) =>
+        isNodeOfType(formal, "Identifier") ||
+        (isNodeOfType(formal, "AssignmentPattern") &&
+          isNodeOfType(formal.left, "Identifier") &&
+          isNodeOfType(formal.right, "Literal") &&
+          (formal.right.value === null ||
+            ["string", "number", "boolean", "bigint"].includes(typeof formal.right.value))),
+    ) &&
+    callStatement &&
+    isNodeOfType(callStatement, "ExpressionStatement") &&
+    caller &&
+    isFunctionLike(caller) &&
+    callStatement.parent === caller.body &&
+    firstStatement &&
+    isNodeOfType(firstStatement, "IfStatement") &&
+    statementAlwaysExits(firstStatement.consequent)
+  ) {
+    let hasDynamicScope = false;
+    walkAst(context.scopes.rootScope.node, (child) => {
+      if (hasDynamicScope) return false;
+      if (
+        isNodeOfType(child, "WithStatement") ||
+        (isNodeOfType(child, "Identifier") && child.name === "eval")
+      ) {
+        hasDynamicScope = true;
+        return false;
+      }
+    });
+    let hasNonThrowingExit = false;
+    walkOwnFunctionScope(validator, (child) => {
+      if (
+        isNodeOfType(child, "ReturnStatement") ||
+        isNodeOfType(child, "BreakStatement") ||
+        isNodeOfType(child, "ContinueStatement")
+      ) {
+        hasNonThrowingExit = true;
+      }
+    });
+    const okReferences = parameterSymbol.references.flatMap((reference) => {
+      const receiver = findTransparentExpressionRoot(reference.identifier);
+      const member = receiver.parent;
+      return member &&
+        isNodeOfType(member, "MemberExpression") &&
+        member.object === receiver &&
+        getStaticPropertyName(member) === "ok"
+        ? [member]
+        : [];
+    });
+    if (
+      !hasDynamicScope &&
+      !hasNonThrowingExit &&
+      makeExpressionGuaranteesStatusCheck(okReferences, true)(firstStatement.test, false)
+    ) {
+      return true;
+    }
+  }
   const hasResponseShapeGuard =
     isNodeOfType(validator.body, "BlockStatement") &&
     validator.body.body.some((statement) => {
@@ -944,7 +1041,15 @@ const reportUnguarded = ({
       );
       return (
         (isKnownValidatorName ||
-          localValidatorChecksResponseStatus(parent, reference.identifier, context)) &&
+          localValidatorChecksResponseStatus(
+            parent,
+            reference.identifier,
+            context,
+            !responseBindingCanBeUndefined &&
+              Boolean(getDirectUnreassignedInitializer(symbol)) &&
+              symbol.references.every((responseReference) => responseReference.flag === "read") &&
+              parent.range[1] <= consumption.range[0],
+          )) &&
         nodeDominatesNode(parent, consumption, context)
       );
     });

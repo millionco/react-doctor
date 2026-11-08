@@ -931,9 +931,9 @@
     "originallyExternal": false,
     "rule": {
       "id": "effect-observer-needs-disconnect",
-      "title": "Observer created in an effect never disconnected",
+      "title": "Observer cleanup may be incomplete",
       "severity": "error",
-      "recommendation": "Return a cleanup function that calls `observer.disconnect()` (or `observer.unobserve(node)`) so the observer stops firing callbacks against detached nodes after unmount instead of leaking on every mount.",
+      "recommendation": "Return a cleanup that calls `observer.disconnect()`. If the observer supports `unobserve()`, capture the targets during setup and pass each originally observed target to `observer.unobserve(target)` during cleanup.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

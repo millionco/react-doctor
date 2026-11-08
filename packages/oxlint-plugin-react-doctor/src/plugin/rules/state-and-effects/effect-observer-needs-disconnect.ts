@@ -731,11 +731,11 @@ const doesEffectInvokeStoredObserverDisposer = (
 
 export const effectObserverNeedsDisconnect = defineRule({
   id: "effect-observer-needs-disconnect",
-  title: "Observer created in an effect never disconnected",
+  title: "Observer cleanup may be incomplete",
   severity: "error",
   category: "Bugs",
   recommendation:
-    "Return a cleanup function that calls `observer.disconnect()` (or `observer.unobserve(node)`) so the observer stops firing callbacks against detached nodes after unmount instead of leaking on every mount.",
+    "Return a cleanup that calls `observer.disconnect()`. If the observer supports `unobserve()`, capture the targets during setup and pass each originally observed target to `observer.unobserve(target)` during cleanup.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isProvenEffectHookCall(node, context.scopes)) return;
@@ -887,7 +887,7 @@ export const effectObserverNeedsDisconnect = defineRule({
           node: tracked.construction,
           message: tracked.didUseDetachedLookupForCleanup
             ? "This cleanup looks up the target again after the observed element is no longer in the document. Call `unobserve()` with the original element or use `disconnect()`."
-            : "This observer is created and started in the effect but never disconnected, so it keeps firing against detached nodes and leaks one observer per mount; return a cleanup that calls `disconnect()` or `unobserve()`.",
+            : "This effect starts an observer that may remain active when the effect stops. Disconnect it or unobserve each original target where supported.",
         });
       }
     },

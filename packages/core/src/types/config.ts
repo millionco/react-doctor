@@ -199,6 +199,13 @@ export interface SupplyChainConfig {
   includeDevDependencies?: boolean;
 }
 
+export interface OnlyExportComponentsConfig {
+  allowExportNames?: string[];
+  allowConstantExport?: boolean;
+  customHOCs?: string[];
+  checkJS?: boolean;
+}
+
 export interface ReactDoctorConfig {
   $schema?: string;
   ignore?: ReactDoctorIgnoreConfig;
@@ -354,6 +361,15 @@ export interface ReactDoctorConfig {
    * no auth noun — e.g. a project-local `requireWorkspaceMember`.
    */
   serverAuthFunctionNames?: string[];
+  /**
+   * Options for the `only-export-components` rule, mirroring
+   * `eslint-plugin-react-refresh`. List project HOCs in `customHOCs`
+   * (e.g. `withErrorBoundary`) so `export const Screen =
+   * withErrorBoundary(ScreenContent)` counts as a component export;
+   * `allowExportNames`, `allowConstantExport`, and `checkJS` work the
+   * same as upstream. Unset keys keep the rule's defaults.
+   */
+  onlyExportComponents?: OnlyExportComponentsConfig;
   /**
    * Whether to respect inline `// eslint-disable*`, `// oxlint-disable*`,
    * and `// react-doctor-disable*` comments in source files. Default: `true`.

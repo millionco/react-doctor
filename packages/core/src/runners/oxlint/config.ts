@@ -7,7 +7,11 @@ import {
   REACT_DOCTOR_RULE_REGISTRY,
 } from "oxlint-plugin-react-doctor/core";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
-import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import type {
+  OnlyExportComponentsConfig,
+  ProjectInfo,
+  RuleSeverityControls,
+} from "../../types/index.js";
 import type { AdoptedLintConfigSettings } from "../../read-adopted-lint-config-settings.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
@@ -29,6 +33,7 @@ export interface OxlintConfigOptions {
   runtimeGlobals?: ReadonlyArray<string>;
   unpluginAutoImportGlobalScopes?: ReadonlyArray<UnpluginAutoImportGlobalScope>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
+  onlyExportComponents?: OnlyExportComponentsConfig;
   projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
   adoptedSettings?: AdoptedLintConfigSettings;
@@ -142,6 +147,7 @@ export const createOxlintConfig = ({
   runtimeGlobals,
   unpluginAutoImportGlobalScopes,
   serverAuthFunctionNames,
+  onlyExportComponents,
   projectIndexModuleSources,
   severityControls,
   adoptedSettings = {},
@@ -339,6 +345,7 @@ export const createOxlintConfig = ({
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
           : {}),
+        ...(onlyExportComponents !== undefined ? { onlyExportComponents } : {}),
         ...(projectIndexModuleSources !== undefined
           ? { projectIndexModuleSources: [...projectIndexModuleSources] }
           : {}),

@@ -391,6 +391,25 @@ describe("createOxlintConfig settings", () => {
     });
   });
 
+  it("forwards configured only-export-components options to plugin rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      onlyExportComponents: { customHOCs: ["withErrorBoundary"], allowExportNames: ["meta"] },
+    });
+
+    expect(config.settings["react-doctor"].onlyExportComponents).toEqual({
+      customHOCs: ["withErrorBoundary"],
+      allowExportNames: ["meta"],
+    });
+  });
+
+  it("omits only-export-components options when none are configured", () => {
+    const config = createOxlintConfig({ pluginPath: "/tmp/plugin.js", project: viteWebProject });
+
+    expect(config.settings["react-doctor"]).not.toHaveProperty("onlyExportComponents");
+  });
+
   it("merges adopted settings without replacing react-doctor settings", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

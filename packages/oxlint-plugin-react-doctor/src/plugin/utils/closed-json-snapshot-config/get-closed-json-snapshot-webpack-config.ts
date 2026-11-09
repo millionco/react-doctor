@@ -5,6 +5,7 @@ import { walkAst } from "../walk-ast.js";
 import { getRootIdentifier } from "../get-root-identifier.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isBuiltin } from "node:module";
 import type { EsTreeNode } from "../es-tree-node.js";
 import { isNodeOfType } from "../is-node-of-type.js";
 import { getStaticPropertyKeyName } from "../get-static-property-key-name.js";
@@ -108,6 +109,9 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
   const activeModules = new Set<string>();
   const taintedModules = new Set<string>();
   const taintedExternalSources = new Set<string>();
+  const relativeConfigRequests = new Map<string, Set<string>>();
+  let hasNativeRequireResolveScalar = false;
+  let hasUnsupportedRequireResolveScope = false;
   let nodeCount = 0;
   let totalBytes = 0;
   const dataBudget: SnapshotConfigDataBudget = { remaining: SNAPSHOT_CONFIG_MAX_NODES };
@@ -145,6 +149,8 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
     const program = parseSourceText({ filename, sourceText: readText(filename), language: "js" });
     if (!program || !isNodeOfType(program, "Program")) return unsupported();
     const scopes = analyzeScopes(program);
+    const requiredRelativeConfigSources = new Set<string>();
+    relativeConfigRequests.set(filename, requiredRelativeConfigSources);
     const bindings = new Map<string, SnapshotConfigValue>();
     const declarations = new Map<string, EsTreeNode>();
     const rootDeclarationCounts = new Map<string, number>();
@@ -204,7 +210,7 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
           ? isDeclaredReference(node)
           : ["module", "exports", "require", "__dirname"].includes(node.name) && !symbol;
       };
-      const isPureScalarCall = (node: EsTreeNode): boolean => {
+      const isOpaqueScalarCall = (node: EsTreeNode): boolean => {
         if (
           !isNodeOfType(node, "CallExpression") ||
           !isNodeOfType(node.callee, "MemberExpression") ||
@@ -214,6 +220,19 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
         )
           return false;
         const receiver = node.callee.object;
+        if (
+          receiver.name === "require" &&
+          scopes.isGlobalReference(receiver) &&
+          node.callee.property.name === "resolve" &&
+          !node.optional &&
+          !node.callee.optional &&
+          node.arguments.length === 1 &&
+          isNodeOfType(node.arguments[0], "Literal") &&
+          typeof node.arguments[0].value === "string"
+        ) {
+          hasNativeRequireResolveScalar = true;
+          return true;
+        }
         if (
           receiver.name === "JSON" &&
           scopes.isGlobalReference(receiver) &&
@@ -242,7 +261,7 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
       };
       const isKnownCall = (node: EsTreeNode): boolean => {
         if (!isNodeOfType(node, "CallExpression")) return false;
-        if (isPureScalarCall(node)) return true;
+        if (isOpaqueScalarCall(node)) return true;
         if (!isNodeOfType(node.callee, "Identifier")) return false;
         if (node.callee.name === "require" && scopes.isGlobalReference(node.callee)) return true;
         const initializer = declarations.get(node.callee.name);
@@ -259,6 +278,136 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
         );
       };
       walkAst(program, (node) => {
+        if (
+          [
+            "WithStatement",
+            "ImportExpression",
+            "MetaProperty",
+            "ThisExpression",
+            "Super",
+            "FunctionDeclaration",
+            "FunctionExpression",
+            "ArrowFunctionExpression",
+            "ClassDeclaration",
+            "ClassExpression",
+            "TaggedTemplateExpression",
+          ].includes(node.type)
+        )
+          hasUnsupportedRequireResolveScope = true;
+        if (
+          isNodeOfType(node, "MemberExpression") ||
+          (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern"))
+        ) {
+          const propertyName = getStaticPropertyKeyName(node, {
+            allowComputedString: true,
+            stringifyNonStringLiterals: true,
+          });
+          if (
+            propertyName === null ||
+            ["constructor", "prototype", "__proto__", "caller", "callee", "arguments"].includes(
+              propertyName,
+            )
+          )
+            hasUnsupportedRequireResolveScope = true;
+        }
+        if (isNodeOfType(node, "Identifier") && scopes.isGlobalReference(node)) {
+          const referenceParent = node.parent;
+          let isAllowedGlobalReference = ["__dirname", "undefined", "NaN", "Infinity"].includes(
+            node.name,
+          );
+          if (node.name === "require") {
+            if (
+              isNodeOfType(referenceParent, "CallExpression") &&
+              referenceParent.callee === node &&
+              !referenceParent.optional &&
+              referenceParent.arguments.length === 1 &&
+              isNodeOfType(referenceParent.arguments[0], "Literal") &&
+              typeof referenceParent.arguments[0].value === "string"
+            ) {
+              const requiredSource = referenceParent.arguments[0].value;
+              if (requiredSource.startsWith("./") || requiredSource.startsWith("../"))
+                requiredRelativeConfigSources.add(requiredSource);
+              const requiredBindingDeclaration = referenceParent.parent;
+              isAllowedGlobalReference =
+                !isBuiltin(requiredSource) ||
+                (["path", "node:path"].includes(requiredSource) &&
+                  isNodeOfType(requiredBindingDeclaration, "VariableDeclarator") &&
+                  requiredBindingDeclaration.init === referenceParent &&
+                  isNodeOfType(requiredBindingDeclaration.id, "Identifier") &&
+                  declarations.get(requiredBindingDeclaration.id.name) === referenceParent);
+            } else if (
+              isNodeOfType(referenceParent, "MemberExpression") &&
+              referenceParent.object === node &&
+              isNodeOfType(referenceParent.parent, "CallExpression") &&
+              referenceParent.parent.callee === referenceParent &&
+              isOpaqueScalarCall(referenceParent.parent)
+            )
+              isAllowedGlobalReference = true;
+          } else if (node.name === "module") {
+            isAllowedGlobalReference =
+              isNodeOfType(referenceParent, "MemberExpression") &&
+              referenceParent.object === node &&
+              !referenceParent.computed &&
+              !referenceParent.optional &&
+              isNodeOfType(referenceParent.property, "Identifier") &&
+              referenceParent.property.name === "exports";
+          } else if (node.name === "JSON") {
+            isAllowedGlobalReference =
+              isNodeOfType(referenceParent, "MemberExpression") &&
+              referenceParent.object === node &&
+              !referenceParent.optional &&
+              isNodeOfType(referenceParent.parent, "CallExpression") &&
+              referenceParent.parent.callee === referenceParent &&
+              !referenceParent.parent.optional &&
+              isOpaqueScalarCall(referenceParent.parent);
+          } else if (node.name === "process") {
+            const environmentValue = referenceParent?.parent;
+            const environmentValueUse = environmentValue?.parent;
+            isAllowedGlobalReference =
+              isNodeOfType(referenceParent, "MemberExpression") &&
+              referenceParent.object === node &&
+              !referenceParent.computed &&
+              !referenceParent.optional &&
+              isNodeOfType(referenceParent.property, "Identifier") &&
+              referenceParent.property.name === "env" &&
+              isNodeOfType(environmentValue, "MemberExpression") &&
+              environmentValue.object === referenceParent &&
+              !environmentValue.computed &&
+              !environmentValue.optional &&
+              isNodeOfType(environmentValue.property, "Identifier") &&
+              ![
+                "AssignmentExpression",
+                "AssignmentPattern",
+                "UpdateExpression",
+                "ArrayPattern",
+                "RestElement",
+                "ForInStatement",
+                "ForOfStatement",
+              ].includes(environmentValueUse?.type ?? "") &&
+              !(
+                isNodeOfType(environmentValueUse, "UnaryExpression") &&
+                environmentValueUse.operator === "delete"
+              ) &&
+              !(
+                isNodeOfType(environmentValueUse, "Property") &&
+                isNodeOfType(environmentValueUse.parent, "ObjectPattern")
+              ) &&
+              !(
+                isNodeOfType(environmentValueUse, "MemberExpression") &&
+                environmentValueUse.object === environmentValue
+              ) &&
+              !(
+                (isNodeOfType(environmentValueUse, "CallExpression") ||
+                  isNodeOfType(environmentValueUse, "NewExpression")) &&
+                environmentValueUse.callee === environmentValue
+              ) &&
+              !(
+                isNodeOfType(environmentValueUse, "TaggedTemplateExpression") &&
+                environmentValueUse.tag === environmentValue
+              );
+          }
+          if (!isAllowedGlobalReference) hasUnsupportedRequireResolveScope = true;
+        }
         let target: EsTreeNode | null = null;
         if (isNodeOfType(node, "AssignmentExpression")) {
           const left = node.left;
@@ -289,7 +438,7 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
         ) {
           for (const argument of node.arguments)
             walkAst(argument, (reference) => {
-              if (isPureScalarCall(reference)) return false;
+              if (isOpaqueScalarCall(reference)) return false;
               if (
                 isNodeOfType(reference, "CallExpression") &&
                 isNodeOfType(reference.callee, "Identifier") &&
@@ -620,6 +769,19 @@ export const getClosedJsonSnapshotSourceResolutionPolicy = ({
           return null;
         aliases.push({ name, exact, targetAbsolutePath });
       }
+    if (
+      hasNativeRequireResolveScalar &&
+      (hasUnsupportedRequireResolveScope ||
+        taintedExternalSources.has("path") ||
+        taintedExternalSources.has("webpack-merge") ||
+        [...modules.keys()].some((filename) => taintedModules.has(filename)) ||
+        [...relativeConfigRequests].some(([configModulePath, requiredSources]) =>
+          [...requiredSources].some(
+            (requiredSource) => !modules.has(resolveConfigModule(configModulePath, requiredSource)),
+          ),
+        ))
+    )
+      return null;
     return { rootDirectory: root, extensions, aliases, configFilePaths: [...modules.keys()] };
   } catch {
     return null;

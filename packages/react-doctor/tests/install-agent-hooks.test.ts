@@ -539,6 +539,8 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
   it("exits quietly when no react-doctor runner is available", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");
     const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
+    const emptyBinDirectory = path.join(fixture.projectRoot, "empty-bin");
+    fs.mkdirSync(emptyBinDirectory);
     fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
@@ -549,7 +551,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       cwd: fixture.projectRoot,
       env: {
         ...process.env,
-        PATH: "/usr/bin:/bin",
+        PATH: emptyBinDirectory,
       },
       input: JSON.stringify({
         hook_event_name: "stop",

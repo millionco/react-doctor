@@ -5,3 +5,5 @@
 ---
 
 Reduce index-key false positives for native ordinal text lists populated once from an imported JSON snapshot in supported React 16 projects. Keep warnings when source resolution, state ownership, value publication, or the rendered collection can change.
+
+Support literal `require.resolve` loader options in static webpack configurations without loading their targets.

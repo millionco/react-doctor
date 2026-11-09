@@ -287,6 +287,90 @@ describe("source-projected imported JSON snapshot certificate", () => {
     expect(await runNativeWebpackSnapshotReader()).toEqual([]);
   });
 
+  it("keeps an opaque literal loader filename and a native resolver filename equivalent", async () => {
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `"process.env.NODE_ENV": '"production"'`,
+      after: `"process.env.NODE_ENV": '"production"', loader: "literal-loader"`,
+    });
+    expect(runWebpackSnapshotReader()).toEqual([]);
+    expect(await runNativeWebpackSnapshotReader()).toEqual([]);
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `loader: "literal-loader"`,
+      after: `loader: require.resolve("synthetic-loader")`,
+    });
+    expect(runWebpackSnapshotReader()).toEqual([]);
+    expect(await runNativeWebpackSnapshotReader()).toEqual([]);
+  });
+
+  it.each([
+    {
+      title: "a visible module resolver hook",
+      source: `const Module = require("node:module"); Module._resolveFilename = () => ({toString: () => ({})});`,
+    },
+    {
+      title: "a visible process loader gateway",
+      source: `const Module = process.getBuiltinModule("module"); Module._resolveFilename = foreignResolver;`,
+    },
+  ])("retains the warning for $title beside an opaque resolver filename", async ({ source }) => {
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `"process.env.NODE_ENV": '"production"'`,
+      after: `"process.env.NODE_ENV": '"production"', loader: require.resolve("synthetic-loader")`,
+    });
+    expect(runWebpackSnapshotReader()).toEqual([]);
+    expect(await runNativeWebpackSnapshotReader()).toEqual([]);
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `const path = require("path");`,
+      after: `${source}\nconst path = require("path");`,
+    });
+    expect(runWebpackSnapshotReader()).toHaveLength(1);
+    expect(await runNativeWebpackSnapshotReader()).toHaveLength(1);
+  });
+
+  it("does not hide a sibling resolver capability behind a scalar loader filename", async () => {
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `"process.env.NODE_ENV": '"production"'`,
+      after: `"process.env.NODE_ENV": '"production"', loader: require.resolve("synthetic-loader")`,
+    });
+    expect(runWebpackSnapshotReader()).toEqual([]);
+    expect(await runNativeWebpackSnapshotReader()).toEqual([]);
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `loader: require.resolve("synthetic-loader")`,
+      after: `loader: [require.resolve("synthetic-loader"), require("node:path")]`,
+    });
+    expect(runWebpackSnapshotReader()).toHaveLength(1);
+    expect(await runNativeWebpackSnapshotReader()).toHaveLength(1);
+  });
+
+  it("refreshes visible loader capability additions and removals under real cache hits", async () => {
+    replaceWebpackSnapshotSource({
+      filename: "build/production.js",
+      before: `"process.env.NODE_ENV": '"production"'`,
+      after: `"process.env.NODE_ENV": '"production"', loader: require.resolve("synthetic-loader")`,
+    });
+    const safeConfig = fs.readFileSync(
+      path.join(webpackFixtureDirectory, "build/production.js"),
+      "utf8",
+    );
+    expect(await runNativeWebpackSnapshotReader(true)).toEqual([]);
+    expect(await runNativeWebpackSnapshotReader(true)).toEqual([]);
+    expect(webpackCacheHitFileCount).toBeGreaterThan(0);
+    writeWebpackSnapshotFile(
+      "build/production.js",
+      `const Module = require("node:module");\n${safeConfig}`,
+    );
+    expect(runWebpackSnapshotReader()).toHaveLength(1);
+    expect(await runNativeWebpackSnapshotReader(true)).toHaveLength(1);
+    writeWebpackSnapshotFile("build/production.js", safeConfig);
+    expect(runWebpackSnapshotReader()).toEqual([]);
+    expect(await runNativeWebpackSnapshotReader(true)).toEqual([]);
+  });
+
   it("does not attest renderer result retention above the owning cell", () => {
     replaceWebpackSnapshotSource({
       filename: "src/index.js",

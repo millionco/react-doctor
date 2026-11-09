@@ -71,6 +71,126 @@ describe("demanded source resolution projection", () => {
     ]);
     expect(readSourcePolicy()?.configFilePaths).toHaveLength(3);
   });
+  it.each([
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve('path'))]};`,
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin({use:[{loader:require.resolve('synthetic-loader')}]})]};`,
+    `const Plugin=require('compiler-plugin');const development=process.env.NODE_ENV==='development';module.exports={entry:development?'./dev':'./prod',resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve('path'))]};`,
+    `const Plugin=require('compiler-plugin');const unused={process:'literal',global:'literal',globalThis:'literal',Function:'literal',constructor:'literal'};module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve('path'))]};`,
+    `const Plugin=require('compiler-plugin');const options={};const unused=options['safe'];module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve('path'),JSON.stringify('literal'))]};`,
+  ])("keeps native resolver filenames opaque without loading their targets", (source) => {
+    writeFile("webpack.config.js", source);
+    expect(readSourcePolicy()?.extensions).toEqual([".js"]);
+  });
+  it.each([
+    `module.exports={context:require.resolve('path'),resolve:{extensions:['.js']}};`,
+    `module.exports={resolve:{extensions:['.js'],alias:{client:require.resolve('path')}}};`,
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require['resolve']('path'))]};`,
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve?.('path'))]};`,
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require?.resolve('path'))]};`,
+    `const Plugin=require('compiler-plugin');const name='path';module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve(name))]};`,
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve('path',{paths:[]}))]};`,
+    `const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve(...['path']))]};`,
+    `const Plugin=require('compiler-plugin');const resolve=require.resolve;module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(resolve('path'))]};`,
+  ])("refuses unresolved or demanded resolver results", (source) => {
+    writeFile("webpack.config.js", source);
+    expect(readSourcePolicy()).toBeNull();
+  });
+  it.each([
+    `const unused=require('module');`,
+    `const unused=require('node:module');`,
+    `const unused=require('vm');`,
+    `const unused=require('node:process');`,
+    `const unused=process.getBuiltinModule('module');`,
+    `const unused=globalThis.process;`,
+    `const unused=new Function('return process');`,
+    `const object={};const unused=Reflect.get(object,'constructor');`,
+    `const unused=Object.getPrototypeOf('literal');`,
+    `const unused=({}).constructor;`,
+    `const unused=({})['constructor'];`,
+    `const object={};const key='safe';const unused=object[key];`,
+    `const load=require;`,
+    `const moduleName='module';const unused=require(moduleName);`,
+    `const unused=process.env;`,
+    `const unused=(process.env.NODE_ENV='production');`,
+    `const unused=delete process.env.NODE_ENV;`,
+    `const ignored=()=>process.env.NODE_ENV;`,
+    `function ignored(){return 'literal';}`,
+    `const unused={get value(){return 'literal';}};`,
+    `const Ignored=class {};`,
+    `class Ignored {}`,
+    `const unused=import('node:module');`,
+    `const unused=this;`,
+  ])("holds unsupported visible scope beside a native resolver filename", (prefix) => {
+    writeFile(
+      "webpack.config.js",
+      `${prefix}const Plugin=require('compiler-plugin');module.exports={resolve:{extensions:['.js']},plugins:[new Plugin(require.resolve('path'))]};`,
+    );
+    expect(readSourcePolicy()).toBeNull();
+  });
+  it("holds local function publication in a separately demanded config module", () => {
+    writeFile(
+      "base.js",
+      `const policy={extensions:['.js']};function require(){}function configure(value){value.resolve=()=>policy;}const setup=configure(require);function Plugin(value){value.extensions.push('.jsx');}const unused=new Plugin(require.resolve('path'));module.exports={resolve:policy};`,
+    );
+    writeFile(
+      "webpack.config.js",
+      `const base=require('./base');const unused=require.resolve('path');module.exports=base;`,
+    );
+    expect(readSourcePolicy()).toBeNull();
+  });
+  it("holds ignored relative imports only when using the native resolver scalar role", () => {
+    writeFile("ignored.js", `module.exports={};`);
+    const baseline = `const ignored=require('./ignored');module.exports={resolve:{extensions:['.js']}};`;
+    writeFile("webpack.config.js", baseline);
+    expect(readSourcePolicy()?.extensions).toEqual([".js"]);
+    writeFile("webpack.config.js", `const filename=require.resolve('path');${baseline}`);
+    expect(readSourcePolicy()).toBeNull();
+  });
+  it("reads demanded relative config values before accepting a native resolver filename", () => {
+    writeFile("base.js", `module.exports={resolve:{extensions:['.js']}};`);
+    writeFile(
+      "webpack.config.js",
+      `const base=require('./base');const unused=require.resolve('path');module.exports=base;`,
+    );
+    expect(readSourcePolicy()?.extensions).toEqual([".js"]);
+  });
+  it("checks modeled provider mutations learned after resolving the context", () => {
+    writeFile("later.js", `module.exports=['.js'];`);
+    writeFile(
+      "webpack.config.js",
+      `const path=require('path');const extensions=require('./later');const unused=require.resolve('path');module.exports={context:path.resolve(__dirname,'.'),resolve:{extensions}};`,
+    );
+    expect(readSourcePolicy()?.extensions).toEqual([".js"]);
+    writeFile(
+      "later.js",
+      `const path=require('node:path');const replacement=require('replacement-resolver');const ignored=(path.resolve=replacement);module.exports=['.js'];`,
+    );
+    expect(readSourcePolicy()).toBeNull();
+  });
+  it("holds tagged-template publication beside a native resolver filename", () => {
+    writeFile(
+      "webpack.config.js",
+      "const tag=require('compiler-tag');const policy={extensions:['.js']};const ignored=tag`${policy}`;const filename=require.resolve('path');module.exports={resolve:policy};",
+    );
+    expect(readSourcePolicy()).toBeNull();
+  });
+  it("checks late publication of a previously resolved configuration module", () => {
+    writeFile(
+      "base.js",
+      `const path=require('path');module.exports={context:path.resolve(__dirname,'.')};`,
+    );
+    writeFile("late.js", `module.exports=['.js'];`);
+    writeFile(
+      "webpack.config.js",
+      `const merge=require('webpack-merge');const base=require('./base');const extensions=require('./late');const filename=require.resolve('path');module.exports=merge(base,{resolve:{extensions}});`,
+    );
+    expect(readSourcePolicy()?.extensions).toEqual([".js"]);
+    writeFile(
+      "late.js",
+      `const Plugin=require('compiler-plugin');const ignored=new Plugin(require('./base'));module.exports=['.js'];`,
+    );
+    expect(readSourcePolicy()).toBeNull();
+  });
   it("does not poison require for an unrelated compiler module argument", () => {
     writeFile(
       "webpack.config.js",

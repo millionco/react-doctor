@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
 import { getValuePositionChildKeys } from "../utils/get-value-position-child-keys.js";
+import { hasExplicitRuntimeModuleSyntax } from "../utils/has-explicit-runtime-module-syntax.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
@@ -124,6 +125,7 @@ const findHoistTargetScope = (scope: ScopeDescriptor): ScopeDescriptor => {
 };
 
 interface BuilderState {
+  readonly hasExplicitRuntimeModuleSyntax: boolean;
   nextScopeId: number;
   nextSymbolId: number;
   nextReferenceId: number;
@@ -369,7 +371,21 @@ const handleVariableDeclaration = (declaration: EsTreeNode, state: BuilderState)
 const handleFunctionDeclaration = (fn: EsTreeNode, state: BuilderState): void => {
   if (!isNodeOfType(fn, "FunctionDeclaration")) return;
   if (fn.id) {
-    const target = findHoistTargetScope(state.currentScope);
+    const isLexicalBlockFunction =
+      state.hasExplicitRuntimeModuleSyntax &&
+      state.currentScope.kind === "block" &&
+      fn.parent === state.currentScope.node &&
+      state.scopeStack.every(
+        (scope) =>
+          !["class", "method", "catch", "switch", "with", "ts-module", "ts-enum"].includes(
+            scope.kind,
+          ) &&
+          !("declare" in scope.node && scope.node.declare) &&
+          scope.node.parent?.type !== "TSDeclareFunction",
+      );
+    const target = isLexicalBlockFunction
+      ? state.currentScope
+      : findHoistTargetScope(state.currentScope);
     recordSymbol(target, state, {
       name: fn.id.name,
       kind: "function",
@@ -894,6 +910,7 @@ export const analyzeScopes = (program: EsTreeNode): ScopeAnalysis => {
     symbolsByName: new Map(),
   };
   const state: BuilderState = {
+    hasExplicitRuntimeModuleSyntax: hasExplicitRuntimeModuleSyntax(program),
     nextScopeId: 1,
     nextSymbolId: 0,
     nextReferenceId: 0,

@@ -1,0 +1,12 @@
+// rule: no-array-index-as-key
+// weakness: cross-file
+// source: synthetic
+// verdict: fail
+const loaderPath = require.resolve("path");
+export const DynamicList = ({ items }) => (
+  <section data-loader={loaderPath}>
+    {items.map((item, index) => (
+      <p key={index}>{item.name}</p>
+    ))}
+  </section>
+);

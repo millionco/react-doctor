@@ -4,8 +4,8 @@ import { supportsHyperlinks } from "../src/cli/utils/supports-hyperlinks.js";
 // supportsHyperlinks is a pure function of (stream, env) — including its CI
 // check — so each case passes an isolated env and a stub stream; the CI runner
 // this suite runs in can't leak into the assertions.
-const ttyStream = { isTTY: true } as unknown as NodeJS.WriteStream;
-const pipeStream = { isTTY: false } as unknown as NodeJS.WriteStream;
+const ttyStream = { isTTY: true };
+const pipeStream = { isTTY: false };
 
 describe("supportsHyperlinks", () => {
   it("is true for a capable terminal attached to a TTY", () => {

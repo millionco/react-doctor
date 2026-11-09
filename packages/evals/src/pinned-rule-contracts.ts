@@ -21,7 +21,7 @@ export const pinnedRuleContracts: Readonly<Record<string, PinnedRuleContract>> =
   },
   "react-doctor/jsx-props-no-spreading": {
     path: "packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-props-no-spreading.ts",
-    sha256: "43ee949e10d93b8ba8ad3bc78ddb6eaa24e9f989fca9429a5335d9591a42cef2",
+    sha256: "7f80c84d9f64ab03e8e6bc1712991ab0892f0e43fc27e8912c2b8775fa33cc91",
     contract: {
       requiredEvidence: ["verified-contract"],
       settings: {

@@ -5,24 +5,11 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import {
   BUFFER_ATTRIBUTE_ITEM_SIZE_ARGUMENT_INDEX,
   MINIMUM_BUFFER_ATTRIBUTE_ITEM_SIZE,
+  R3F_BUFFER_ATTRIBUTE_NAMES,
 } from "./constants.js";
 import { getJsxAttributeExpression } from "./utils/get-jsx-attribute-expression.js";
 import { getStaticNumber } from "./utils/get-static-number.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
-
-const R3F_BUFFER_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
-  "bufferAttribute",
-  "float16BufferAttribute",
-  "float32BufferAttribute",
-  "instancedBufferAttribute",
-  "int16BufferAttribute",
-  "int32BufferAttribute",
-  "int8BufferAttribute",
-  "uint16BufferAttribute",
-  "uint32BufferAttribute",
-  "uint8BufferAttribute",
-  "uint8ClampedBufferAttribute",
-]);
 
 export const r3fValidBufferAttributeItemSize = defineRule({
   id: "r3f-valid-buffer-attribute-item-size",

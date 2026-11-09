@@ -20,6 +20,19 @@ export const MINIMUM_RAYCASTER_NEAR = 0;
 export const BUFFER_ATTRIBUTE_ARRAY_ARGUMENT_INDEX = 0;
 export const BUFFER_ATTRIBUTE_ITEM_SIZE_ARGUMENT_INDEX = 1;
 export const BUFFER_ATTRIBUTE_NORMALIZED_ARGUMENT_INDEX = 2;
+export const R3F_BUFFER_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "bufferAttribute",
+  "float16BufferAttribute",
+  "float32BufferAttribute",
+  "instancedBufferAttribute",
+  "int16BufferAttribute",
+  "int32BufferAttribute",
+  "int8BufferAttribute",
+  "uint16BufferAttribute",
+  "uint32BufferAttribute",
+  "uint8BufferAttribute",
+  "uint8ClampedBufferAttribute",
+]);
 export const THREE_BUFFER_ATTRIBUTE_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
   "BufferAttribute",
   "Float16BufferAttribute",

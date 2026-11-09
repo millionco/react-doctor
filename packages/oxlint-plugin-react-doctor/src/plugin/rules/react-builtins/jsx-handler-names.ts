@@ -26,7 +26,7 @@ interface ResolvedSettings {
   checkLocalVariables: boolean;
   eventHandlerPrefix: string;
   eventHandlerPropPrefix: string;
-  ignoreComponentNames: ReadonlyArray<string>;
+  ignoreComponentNamePatterns: ReadonlyArray<RegExp>;
   handlerRegex: RegExp | null;
   propRegex: RegExp | null;
 }
@@ -76,7 +76,7 @@ const resolveSettings = (
     checkLocalVariables: ruleSettings.checkLocalVariables ?? false,
     eventHandlerPrefix: handlerPrefix,
     eventHandlerPropPrefix: propPrefix,
-    ignoreComponentNames: ruleSettings.ignoreComponentNames ?? [],
+    ignoreComponentNamePatterns: (ruleSettings.ignoreComponentNames ?? []).map(compileGlob),
     handlerRegex: buildHandlerRegex(handlerPrefix, propPrefix),
     propRegex: buildPropRegex(propPrefix),
   };
@@ -147,15 +147,10 @@ const isMemberExpressionCallee = (
   } else if (isNodeOfType(body, "BlockStatement")) {
     const first = body.body[0];
     if (
-      first &&
-      isNodeOfType(first as EsTreeNode, "ExpressionStatement") &&
-      isNodeOfType(
-        (first as EsTreeNodeOfType<"ExpressionStatement">).expression as EsTreeNode,
-        "CallExpression",
-      )
+      isNodeOfType(first, "ExpressionStatement") &&
+      isNodeOfType(first.expression, "CallExpression")
     ) {
-      callExpression = (first as EsTreeNodeOfType<"ExpressionStatement">)
-        .expression as EsTreeNodeOfType<"CallExpression">;
+      callExpression = first.expression;
     }
   }
   return callExpression !== null && isNodeOfType(callExpression.callee, "MemberExpression");
@@ -180,15 +175,14 @@ export const jsxHandlerNames = defineRule({
     const settings = resolveSettings(context.settings);
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        // ignoreComponentNames check.
-        if (settings.ignoreComponentNames.length > 0) {
+        if (settings.ignoreComponentNamePatterns.length > 0) {
           const opening = node.parent;
-          if (!opening || !isNodeOfType(opening as EsTreeNode, "JSXOpeningElement")) return;
-          const openingName = (opening as EsTreeNodeOfType<"JSXOpeningElement">).name;
-          if (!isNodeOfType(openingName as EsTreeNode, "JSXIdentifier")) return;
-          const componentName = (openingName as EsTreeNodeOfType<"JSXIdentifier">).name;
-          for (const pattern of settings.ignoreComponentNames) {
-            if (compileGlob(pattern).test(componentName)) return;
+          if (!isNodeOfType(opening, "JSXOpeningElement")) return;
+          const openingName = opening.name;
+          if (!isNodeOfType(openingName, "JSXIdentifier")) return;
+          const componentName = openingName.name;
+          for (const pattern of settings.ignoreComponentNamePatterns) {
+            if (pattern.test(componentName)) return;
           }
         }
 

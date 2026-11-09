@@ -14,6 +14,10 @@ const HYPERLINK_CAPABLE_TERM_PROGRAMS = new Set([
   "rio",
 ]);
 
+interface HyperlinkStream {
+  readonly isTTY?: boolean;
+}
+
 const parseVteVersion = (raw: string | undefined): number => {
   const parsed = Number.parseInt(raw ?? "", 10);
   return Number.isNaN(parsed) ? 0 : parsed;
@@ -28,7 +32,7 @@ const parseVteVersion = (raw: string | undefined): number => {
  * raw escape rather than a link). Unknown terminals default to off.
  */
 export const supportsHyperlinks = (
-  stream: NodeJS.WriteStream = process.stdout,
+  stream: HyperlinkStream = process.stdout,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean => {
   const forced = env.FORCE_HYPERLINK;

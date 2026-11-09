@@ -7,13 +7,20 @@ export const createConcurrencyLimit = (concurrency: number): ConcurrencyLimit =>
     throw new TypeError("Concurrency must be a positive integer");
   }
 
-  const pendingOperations: Array<() => void> = [];
+  const pendingOperations: Array<(() => void) | undefined> = [];
+  let pendingOperationIndex = 0;
   let activeOperationCount = 0;
 
   const startNextOperations = (): void => {
     while (activeOperationCount < concurrency) {
-      const startOperation = pendingOperations.shift();
-      if (!startOperation) return;
+      const startOperation = pendingOperations[pendingOperationIndex];
+      if (!startOperation) {
+        pendingOperations.length = 0;
+        pendingOperationIndex = 0;
+        return;
+      }
+      pendingOperations[pendingOperationIndex] = undefined;
+      pendingOperationIndex += 1;
       activeOperationCount += 1;
       startOperation();
     }

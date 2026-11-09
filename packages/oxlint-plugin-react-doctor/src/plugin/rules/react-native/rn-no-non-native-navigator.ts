@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -26,17 +26,16 @@ const NAVIGATOR_FACTORY_PATTERN = /^create\w*Navigator$/;
 const bindsNavigatorFactory = (node: EsTreeNodeOfType<"ImportDeclaration">): boolean =>
   (node.specifiers ?? []).some((specifier) => {
     if (
-      isNodeOfType(specifier as EsTreeNode, "ImportDefaultSpecifier") ||
-      isNodeOfType(specifier as EsTreeNode, "ImportNamespaceSpecifier")
+      isNodeOfType(specifier, "ImportDefaultSpecifier") ||
+      isNodeOfType(specifier, "ImportNamespaceSpecifier")
     ) {
       return true;
     }
-    if (!isNodeOfType(specifier as EsTreeNode, "ImportSpecifier")) return false;
-    if ((specifier as { importKind?: string }).importKind === "type") return false;
-    const imported = (specifier as { imported?: { name?: string; value?: string } }).imported;
-    const importedName =
-      imported?.name ?? (typeof imported?.value === "string" ? imported.value : null);
-    return importedName !== null && NAVIGATOR_FACTORY_PATTERN.test(importedName);
+    if (!isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind === "type") {
+      return false;
+    }
+    const importedName = getImportedName(specifier);
+    return importedName !== undefined && NAVIGATOR_FACTORY_PATTERN.test(importedName);
   });
 
 // HACK: @react-navigation/stack uses a JS-implemented stack with

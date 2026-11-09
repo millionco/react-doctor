@@ -26,7 +26,7 @@ import {
   SHOPIFY_FLASH_LIST_PACKAGE_NAME,
 } from "./collect-project-facts.js";
 import { resolveInstalledReactVersion } from "./resolve-installed-react-version.js";
-import { readPackageJson } from "./package-json.js";
+import { clearPackageJsonCache, readPackageJson } from "./package-json.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import {
   getDependencyMajorWithinSupportedRange,
@@ -59,6 +59,7 @@ export interface DiscoverProjectOptions {
 // tsconfig.json / monorepo manifests change between diagnose() calls.
 export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
+  clearPackageJsonCache();
   clearTargetBlankOpenerProtectionCache();
 };
 
@@ -172,9 +173,17 @@ export const discoverProject = (
 ): ProjectInfo => {
   const cached = cachedProjectInfos.get(directory);
   if (cached !== undefined) {
+    let projectInfo = cached;
+    if (
+      options.hasReactCompiler !== undefined &&
+      options.hasReactCompiler !== cached.hasReactCompiler
+    ) {
+      projectInfo = { ...cached, hasReactCompiler: options.hasReactCompiler };
+      cachedProjectInfos.set(directory, projectInfo);
+    }
     return options.sourceFileCount === undefined
-      ? cached
-      : { ...cached, sourceFileCount: options.sourceFileCount };
+      ? projectInfo
+      : { ...projectInfo, sourceFileCount: options.sourceFileCount };
   }
 
   const packageJsonPath = path.join(directory, "package.json");

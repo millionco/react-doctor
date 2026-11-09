@@ -1,13 +1,12 @@
-import { FUNCTION_LIKE_TYPES } from "../../constants/js.js";
 import {
   REACT_NATIVE_LIST_COMPONENTS,
   RENDER_ITEM_PROP_NAMES,
 } from "../../constants/react-native.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -27,27 +26,9 @@ const collectTopLevelReturnExpressions = (
   const block = functionNode.body;
   if (!block || !isNodeOfType(block, "BlockStatement")) return [];
 
-  const returnExpressions: EsTreeNode[] = [];
-  const visit = (node: EsTreeNode): void => {
-    if (FUNCTION_LIKE_TYPES.has(node.type)) return;
-    if (isNodeOfType(node, "ReturnStatement") && node.argument) {
-      returnExpressions.push(node.argument);
-    }
-    const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const fieldName of Object.keys(nodeRecord)) {
-      if (fieldName === "parent") continue;
-      const child = nodeRecord[fieldName];
-      if (Array.isArray(child)) {
-        for (const childItem of child) {
-          if (isAstNode(childItem)) visit(childItem);
-        }
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
-  };
-  visit(block);
-  return returnExpressions;
+  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
+    returnStatement.argument ? [returnStatement.argument] : [],
+  );
 };
 
 const collectReturnedJsxElements = (expression: EsTreeNode): EsTreeNodeOfType<"JSXElement">[] => {

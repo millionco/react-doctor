@@ -52,6 +52,7 @@ export const jsxPropsNoSpreading = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const exceptionTags = new Set(settings.exceptions);
     // Codebases that spread do it pervasively (prod telemetry: avg 98
     // firings per affected run — every wrapper in a shadcn-style design
     // system). Per-occurrence reporting is pure noise for a
@@ -65,7 +66,7 @@ export const jsxPropsNoSpreading = defineRule({
         if (!tagName) return;
         const isCustom = isReactComponentName(tagName) || tagName.includes(".");
         const isHtml = !isCustom;
-        const isException = settings.exceptions.includes(tagName);
+        const isException = exceptionTags.has(tagName);
 
         const ignoreHtml = settings.html === "ignore";
         const ignoreCustom = settings.custom === "ignore";

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
   buildCapabilities,
+  clearProjectCache,
   discoverProject,
   discoverReactSubprojects,
   formatFrameworkName,
@@ -36,6 +37,41 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory, { sourceFileCount: 54_321 }).sourceFileCount).toBe(
       54_321,
     );
+  });
+
+  it("uses explicit discovery options on cached project-info reads", () => {
+    const projectDirectory = path.join(tempDirectory, "cached-explicit-options");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "cached-explicit-options", dependencies: { react: "^19.0.0" } }),
+    );
+
+    expect(discoverProject(projectDirectory, { hasReactCompiler: false }).hasReactCompiler).toBe(
+      false,
+    );
+    expect(discoverProject(projectDirectory, { hasReactCompiler: true }).hasReactCompiler).toBe(
+      true,
+    );
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("clears cached package manifests with project discovery cache", () => {
+    const projectDirectory = path.join(tempDirectory, "clear-package-json-cache");
+    const packageJsonPath = path.join(projectDirectory, "package.json");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      packageJsonPath,
+      JSON.stringify({ name: "clear-package-json-cache", dependencies: { react: "^18.0.0" } }),
+    );
+
+    expect(discoverProject(projectDirectory).reactVersion).toBe("^18.0.0");
+    fs.writeFileSync(
+      packageJsonPath,
+      JSON.stringify({ name: "clear-package-json-cache", dependencies: { react: "^19.0.0" } }),
+    );
+    clearProjectCache();
+    expect(discoverProject(projectDirectory).reactVersion).toBe("^19.0.0");
   });
 
   it("detects React version from package.json", () => {

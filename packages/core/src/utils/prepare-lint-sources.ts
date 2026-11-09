@@ -17,6 +17,7 @@ export interface PreparedSourceMap {
 
 export interface PreparedLintSources {
   readonly lintFiles: string[];
+  readonly browserHtmlLintFiles: string[];
   readonly sourcePathByLintPath: ReadonlyMap<string, string>;
   readonly sourceMapByLintPath: ReadonlyMap<string, PreparedSourceMap>;
   readonly sizeByLintPath: ReadonlyMap<string, number>;
@@ -29,6 +30,7 @@ export const prepareLintSources = (
   candidateFiles: ReadonlyArray<string>,
 ): PreparedLintSources => {
   const lintFiles: string[] = [];
+  const browserHtmlLintFiles: string[] = [];
   const sourcePathByLintPath = new Map<string, string>();
   const sourceMapByLintPath = new Map<string, PreparedSourceMap>();
   const sizeByLintPath = new Map<string, number>();
@@ -83,6 +85,7 @@ export const prepareLintSources = (
     const lintPath = path.join(htmlSourcesDirectory, `${htmlFileIndex}.astro`);
     fs.writeFileSync(lintPath, lintBuffer);
     lintFiles.push(lintPath);
+    browserHtmlLintFiles.push(path.relative(temporaryDirectory, lintPath).replaceAll("\\", "/"));
     sourcePathByLintPath.set(path.resolve(lintPath), candidateFile);
     sizeByLintPath.set(lintPath, sourceBuffer.length);
     hasThreeModuleImport ||= executableScriptBodies.some((scriptBody) =>
@@ -93,6 +96,7 @@ export const prepareLintSources = (
 
   return {
     lintFiles,
+    browserHtmlLintFiles,
     sourcePathByLintPath,
     sourceMapByLintPath,
     sizeByLintPath,

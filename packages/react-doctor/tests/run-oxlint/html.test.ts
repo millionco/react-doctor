@@ -17,6 +17,61 @@ describe("runOxlint HTML support", () => {
     fs.rmSync(rootDirectory, { recursive: true, force: true });
   });
 
+  it.each([false, true])(
+    "keeps HTML browser scripts out of SSR checks with tag defaults %s",
+    async (includeTagDefaults) => {
+      const html = [
+        '<script type="module">',
+        '  import { WebGLRenderer } from "three";',
+        "  new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+        "</script>",
+        '<script>window.location.assign("/home");</script>',
+      ].join("\n");
+      fs.writeFileSync(path.join(rootDirectory, "index.html"), html);
+      fs.writeFileSync(
+        path.join(rootDirectory, "server.ts"),
+        "export const serverWidth = window.innerWidth;",
+      );
+      fs.mkdirSync(path.join(rootDirectory, "html-sources"));
+      fs.writeFileSync(
+        path.join(rootDirectory, "html-sources", "0.astro"),
+        ["---", "const serverWidth = window.innerWidth;", "---", "<p>{serverWidth}</p>"].join("\n"),
+      );
+      const cacheStats: number[][] = [];
+      const diagnostics = await runOxlint({
+        rootDirectory,
+        project: {
+          ...buildTestProject({ rootDirectory, framework: "nextjs" }),
+          hasThree: true,
+        },
+        includePaths: ["index.html", "server.ts", "html-sources/0.astro"],
+        includeTagDefaults,
+        perFileLintCacheEnabled: true,
+        onCacheStats: (cacheHitFileCount, totalConsideredFileCount) => {
+          cacheStats.push([cacheHitFileCount, totalConsideredFileCount]);
+        },
+      });
+
+      const browserGlobalFiles = diagnostics
+        .filter((diagnostic) => diagnostic.rule === "no-unguarded-browser-global-at-module-scope")
+        .map((diagnostic) => diagnostic.filePath);
+      expect([...new Set(browserGlobalFiles)].sort()).toEqual([
+        "html-sources/0.astro",
+        "server.ts",
+      ]);
+      expect(diagnostics).toContainEqual(
+        expect.objectContaining({
+          rule: "three-cap-device-pixel-ratio",
+          filePath: "index.html",
+          line: 3,
+          offset: Buffer.from(html).indexOf("window.devicePixelRatio"),
+        }),
+      );
+      expect(diagnostics.some((diagnostic) => diagnostic.rule === "parse-error")).toBe(false);
+      expect(cacheStats).toEqual([]);
+    },
+  );
+
   it("reports Three.js diagnostics from inline module scripts at HTML locations", async () => {
     const html = [
       "<!doctype html>",

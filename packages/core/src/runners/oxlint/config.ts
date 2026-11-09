@@ -29,6 +29,7 @@ export interface OxlintConfigOptions {
   unpluginAutoImportGlobalScopes?: ReadonlyArray<UnpluginAutoImportGlobalScope>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
   projectIndexModuleSources?: ReadonlyArray<string>;
+  browserHtmlLintFiles?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
   adoptedSettings?: AdoptedLintConfigSettings;
   /**
@@ -137,6 +138,7 @@ export const createOxlintConfig = ({
   unpluginAutoImportGlobalScopes,
   serverAuthFunctionNames,
   projectIndexModuleSources,
+  browserHtmlLintFiles = [],
   severityControls,
   adoptedSettings = {},
   userPlugins = [],
@@ -270,6 +272,16 @@ export const createOxlintConfig = ({
 
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
+    ...(browserHtmlLintFiles.length > 0
+      ? {
+          overrides: [
+            {
+              files: [...browserHtmlLintFiles],
+              rules: { "react-doctor/no-unguarded-browser-global-at-module-scope": "off" },
+            },
+          ],
+        }
+      : {}),
     options: { typeAware: false },
     categories: {
       correctness: "off",

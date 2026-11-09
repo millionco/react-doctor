@@ -7,6 +7,7 @@ import * as scopeAnalysis from "../semantic/scope-analysis.js";
 import * as projectIndex from "./build-source-project-index.js";
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { computeSourceProjectFingerprint } from "./compute-source-project-fingerprint.js";
 import {
@@ -27,7 +28,7 @@ const writeProjectFile = (relativePath: string, contents: string): string => {
   const filePath = path.join(projectDirectory, relativePath);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, contents);
-  return filePath;
+  return normalizeFilename(filePath);
 };
 
 beforeEach(() => {
@@ -173,7 +174,9 @@ describe("source project fingerprint", () => {
   });
 
   it("declines a retained proof when a replay observer changes an input", () => {
-    const entry = fs.realpathSync(writeProjectFile("entry.js", "export const source = 1;"));
+    const entry = normalizeFilename(
+      fs.realpathSync(writeProjectFile("entry.js", "export const source = 1;")),
+    );
     const cache: SourceProjectFingerprintCache = {};
     expect(computeSourceProjectFingerprint(projectDirectory, cache)).not.toBeNull();
     const captured = captureCrossFileProbes(
@@ -184,6 +187,7 @@ describe("source project fingerprint", () => {
         },
       },
     );
+    expect(fs.readFileSync(entry, "utf8")).toBe("export const source = 2;");
     expect(captured.value).toBeNull();
   });
 

@@ -204,6 +204,38 @@ describe("no-transition-all", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    "transition-chart-edge duration-200",
+    "hover:transition-chart-edge hover:duration-200",
+    "transition-chart-edge hover:duration-200",
+    "md:!transition-chart-edge md:!duration-200",
+    "transition-chart-edge! duration-200!",
+    "transition-(--chart-edge) duration-200",
+  ])("does NOT infer all for an unresolved transition utility: %s", (className) => {
+    const result = runRule(noTransitionAll, `const App = () => <path className="${className}" />;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "hover:transition-chart-edge duration-200",
+    "transition-chart-edge transition-all duration-200",
+    "transition-chart-edge hover:transition-all hover:duration-200",
+  ])("preserves proven all transitions beside custom utilities: %s", (className) => {
+    const result = runRule(noTransitionAll, `const App = () => <path className="${className}" />;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves explicit inline all transitions beside custom utilities", () => {
+    const result = runRule(
+      noTransitionAll,
+      'const App = () => <path className="transition-chart-edge duration-200" style={{ transition: "all 200ms" }} />;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag a specific inline transition", () => {
     const code = `const A = () => <div style={{ transition: "transform 200ms, opacity 200ms" }} />;`;
     const result = runRule(noTransitionAll, code);

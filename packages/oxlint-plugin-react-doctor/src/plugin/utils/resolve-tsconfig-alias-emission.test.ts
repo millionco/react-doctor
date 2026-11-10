@@ -93,9 +93,8 @@ describe("type-only default export configuration", () => {
     fixtureNumber += 1;
     const directory = path.join(temporaryDirectory, String(fixtureNumber));
     fs.mkdirSync(directory);
-    const preservingParent = path.join(directory, "preserving.json");
-    fs.writeFileSync(preservingParent, '{"compilerOptions":{"verbatimModuleSyntax":true}}');
-    const parentSpecifier = parentKind === "absolute" ? preservingParent : "emission-config";
+    const parentSpecifier = parentKind === "absolute" ? "/emission-config.json" : "emission-config";
+    expect(path.isAbsolute(parentSpecifier)).toBe(parentKind === "absolute");
     const misleadingParent = path.join(
       directory,
       "node_modules",

@@ -371,9 +371,10 @@ export const runInspect = <HooksR = never>(
     // ── Phase: environment checks ──────────────────────────────────
     // The project-shape checks below are sub-millisecond; the security scan
     // (whole-tree content pass) is heavy and forks separately just below.
+    const severityControls = buildRuleSeverityControls(resolvedConfig.config);
     const pnpmHardeningSeverity = resolveRuleSeverityOverride(
       { ruleKey: "react-doctor/require-pnpm-hardening" },
-      buildRuleSeverityControls(resolvedConfig.config),
+      severityControls,
     );
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
@@ -423,6 +424,7 @@ export const runInspect = <HooksR = never>(
                 Effect.tryPromise((signal) =>
                   checkSecurityScanCooperative(scanDirectory, {
                     project,
+                    severityControls,
                     ignoredTags: input.ignoredTags,
                     includedTags: input.includedTags,
                     includeTagDefaults: input.includeTagDefaults,
@@ -538,26 +540,26 @@ export const runInspect = <HooksR = never>(
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
     const projectCapabilities = getCapabilities(project);
-    const projectRuleSelections = resolveProjectRuleSelections(
-      buildRuleSeverityControls(resolvedConfig.config),
-    ).filter((selection) => {
-      const rule = REACT_DOCTOR_RULE_REGISTRY[selection.ruleId];
-      return (
-        rule !== undefined &&
-        shouldEnableRule(
-          rule.requires,
-          rule.tags,
-          projectCapabilities,
-          input.ignoredTags,
-          rule.disabledWhen,
-          input.includedTags,
-        ) &&
-        (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
-          ? input.runDeadCode
-          : !isDiffMode) &&
-        (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection]))
-      );
-    });
+    const projectRuleSelections = resolveProjectRuleSelections(severityControls).filter(
+      (selection) => {
+        const rule = REACT_DOCTOR_RULE_REGISTRY[selection.ruleId];
+        return (
+          rule !== undefined &&
+          shouldEnableRule(
+            rule.requires,
+            rule.tags,
+            projectCapabilities,
+            input.ignoredTags,
+            rule.disabledWhen,
+            input.includedTags,
+          ) &&
+          (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
+            ? input.runDeadCode
+            : !isDiffMode) &&
+          (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection]))
+        );
+      },
+    );
     const enabledProjectRuleIds = new Set(
       projectRuleSelections.map((selection) => selection.ruleId),
     );

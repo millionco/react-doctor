@@ -19,6 +19,7 @@ import {
 import { INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
+import { canExecuteBeforeAsyncSuspension } from "../../utils/can-execute-before-async-suspension.js";
 import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { resolveImportedExportName } from "../../utils/find-exported-function-body.js";
@@ -2964,6 +2965,13 @@ const resolveCleanupPathAnchor = (
 ): EsTreeNode => {
   const usageFunction = findEnclosingFunction(usageNode);
   if (!usageFunction || usageFunction === effectCallback) return usageNode;
+  if (
+    isFunctionLike(usageFunction) &&
+    usageFunction.async &&
+    !canExecuteBeforeAsyncSuspension(usageNode, usageFunction, context)
+  ) {
+    return usageNode;
+  }
   return (
     findSingleDirectInvocation(usageFunction, effectCallback, context) ??
     (usage ? findReconnectHelperInvocation(usageFunction, effectCallback, usage, context) : null) ??
@@ -4400,6 +4408,39 @@ const isDeferredHelperInvocationProtectedByEffectLifecycleGuard = (
       cleanupReturns.every((cleanupReturn) =>
         cleanupReturnInvalidatesGuard(cleanupReturn, guardState, context),
       ),
+  );
+};
+
+const hasGuardedAsyncTimerCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  cleanupReturns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  const usageFunction = findEnclosingFunction(usage.node);
+  const usageExpression = findTransparentExpressionRoot(usage.node);
+  const usageAssignment = usageExpression.parent;
+  if (
+    usage.kind !== "timer" ||
+    usage.handleKey === null ||
+    !usageFunction ||
+    !isFunctionLike(usageFunction) ||
+    usageFunction === callback ||
+    !usageFunction.async ||
+    !isNodeOfType(usageAssignment, "AssignmentExpression") ||
+    usageAssignment.operator !== "=" ||
+    usageAssignment.right !== usageExpression ||
+    !resolveNestedTimerStorageSymbol(usageAssignment.left, callback, context) ||
+    !cleanupReturnsExhaustivelyReleaseUsage(cleanupReturns, usage, context)
+  ) {
+    return false;
+  }
+  return isDeferredHelperInvocationProtectedByEffectLifecycleGuard(
+    callback,
+    usageFunction,
+    usage.node,
+    cleanupReturns,
+    context,
   );
 };
 
@@ -6768,7 +6809,8 @@ const effectHasCleanupForUsage = (
   });
   if (
     hasOwnedObserverHelperCleanup(callback, usage, allUsages, matchingCleanupReturns, context) ||
-    hasGuardedDeferredCleanup(callback, usage, matchingCleanupReturns, context)
+    hasGuardedDeferredCleanup(callback, usage, matchingCleanupReturns, context) ||
+    hasGuardedAsyncTimerCleanup(callback, usage, matchingCleanupReturns, context)
   ) {
     return true;
   }

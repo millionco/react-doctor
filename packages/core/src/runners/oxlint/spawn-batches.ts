@@ -1,3 +1,5 @@
+import { toNormalizedRelativePath } from "../../utils/to-normalized-relative-path.js";
+import { spawnOxlint } from "./spawn-oxlint.js";
 import * as path from "node:path";
 import {
   MILLISECONDS_PER_SECOND,
@@ -49,6 +51,7 @@ export interface SpawnLintBatchesInput {
   readonly fileBatches: ReadonlyArray<string[]>;
   readonly diagnosticContextDirectory?: string;
   readonly rootDirectory: string;
+  readonly workingDirectory?: string;
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly sourcePathByLintPath?: ReadonlyMap<string, string>;
@@ -267,28 +270,50 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       }
       const batchArgs = [...baseArgs, ...batch];
       try {
-        const spawnBatch = (): Promise<string | null> => {
+        const spawnBatch = async (): Promise<string | null> => {
           const effectiveSpawnTimeoutMs = resolveSpawnTimeoutMs();
           if (effectiveSpawnTimeoutMs === 0) {
             deadlineSkippedFiles.push(...batch);
             batchState.deadlineSkippedFileCount += batch.length;
-            return Promise.resolve(null);
+            return null;
+          }
+          const onStart = (): void => {
+            if (batchState.didStart) return;
+            batchState.didStart = true;
+            startedFileCount += batchState.initialFileCount;
+            reportBatchStarted(passBatches.length);
+          };
+          let argumentsList = batchArgs;
+          if (input.workingDirectory !== undefined) {
+            // HACK: oxlint loads bulk suppressions from cwd with no opt-out. Select
+            // files in the project first, then lint them from an isolated cwd.
+            // The native file selector preserves ignore and nested-config semantics.
+            const selectedOutput = await spawnOxlint(
+              [...baseArgs, "--debug", "files", ...batch],
+              rootDirectory,
+              nodeBinaryPath,
+              effectiveSpawnTimeoutMs,
+              outputMaxBytes,
+              signal,
+              onStart,
+            );
+            const selectedFiles = selectedOutput
+              .split(/\r?\n/)
+              .filter(Boolean)
+              .map((filePath) => path.resolve(rootDirectory, filePath));
+            if (selectedFiles.length === 0) return JSON.stringify({ diagnostics: [] });
+            argumentsList = [...baseArgs, "--no-ignore", ...selectedFiles];
           }
           return runOxlintJob({
-            argumentsList: batchArgs,
-            rootDirectory,
+            argumentsList,
+            rootDirectory: input.workingDirectory ?? rootDirectory,
             nodeBinaryPath,
             spawnTimeoutMs: effectiveSpawnTimeoutMs ?? OXLINT_SPAWN_TIMEOUT_MS,
             outputMaxBytes: outputMaxBytes ?? OXLINT_OUTPUT_MAX_BYTES,
             maxWorkers: requestedConcurrency,
             filesystemCacheEpoch: input.spawnSlots?.filesystemCacheEpoch ?? null,
             abortSignal: signal,
-            onStart: () => {
-              if (batchState.didStart) return;
-              batchState.didStart = true;
-              startedFileCount += batchState.initialFileCount;
-              reportBatchStarted(passBatches.length);
-            },
+            onStart,
           });
         };
         const stdout =
@@ -296,7 +321,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             ? await spawnBatch()
             : await input.spawnSlots.run(spawnBatch, signal);
         if (stdout === null) return [];
-        return parseOxlintOutput(
+        const diagnostics = parseOxlintOutput(
           stdout,
           project,
           rootDirectory,
@@ -304,6 +329,19 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           sourceMapByLintPath,
           input.diagnosticContextDirectory,
         );
+        if (input.workingDirectory === undefined) return diagnostics;
+        return diagnostics.map((diagnostic) => ({
+          ...diagnostic,
+          filePath: toNormalizedRelativePath(diagnostic.filePath, rootDirectory),
+          ...(diagnostic.relatedLocations
+            ? {
+                relatedLocations: diagnostic.relatedLocations.map((location) => ({
+                  ...location,
+                  filePath: toNormalizedRelativePath(location.filePath, rootDirectory),
+                })),
+              }
+            : {}),
+        }));
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
         // A splittable failure that surfaced only after the deadline passed is

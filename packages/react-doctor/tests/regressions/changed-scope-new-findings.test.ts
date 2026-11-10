@@ -5,6 +5,10 @@ import path from "node:path";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  CHANGED_SCOPE_COMPARISON_TIMEOUT_MS,
+  CHANGED_SCOPE_SCAN_TIMEOUT_MS,
+} from "../constants.js";
 import { commitAll, initGitRepo, writeFile, writeJson } from "./_helpers.js";
 
 const CLI = path.resolve(import.meta.dirname, "../../bin/react-doctor.js");
@@ -75,6 +79,7 @@ const scan = (directory: string, flags: string[] = [], respectInlineDisables = f
     ],
     {
       encoding: "utf-8",
+      timeout: CHANGED_SCOPE_SCAN_TIMEOUT_MS,
       env: { ...process.env, CI: "true", REACT_DOCTOR_NO_UPDATE_NOTIFIER: "1" },
     },
   );
@@ -189,7 +194,7 @@ const CASES: ComparisonCase[] = [
   { name: "delete a file", baseSource: EFFECT, deleteFile: true, expectedCount: 0 },
 ];
 
-describe("changed scope compares findings through the CLI", () => {
+describe("changed scope CLI comparisons", { timeout: CHANGED_SCOPE_COMPARISON_TIMEOUT_MS }, () => {
   let directory: string;
   let reportFile: string;
 
@@ -291,7 +296,9 @@ describe("changed scope compares findings through the CLI", () => {
     { ignore: { rules: ["react-hooks/exhaustive-deps"] } },
     { ignore: { tags: ["test-noise"] } },
     { rules: { "react-hooks/exhaustive-deps": "off" } },
-    { ignore: { overrides: [{ files: ["src/app.tsx"], rules: ["react-hooks/exhaustive-deps"] }] } },
+    {
+      ignore: { overrides: [{ files: ["src/app.tsx"], rules: ["react-hooks/exhaustive-deps"] }] },
+    },
   ])("applies current config to both sides of a saved comparison: %j", (config) => {
     const sourcePath = path.join(directory, "src/app.tsx");
     writeFile(sourcePath, EFFECT);
@@ -356,7 +363,9 @@ describe("changed scope compares findings through the CLI", () => {
       name: "native-fixture",
       dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
     });
-    writeJson(path.join(directory, "doctor.config.json"), { rawTextWrapperComponents: ["Button"] });
+    writeJson(path.join(directory, "doctor.config.json"), {
+      rawTextWrapperComponents: ["Button"],
+    });
     const sourcePath = path.join(directory, "src/app.tsx");
     const nativeSource =
       'import { View } from "react-native";\nconst Button = ({ children }) => <View>{children}</View>;\nexport const App = () => <Button>Cancel</Button>;\n';

@@ -4,6 +4,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { hasCapability } from "../../utils/get-react-doctor-setting.js";
+import { hasDirective } from "../../utils/has-directive.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
@@ -33,16 +35,18 @@ const STATIC_ARRAY_PRODUCERS: ReadonlyMap<string, ReadonlySet<string>> = new Map
   ["Object", new Set(["entries", "keys", "values"])],
 ]);
 
-const isTanstackTableHookCall = (
+const getTanstackTableHookName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-): boolean => {
+): string | null => {
   const reference = resolveImportedApiReference(callExpression.callee, context.scopes);
-  return Boolean(
-    reference?.source === TANSTACK_TABLE_MODULE &&
-    reference.importedName &&
-    TABLE_HOOK_NAMES.has(reference.importedName),
-  );
+  if (
+    reference?.source !== TANSTACK_TABLE_MODULE ||
+    !reference.importedName ||
+    !TABLE_HOOK_NAMES.has(reference.importedName)
+  )
+    return null;
+  return reference.importedName;
 };
 
 const isKnownNonArrayObjectValue = (
@@ -159,9 +163,17 @@ export const tanstackTableNoUnstableDataOrColumns = defineRule({
     "Give the table's data and columns options stable references: useMemo or useState inside the component, or a module-scope constant, so row and column models are not rebuilt on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isTanstackTableHookCall(node, context)) return;
+      const tableHookName = getTanstackTableHookName(node, context);
+      if (!tableHookName) return;
       const enclosingComponent = findEnclosingFunction(node);
       if (!enclosingComponent) return;
+      if (
+        tableHookName === "useTable" &&
+        hasCapability(context.settings, "react-compiler") &&
+        !hasDirective(enclosingComponent, "use no memo") &&
+        !hasDirective(context.scopes.rootScope.node, "use no memo")
+      )
+        return;
       const optionsArgument = node.arguments[0];
       if (!optionsArgument) return;
       const optionsObject = getRenderScopedOptionsObject(

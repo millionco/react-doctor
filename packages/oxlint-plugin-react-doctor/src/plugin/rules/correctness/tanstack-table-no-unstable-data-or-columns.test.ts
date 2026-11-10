@@ -160,3 +160,66 @@ describe("tanstack-table-no-unstable-data-or-columns", () => {
     expect(result.diagnostics).toHaveLength(4);
   });
 });
+
+describe("tanstack-table compiler compatibility", () => {
+  it.each([
+    { importStatement: 'import { useTable } from "@tanstack/react-table";', hook: "useTable" },
+    {
+      importStatement: 'import { useTable as createTable } from "@tanstack/react-table";',
+      hook: "createTable",
+    },
+    { importStatement: 'import * as Table from "@tanstack/react-table";', hook: "Table.useTable" },
+  ])("accepts compiler-memoized v9 options: $importStatement", ({ importStatement, hook }) => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `
+      ${importStatement}
+      const Grid = ({ rows }) => {
+        const columns = [{ accessorKey: "name" }];
+        const table = ${hook}({ data: rows.filter(row => row.active), columns });
+        return null;
+      };
+    `,
+      { settings: { "react-doctor": { capabilities: ["tanstack-table", "react-compiler"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["useTable", "useReactTable"])("retains %s warnings without compiler support", (hook) => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `
+      import { ${hook} } from "@tanstack/react-table";
+      const Grid = () => { const table = ${hook}({ data: [], columns: [] }); return null; };
+    `,
+      { settings: { "react-doctor": { capabilities: ["tanstack-table"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("retains v8 warnings when the compiler can skip incompatible APIs", () => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `
+      import { useReactTable } from "@tanstack/react-table";
+      const Grid = () => { const table = useReactTable({ data: [], columns: [] }); return null; };
+    `,
+      { settings: { "react-doctor": { capabilities: ["tanstack-table", "react-compiler"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it.each([
+    '"use no memo"; import { useTable } from "@tanstack/react-table"; const Grid = () => { const table = useTable({ data: [], columns: [] }); return null; };',
+    'import { useTable } from "@tanstack/react-table"; const Grid = () => { "use no memo"; const table = useTable({ data: [], columns: [] }); return null; };',
+  ])("retains warnings for explicit compiler opt-outs: %s", (code) => {
+    const result = runRule(tanstackTableNoUnstableDataOrColumns, code, {
+      settings: { "react-doctor": { capabilities: ["tanstack-table", "react-compiler"] } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+});

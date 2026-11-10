@@ -179,6 +179,65 @@ describe("checkSecurityScan", () => {
       );
     });
 
+    describe.each([
+      { label: "synchronous", scan: checkSecurityScan },
+      { label: "cooperative", scan: checkSecurityScanCooperative },
+    ])("configured opt-in security rules ($label)", ({ scan }) => {
+      it("runs the explicitly enabled rule at its configured severity", async () => {
+        const diagnostics = await scan(
+          path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+          {
+            severityControls: { rules: { "react-doctor/agent-tool-capability-risk": "error" } },
+          },
+        );
+        expect(rulesOf(diagnostics)).toEqual(new Set(["agent-tool-capability-risk"]));
+        expect(diagnostics[0]?.severity).toBe("error");
+      });
+
+      it("does not enable opt-in rules from category severity alone", async () => {
+        expect(
+          await scan(path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"), {
+            severityControls: { categories: { Security: "error" } },
+          }),
+        ).toEqual([]);
+      });
+
+      it("keeps an explicit off rule disabled during a tag review", async () => {
+        const diagnostics = await scan(
+          path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+          {
+            includedTags: new Set(["security-scan"]),
+            includeTagDefaults: true,
+            severityControls: { rules: { "react-doctor/agent-tool-capability-risk": "off" } },
+          },
+        );
+        expect(rulesOf(diagnostics)).toEqual(new Set(["mcp-tool-capability-risk"]));
+      });
+
+      it("preserves per-rule severity precedence over category off", async () => {
+        const diagnostics = await scan(
+          path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+          {
+            severityControls: {
+              rules: { "react-doctor/agent-tool-capability-risk": "warn" },
+              categories: { Security: "off" },
+            },
+          },
+        );
+        expect(rulesOf(diagnostics)).toEqual(new Set(["agent-tool-capability-risk"]));
+        expect(diagnostics[0]?.severity).toBe("warning");
+      });
+
+      it("retains ignored-tag filtering for explicitly configured rules", async () => {
+        expect(
+          await scan(path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"), {
+            ignoredTags: new Set(["security-scan"]),
+            severityControls: { rules: { "react-doctor/agent-tool-capability-risk": "error" } },
+          }),
+        ).toEqual([]);
+      });
+    });
+
     it("keeps safe agent tools and parameterized database calls quiet", () => {
       expect(
         checkSecurityScan(path.join(FIXTURES_DIRECTORY, "ported-agent-database-safe-patterns")),
@@ -1279,6 +1338,25 @@ alter table data enable row level security;
     );
 
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("untrusted-redirect-following");
+  });
+
+  it("does not classify Alchemy resource bundles as browser artifacts", () => {
+    writeFile(
+      ".alchemy/bundles/local-PremiumAuth/_distilled_worker-entry__virtual_alchemy-entry_auth.js.map",
+      'const key = "AKIAABCDEFGHIJKLMNOP";',
+    );
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).not.toContain("artifact-secret-leak");
+  });
+
+  it("skips source crypto heuristics in minified dot-directory output but retains artifact checks", () => {
+    writeFile(
+      ".runtime/check-client/assets/index-abc123.js",
+      "var padding=0;".repeat(MINIFIED_SNIFF_BYTES) +
+        'var sessionToken=Math.random().toString(36);var key="AKIAABCDEFGHIJKLMNOP";',
+    );
+    const rules = rulesOf(checkSecurityScan(temporaryRoot));
+    expect(rules).not.toContain("insecure-crypto-risk");
+    expect(rules).toContain("artifact-secret-leak");
   });
 
   it("does not treat server-only Next build output as a browser artifact", () => {

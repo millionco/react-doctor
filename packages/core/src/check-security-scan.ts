@@ -11,7 +11,13 @@ import {
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
 import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
-import type { Diagnostic, ProjectInfo } from "./types/index.js";
+import type {
+  Diagnostic,
+  ProjectInfo,
+  RuleSeverityControls,
+  RuleSeverityOverride,
+} from "./types/index.js";
+import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { shouldEnableRuleByDefaultStatus } from "./utils/should-enable-rule-by-default-status.js";
@@ -19,6 +25,7 @@ import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 export interface CheckSecurityScanOptions {
   readonly project?: ProjectInfo;
+  readonly severityControls?: RuleSeverityControls;
   readonly ignoredTags?: ReadonlySet<string>;
   readonly includedTags?: ReadonlySet<string>;
   readonly includeTagDefaults?: boolean;
@@ -31,6 +38,7 @@ export interface CheckSecurityScanOptions {
 interface EnabledScanRule {
   readonly entry: SecurityScanRuleEntry;
   readonly scan: FileScan;
+  readonly severityOverride: Exclude<RuleSeverityOverride, "off"> | undefined;
   // `rule.committedFilesOnly`, precomputed per rule (see `Rule` for semantics).
   readonly committedFilesOnly: boolean;
 }
@@ -62,11 +70,23 @@ const createSecurityScanSession = (
     const rule = entry.rule;
     const scan = rule.scan;
     if (typeof scan !== "function") return [];
+    const explicitRuleOverride = resolveRuleSeverityOverride(
+      { ruleKey: entry.key },
+      options.severityControls,
+    );
+    const severityOverride =
+      explicitRuleOverride ??
+      resolveRuleSeverityOverride(
+        { ruleKey: entry.key, category: "Security" },
+        options.severityControls,
+      );
+    if (severityOverride === "off") return [];
     if (
       !shouldEnableRuleByDefaultStatus({
         defaultEnabled: rule.defaultEnabled,
         includeTagDefaults: options.includeTagDefaults === true,
         hasIncludedTags: includedTags.size > 0,
+        hasExplicitOverride: explicitRuleOverride !== undefined,
       })
     )
       return [];
@@ -82,7 +102,9 @@ const createSecurityScanSession = (
     ) {
       return [];
     }
-    return [{ entry, scan, committedFilesOnly: rule.committedFilesOnly === true }];
+    return [
+      { entry, scan, severityOverride, committedFilesOnly: rule.committedFilesOnly === true },
+    ];
   });
   if (enabledScanRules.length === 0) return null;
 
@@ -100,7 +122,7 @@ const createSecurityScanSession = (
 
   const scanFileByRule = function* (file: ScannedFile | null): Generator<void, void, void> {
     if (file === null) return;
-    for (const { entry, scan, committedFilesOnly } of enabledScanRules) {
+    for (const { entry, scan, severityOverride, committedFilesOnly } of enabledScanRules) {
       for (const finding of scan(file)) {
         // A committed-file rule's finding doesn't apply to a path git ignores
         // (it isn't actually checked in). The check is deferred to here, gated
@@ -109,7 +131,11 @@ const createSecurityScanSession = (
         // it above `scan` would spawn git for every scanned file, not just the
         // rare file that trips a committed-file rule.
         if (committedFilesOnly && isFileGitIgnored(file)) continue;
-        const diagnostic = buildSecurityScanDiagnostic(finding, entry, file.relativePath);
+        const diagnostic = buildSecurityScanDiagnostic(
+          severityOverride === undefined ? finding : { ...finding, severity: severityOverride },
+          entry,
+          file.relativePath,
+        );
         const key = `${diagnostic.rule}:${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.message}`;
         if (seen.has(key)) continue;
         seen.add(key);

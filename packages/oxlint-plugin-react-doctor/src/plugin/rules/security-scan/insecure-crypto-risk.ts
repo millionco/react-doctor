@@ -143,7 +143,7 @@ export const insecureCryptoRisk = defineRule({
   recommendation:
     "Use modern primitives, `crypto.randomBytes` / Web Crypto randomness, and timing-safe comparisons for signatures, digests, tokens, and auth material.",
   scan: (file) => {
-    if (!isProductionSourcePath(file.relativePath)) return [];
+    if (file.isGeneratedBundle || !isProductionSourcePath(file.relativePath)) return [];
     if (DEMO_CONTEXT_PATTERN.test(file.relativePath)) return [];
 
     // The protocol marker often lives in the file name (`digest-auth.ts`),

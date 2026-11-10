@@ -12,24 +12,30 @@ import { BROWSER_ARTIFACT_PATH_PATTERNS } from "../../../constants/security-scan
 //   - the dev server's entire transient output (`.next/dev/**`, written by
 //     `next dev`), which is never deployed — this also covers the dev server
 //     build at `.next/dev/server`.
+// Alchemy resource bundles under `.alchemy/bundles` target server runtimes.
 // Production browser bundles live in `.next/static`, `.output/public`,
 // `dist/assets`, `public/`, etc. and are still scanned.
 //
 // A segment walk (not a regex) is used on purpose: an equivalent
 // `(?:[^/]+\/)*server` pattern is polynomial on uncontrolled path strings
 // (CodeQL flags it), whereas splitting on `/` and indexing is linear.
-const SERVER_BUILD_ROOT_SEGMENTS = new Set([".next", ".output"]);
+const SERVER_BUILD_DIRECTORIES = new Map([
+  [".next", "server"],
+  [".output", "server"],
+  [".alchemy", "bundles"],
+]);
 
 const isNonShippedBuildArtifactPath = (relativePath: string): boolean => {
   const segments = relativePath.split("/");
   for (let index = 0; index < segments.length; index += 1) {
-    if (!SERVER_BUILD_ROOT_SEGMENTS.has(segments[index])) continue;
+    const serverDirectory = SERVER_BUILD_DIRECTORIES.get(segments[index]);
+    if (!serverDirectory) continue;
     // `.next/dev/**`: transient dev output (incl. the `.next/dev/server` build).
     // The whole subtree is excluded, so no trailing-segment guard is needed.
     if (segments[index] === ".next" && segments[index + 1] === "dev") return true;
-    // `<root>/server/<file>`: server build output directly under the root. The
+    // Server build output must sit directly under its build root. The
     // trailing-segment guard avoids matching a file literally named `server`.
-    if (segments[index + 1] === "server" && index + 2 < segments.length) return true;
+    if (segments[index + 1] === serverDirectory && index + 2 < segments.length) return true;
   }
   return false;
 };

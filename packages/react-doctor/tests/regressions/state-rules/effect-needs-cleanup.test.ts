@@ -977,4 +977,67 @@ export function ResetsOwnHandle() {
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(0);
   });
+
+  it("does NOT flag React Navigation addListener cleanup when receiver is renamed (issue #1956)", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-renamed-navigation", {
+      files: {
+        "package.json": JSON.stringify({
+          dependencies: {
+            react: "^18.0.0",
+            "@react-navigation/native": "^6.0.0",
+          },
+        }),
+        "src/RenamedNavigation.tsx": `import { useEffect } from "react";
+import { useNavigation } from "@react-navigation/native";
+
+export function RenamedReceiver() {
+  const coveredNavigation = useNavigation();
+
+  useEffect(() => {
+    const unsubscribe = coveredNavigation.addListener("transitionEnd", () => {});
+
+    return () => {
+      unsubscribe();
+    };
+  }, [coveredNavigation]);
+
+  return null;
+}
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("accepts the declared callable Navigation contract with either receiver name", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-declared-navigation", {
+      files: {
+        "src/DeclaredNavigation.tsx": `import { useEffect } from "react";
+interface Navigation {
+  addListener: (event: "transitionEnd", callback: () => void) => () => void;
+}
+declare function useNavigation(): Navigation;
+export const RenamedReceiver = () => {
+  const coveredNavigation = useNavigation();
+  useEffect(() => {
+    const stop = coveredNavigation.addListener("transitionEnd", () => {});
+    return () => stop();
+  }, [coveredNavigation]);
+  return null;
+};
+export const NavigationReceiver = () => {
+  const navigation = useNavigation();
+  useEffect(() => {
+    const stop = navigation.addListener("transitionEnd", () => {});
+    return () => stop();
+  }, [navigation]);
+  return null;
+};`,
+      },
+    });
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
 });

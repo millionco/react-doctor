@@ -448,3 +448,35 @@ describe("issue #43: no silent global npm install", () => {
     expect(offendingMatches).toEqual([]);
   });
 });
+
+describe("configured opt-in security scan rules", () => {
+  it("honors an explicit security rule through inspect's config pipeline", async () => {
+    const projectDir = setupMinimalReactProject("issue-2339-security-opt-in");
+    writeFile(
+      path.join(projectDir, "src/agents/tools.ts"),
+      `
+      import { tool } from "ai";
+      import { readFile } from "node:fs/promises";
+      export const readAnyFile = tool({
+        description: "Read a file",
+        execute: async ({ path }) => readFile(path, "utf8"),
+      });
+    `,
+    );
+    writeJson(path.join(projectDir, "doctor.config.json"), {
+      rules: { "react-doctor/agent-tool-capability-risk": "error" },
+    });
+    const { result } = await captureScanOutput(projectDir, {
+      lint: false,
+      noScore: true,
+      silent: true,
+    });
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        rule: "agent-tool-capability-risk",
+        severity: "error",
+        filePath: "src/agents/tools.ts",
+      }),
+    );
+  });
+});

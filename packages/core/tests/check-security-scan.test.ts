@@ -179,6 +179,65 @@ describe("checkSecurityScan", () => {
       );
     });
 
+    describe.each([
+      { label: "synchronous", scan: checkSecurityScan },
+      { label: "cooperative", scan: checkSecurityScanCooperative },
+    ])("configured opt-in security rules ($label)", ({ scan }) => {
+      it("runs the explicitly enabled rule at its configured severity", async () => {
+        const diagnostics = await scan(
+          path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+          {
+            severityControls: { rules: { "react-doctor/agent-tool-capability-risk": "error" } },
+          },
+        );
+        expect(rulesOf(diagnostics)).toEqual(new Set(["agent-tool-capability-risk"]));
+        expect(diagnostics[0]?.severity).toBe("error");
+      });
+
+      it("does not enable opt-in rules from category severity alone", async () => {
+        expect(
+          await scan(path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"), {
+            severityControls: { categories: { Security: "error" } },
+          }),
+        ).toEqual([]);
+      });
+
+      it("keeps an explicit off rule disabled during a tag review", async () => {
+        const diagnostics = await scan(
+          path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+          {
+            includedTags: new Set(["security-scan"]),
+            includeTagDefaults: true,
+            severityControls: { rules: { "react-doctor/agent-tool-capability-risk": "off" } },
+          },
+        );
+        expect(rulesOf(diagnostics)).toEqual(new Set(["mcp-tool-capability-risk"]));
+      });
+
+      it("preserves per-rule severity precedence over category off", async () => {
+        const diagnostics = await scan(
+          path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+          {
+            severityControls: {
+              rules: { "react-doctor/agent-tool-capability-risk": "warn" },
+              categories: { Security: "off" },
+            },
+          },
+        );
+        expect(rulesOf(diagnostics)).toEqual(new Set(["agent-tool-capability-risk"]));
+        expect(diagnostics[0]?.severity).toBe("warning");
+      });
+
+      it("retains ignored-tag filtering for explicitly configured rules", async () => {
+        expect(
+          await scan(path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"), {
+            ignoredTags: new Set(["security-scan"]),
+            severityControls: { rules: { "react-doctor/agent-tool-capability-risk": "error" } },
+          }),
+        ).toEqual([]);
+      });
+    });
+
     it("keeps safe agent tools and parameterized database calls quiet", () => {
       expect(
         checkSecurityScan(path.join(FIXTURES_DIRECTORY, "ported-agent-database-safe-patterns")),

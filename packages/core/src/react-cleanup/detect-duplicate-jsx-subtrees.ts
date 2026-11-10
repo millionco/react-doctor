@@ -116,6 +116,7 @@ interface CollectedJsxSubtreeCandidates {
   candidates: JsxSubtreeCandidate[];
   aborted: boolean;
   limitExceeded: boolean;
+  observedJsxNodeCount: number;
 }
 
 interface ScannedJsxDuplicationSource {
@@ -460,10 +461,12 @@ const collectCandidates = (
   const jsxNodes: JsxSubtreeNode[] = [];
   const pendingNodes: ts.Node[] = [sourceFile];
   let limitExceeded = false;
+  let observedJsxNodeCount = 0;
   while (pendingNodes.length > 0 && !limitExceeded && !signal?.aborted) {
     const currentNode = pendingNodes.pop();
     if (currentNode === undefined) continue;
     if (isJsxSubtreeNode(currentNode)) {
+      observedJsxNodeCount += 1;
       if (jsxNodes.length >= maximumCandidateCount) {
         limitExceeded = true;
         continue;
@@ -479,14 +482,19 @@ const collectCandidates = (
     }
   }
   if (limitExceeded || signal?.aborted) {
-    return { candidates: [], aborted: signal?.aborted ?? false, limitExceeded };
+    return {
+      candidates: [],
+      aborted: signal?.aborted ?? false,
+      limitExceeded,
+      observedJsxNodeCount,
+    };
   }
 
   const metadataByNode = new Map<JsxSubtreeNode, JsxSubtreeMetadata>();
   const functionIdentityByNode = new Map<ts.Node, FunctionIdentity | null>();
   for (let nodeIndex = jsxNodes.length - 1; nodeIndex >= 0; nodeIndex -= 1) {
     if (signal?.aborted) {
-      return { candidates: [], aborted: true, limitExceeded: false };
+      return { candidates: [], aborted: true, limitExceeded: false, observedJsxNodeCount };
     }
     buildJsxSubtreeMetadata(jsxNodes[nodeIndex], metadataByNode);
   }
@@ -511,7 +519,7 @@ const collectCandidates = (
       ),
     };
   });
-  return { candidates, aborted: false, limitExceeded: false };
+  return { candidates, aborted: false, limitExceeded: false, observedJsxNodeCount };
 };
 
 const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplicationSource => {
@@ -563,8 +571,7 @@ const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplication
       incompleteReason: {
         kind: "jsx-node-limit",
         limit: input.options.maxJsxNodes,
-        observed: input.options.maxJsxNodes + 1,
-        path: input.source.path,
+        observed: input.scannedJsxNodeCount + collectedCandidates.observedJsxNodeCount,
       },
       didAbort: false,
       didScan: false,
@@ -740,6 +747,7 @@ export const detectDuplicateJsxSubtrees = (
     });
     if (scannedSource.incompleteReason !== null) {
       incompleteReasons.push(scannedSource.incompleteReason);
+      if (scannedSource.incompleteReason.kind === "jsx-node-limit") break;
     }
     if (scannedSource.didAbort) break;
     if (!scannedSource.didScan) continue;
@@ -805,6 +813,7 @@ export const detectDuplicateJsxSubtreesCooperative = async (
     });
     if (scannedSource.incompleteReason !== null) {
       incompleteReasons.push(scannedSource.incompleteReason);
+      if (scannedSource.incompleteReason.kind === "jsx-node-limit") break;
     }
     if (scannedSource.didScan) {
       candidates.push(...scannedSource.candidates);

@@ -434,7 +434,7 @@ export const Formatted = () => (
       incomplete: true,
       scannedSourceFileCount: 0,
       scannedJsxNodeCount: 0,
-      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, path: "src/card.tsx" }],
+      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, observed: 2 }],
     });
     expect(familyLimited).toMatchObject({
       incomplete: false,
@@ -503,6 +503,77 @@ export const ${componentName} = () => (
       scannedSourceFileCount: 0,
       incomplete: true,
       incompleteReasons: [{ kind: "aborted", observed: 0 }],
+    });
+  });
+});
+
+describe("global JSX budget exhaustion", () => {
+  const sources = Array.from({ length: 5 }, (_, index) => ({
+    path: `src/example-${index}.tsx`,
+    sourceText: "export const Example = () => <div><span /></div>;",
+  }));
+
+  it("reports one global observed overflow and keeps completed files", () => {
+    expect(detectDuplicateJsxSubtrees(sources, { budget: { maxJsxNodes: 3 } })).toMatchObject({
+      incomplete: true,
+      scannedSourceFileCount: 1,
+      scannedJsxNodeCount: 2,
+      incompleteReasons: [{ kind: "jsx-node-limit", limit: 3, observed: 4 }],
+    });
+    expect(
+      detectDuplicateJsxSubtrees(sources, { budget: { maxJsxNodes: 3 } }).incompleteReasons[0],
+    ).not.toHaveProperty("path");
+  });
+
+  it("stops cooperative scanning after overflow with at most one prefetched source", async () => {
+    const reads: string[] = [];
+    const result = await detectDuplicateJsxSubtreesCooperative(
+      {
+        paths: sources.map((source) => source.path),
+        read: async (sourcePath) => {
+          reads.push(sourcePath);
+          return sources.find((source) => source.path === sourcePath)?.sourceText ?? null;
+        },
+      },
+      { budget: { maxJsxNodes: 3 } },
+    );
+    expect(result).toEqual(detectDuplicateJsxSubtrees(sources, { budget: { maxJsxNodes: 3 } }));
+    expect(reads).toEqual(sources.slice(0, 3).map((source) => source.path));
+  });
+
+  it("allows exact-budget completion without a false truncation", async () => {
+    const options = { budget: { maxJsxNodes: 10 } };
+    const synchronous = detectDuplicateJsxSubtrees(sources, options);
+    const cooperative = await detectDuplicateJsxSubtreesCooperative(
+      { paths: sources.map((source) => source.path), read: async () => sources[0].sourceText },
+      options,
+    );
+    expect(cooperative).toEqual(synchronous);
+    expect(synchronous).toMatchObject({
+      incomplete: false,
+      scannedSourceFileCount: 5,
+      scannedJsxNodeCount: 10,
+      incompleteReasons: [],
+    });
+  });
+
+  it("completes dense projects beyond the old 50,000-node default in both paths", async () => {
+    const sourceText = `export const Dense = () => <div>${"<Item />".repeat(5_000)}</div>;`;
+    const denseSources = Array.from({ length: 12 }, (_, index) => ({
+      path: `src/dense-${index}.tsx`,
+      sourceText,
+    }));
+    const synchronous = detectDuplicateJsxSubtrees(denseSources);
+    const cooperative = await detectDuplicateJsxSubtreesCooperative({
+      paths: denseSources.map((source) => source.path),
+      read: async () => sourceText,
+    });
+    expect(cooperative).toEqual(synchronous);
+    expect(synchronous).toMatchObject({
+      incomplete: false,
+      scannedSourceFileCount: 12,
+      scannedJsxNodeCount: 60_012,
+      incompleteReasons: [],
     });
   });
 });

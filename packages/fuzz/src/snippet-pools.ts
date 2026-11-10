@@ -600,6 +600,8 @@ export const JSX_ATTRIBUTE_POOL = [
 // inputs, radios, providers, portals, list keys.
 export const JSX_LEAF_POOL = [
   `{items.map((item, index) => typeof item === "string" && <span key={index}>{item}</span>)}`,
+  `{items.map((item, index) => { index = 0; return typeof item === "string" ? <span key={index}>{item}</span> : null; })}`,
+  `{items.map((item, index) => typeof item === "string" && ([item] = [replacement], <span key={index}>{item}</span>))}`,
   `{[{ text: "A A" }].map((record) => record.text.split(" ").map((part, index) => <span key={index}>{part}</span>))}`,
   `{state}`,
   `{items.map((item, index) => <li key={index}>{item}</li>)}`,

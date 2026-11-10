@@ -2053,6 +2053,7 @@ export const noArrayIndexAsKey = defineRule({
                   isRuntimeStringGuardedLeaf({
                     element: jsxElement,
                     callback: indexUse.binding.bindingFunction,
+                    indexParameterPosition: indexUse.binding.indexParameterPosition,
                     context,
                   })
                 )

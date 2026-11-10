@@ -5,7 +5,7 @@
 
 Avoid index-key warnings for plain text tokens split from proven fresh local record fields while retaining warnings for opaque, mutated, or stateful rows.
 
-Recognize readonly text tokens narrowed by a runtime string guard in arrow callbacks, while retaining warnings for unguarded siblings and interactive content.
+Recognize readonly text tokens narrowed by a runtime string guard in arrow callbacks when the key directly uses their readonly positional index, while retaining warnings for overwritten indices, unproven key aliases, unguarded siblings, and interactive content.
 
 Retain warnings when explicit Node VM providers invalidate the local record string proof.
 

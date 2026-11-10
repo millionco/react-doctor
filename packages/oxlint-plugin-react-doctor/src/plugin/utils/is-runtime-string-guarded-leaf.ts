@@ -5,6 +5,8 @@ import { flattenLogicalAndChain } from "./flatten-logical-and-chain.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isPresenceProvenBeforeNode } from "./is-presence-proven-before-node.js";
 import { isRuntimeGlobalReference } from "./is-runtime-global-reference.js";
+import { isSymbolReadOnly } from "./is-symbol-read-only.js";
+import { isWithinAssignmentTarget } from "./is-within-assignment-target.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripGroupingParens } from "./strip-grouping-parens.js";
 import { walkAst } from "./walk-ast.js";
@@ -12,27 +14,55 @@ import { walkAst } from "./walk-ast.js";
 interface RuntimeStringGuardedLeafInput {
   element: EsTreeNodeOfType<"JSXElement">;
   callback: EsTreeNode | null;
+  indexParameterPosition: number | null;
   context: RuleContext;
 }
 
 export const isRuntimeStringGuardedLeaf = ({
   element,
   callback,
+  indexParameterPosition,
   context,
 }: RuntimeStringGuardedLeafInput): boolean => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") ||
-    findEnclosingFunction(element) !== callback
+    findEnclosingFunction(element) !== callback ||
+    indexParameterPosition === null ||
+    indexParameterPosition < 1
   )
     return false;
-  const parameter = callback.params[0];
-  if (!isNodeOfType(parameter, "Identifier")) return false;
-  const symbol = context.scopes.symbolFor(parameter);
-  if (!symbol || !symbol.references.every((reference) => reference.flag === "read")) return false;
+  const tokenParameter = callback.params[0];
+  if (!isNodeOfType(tokenParameter, "Identifier")) return false;
+  const tokenSymbol = context.scopes.symbolFor(tokenParameter);
+  if (!tokenSymbol) return false;
+  const indexParameter = callback.params[indexParameterPosition];
+  const indexIdentifier = isNodeOfType(indexParameter, "AssignmentPattern")
+    ? indexParameter.left
+    : indexParameter;
+  if (!isNodeOfType(indexIdentifier, "Identifier")) return false;
+  const indexSymbol = context.scopes.symbolFor(indexIdentifier);
+  if (!indexSymbol) return false;
+  if (
+    [tokenSymbol, indexSymbol].some(
+      (bindingSymbol) =>
+        !isSymbolReadOnly(bindingSymbol) ||
+        bindingSymbol.references.some((reference) =>
+          isWithinAssignmentTarget(reference.identifier),
+        ),
+    )
+  )
+    return false;
   if (
     !element.openingElement.attributes.every((attribute) => {
       if (!isNodeOfType(attribute, "JSXAttribute")) return false;
-      if (attribute.name.name === "key") return true;
+      if (attribute.name.name === "key") {
+        if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
+        const keyExpression = stripGroupingParens(attribute.value.expression);
+        return (
+          isNodeOfType(keyExpression, "Identifier") &&
+          context.scopes.symbolFor(keyExpression) === indexSymbol
+        );
+      }
       if (attribute.name.name !== "className" || !attribute.value) return false;
       const value = isNodeOfType(attribute.value, "JSXExpressionContainer")
         ? attribute.value.expression
@@ -49,7 +79,7 @@ export const isRuntimeStringGuardedLeaf = ({
       const expression = stripGroupingParens(child.expression);
       if (
         isNodeOfType(expression, "Identifier") &&
-        context.scopes.symbolFor(expression) === symbol
+        context.scopes.symbolFor(expression) === tokenSymbol
       ) {
         hasTokenChild = true;
         return true;
@@ -90,7 +120,7 @@ export const isRuntimeStringGuardedLeaf = ({
         isNodeOfType(typeExpression, "UnaryExpression") &&
         typeExpression.operator === "typeof" &&
         isNodeOfType(stripGroupingParens(typeExpression.argument), "Identifier") &&
-        context.scopes.symbolFor(stripGroupingParens(typeExpression.argument)) === symbol
+        context.scopes.symbolFor(stripGroupingParens(typeExpression.argument)) === tokenSymbol
       );
     }),
   );

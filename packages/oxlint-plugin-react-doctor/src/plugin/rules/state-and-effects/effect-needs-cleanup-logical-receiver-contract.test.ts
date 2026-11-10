@@ -33,11 +33,11 @@ const logicalReceiverContractCases: LogicalReceiverContractCase[] = [
     expectedCount: 0,
   },
   {
-    name: "preserves the issue 1956 renamed ambient receiver boundary",
+    name: "accepts the owned issue 1956 renamed ambient receiver",
     declarations: declaredProvider,
     setup: "const coveredNavigation = getNavigation();",
     receiver: "coveredNavigation",
-    expectedCount: 1,
+    expectedCount: 0,
   },
   {
     name: "rejects ambient any instead of guessing from the navigation name",

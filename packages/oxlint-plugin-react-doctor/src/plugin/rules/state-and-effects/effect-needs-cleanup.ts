@@ -1,3 +1,7 @@
+import { isStableLogicalReceiver } from "../../utils/is-stable-logical-receiver.js";
+import { hasStableLogicalDataProperty } from "../../utils/has-stable-logical-data-property.js";
+import { hasLogicalReceiverOrigin } from "../../utils/has-logical-receiver-origin.js";
+import { hasDeclaredCallableListenerResult } from "../../utils/has-declared-callable-listener-result.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -26,6 +30,7 @@ import { resolveImportedExportName } from "../../utils/find-exported-function-bo
 import {
   collectEffectInvokedFunctions,
   collectSynchronouslyEffectInvokedFunctions,
+  collectSynchronouslyInvokedLocalFunctions,
   getPromiseChainCallForCallback,
 } from "../../utils/collect-effect-invoked-functions.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
@@ -251,16 +256,23 @@ const resolveExpressionKey = (
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
   parameterSubstitutions: ReadonlyMap<number, EsTreeNode> = new Map(),
+  requireStableLogicalContributors = false,
 ): string | null => {
   if (!expression) return null;
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     const symbol = context.scopes.symbolFor(unwrappedExpression);
     if (!symbol) {
-      return context.scopes.isGlobalReference(unwrappedExpression)
+      return !requireStableLogicalContributors &&
+        context.scopes.isGlobalReference(unwrappedExpression)
         ? `global:${unwrappedExpression.name}`
         : null;
     }
+    if (
+      requireStableLogicalContributors &&
+      !isStableLogicalReceiver(unwrappedExpression, context.scopes)
+    )
+      return null;
     if (visitedSymbolIds.has(symbol.id)) return `symbol:${symbol.id}`;
     visitedSymbolIds.add(symbol.id);
     const substitutedExpression = parameterSubstitutions.get(symbol.id);
@@ -270,6 +282,7 @@ const resolveExpressionKey = (
         context,
         visitedSymbolIds,
         parameterSubstitutions,
+        requireStableLogicalContributors,
       );
     }
     const bindingProperty = symbol.bindingIdentifier.parent;
@@ -289,33 +302,75 @@ const resolveExpressionKey = (
         context,
         visitedSymbolIds,
         parameterSubstitutions,
+        requireStableLogicalContributors,
       );
       return objectKey ? `${objectKey}.${bindingPropertyName}` : `symbol:${symbol.id}`;
     }
-    const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+    const stableInitializer = requireStableLogicalContributors
+      ? getDirectUnreassignedInitializer(symbol)
+      : symbol.initializer;
+    const initializer = stableInitializer ? stripParenExpression(stableInitializer) : null;
     if (
       symbol.kind === "const" &&
       initializer &&
-      (isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression"))
+      (isNodeOfType(initializer, "Identifier") ||
+        isNodeOfType(initializer, "MemberExpression") ||
+        isNodeOfType(initializer, "LogicalExpression"))
     ) {
       return (
-        resolveExpressionKey(initializer, context, visitedSymbolIds, parameterSubstitutions) ??
-        `symbol:${symbol.id}`
+        resolveExpressionKey(
+          initializer,
+          context,
+          visitedSymbolIds,
+          parameterSubstitutions,
+          requireStableLogicalContributors,
+        ) ?? `symbol:${symbol.id}`
       );
     }
     return `symbol:${symbol.id}`;
   }
   if (isNodeOfType(unwrappedExpression, "MemberExpression") && !unwrappedExpression.computed) {
     if (!isNodeOfType(unwrappedExpression.property, "Identifier")) return null;
+    if (
+      requireStableLogicalContributors &&
+      !hasStableLogicalDataProperty(
+        unwrappedExpression.object,
+        unwrappedExpression.property.name,
+        context.scopes,
+      )
+    )
+      return null;
     const objectKey = resolveExpressionKey(
       unwrappedExpression.object,
       context,
       visitedSymbolIds,
       parameterSubstitutions,
+      requireStableLogicalContributors,
     );
     return objectKey ? `${objectKey}.${unwrappedExpression.property.name}` : null;
   }
-  if (isNodeOfType(unwrappedExpression, "ThisExpression")) return "this";
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    const leftKey = resolveExpressionKey(
+      unwrappedExpression.left,
+      context,
+      visitedSymbolIds,
+      parameterSubstitutions,
+      true,
+    );
+    const rightKey = resolveExpressionKey(
+      unwrappedExpression.right,
+      context,
+      visitedSymbolIds,
+      parameterSubstitutions,
+      true,
+    );
+    return leftKey && rightKey
+      ? `logical:${unwrappedExpression.operator}:${leftKey}:${rightKey}`
+      : null;
+  }
+  if (isNodeOfType(unwrappedExpression, "ThisExpression")) {
+    return requireStableLogicalContributors ? null : "this";
+  }
   if (
     isNodeOfType(unwrappedExpression, "Literal") &&
     (typeof unwrappedExpression.value === "string" ||
@@ -1173,38 +1228,96 @@ const isKnownReactNavigationReceiver = (
   expression: EsTreeNode,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
+  requireStableLogicalContributors = false,
+  provenStableReceiverSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const receiver = stripParenExpression(expression);
   if (isNodeOfType(receiver, "Identifier")) {
     const receiverSymbol = context.scopes.symbolFor(receiver);
     if (!receiverSymbol || visitedSymbolIds.has(receiverSymbol.id)) return false;
-    if (receiver.name === "navigation") return true;
+    const needsStableReceiver =
+      requireStableLogicalContributors || hasLogicalReceiverOrigin(receiver, context.scopes);
+    if (needsStableReceiver && provenStableReceiverSymbolIds.has(receiverSymbol.id)) {
+      return true;
+    }
+    if (needsStableReceiver && !isStableLogicalReceiver(receiver, context.scopes)) return false;
+    if (!needsStableReceiver && receiver.name === "navigation") return true;
     visitedSymbolIds.add(receiverSymbol.id);
-    const receiverInitializer = receiverSymbol.initializer
-      ? stripParenExpression(receiverSymbol.initializer)
+    const stableInitializer = needsStableReceiver
+      ? getDirectUnreassignedInitializer(receiverSymbol)
+      : receiverSymbol.initializer;
+    const stableReceiverInitializer = stableInitializer
+      ? stripParenExpression(stableInitializer)
       : null;
-    const navigationHook = isNodeOfType(receiverInitializer, "CallExpression")
-      ? resolveImportedApiReference(receiverInitializer.callee, context.scopes)
+    const navigationHook = isNodeOfType(stableReceiverInitializer, "CallExpression")
+      ? resolveImportedApiReference(stableReceiverInitializer.callee, context.scopes)
       : null;
     if (
       navigationHook?.importedName === "useNavigation" &&
       navigationHook.source.startsWith("@react-navigation/")
     ) {
+      if (requireStableLogicalContributors) provenStableReceiverSymbolIds.add(receiverSymbol.id);
       return true;
     }
-    return Boolean(
-      receiverInitializer &&
-      isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds),
+    if (needsStableReceiver && hasDeclaredCallableListenerResult(receiver, context)) {
+      provenStableReceiverSymbolIds.add(receiverSymbol.id);
+      return true;
+    }
+    const hasKnownReceiver = Boolean(
+      stableReceiverInitializer &&
+      isKnownReactNavigationReceiver(
+        stableReceiverInitializer,
+        context,
+        visitedSymbolIds,
+        needsStableReceiver,
+        provenStableReceiverSymbolIds,
+      ),
+    );
+    if (needsStableReceiver && hasKnownReceiver) {
+      provenStableReceiverSymbolIds.add(receiverSymbol.id);
+    }
+    return hasKnownReceiver;
+  }
+  if (isNodeOfType(receiver, "LogicalExpression")) {
+    return (
+      (receiver.operator === "&&" ||
+        isKnownReactNavigationReceiver(
+          receiver.left,
+          context,
+          new Set(visitedSymbolIds),
+          true,
+          provenStableReceiverSymbolIds,
+        )) &&
+      isKnownReactNavigationReceiver(
+        receiver.right,
+        context,
+        new Set(visitedSymbolIds),
+        true,
+        provenStableReceiverSymbolIds,
+      )
     );
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;
   const receiverCallee = stripParenExpression(receiver.callee);
+  if (
+    requireStableLogicalContributors &&
+    isNodeOfType(receiverCallee, "MemberExpression") &&
+    hasDeclaredCallableListenerResult(receiverCallee.object, context)
+  ) {
+    return hasDeclaredCallableListenerResult(receiver, context);
+  }
   return Boolean(
     isNodeOfType(receiverCallee, "MemberExpression") &&
     !receiverCallee.computed &&
     isNodeOfType(receiverCallee.property, "Identifier") &&
     receiverCallee.property.name === "getParent" &&
-    isKnownReactNavigationReceiver(receiverCallee.object, context, visitedSymbolIds),
+    isKnownReactNavigationReceiver(
+      receiverCallee.object,
+      context,
+      visitedSymbolIds,
+      requireStableLogicalContributors,
+      provenStableReceiverSymbolIds,
+    ),
   );
 };
 
@@ -6794,17 +6907,25 @@ const effectHasCleanupForUsage = (
     return false;
   }
   if (callback.async) return false;
+  const usageCallee = isNodeOfType(usage.node, "CallExpression")
+    ? stripParenExpression(usage.node.callee)
+    : null;
+  const hasLogicalReceiver =
+    isNodeOfType(usageCallee, "MemberExpression") &&
+    hasLogicalReceiverOrigin(usageCallee.object, context.scopes);
   if (
-    cleanupRegistryReleasesUsage(callback, usage, context) ||
-    symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
-    hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||
-    hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
-    oneShotTimerHasUnmountGuard(usage, context) ||
-    hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context)
+    !hasLogicalReceiver &&
+    (cleanupRegistryReleasesUsage(callback, usage, context) ||
+      symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
+      hasReturnedObserverDisconnect(callback, usage, context, allUsages) ||
+      hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
+      oneShotTimerHasUnmountGuard(usage, context) ||
+      hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context))
   ) {
     return true;
   }
   if (
+    !hasLogicalReceiver &&
     usage.kind === "subscribe" &&
     findEnclosingFunction(usage.node) === callback &&
     doesResourceResultEscape(usage.node, true, true, context) &&
@@ -6825,6 +6946,7 @@ const effectHasCleanupForUsage = (
       ? context.scopes.symbolFor(usageAssignment.left)
       : null;
   const requiresDirectReleasePathCoverage =
+    hasLogicalReceiver ||
     (usage.kind === "subscribe" && usage.registrationVerbName === "observe") ||
     (usage.kind === "timer" &&
       ((findEnclosingFunction(usage.node) === callback &&
@@ -6877,6 +6999,14 @@ const effectHasCleanupForUsage = (
       return;
     }
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+    if (
+      hasLogicalReceiver &&
+      [
+        cleanupFunction,
+        ...collectSynchronouslyInvokedLocalFunctions(cleanupFunction, context.scopes),
+      ].some((invokedFunction) => findSubscribeLikeUsages(invokedFunction, context).length > 0)
+    )
+      return;
     if (
       doesCleanupFunctionReleaseUsage(
         cleanupFunction,

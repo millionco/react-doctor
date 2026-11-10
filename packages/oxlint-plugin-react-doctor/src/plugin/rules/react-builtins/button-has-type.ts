@@ -47,9 +47,10 @@ const resolveSettings = (
 };
 
 const isValidTypeValue = (rawValue: string, settings: Required<ButtonHasTypeSettings>): boolean => {
-  if (rawValue === "button") return settings.button;
-  if (rawValue === "submit") return settings.submit;
-  if (rawValue === "reset") return settings.reset;
+  const keyword = rawValue.replace(/[A-Z]/g, (character) => character.toLowerCase());
+  if (keyword === "button") return settings.button;
+  if (keyword === "submit") return settings.submit;
+  if (keyword === "reset") return settings.reset;
   return false;
 };
 

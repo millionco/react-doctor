@@ -67,7 +67,8 @@ const hasMergedTransitionAll = (
     });
     const hasApplicablePropertySetter = parsedTokens.some(
       (parsedToken) =>
-        getTailwindTransitionAllState(parsedToken.utility) !== null &&
+        (getTailwindTransitionAllState(parsedToken.utility) !== null ||
+          parsedToken.utility.startsWith("transition-")) &&
         doesTailwindVariantScopeCover(parsedToken.variants, variantScope),
     );
     const transitionAllState = resolveTailwindBooleanPropertyState(

@@ -11,7 +11,7 @@ export const firebasePermissiveRules = defineRule({
   scan: scanByPattern({
     shouldScan: (file) => isFirebaseRulesPath(file.relativePath),
     pattern:
-      /allow\s+(?:read|write|create|update|delete|list|get|read,\s*write)\s*:\s*if\s+(?:true|request\.auth\s*!=\s*null)\s*;?/i,
+      /allow\s+(?:read|write|create|update|delete|list|get|read,\s*write)\s*:\s*if\s+(?:true|request\.auth\s*!=\s*null(?!\s*&&\s*request\.auth\.uid\s*==\s*resource\.data\.[A-Za-z_][A-Za-z_0-9]*\s*;))\s*;?/i,
     message:
       "Firebase rules grant broad access to everyone or to any signed-in user, which is the Chattr/Firewreck failure mode.",
   }),

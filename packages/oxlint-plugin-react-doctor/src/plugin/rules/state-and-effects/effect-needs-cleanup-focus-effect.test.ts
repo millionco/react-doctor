@@ -5,7 +5,7 @@ import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 const runCleanup = (source: string) => runRule(effectNeedsCleanup, source);
 
 describe.each(["expo-router", "@react-navigation/native"])("focus effects from %s", (source) => {
-  it.each(["inline", "inline-memoized", "memoized", "named", "declared"])(
+  it.each(["inline", "inline-memoized", "typed-memoized", "memoized", "named", "declared"])(
     "owns returned cleanup for %s callbacks",
     (form) => {
       for (const clean of [false, true]) {
@@ -14,6 +14,8 @@ describe.each(["expo-router", "@react-navigation/native"])("focus effects from %
         let invocation = `useFocusEffect(${callback});`;
         if (form === "inline-memoized")
           invocation = `useFocusEffect(useCallback(${callback}, []));`;
+        if (form === "typed-memoized")
+          invocation = `useFocusEffect(useCallback((${callback}) as (() => void), []));`;
         if (form === "memoized" || form === "named")
           invocation = `const callback = ${binding}; useFocusEffect(callback);`;
         if (form === "declared")

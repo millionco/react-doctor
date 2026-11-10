@@ -261,11 +261,14 @@ const getCleanupEffectCallback = (call: EsTreeNode, context: RuleContext): EsTre
   if (!isNodeOfType(call, "CallExpression") || !isFocusEffectHookCall(call, context)) {
     return getEffectCallback(call);
   }
-  const callback = call.arguments[0];
-  return (
-    getEffectCallback(call, context.scopes) ??
-    (callback ? resolveRefOwnedCleanupFunction(callback, context) : null)
-  );
+  const callback = resolveStableValue(call.arguments[0], context);
+  if (
+    isNodeOfType(callback, "CallExpression") &&
+    isReactApiCall(callback, "useCallback", context.scopes)
+  ) {
+    return getEffectCallback(callback, context.scopes);
+  }
+  return getEffectCallback(call, context.scopes);
 };
 
 const isExclusivelyFocusEffectCallback = (callback: EsTreeNode, context: RuleContext): boolean => {

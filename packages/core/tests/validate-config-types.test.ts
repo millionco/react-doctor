@@ -277,3 +277,32 @@ describe("validateConfigTypes", () => {
     });
   });
 });
+
+describe("unknown bundled rule overrides", () => {
+  it.each([
+    "react-doctor/no-fetch-in-efect",
+    "no-fetch-in-efect",
+    "react-hooks/exhaustive-dep",
+    "react-hooks-js/invalid-rule",
+    "constructor",
+  ])("warns for %s without discarding config", (key) => {
+    const rules = { [key]: "error" } as const;
+    expect(validateConfigTypes({ rules }).rules).toEqual(rules);
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`rules.${key}`));
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("rules list"));
+  });
+
+  it("accepts canonical, bare, legacy, opt-in, compiler and custom plugin rules", () => {
+    validateConfigTypes({
+      rules: {
+        "react-doctor/no-fetch-in-effect": "error",
+        "no-danger": "off",
+        "react-hooks/exhaustive-deps": "warn",
+        "react-hooks-js/incompatible-library": "warn",
+        "react-doctor/agent-tool-capability-risk": "error",
+        "my-plugin/custom-rule": "error",
+      },
+    });
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+});

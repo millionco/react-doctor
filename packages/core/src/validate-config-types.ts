@@ -9,6 +9,7 @@ import type {
 import { DIAGNOSTIC_SURFACES, isDiagnosticSurface } from "./diagnostic-surface.js";
 import { DIAGNOSTIC_CATEGORY_BUCKETS } from "./constants.js";
 import { isRecord } from "./utils/is-record.js";
+import { getUnknownBundledRuleKeys } from "./utils/get-unknown-bundled-rule-keys.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 const VALID_RULE_SEVERITIES: ReadonlyArray<RuleSeverityOverride> = ["error", "warn", "off"];
@@ -330,5 +331,10 @@ export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfi
   applyFieldValidator(config, validated, "plugins", (value) =>
     validateStringArrayField("plugins", value),
   );
+  for (const ruleKey of getUnknownBundledRuleKeys(validated.rules)) {
+    warnConfigIssue(
+      `config field "rules.${ruleKey}" is not a known bundled rule; this override has no effect. Run "react-doctor rules list" to find its rule ID.`,
+    );
+  }
   return validated;
 };

@@ -456,6 +456,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // cleanup.
   const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxlintrc-"));
   const configPath = path.join(configDirectory, "oxlintrc.json");
+  const workingDirectory = fs.existsSync(path.join(rootDirectory, "oxlint-suppressions.json"))
+    ? configDirectory
+    : undefined;
 
   try {
     const diagnosticContextDirectory = path.join(configDirectory, "contexts");
@@ -473,7 +476,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     if (project.hasTypeScript) {
       const tsconfigRelativePath = resolveTsConfigRelativePath(rootDirectory);
       if (tsconfigRelativePath) {
-        sharedArgs.push("--tsconfig", tsconfigRelativePath);
+        sharedArgs.push("--tsconfig", path.resolve(rootDirectory, tsconfigRelativePath));
         try {
           tsconfigContent = fs.readFileSync(
             path.resolve(rootDirectory, tsconfigRelativePath),
@@ -644,6 +647,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         return spawnLintBatches({
           baseArgs: passBaseArgs,
           fileBatches: passFileBatches,
+          workingDirectory,
           rootDirectory,
           nodeBinaryPath,
           project: lintProject,
@@ -1058,6 +1062,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       spawnLintBatches({
         baseArgs,
         fileBatches,
+        workingDirectory,
         rootDirectory,
         nodeBinaryPath,
         project: lintProject,

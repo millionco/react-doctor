@@ -246,6 +246,60 @@ const RESOURCE_NOUN_BY_KIND = {
   socket: "connection",
 } as const;
 
+const isFocusEffectHookCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const reference = resolveImportedApiReference(call.callee, context.scopes);
+  return (
+    reference?.importedName === "useFocusEffect" &&
+    (reference.source === "expo-router" || reference.source === "@react-navigation/native")
+  );
+};
+
+const getCleanupEffectCallback = (call: EsTreeNode, context: RuleContext): EsTreeNode | null => {
+  if (!isNodeOfType(call, "CallExpression") || !isFocusEffectHookCall(call, context)) {
+    return getEffectCallback(call);
+  }
+  const callback = resolveStableValue(call.arguments[0], context);
+  if (
+    isNodeOfType(callback, "CallExpression") &&
+    isReactApiCall(callback, "useCallback", context.scopes)
+  ) {
+    return getEffectCallback(callback, context.scopes);
+  }
+  return getEffectCallback(call, context.scopes);
+};
+
+const isExclusivelyFocusEffectCallback = (callback: EsTreeNode, context: RuleContext): boolean => {
+  const isOwnedArgument = (expression: EsTreeNode): boolean => {
+    const expressionRoot = findTransparentExpressionRoot(expression);
+    const parent = expressionRoot.parent;
+    return Boolean(
+      isNodeOfType(parent, "CallExpression") &&
+      parent.arguments[0] === expressionRoot &&
+      isFocusEffectHookCall(parent, context) &&
+      getCleanupEffectCallback(parent, context) === callback,
+    );
+  };
+  const callbackRoot = findTransparentExpressionRoot(callback);
+  const callbackParent = callbackRoot.parent;
+  const wrapper =
+    isNodeOfType(callbackParent, "CallExpression") &&
+    isReactApiCall(callbackParent, "useCallback", context.scopes)
+      ? callbackParent
+      : callbackRoot;
+  if (isOwnedArgument(wrapper)) return true;
+  const bindingIdentifier = getFunctionBindingIdentifier(callback);
+  const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
+  return Boolean(
+    symbol &&
+    symbol.references.length > 0 &&
+    symbol.references.every((reference) => isOwnedArgument(reference.identifier)) &&
+    hasCompleteSymbolReferences(symbol, context.scopes.rootScope.node, context.scopes),
+  );
+};
+
 const isCleanupEffectHookCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -1714,10 +1768,7 @@ const findSubscribeLikeUsages = (
   context: RuleContext,
 ): SubscribeLikeUsage[] => {
   const usages: SubscribeLikeUsage[] = [];
-  if (
-    !isNodeOfType(callback, "ArrowFunctionExpression") &&
-    !isNodeOfType(callback, "FunctionExpression")
-  ) {
+  if (!isFunctionLike(callback)) {
     return usages;
   }
   let cleanupArgument: EsTreeNode | null = null;
@@ -1829,10 +1880,7 @@ const removeSynchronouslyReleasedUsages = (
   usages: SubscribeLikeUsage[],
   context: RuleContext,
 ): SubscribeLikeUsage[] => {
-  if (
-    !isNodeOfType(callback, "ArrowFunctionExpression") &&
-    !isNodeOfType(callback, "FunctionExpression")
-  ) {
+  if (!isFunctionLike(callback)) {
     return usages;
   }
   if (!isNodeOfType(callback.body, "BlockStatement")) return usages;
@@ -7270,10 +7318,7 @@ const effectHasCleanupForUsage = (
   context: RuleContext,
   allUsages: ReadonlyArray<SubscribeLikeUsage> = [usage],
 ): boolean => {
-  if (
-    !isNodeOfType(callback, "ArrowFunctionExpression") &&
-    !isNodeOfType(callback, "FunctionExpression")
-  ) {
+  if (!isFunctionLike(callback)) {
     return false;
   }
   if (callback.async) return false;
@@ -11748,6 +11793,7 @@ export const effectNeedsCleanup = defineRule({
     "Return a cleanup function that stops the subscription or timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` or `clearTimeout(id)` for timers, `return () => observer.disconnect()` for observers, `return () => socket.close()` for connections, or `return unsubscribe` if the subscribe call already gave you one.",
   create: (context: RuleContext) => {
     const reportRetainedLeak = (retainedFunction: EsTreeNode): void => {
+      if (isExclusivelyFocusEffectCallback(retainedFunction, context)) return;
       const refEffectUsage = getReactRefEffectUsage(retainedFunction, context);
       if (!refEffectUsage && !isPotentiallyReachableFunction(retainedFunction, context)) {
         return;
@@ -11803,8 +11849,9 @@ export const effectNeedsCleanup = defineRule({
           }
           return;
         }
-        if (!isCleanupEffectHookCall(node, context)) return;
-        const callback = getEffectCallback(node);
+        if (!isCleanupEffectHookCall(node, context) && !isFocusEffectHookCall(node, context))
+          return;
+        const callback = getCleanupEffectCallback(node, context);
         if (!callback) return;
 
         const usages = removeSynchronouslyReleasedUsages(

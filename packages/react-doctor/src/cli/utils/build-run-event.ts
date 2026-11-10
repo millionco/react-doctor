@@ -1,3 +1,4 @@
+import { getUnknownBundledRuleKeys } from "@react-doctor/core";
 import {
   buildRuleSeverityControls,
   countOptInProjectRuleSelections,
@@ -494,6 +495,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     hasCustomConfig: input.hasCustomConfig,
     customRulesOnly: input.userConfig?.customRulesOnly ?? false,
     rulesConfigured: ruleKeys.length,
+    unknownBundledRuleCount: getUnknownBundledRuleKeys(input.userConfig?.rules).length,
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
     projectAnalysisRuleCount: countOptInProjectRuleSelections(
       buildRuleSeverityControls(input.userConfig),

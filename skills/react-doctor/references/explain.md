@@ -76,3 +76,8 @@ export default {
 ## Educating the user
 
 When explaining a rule, lead with the "Why it matters" guidance from `rules explain` and, when they want depth, the per-rule recipe at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`. Only after they understand it should you offer to disable it — many "bad" rules are catching real issues.
+
+Unknown bundled rule IDs in `rules` produce a warning on stderr, including in
+JSON mode. Use `rules list` or `rules explain <rule>` to verify IDs after an
+upgrade. A warning does not change the scan's blocking threshold or rewrite the
+config. Arbitrary custom-plugin namespaces are outside this bundled-ID check.

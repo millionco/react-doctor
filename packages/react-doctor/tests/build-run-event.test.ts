@@ -694,6 +694,7 @@ describe("buildRunEventAttributes", () => {
     );
     expect(attributes["scan.mode"]).toBe("full");
     expect(attributes["scan.rulesConfigured"]).toBe(2);
+    expect(attributes["scan.unknownBundledRuleCount"]).toBe(2);
     expect(attributes["scan.rulesDisabled"]).toBe(1);
     expect(attributes["scan.projectAnalysisRuleCount"]).toBe(0);
     expect(attributes["scan.ignoredTagCount"]).toBe(2);

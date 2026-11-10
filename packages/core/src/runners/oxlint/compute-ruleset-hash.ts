@@ -58,6 +58,7 @@ const normalizeConfigForHash = (config: RulesetHashInput["config"]): unknown => 
 export const computeRulesetHash = (input: RulesetHashInput): string =>
   crypto
     .createHash("sha1")
+    .update("project-bulk-suppressions-isolated\u0000")
     .update(JSON.stringify(normalizeConfigForHash(input.config)))
     .update("\u0000")
     .update([...input.toolchainVersions].join("\u0000"))

@@ -129,6 +129,82 @@ const ruleHitsOn = (
   diagnostics.filter((diagnostic) => diagnostic.rule === rule && diagnostic.filePath === filePath);
 
 describe("sidecar lint cache", () => {
+  it.each([true, false])(
+    "refreshes async effect certificates after imported handle changes with sidecar cache %s",
+    async (sidecarLintCacheEnabled) => {
+      const safeBoardSource = `import { useState, useImperativeHandle } from "react";
+export const Board = ({ apiRef }) => {
+  const [flags, setFlags] = useState({});
+  useImperativeHandle(apiRef, () => ({
+    commit: (key, value) => setFlags(previous => ({ ...previous, [key]: value })),
+    focus: () => externalFocus(),
+  }), []);
+  return <div />;
+};`;
+      const projectDir = setupReactProject(tempRoot, `async-handle-${sidecarLintCacheEnabled}`, {
+        packageJsonExtras: {
+          dependencies: { react: "^19.0.0", "react-dom": "^19.0.0", next: "^16.0.0" },
+        },
+        files: {
+          "src/board.tsx": safeBoardSource,
+          "src/App.tsx": `import { useEffect, useRef, useState } from "react";
+import { Board } from "./board";
+const pause = (milliseconds, signal) => new Promise(settle => {
+  if (signal.aborted) { settle(false); return; }
+  const timer = setTimeout(() => {
+    signal.removeEventListener("abort", cancel);
+    settle(true);
+  }, milliseconds);
+  const cancel = () => { clearTimeout(timer); settle(false); };
+  signal.addEventListener("abort", cancel, { once: true });
+});
+export const App = ({ revision }) => {
+  const panel = useRef(null);
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    const run = async () => {
+      if (!(await pause(24, controller.signal))) return;
+      panel.current?.commit("tile", true);
+      setStatus("ready");
+    };
+    run();
+    return () => controller.abort();
+  }, [revision]);
+  return <><Board apiRef={panel} /><div>{status}</div></>;
+};`,
+        },
+      });
+      fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+      const runScan = (perFileLintCacheEnabled: boolean): Promise<Diagnostic[]> =>
+        runOxlint({
+          rootDirectory: projectDir,
+          project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+          userConfig: { rules: { "react-doctor/no-set-state-after-await-in-effect": "warn" } },
+          perFileLintCacheEnabled,
+          sidecarLintCacheEnabled,
+        });
+      const ruleId = "no-set-state-after-await-in-effect";
+      expect(ruleHitsOn(await runScan(true), ruleId, "src/App.tsx")).toHaveLength(0);
+      expect(ruleHitsOn(await runScan(true), ruleId, "src/App.tsx")).toHaveLength(0);
+      writeFile(
+        path.join(projectDir, "src/board.tsx"),
+        safeBoardSource.replace(
+          "setFlags(previous => ({ ...previous, [key]: value }))",
+          "{ foreign.focus(); setFlags(previous => ({ ...previous, [key]: value })); }",
+        ),
+      );
+      const unsafeIncremental = await runScan(true);
+      expect(ruleHitsOn(unsafeIncremental, ruleId, "src/App.tsx")).toHaveLength(1);
+      expect(serialize(unsafeIncremental)).toBe(serialize(await runScan(false)));
+      expect(ruleHitsOn(await runScan(true), ruleId, "src/App.tsx")).toHaveLength(1);
+      writeFile(path.join(projectDir, "src/board.tsx"), safeBoardSource);
+      const safeIncremental = await runScan(true);
+      expect(ruleHitsOn(safeIncremental, ruleId, "src/App.tsx")).toHaveLength(0);
+      expect(serialize(safeIncremental)).toBe(serialize(await runScan(false)));
+    },
+  );
+
   it("reports file progress through to the full total when the sidecar replays files", async () => {
     const projectDir = setupFixture("progress-completes");
     await scan(projectDir);

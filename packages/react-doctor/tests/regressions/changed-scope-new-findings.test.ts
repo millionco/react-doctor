@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -60,6 +61,7 @@ const ROWS = (count: number): string =>
   ].join("\n");
 
 const scan = (directory: string, flags: string[] = [], respectInlineDisables = false) => {
+  const scanStartedAtMs = performance.now();
   const result = spawnSync(
     process.execPath,
     [
@@ -80,15 +82,32 @@ const scan = (directory: string, flags: string[] = [], respectInlineDisables = f
     {
       encoding: "utf-8",
       timeout: CHANGED_SCOPE_SCAN_TIMEOUT_MS,
+      killSignal: "SIGKILL",
       env: { ...process.env, CI: "true", REACT_DOCTOR_NO_UPDATE_NOTIFIER: "1" },
     },
   );
-  expect(result.error).toBeUndefined();
-  expect(result.stdout, result.stderr).not.toBe("");
-  return {
-    status: result.status,
-    report: Schema.decodeUnknownSync(JsonReport)(JSON.parse(result.stdout)),
-  };
+  try {
+    expect(result.error).toBeUndefined();
+    expect(result.stdout, result.stderr).not.toBe("");
+    return {
+      status: result.status,
+      report: Schema.decodeUnknownSync(JsonReport)(JSON.parse(result.stdout)),
+    };
+  } catch (error) {
+    console.error("Changed-scope CLI scan failed", {
+      phase: flags.includes("--base")
+        ? "Git comparison"
+        : flags.includes("--baseline")
+          ? "saved comparison"
+          : "full scan",
+      flags,
+      elapsedMs: performance.now() - scanStartedAtMs,
+      status: result.status,
+      signal: result.signal,
+      stderr: result.stderr,
+    });
+    throw error;
+  }
 };
 
 interface ComparisonCase {

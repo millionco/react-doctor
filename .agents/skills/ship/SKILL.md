@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Take the current branch from done-coding to merge-ready in one pass — review the diff against AGENTS.md, deslop, commit and push, open a PR using rule-validate's PR copy, then babysit until mergeable. Use when the user types `/ship` or asks to ship, finalize, or land the current branch.
+description: Take the current branch from done-coding to merge-ready in one pass — review the diff against AGENTS.md, deslop, commit and push, open a PR using rule-validate's PR copy, then monitor checks and reviews until mergeable. Use when the user types `/ship` or asks to ship, finalize, or land the current branch.
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Sequential release pipeline for the current branch. Run only when explicitly invoked — it commits, pushes, and opens a PR.
 
-Each stage delegates to an existing skill. Run them in order and do not advance while a stage still has unresolved findings.
+Use the linked skills where indicated; review and monitoring are performed directly. Run them in order and do not advance while a stage still has unresolved findings.
 
 Copy this checklist and track progress:
 
@@ -18,12 +18,12 @@ Ship progress:
 - [ ] 2. Deslop the touched code
 - [ ] 3. Commit and push
 - [ ] 4. Open the PR
-- [ ] 5. Babysit to merge-ready
+- [ ] 5. Monitor checks and reviews to merge-ready
 ```
 
 ## 1. Review against AGENTS.md
 
-Read `AGENTS.md` first (its rules change), then run `/review` on this branch's diff, judging it against those rules. Fix real violations before continuing. Pause for the user only if a fix would change behavior or broaden scope.
+Read `AGENTS.md` first (its rules change), then review this branch's diff directly against those rules. Fix real violations before continuing. Pause for the user only if a fix would change behavior or broaden scope.
 
 ## 2. Deslop
 
@@ -42,14 +42,18 @@ Run `/deslop` ([`../deslop/SKILL.md`](../deslop/SKILL.md)) to simplify the recen
 
 Create the PR with `gh pr create`, writing the body with the **PR Description** structure from `/rule-validate` ([`../rule-validate/SKILL.md`](../rule-validate/SKILL.md)): Why (with before/after), What changed, Eval results (omit the table if RDE was not run), Test plan. Pass the body via a heredoc. Return the PR URL.
 
-## 5. Babysit
+## 5. Monitor checks and reviews
 
-Run `/babysit` to drive the PR to merge-ready: resolve merge conflicts preserving intent, triage unresolved comments (including Bugbot), and fix in-scope CI in a loop until the PR is mergeable, green, and its comments are triaged. Report back instead of merging.
+Inspect `gh pr checks`, the pull request's mergeability, and unresolved review threads (including Bugbot). Resolve in-scope code findings and merge conflicts that have clear intent, push fixes, and inspect the new head's checks and reviews again. Continue until the PR is mergeable, its checks pass, and review findings are triaged. No separate monitoring skill is required.
+
+Honor the user's scope for CI work: when CI fixes are deferred, report failing checks without changing CI configuration, test infrastructure, or unrelated failures. Do not bypass required checks.
+
+Report merge readiness unless the user has authorized merging. With merge authorization, merge only reviewed, green, non-release PRs using the inspected head SHA. Release PRs and publishing actions still require the exact fresh confirmation specified in AGENTS.md.
 
 ## Stop conditions
 
 Pause and ask the user when:
 
-- Review or babysit surfaces a change that would broaden scope or alter intended behavior.
+- Review or monitoring surfaces a change that would broaden scope or alter intended behavior.
 - A merge conflict has genuinely conflicting intent on the two branches.
 - CI fails for reasons outside this branch's scope even after merging the latest base.

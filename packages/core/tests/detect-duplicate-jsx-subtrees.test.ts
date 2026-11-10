@@ -434,7 +434,7 @@ export const Formatted = () => (
       incomplete: true,
       scannedSourceFileCount: 0,
       scannedJsxNodeCount: 0,
-      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, path: "src/card.tsx" }],
+      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, observed: 0 }],
     });
     expect(familyLimited).toMatchObject({
       incomplete: false,
@@ -455,7 +455,7 @@ export const Formatted = () => (
       scannedSourceFileCount: 0,
       scannedJsxNodeCount: 0,
       incomplete: true,
-      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, observed: 2 }],
+      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, observed: 0 }],
     });
   });
 
@@ -504,5 +504,74 @@ export const ${componentName} = () => (
       incomplete: true,
       incompleteReasons: [{ kind: "aborted", observed: 0 }],
     });
+  });
+
+  it("scales the JSX node budget proportionally with source file count", () => {
+    const smallSource = "<div>a</div>";
+    const manySmallFiles = Array.from({ length: 100 }, (_, index) => ({
+      path: `src/file-${index}.tsx`,
+      sourceText: `export const C${index} = () => ${smallSource};`,
+    }));
+    const result = detectDuplicateJsxSubtrees(manySmallFiles);
+
+    expect(result.incomplete).toBe(false);
+    expect(result.scannedSourceFileCount).toBe(100);
+  });
+
+  it("collapses multiple jsx-node-limit incomplete reasons into one summary", () => {
+    const largeSource = `export const Large = () => (${"<div>".repeat(50)}content${"</div>".repeat(50)});`;
+    const manyLargeFiles = Array.from({ length: 20 }, (_, index) => ({
+      path: `src/large-${index}.tsx`,
+      sourceText: largeSource,
+    }));
+    const result = detectDuplicateJsxSubtrees(manyLargeFiles, {
+      budget: { maxJsxNodes: 300 },
+    });
+
+    expect(result.incomplete).toBe(true);
+    const jsxNodeLimitReasons = result.incompleteReasons.filter(
+      (reason) => reason.kind === "jsx-node-limit",
+    );
+    expect(jsxNodeLimitReasons).toHaveLength(1);
+    expect(jsxNodeLimitReasons[0]).toMatchObject({
+      kind: "jsx-node-limit",
+      limit: 300,
+    });
+    expect(jsxNodeLimitReasons[0].observed).toBeGreaterThan(0);
+    expect(jsxNodeLimitReasons[0].observed).toBeLessThanOrEqual(300);
+    expect(jsxNodeLimitReasons[0].path).toBeUndefined();
+  });
+
+  it("reports actual scanned node count in jsx-node-limit incomplete reason", () => {
+    const simpleSource = "export const Simple = () => <div><span>text</span></div>;";
+    const result = detectDuplicateJsxSubtrees(
+      [{ path: "src/simple.tsx", sourceText: simpleSource }],
+      {
+        budget: { maxJsxNodes: 1 },
+      },
+    );
+
+    expect(result.incomplete).toBe(true);
+    expect(result.incompleteReasons).toHaveLength(1);
+    expect(result.incompleteReasons[0]).toMatchObject({
+      kind: "jsx-node-limit",
+      limit: 1,
+      observed: 0,
+    });
+  });
+
+  it("continues scanning with scaled budget when files are exhausted sequentially", () => {
+    const duplicateSource = componentSource("Card", "Card", "value");
+    const manyFiles = Array.from({ length: 10 }, (_, index) => ({
+      path: `src/card-${index}.tsx`,
+      sourceText: duplicateSource,
+    }));
+    const result = detectDuplicateJsxSubtrees(manyFiles);
+
+    expect(result.incomplete).toBe(false);
+    expect(result.scannedSourceFileCount).toBe(10);
+    expect(result.scannedJsxNodeCount).toBeGreaterThan(50);
+    expect(result.families).toHaveLength(1);
+    expect(result.families[0].occurrenceCount).toBe(10);
   });
 });

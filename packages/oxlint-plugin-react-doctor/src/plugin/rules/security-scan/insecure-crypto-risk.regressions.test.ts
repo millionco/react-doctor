@@ -44,6 +44,29 @@ describe("security-scan/insecure-crypto-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it.each([
+    'var suffix=Math.random().toString(36).slice(2);var fiber="__reactFiber$"+suffix;var token="unrelated vendor token";',
+    "var crypto={};if(e===K.SIGNATURE){verify();}",
+    'const hashPassword=password=>createHash("md5").update(password).digest("hex");',
+  ])("does not apply source crypto heuristics to generated bundles: %s", (content) => {
+    expect(
+      runScanRule(insecureCryptoRisk, {
+        relativePath: ".runtime/check-client/assets/index-abc123.js",
+        content,
+        isGeneratedBundle: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps first-party source in dot-directories in scope", () => {
+    expect(
+      runScanRule(insecureCryptoRisk, {
+        relativePath: ".runtime/auth.js",
+        content: "const sessionToken = Math.random().toString(36);",
+      }),
+    ).toHaveLength(1);
+  });
+
   it("flags md5 hashing of password material", () => {
     const findings = runScanRule(insecureCryptoRisk, {
       relativePath: "src/server/auth.ts",

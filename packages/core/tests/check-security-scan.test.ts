@@ -1281,6 +1281,25 @@ alter table data enable row level security;
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("untrusted-redirect-following");
   });
 
+  it("does not classify Alchemy resource bundles as browser artifacts", () => {
+    writeFile(
+      ".alchemy/bundles/local-PremiumAuth/_distilled_worker-entry__virtual_alchemy-entry_auth.js.map",
+      'const key = "AKIAABCDEFGHIJKLMNOP";',
+    );
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).not.toContain("artifact-secret-leak");
+  });
+
+  it("skips source crypto heuristics in minified dot-directory output but retains artifact checks", () => {
+    writeFile(
+      ".runtime/check-client/assets/index-abc123.js",
+      "var padding=0;".repeat(MINIFIED_SNIFF_BYTES) +
+        'var sessionToken=Math.random().toString(36);var key="AKIAABCDEFGHIJKLMNOP";',
+    );
+    const rules = rulesOf(checkSecurityScan(temporaryRoot));
+    expect(rules).not.toContain("insecure-crypto-risk");
+    expect(rules).toContain("artifact-secret-leak");
+  });
+
   it("does not treat server-only Next build output as a browser artifact", () => {
     writeFile(
       ".next/server/app/page.js",

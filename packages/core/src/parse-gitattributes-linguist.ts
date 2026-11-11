@@ -1,24 +1,18 @@
 import * as fs from "node:fs";
+import picomatch from "picomatch";
+import { DISABLED_LINGUIST_ATTRIBUTE_VALUES } from "./constants.js";
 
-// HACK: `.gitattributes` lines look like `path/spec attr1 attr2=value`.
-// GitHub's linguist library reads `linguist-vendored` and
-// `linguist-generated` to mark code excluded from language stats —
-// exactly what a quality audit should also skip. We support `attr`,
-// `attr=true`, and `attr=1` (case-insensitive); `attr=false`/`=0`
-// counts as an explicit opt-IN to linting and is NOT treated as
-// truthy. The `-attr` git-style "set to false" form is similarly
-// excluded.
-const LINGUIST_ATTRIBUTE_PATTERN = /^linguist-(?:vendored|generated)(?:=([a-zA-Z0-9]+))?$/i;
-const FALSY_VALUES = new Set(["false", "0", "off", "no"]);
+interface LinguistPathRule {
+  matches: (filePath: string) => boolean;
+  attributes: Map<string, boolean>;
+}
 
-const isTruthyLinguistAttribute = (token: string): boolean => {
-  const match = LINGUIST_ATTRIBUTE_PATTERN.exec(token);
-  if (!match) return false;
-  if (match[1] === undefined) return true;
-  return !FALSY_VALUES.has(match[1].toLowerCase());
-};
+const LINGUIST_ATTRIBUTE_PATTERN = /^([-!]?)(linguist-(?:vendored|generated))(?:=(.*))?$/;
 
-export const parseGitattributesLinguistPaths = (filePath: string): string[] => {
+export const parseGitattributesLinguistPaths = (
+  filePath: string,
+  relativePaths: ReadonlyArray<string>,
+): string[] => {
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf-8");
@@ -26,20 +20,58 @@ export const parseGitattributesLinguistPaths = (filePath: string): string[] => {
     return [];
   }
 
-  const paths: string[] = [];
+  const rules: LinguistPathRule[] = [];
   for (const rawLine of content.split("\n")) {
     const line = rawLine.trim();
     if (line.length === 0 || line.startsWith("#")) continue;
-    // Tokens are whitespace-separated. The first token is the path spec;
-    // remaining tokens are attributes. Quoted paths with spaces would
-    // need escape handling, but those are extremely rare in real
-    // `.gitattributes` files — skip the complication.
-    const tokens = line.split(/\s+/);
-    if (tokens.length < 2) continue;
-    const [pathSpec, ...attributes] = tokens;
-    if (attributes.some(isTruthyLinguistAttribute)) {
-      paths.push(pathSpec);
+    const parts = /^("(?:\\.|[^"\\])*"|\S+)\s+(.*)$/.exec(line);
+    if (!parts) continue;
+    let pathSpec = parts[1];
+    if (pathSpec.startsWith('"')) {
+      try {
+        pathSpec = JSON.parse(pathSpec);
+      } catch {
+        continue;
+      }
     }
+    if (!pathSpec || pathSpec.startsWith("!") || pathSpec.endsWith("/")) continue;
+    const tokens = parts[2].split(/\s+/);
+    const attributes = new Map<string, boolean>();
+    for (const token of tokens) {
+      const match = LINGUIST_ATTRIBUTE_PATTERN.exec(token);
+      if (!match) continue;
+      const [, prefix, attribute, value] = match;
+      if (prefix && value !== undefined) continue;
+      attributes.set(
+        attribute,
+        !prefix &&
+          (value === undefined || !DISABLED_LINGUIST_ATTRIBUTE_VALUES.has(value.toLowerCase())),
+      );
+    }
+    if (attributes.size === 0) continue;
+    rules.push({
+      matches: picomatch(
+        pathSpec
+          .replace(/^\//, "")
+          .replace(/\\.|[()|]/g, (token) => (token.startsWith("\\") ? token : `\\${token}`)),
+        {
+          dot: true,
+          basename: !pathSpec.includes("/"),
+          nobrace: true,
+          noext: true,
+          nonegate: true,
+          regex: false,
+        },
+      ),
+      attributes,
+    });
   }
-  return paths;
+  return relativePaths.filter((relativePath) => {
+    const attributes = new Map<string, boolean>();
+    for (const rule of rules) {
+      if (!rule.matches(relativePath)) continue;
+      for (const [attribute, value] of rule.attributes) attributes.set(attribute, value);
+    }
+    return [...attributes.values()].some(Boolean);
+  });
 };

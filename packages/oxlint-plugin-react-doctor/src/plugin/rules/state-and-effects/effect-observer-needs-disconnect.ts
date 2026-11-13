@@ -25,6 +25,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import { hasProvenDetachedObserverLookupTarget } from "./has-proven-detached-observer-lookup-target.js";
 
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
 const COLLECTION_MUTATION_METHOD_NAMES = new Set([
@@ -49,6 +50,7 @@ interface TrackedObserver {
   didReleaseAllViaCallbackParameter: boolean;
   callbackReleasedTargetKeys: Set<string>;
   didEscape: boolean;
+  didUseDetachedLookupForCleanup: boolean;
   observationCalls: EsTreeNodeOfType<"CallExpression">[];
   observedIterationTargetKeys: Set<string>;
   observedTargetKeys: Set<string>;
@@ -247,6 +249,7 @@ const recordObserverUsage = (
   identifier: EsTreeNodeOfType<"Identifier">,
   tracked: TrackedObserver,
   context: RuleContext,
+  cleanupFunction?: EsTreeNode,
 ): void => {
   const binding = findVariableInitializer(identifier, identifier.name);
   if (binding && !tracked.bindingIdentifiers.has(binding.bindingIdentifier)) return;
@@ -308,7 +311,23 @@ const recordObserverUsage = (
         ? serializeReferenceKey({ node: targetArgument, scopes: context.scopes })
         : null;
       if (iterationTargetKey && tracked.observedIterationTargetKeys.has(iterationTargetKey)) {
-        tracked.observedIterationTargetKeys.delete(iterationTargetKey);
+        const [observation, otherObservation] = tracked.observationCalls;
+        if (
+          cleanupFunction &&
+          observation &&
+          !otherObservation &&
+          hasProvenDetachedObserverLookupTarget({
+            observation,
+            release: methodCall,
+            construction: tracked.construction,
+            cleanupFunction,
+            context,
+          })
+        ) {
+          tracked.didUseDetachedLookupForCleanup = true;
+        } else {
+          tracked.observedIterationTargetKeys.delete(iterationTargetKey);
+        }
       } else if (targetKey && tracked.observedTargetKeys.has(targetKey)) {
         tracked.observedTargetKeys.delete(targetKey);
       }
@@ -712,11 +731,11 @@ const doesEffectInvokeStoredObserverDisposer = (
 
 export const effectObserverNeedsDisconnect = defineRule({
   id: "effect-observer-needs-disconnect",
-  title: "Observer created in an effect never disconnected",
+  title: "Observer cleanup may be incomplete",
   severity: "error",
   category: "Bugs",
   recommendation:
-    "Return a cleanup function that calls `observer.disconnect()` (or `observer.unobserve(node)`) so the observer stops firing callbacks against detached nodes after unmount instead of leaking on every mount.",
+    "Return a cleanup that calls `observer.disconnect()`. If the observer supports `unobserve()`, capture the targets during setup and pass each originally observed target to `observer.unobserve(target)` during cleanup.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isProvenEffectHookCall(node, context.scopes)) return;
@@ -770,6 +789,7 @@ export const effectObserverNeedsDisconnect = defineRule({
             callbackRelease.didReleaseAll || callbackRelease.didReleaseObservedEntries,
           callbackReleasedTargetKeys: callbackRelease.releasedTargetKeys,
           didEscape: false,
+          didUseDetachedLookupForCleanup: false,
           observationCalls: [],
           observedIterationTargetKeys: new Set(),
           observedTargetKeys: new Set(),
@@ -802,7 +822,7 @@ export const effectObserverNeedsDisconnect = defineRule({
           const tracked = bindingIdentifier
             ? trackedObserversByBinding.get(bindingIdentifier)
             : undefined;
-          if (tracked) recordObserverUsage(child, tracked, context);
+          if (tracked) recordObserverUsage(child, tracked, context, cleanupFunction);
         });
       }
 
@@ -865,8 +885,9 @@ export const effectObserverNeedsDisconnect = defineRule({
         }
         context.report({
           node: tracked.construction,
-          message:
-            "This observer is created and started in the effect but never disconnected, so it keeps firing against detached nodes and leaks one observer per mount; return a cleanup that calls `disconnect()` or `unobserve()`.",
+          message: tracked.didUseDetachedLookupForCleanup
+            ? "This cleanup looks up the target again after the observed element is no longer in the document. Call `unobserve()` with the original element or use `disconnect()`."
+            : "This effect starts an observer that may remain active when the effect stops. Disconnect it or unobserve each original target where supported.",
         });
       }
     },

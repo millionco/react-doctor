@@ -9,6 +9,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { hasSameFunctionReturnTail } from "../../utils/has-same-function-return-tail.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -1773,6 +1774,7 @@ export const jsSetMapLookups = defineRule({
       if (isReceiverDeclaredInNearestLoop(receiver, node)) return;
       if (isPerIterationReceiver(receiver, node)) return;
       if (isLookupBoundedByConstantIteration(node)) return;
+      if (hasSameFunctionReturnTail(node, loopDepth)) return;
       // `splitHotkeyBinding(b).includes(k)` — the array is rebuilt on
       // every call, so there is nothing to hoist into a Set.
       if (

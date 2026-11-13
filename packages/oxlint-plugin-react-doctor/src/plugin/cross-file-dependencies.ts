@@ -26,6 +26,7 @@ import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout
 import { getRuntimeStaticDependencySource } from "./utils/get-runtime-static-dependency-source.js";
 import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
+import { isAwaitingImportedHostYield } from "./utils/is-awaiting-imported-host-yield.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
 import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
@@ -196,6 +197,21 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectImportedHostYieldDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+  getProgram,
+}) => {
+  if (!staticImports.some(({ moduleRequest }) => moduleRequest.value.startsWith("."))) return;
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (awaitNode) => {
+    if (!isNodeOfType(awaitNode, "AwaitExpression")) return;
+    isAwaitingImportedHostYield({ awaitNode, filename: absoluteFilePath, scopes });
+  });
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -580,6 +596,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
       collectInkVersionDependencies,
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
+    ["async-await-in-loop", collectImportedHostYieldDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],

@@ -335,8 +335,9 @@ const functionRegistersParameterIntoCollection = (
     if (registersListener) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "MemberExpression")) return;
-    if (!isNodeOfType(child.callee.object, "Identifier")) return;
-    if (!listenerCollectionNames.has(child.callee.object.name)) return;
+    const listenerCollection = stripParenExpression(child.callee.object);
+    if (!isNodeOfType(listenerCollection, "Identifier")) return;
+    if (!listenerCollectionNames.has(listenerCollection.name)) return;
     if (!isNodeOfType(child.callee.property, "Identifier")) return;
     if (child.callee.property.name !== "add" && child.callee.property.name !== "push") return;
     const registeredArgument = child.arguments?.[0];
@@ -449,11 +450,9 @@ const findModuleSubscribeCallForwardingSetter = (
     if (!storeIndex.subscribeFunctionNames.has(child.callee.name)) return;
     const binding = findVariableInitializer(child.callee, child.callee.name);
     if (!binding || !isNodeOfType(binding.scopeOwner, "Program")) return;
-    for (const argument of child.arguments ?? []) {
-      if (argumentForwardsSetter(argument, setterName)) {
-        matchedCall = child;
-        return false;
-      }
+    if (argumentForwardsSetter(child.arguments?.[0], setterName)) {
+      matchedCall = child;
+      return false;
     }
   });
   return matchedCall;

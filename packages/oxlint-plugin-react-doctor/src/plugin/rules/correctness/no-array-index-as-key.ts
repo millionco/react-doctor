@@ -1,4 +1,8 @@
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findVisibleSymbol } from "../../utils/find-visible-symbol.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
@@ -1858,6 +1862,108 @@ const elementHasDirectItemChild = (
   });
 };
 
+const isExplicitReactChildType = (typeNode: EsTreeNode, context: RuleContext): boolean => {
+  if (!isNodeOfType(typeNode, "TSTypeReference")) return false;
+  const typeName = typeNode.typeName;
+  const isQualified = isNodeOfType(typeName, "TSQualifiedName");
+  const bindingName = isQualified ? typeName.left : typeName;
+  if (
+    !isNodeOfType(bindingName, "Identifier") ||
+    hasEnclosingTypeParameterNamed(bindingName, bindingName.name)
+  ) {
+    return false;
+  }
+  const symbol = findVisibleSymbol(bindingName, context.scopes);
+  if (!symbol || getImportDeclarationForSymbol(symbol)?.source.value !== "react") return false;
+  const specifier = symbol.declarationNode;
+  const importedName = isQualified
+    ? isNodeOfType(specifier, "ImportDefaultSpecifier") ||
+      isNodeOfType(specifier, "ImportNamespaceSpecifier")
+      ? typeName.right.name
+      : undefined
+    : getImportedName(specifier);
+  return importedName === "ReactNode" || importedName === "ReactElement";
+};
+
+const getInlinePropertyType = (typeNode: EsTreeNode, propertyName: string): EsTreeNode | null => {
+  if (!isNodeOfType(typeNode, "TSTypeLiteral")) return null;
+  for (const member of typeNode.members) {
+    if (
+      isNodeOfType(member, "TSPropertySignature") &&
+      !member.computed &&
+      isNodeOfType(member.key, "Identifier") &&
+      member.key.name === propertyName
+    ) {
+      return member.typeAnnotation?.typeAnnotation ?? null;
+    }
+  }
+  return null;
+};
+
+const elementHasExplicitReactItemFieldChild = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  binding: PositionalIndexBinding,
+  context: RuleContext,
+): boolean => {
+  const iterator = binding.iteratorCall;
+  const callback = binding.bindingFunction;
+  if (
+    !iterator ||
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    iterator.arguments[0] !== callback ||
+    binding.indexParameterPosition !== 1 ||
+    stripParenExpression(callback.body) !== element ||
+    !isNodeOfType(iterator.callee, "MemberExpression") ||
+    getStaticPropertyName(iterator.callee) !== "map"
+  ) {
+    return false;
+  }
+  const item = callback.params[0];
+  if (!isNodeOfType(item, "Identifier") || item.typeAnnotation) return false;
+  const itemSymbol = context.scopes.symbolFor(item);
+  const receiver = stripParenExpression(iterator.callee.object);
+  const receiverSymbol = context.scopes.symbolFor(receiver);
+  if (
+    !itemSymbol ||
+    !isNodeOfType(receiver, "Identifier") ||
+    receiverSymbol?.kind !== "parameter" ||
+    receiverSymbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
+  const property = receiverSymbol.bindingIdentifier.parent;
+  const pattern = property?.parent;
+  if (
+    !isNodeOfType(property, "Property") ||
+    property.computed ||
+    property.value !== receiverSymbol.bindingIdentifier ||
+    !isNodeOfType(property.key, "Identifier") ||
+    !isNodeOfType(pattern, "ObjectPattern") ||
+    !pattern.typeAnnotation
+  ) {
+    return false;
+  }
+  const collectionType = getInlinePropertyType(
+    pattern.typeAnnotation.typeAnnotation,
+    property.key.name,
+  );
+  if (!isNodeOfType(collectionType, "TSArrayType")) return false;
+  return element.children.some((child) => {
+    if (!isNodeOfType(child, "JSXExpressionContainer")) return false;
+    const expression = stripParenExpression(child.expression);
+    if (
+      !isNodeOfType(expression, "MemberExpression") ||
+      context.scopes.symbolFor(stripParenExpression(expression.object)) !== itemSymbol
+    ) {
+      return false;
+    }
+    const childField = getStaticPropertyName(expression);
+    if (childField === null) return false;
+    const childType = getInlinePropertyType(collectionType.elementType, childField);
+    return childType !== null && isExplicitReactChildType(childType, context);
+  });
+};
+
 // A callback that conditionally skips rows (`if (…) return null`)
 // renders a FILTERED projection — positions shift as data changes, so
 // even attribute-only SVG primitives get misassociated.
@@ -2038,6 +2144,8 @@ export const noArrayIndexAsKey = defineRule({
                 const isStateful =
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||
+                  (isInlineTextRun &&
+                    elementHasExplicitReactItemFieldChild(jsxElement, indexUse.binding, context)) ||
                   containsStatefulDescendant(jsxElement, {
                     memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
                     bareIdentifierNames:

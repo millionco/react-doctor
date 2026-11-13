@@ -1,3 +1,4 @@
+import { buildOwnedCarouselFuzzScenario } from "./build-owned-carousel-fuzz-scenario.js";
 import {
   PATHOLOGICAL_PROGRAM_PROBABILITY,
   SERVER_MODULE_PROGRAM_PROBABILITY,
@@ -268,6 +269,9 @@ const buildComponent: SnippetBuilder = (random) => {
 };
 
 const buildClassComponent: SnippetBuilder = (random) => {
+  if (random.pick(["dom-listener", "owned-carousel"]) === "owned-carousel") {
+    return buildOwnedCarouselFuzzScenario(random);
+  }
   const componentName = `FuzzLegacy${random.int(100)}`;
   const hasWillUnmount = random.chance(0.6);
   const usesRefNode = random.chance(0.4);

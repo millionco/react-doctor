@@ -42,6 +42,7 @@ import { REACT_ROUTER_RULE_IDS } from "./react-router.js";
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   ...INK_RULE_IDS,
   "client-passive-event-listeners",
+  "class-component-missing-component-will-unmount-teardown",
   "effect-needs-cleanup",
   "effect-listener-cleanup-reference-mismatch",
   "anchor-target-exists",

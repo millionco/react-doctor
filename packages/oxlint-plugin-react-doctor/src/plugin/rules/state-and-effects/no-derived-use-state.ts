@@ -560,7 +560,7 @@ export const noDerivedUseState = defineRule({
           }
           context.report({
             node,
-            message: `Your users see a stale value when prop "${propName}" changes because useState copies it once.`,
+            message: `Copying prop "${propName}" into state can leave a stale value when that prop changes.`,
           });
         };
 

@@ -354,7 +354,7 @@ describe("no-derived-useState — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a plain stale prop copy with no re-seed", () => {
+  it("qualifies the risk for an unchanged prop-copy diagnostic", () => {
     const result = runRule(
       noDerivedUseState,
       `function Profile({ name }) {
@@ -363,7 +363,12 @@ describe("no-derived-useState — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([
+      {
+        message: 'Copying prop "name" into state can leave a stale value when that prop changes.',
+        nodeType: "CallExpression",
+      },
+    ]);
   });
 
   // docs-validation FP wave: the doc scopes the rule to direct Identifier /
@@ -575,5 +580,27 @@ describe("no-derived-useState — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("uses conditional wording for a keyed editable draft without suppressing the report", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `import { useState } from "react";
+      const Draft = ({ record }) => {
+        const [text, setText] = useState(record.text);
+        return <input value={text} onChange={(event) => setText(event.target.value)} />;
+      };
+      export const Editor = ({ record }) => <Draft key={record.id} record={record} />;`,
+    );
+    expect(result).toEqual({
+      diagnostics: [
+        {
+          message:
+            'Copying prop "record" into state can leave a stale value when that prop changes.',
+          nodeType: "CallExpression",
+        },
+      ],
+      parseErrors: [],
+    });
   });
 });

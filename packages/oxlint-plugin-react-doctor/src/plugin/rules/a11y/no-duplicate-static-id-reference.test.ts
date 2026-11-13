@@ -34,4 +34,64 @@ describe("no-duplicate-static-id-reference", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it.each(["\u00a0", "\ufeff", "\u3000"])(
+    "keeps Unicode whitespace in distinct ID values (%j)",
+    (unicodeWhitespace) => {
+      for (const distinctId of [`${unicodeWhitespace}field`, `field${unicodeWhitespace}`]) {
+        const result = runRule(
+          noDuplicateStaticIdReference,
+          `const View = () => <div aria-describedby="field"><span id="field" /><span id={${JSON.stringify(distinctId)}} /></div>;`,
+        );
+        expect(result.parseErrors).toHaveLength(0);
+        expect(result.diagnostics).toHaveLength(0);
+      }
+    },
+  );
+
+  it.each(["\u00a0", "\ufeff", "\u3000", "\u000b"])(
+    "does not split ID references at non-ASCII whitespace (%j)",
+    (unicodeWhitespace) => {
+      const reference = `field${unicodeWhitespace}description`;
+      const result = runRule(
+        noDuplicateStaticIdReference,
+        `const View = () => <div aria-describedby={${JSON.stringify(reference)}}><span id="field" /><span id="field" /></div>;`,
+      );
+      expect(result.parseErrors).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each(["\u00a0", "\ufeff", "\u3000"])(
+    "reports references to duplicate IDs containing Unicode whitespace (%j)",
+    (unicodeWhitespace) => {
+      for (const referencedId of [
+        `${unicodeWhitespace}field`,
+        `field${unicodeWhitespace}`,
+        `field${unicodeWhitespace}description`,
+      ]) {
+        const literalId = JSON.stringify(referencedId);
+        const result = runRule(
+          noDuplicateStaticIdReference,
+          `const View = () => <div aria-describedby={${literalId}}><span id={${literalId}} /><span id={${literalId}} /></div>;`,
+        );
+        expect(result.parseErrors).toHaveLength(0);
+        expect(result.diagnostics).toHaveLength(1);
+        expect(result.diagnostics[0]?.message).toContain(`"${referencedId}"`);
+      }
+    },
+  );
+
+  it.each([" ", "\t", "\n", "\r", "\f"])(
+    "splits ID reference lists at ASCII whitespace (%j)",
+    (asciiWhitespace) => {
+      const reference = `${asciiWhitespace}other${asciiWhitespace}field${asciiWhitespace}`;
+      const result = runRule(
+        noDuplicateStaticIdReference,
+        `const View = () => <div aria-describedby={${JSON.stringify(reference)}}><span id="field" /><span id="field" /></div>;`,
+      );
+      expect(result.parseErrors).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
 });

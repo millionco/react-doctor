@@ -46,7 +46,7 @@ export const buildUnknownCallbackMessage = (hookName: string): string =>
   `\`${hookName}\`'s callback is defined elsewhere, so dependencies can't be checked and stale values can slip through.`;
 
 export const buildUnstableDepMessage = (hookName: string, depName: string): string =>
-  `\`${depName}\` is rebuilt every render, so \`${hookName}\` runs every time.`;
+  `\`${depName}\` can be recreated during render, so \`${hookName}\` may receive a changed dependency.`;
 
 export const buildForwardedUnstableDepMessage = (depName: string): string =>
   `\`${depName}\` is rebuilt every render and reaches a Hook dependency inside this custom Hook.`;

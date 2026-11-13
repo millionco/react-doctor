@@ -1,3 +1,4 @@
+import { isClosedEditableStringPositionKey } from "./utils/is-closed-editable-string-position-key.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -1973,6 +1974,11 @@ export const noArrayIndexAsKey = defineRule({
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
             isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+        )
+          return;
+        if (
+          indexUse.binding.iteratorCall &&
+          isClosedEditableStringPositionKey(node, indexUse.binding.iteratorCall, context)
         )
           return;
         const indexName = indexUse.identifier.name;

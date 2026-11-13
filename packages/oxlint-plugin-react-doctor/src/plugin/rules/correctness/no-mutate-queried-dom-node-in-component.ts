@@ -554,7 +554,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
   severity: "warn",
   category: "Correctness",
   recommendation:
-    "Drive the node with state/props (or a ref for genuinely uncontrolled nodes) instead of querying it and mutating its style/class. Imperative edits to a node React renders are invisible to the virtual DOM and get reverted or clobbered on the next render.",
+    "When state/props dynamically control the same style property or className on this node, React can overwrite imperative edits as those declarative values change. Update that value through state/props, or use a ref for deliberately uncontrolled nodes.",
   create: (context: RuleContext) => {
     const reported = new WeakSet<EsTreeNode>();
 
@@ -602,7 +602,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
       reported.add(node);
       context.report({
         node,
-        message: `You mutate the ${mutatedSurface} of a DOM node this component renders, so React reverts your change on the next render; drive it with state/props or a ref instead.`,
+        message: `React can overwrite this imperative ${mutatedSurface} change when its declarative value changes. Use state/props or a ref instead.`,
       });
     };
 

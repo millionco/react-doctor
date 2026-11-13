@@ -1,3 +1,6 @@
+import { JSON_PARSE_LOCAL_RESULT_MESSAGE } from "../../constants/json-parse-local-result.js";
+import { hasClosedJsonParseProvider } from "./utils/has-closed-json-parse-provider.js";
+import { hasLocalJsonResultRead } from "./utils/has-local-json-result-read.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -8,6 +11,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isObjectOfMemberAccess } from "../../utils/is-object-of-member-access.js";
@@ -547,6 +551,7 @@ export const noUnsafeJsonParse = defineRule({
   recommendation:
     "Wrap `JSON.parse(x)` in try/catch and validate the result (for example with a schema) before reading properties off it. A bare `JSON.parse(x).foo` throws on bad input and lets undefined fields slip past the type-checker.",
   create: (context: RuleContext) => {
+    let localResultProviderIsClosed: boolean | undefined;
     const fileIsNodeScript = NODE_SCRIPT_FILENAME_PATTERN.test(context.filename ?? "");
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -595,7 +600,13 @@ export const noUnsafeJsonParse = defineRule({
           }
           if (isGuardedByJsonValidator(node as EsTreeNode, firstArgument, context.scopes)) return;
         }
-        if (!isResultImmediatelyRead(node as EsTreeNode)) return;
+        const isImmediateRead = isResultImmediatelyRead(node as EsTreeNode);
+        if (!isImmediateRead) {
+          if (!hasLocalJsonResultRead(node, context.scopes)) return;
+          if (!isNodeReachableWithinFunction(node, context)) return;
+          localResultProviderIsClosed ??= hasClosedJsonParseProvider(node, context.scopes);
+          if (!localResultProviderIsClosed) return;
+        }
         if (
           isInsideTryStatement(node as EsTreeNode, {
             region: "block",
@@ -603,7 +614,10 @@ export const noUnsafeJsonParse = defineRule({
           })
         )
           return;
-        context.report({ node, message: MESSAGE });
+        context.report({
+          node,
+          message: isImmediateRead ? MESSAGE : JSON_PARSE_LOCAL_RESULT_MESSAGE,
+        });
       },
     };
   },

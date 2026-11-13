@@ -4,7 +4,7 @@ import {
   CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS,
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
-import { recordContentProbe } from "./cross-file-probe-recorder.js";
+import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
@@ -78,6 +78,7 @@ const stripJsonComments = (text: string): string => {
 const parseTsconfigFile = (
   configFilePath: string,
   probedPaths: string[],
+  strictJson = false,
 ): Record<string, unknown> | null => {
   recordContentProbe(configFilePath);
   probedPaths.push(configFilePath);
@@ -88,7 +89,7 @@ const parseTsconfigFile = (
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(stripJsonComments(sourceText));
+    const parsed: unknown = JSON.parse(strictJson ? sourceText : stripJsonComments(sourceText));
     return isObjectRecord(parsed) ? parsed : null;
   } catch {
     return null;
@@ -374,6 +375,83 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
     return resolveModuleFileFromAbsolutePath(path.resolve(config.baseAbsolutePath, source));
   }
   return null;
+};
+
+const DIRECT_JSON_CONFIG_REFERENCE = /^\.\.?\/[\w.-]+\.json$/;
+
+const readStrictTsconfig = (configPath: string): Record<string, unknown> | null | undefined => {
+  recordExistenceProbe(configPath);
+  try {
+    const entry = fs.lstatSync(configPath, { throwIfNoEntry: false });
+    if (!entry) return undefined;
+    if (!entry.isFile()) return null;
+    const config = parseTsconfigFile(configPath, [], true);
+    return Array.isArray(config) ? null : config;
+  } catch {
+    return null;
+  }
+};
+
+const hasUnsupportedOrMatchingAlias = (
+  config: Record<string, unknown>,
+  source: string,
+): boolean => {
+  const options = config.compilerOptions;
+  if (options === undefined) return false;
+  if (!isObjectRecord(options) || Array.isArray(options)) return true;
+  if (
+    options.baseUrl !== undefined ||
+    options.moduleSuffixes !== undefined ||
+    options.customConditions !== undefined
+  ) {
+    return true;
+  }
+  const paths = options.paths;
+  if (paths === undefined) return false;
+  if (!isObjectRecord(paths) || Array.isArray(paths)) return true;
+  return Object.entries(paths).some(
+    ([pattern, targets]) =>
+      pattern.length === 0 ||
+      pattern.indexOf("*") !== pattern.lastIndexOf("*") ||
+      !Array.isArray(targets) ||
+      targets.length === 0 ||
+      targets.some((target) => typeof target !== "string" || target.length === 0) ||
+      matchPathPattern(source, pattern) !== null,
+  );
+};
+
+export const hasUnmappedTsconfigImport = (filename: string, source: string): boolean => {
+  let directory = path.dirname(filename);
+  for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    let nearestConfig: Record<string, unknown> | undefined;
+    for (const configFilename of TSCONFIG_FILE_NAMES) {
+      const config = readStrictTsconfig(path.join(directory, configFilename));
+      if (config === undefined) continue;
+      if (!config || nearestConfig) return false;
+      nearestConfig = config;
+    }
+    if (nearestConfig) {
+      if (hasUnsupportedOrMatchingAlias(nearestConfig, source)) return false;
+      const extendedConfigPath = nearestConfig.extends;
+      if (extendedConfigPath === undefined) return true;
+      if (
+        typeof extendedConfigPath !== "string" ||
+        !DIRECT_JSON_CONFIG_REFERENCE.test(extendedConfigPath)
+      ) {
+        return false;
+      }
+      const extendedConfig = readStrictTsconfig(path.resolve(directory, extendedConfigPath));
+      return Boolean(
+        extendedConfig &&
+        extendedConfig.extends === undefined &&
+        !hasUnsupportedOrMatchingAlias(extendedConfig, source),
+      );
+    }
+    const parentDirectory = path.dirname(directory);
+    if (parentDirectory === directory) return true;
+    directory = parentDirectory;
+  }
+  return false;
 };
 
 export const resetTsconfigAliasCaches = (): void => {

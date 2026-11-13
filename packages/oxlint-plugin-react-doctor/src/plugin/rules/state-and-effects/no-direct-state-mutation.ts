@@ -213,7 +213,7 @@ export const noDirectStateMutation = defineRule({
   title: "State mutated in place",
   severity: "warn",
   recommendation:
-    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. React only redraws when the value is new, so changing it in place does nothing.",
+    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. When changing a nested record, copy that record and every containing object or array. Passing the same state value back can make React skip that update.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

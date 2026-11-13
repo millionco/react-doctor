@@ -25,6 +25,37 @@ const setupProject = (caseName: string, packageJson: PackageJson): string => {
 };
 
 describe("detectTargetBlankOpenerProtection", () => {
+  it.each([
+    "extends browserslist-config-untrusted",
+    "chrome 80, extends browserslist-config-untrusted",
+    "chrome 80 and extends browserslist-config-untrusted",
+    "> 1% in browserslist-config-untrusted stats",
+    "cover 90% in browserslist-config-untrusted stats",
+    "browserslist config",
+  ])("does not evaluate module-loading query %s", (query) => {
+    const packageJson: PackageJson = { browserslist: [query] };
+    const projectDirectory = setupProject(query.replace(/[^a-z0-9]/gi, "-"), packageJson);
+    expect(detectTargetBlankOpenerProtection(projectDirectory, packageJson)).toBeUndefined();
+  });
+
+  it("never loads an executable extended config", () => {
+    const markerPath = path.join(temporaryRoot, "executed-marker");
+    const configPath = path.join(temporaryRoot, "browserslist-config-untrusted.cjs");
+    fs.writeFileSync(
+      configPath,
+      `require("node:fs").writeFileSync(${JSON.stringify(markerPath)}, "executed"); module.exports = ["chrome 80"];`,
+    );
+    const packageJson: PackageJson = { browserslist: [`extends ${configPath}`] };
+    const projectDirectory = setupProject("executable-config", packageJson);
+    vi.stubEnv("BROWSERSLIST_DANGEROUS_EXTEND", "1");
+    try {
+      expect(detectTargetBlankOpenerProtection(projectDirectory, packageJson)).toBeUndefined();
+      expect(fs.existsSync(markerPath)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("suppresses bundled database maintenance warnings and restores the environment", () => {
     const packageJson: PackageJson = {
       name: "quiet-old-browser-data",

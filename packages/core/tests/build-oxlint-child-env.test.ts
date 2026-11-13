@@ -7,6 +7,19 @@ import { buildOxlintChildEnv } from "../src/utils/build-oxlint-child-env.js";
 const SHARED_COMPILE_CACHE_BASE = path.join(os.tmpdir(), NODE_COMPILE_CACHE_DIR_NAME);
 
 describe("buildOxlintChildEnv", () => {
+  it("pins Babel browser targets without inheriting executable Browserslist queries", () => {
+    const childEnv = buildOxlintChildEnv({
+      BROWSERSLIST: "extends browserslist-config-untrusted",
+      BROWSERSLIST_CONFIG: "/untrusted/.browserslistrc",
+      BROWSERSLIST_STATS: "/untrusted/stats.json",
+      BROWSERSLIST_DANGEROUS_EXTEND: "1",
+    });
+    expect(childEnv.BROWSERSLIST).toBe("defaults");
+    expect(childEnv.BROWSERSLIST_CONFIG).toBeUndefined();
+    expect(childEnv.BROWSERSLIST_STATS).toBeUndefined();
+    expect(childEnv.BROWSERSLIST_DANGEROUS_EXTEND).toBeUndefined();
+  });
+
   it("sets NODE_COMPILE_CACHE to the shared tmp base dir by default", () => {
     const childEnv = buildOxlintChildEnv({ PATH: "/usr/bin" });
     expect(childEnv.NODE_COMPILE_CACHE).toBe(SHARED_COMPILE_CACHE_BASE);

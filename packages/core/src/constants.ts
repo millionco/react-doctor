@@ -1044,3 +1044,7 @@ export const MAINTAINABILITY_SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
 export const MAINTAINABILITY_PLUGIN = "react-doctor";
 export const MAINTAINABILITY_DUPLICATE_JSX_RULE = "duplicate-jsx-subtree";
 export const MAINTAINABILITY_CATEGORY = "Maintainability";
+
+export const ADOPTED_LINT_CONFIG_MAX_BYTES = 1024 * 1024;
+export const ADOPTED_LINT_CONFIG_MAX_FILES = 64;
+export const ADOPTED_LINT_CONFIG_MAX_DEPTH = 32;

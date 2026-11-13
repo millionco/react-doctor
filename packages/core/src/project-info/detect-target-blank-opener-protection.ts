@@ -73,6 +73,12 @@ const getBrowserslistProtectionRequirement = (
   try {
     const queries = browserslist.loadConfig({ path: directory, env: "production" });
     if (!queries) return undefined;
+    const queryEntries = typeof queries === "string" ? [queries] : queries;
+    if (
+      queryEntries.some((query) => /\b(?:extends|stats)\b|\bbrowserslist\s+config\b/i.test(query))
+    ) {
+      return undefined;
+    }
 
     let requirement: "noopener" | "noreferrer" | undefined;
     let hasUnsupportedTarget = false;
@@ -82,7 +88,7 @@ const getBrowserslistProtectionRequirement = (
     let browserTargets: string[] = [];
     try {
       process.env.BROWSERSLIST_IGNORE_OLD_DATA = "true";
-      browserTargets = browserslist(queries);
+      browserTargets = browserslist(queries, { path: false, stats: {} });
     } finally {
       if (previousIgnoreOldData === undefined) {
         delete process.env.BROWSERSLIST_IGNORE_OLD_DATA;

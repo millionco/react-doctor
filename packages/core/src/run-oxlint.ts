@@ -20,6 +20,7 @@ import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
+import { snapshotAdoptedLintConfigs } from "./utils/snapshot-adopted-lint-configs.js";
 import { readAdoptedLintConfigSettings } from "./read-adopted-lint-config-settings.js";
 import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
@@ -435,7 +436,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // oxlint's resolver can't follow those — adopting them guarantees
   // the parser crash + misleading warning. Drop them up front so the
   // scan starts in the same state the fallback would land in.
-  const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
+  const adoptableConfigPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
   const adoptedSettings =
     detectedConfigPaths.length > 0 ? readAdoptedLintConfigSettings(detectedConfigPaths) : {};
   const userPlugins =
@@ -461,6 +462,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     : undefined;
 
   try {
+    const extendsPaths = snapshotAdoptedLintConfigs({
+      configPaths: adoptableConfigPaths,
+      rootDirectory,
+      snapshotDirectory: configDirectory,
+    });
     const diagnosticContextDirectory = path.join(configDirectory, "contexts");
     fs.mkdirSync(diagnosticContextDirectory);
     const oxlintBinary = resolveOxlintBinary();

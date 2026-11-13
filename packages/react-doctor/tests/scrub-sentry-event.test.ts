@@ -28,6 +28,9 @@ const buildEvent = (): Event => ({
               filename: "/Users/jane/app/x.ts",
               abs_path: "/Users/jane/app/x.ts",
               vars: { token: "secret-value" },
+              pre_context: ["private source before"],
+              context_line: "private source at frame",
+              post_context: ["private source after"],
             },
           ],
         },
@@ -68,6 +71,18 @@ describe("scrubSentryEvent", () => {
   it("drops captured local variables from stack frames", () => {
     const scrubbed = scrubSentryEvent(buildEvent());
     expect(scrubbed?.exception?.values?.[0]?.stacktrace?.frames?.[0]?.vars).toBeUndefined();
+  });
+
+  it("drops source context and raw dependency specifications", () => {
+    const event = buildEvent();
+    event.modules = { "private-package": "git+https://internal.example/private.git" };
+    const scrubbed = scrubSentryEvent(event);
+    const frame = scrubbed?.exception?.values?.[0]?.stacktrace?.frames?.[0];
+    expect(frame?.pre_context).toBeUndefined();
+    expect(frame?.context_line).toBeUndefined();
+    expect(frame?.post_context).toBeUndefined();
+    expect(scrubbed?.modules).toBeUndefined();
+    expect(JSON.stringify(scrubbed)).not.toContain("private source");
   });
 
   it("masks known secrets that leak into free text", () => {

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS } from "./constants.js";
 import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
 import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
+import { isSymlinkFreePath } from "./utils/is-symlink-free-path.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
@@ -24,11 +25,13 @@ const getBackupPath = (rootDirectory: string, absolutePath: string): string | nu
 
 const removeBackupRootIfEmpty = (rootDirectory: string): void => {
   const backupRootDirectory = getBackupRootDirectory(rootDirectory);
+  if (!isSymlinkFreePath(backupRootDirectory, rootDirectory)) return;
   if (!walkSourceTreeFiles(backupRootDirectory).next().done) return;
   fs.rmSync(backupRootDirectory, { recursive: true, force: true });
 };
 
 interface NeutralizedFileLease {
+  rootDirectory: string;
   backupPath: string;
   originalContent: string;
   neutralizedContent: string;
@@ -212,8 +215,16 @@ const collectNeutralizationCandidatePaths = (
 const recoverOrphanedBackups = (rootDirectory: string): Set<string> => {
   const blockedPaths = new Set<string>();
   const backupRootDirectory = getBackupRootDirectory(rootDirectory);
+  if (!isSymlinkFreePath(backupRootDirectory, rootDirectory)) return blockedPaths;
   for (const { absolutePath: backupPath } of walkSourceTreeFiles(backupRootDirectory)) {
     const originalPath = path.join(rootDirectory, path.relative(backupRootDirectory, backupPath));
+    if (
+      !isSymlinkFreePath(backupPath, rootDirectory) ||
+      !isSymlinkFreePath(originalPath, rootDirectory)
+    ) {
+      blockedPaths.add(originalPath);
+      continue;
+    }
     if (neutralizedFileLeases.has(originalPath)) continue;
     let backupContent: string;
     let currentContent: string;
@@ -284,6 +295,11 @@ export const neutralizeDisableDirectives = async (
       // the write fails. Keeping a zero-reference entry would let a later
       // scan adopt stale original content and overwrite a newer file.
       neutralizedFileLeases.delete(absolutePath);
+      if (
+        !isSymlinkFreePath(absolutePath, lease.rootDirectory) ||
+        !isSymlinkFreePath(lease.backupPath, lease.rootDirectory)
+      )
+        continue;
       try {
         const currentContent = fs.readFileSync(absolutePath, "utf-8");
         if (
@@ -320,6 +336,7 @@ export const neutralizeDisableDirectives = async (
   process.once("exit", onExit);
 
   const leaseCandidatePath = (absolutePath: string): void => {
+    if (!isSymlinkFreePath(absolutePath, resolvedRootDirectory)) return;
     if (leasedPaths.has(absolutePath)) return;
     if (blockedPaths.has(absolutePath)) return;
     const existingLease = neutralizedFileLeases.get(absolutePath);
@@ -339,7 +356,7 @@ export const neutralizeDisableDirectives = async (
     const neutralizedContent = neutralizeContent(originalContent);
     if (neutralizedContent !== originalContent) {
       const backupPath = getBackupPath(resolvedRootDirectory, absolutePath);
-      if (backupPath === null) return;
+      if (backupPath === null || !isSymlinkFreePath(backupPath, resolvedRootDirectory)) return;
       try {
         fs.mkdirSync(path.dirname(backupPath), { recursive: true });
         fs.writeFileSync(backupPath, originalContent, { flag: "wx" });
@@ -351,6 +368,7 @@ export const neutralizeDisableDirectives = async (
       }
       fs.writeFileSync(absolutePath, neutralizedContent);
       neutralizedFileLeases.set(absolutePath, {
+        rootDirectory: resolvedRootDirectory,
         backupPath,
         originalContent,
         neutralizedContent,

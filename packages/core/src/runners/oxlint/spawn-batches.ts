@@ -268,7 +268,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         batchState.deadlineSkippedFileCount += batch.length;
         return [];
       }
-      const batchArgs = [...baseArgs, ...batch];
+      const batchArgs = [...baseArgs, "--", ...batch];
       try {
         const spawnBatch = async (): Promise<string | null> => {
           const effectiveSpawnTimeoutMs = resolveSpawnTimeoutMs();

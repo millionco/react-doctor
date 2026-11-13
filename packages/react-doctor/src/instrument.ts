@@ -45,6 +45,10 @@ const initializeSentryModule = (Sentry: typeof SentryModule): typeof SentryModul
       environment: resolveSentryEnvironment(),
       // Anonymized telemetry: never attach the user's IP address.
       sendDefaultPii: false,
+      integrations: (integrations) =>
+        integrations.filter(
+          (integration) => integration.name !== "ContextLines" && integration.name !== "Modules",
+        ),
       // Spans go to Axiom; Sentry captures exceptions only.
       tracesSampleRate: 0,
       // No spans means no ESM instrumentation to install, so skip the

@@ -61,6 +61,22 @@ const hash = (
   });
 
 describe("computeRulesetHash", () => {
+  it("distinguishes NUL bytes moved between ignore patterns and tsconfig text", () => {
+    const config = cacheableConfig(makeProject("/repo"));
+    expect(
+      hash({ config, ignorePatterns: ["src/Promo.tsx\u0000/*"], tsconfigContent: "*/{}" }),
+    ).not.toBe(
+      hash({ config, ignorePatterns: ["src/Promo.tsx"], tsconfigContent: "/*\u0000*/{}" }),
+    );
+  });
+
+  it("preserves boundaries between individual ignore patterns", () => {
+    const config = cacheableConfig(makeProject("/repo"));
+    expect(hash({ config, ignorePatterns: ["src/a.tsx\nsrc/b.tsx"] })).not.toBe(
+      hash({ config, ignorePatterns: ["src/a.tsx", "src/b.tsx"] }),
+    );
+  });
+
   it("ignores the temporary ownership transport directory", () => {
     const project = makeProject("/repo");
     const first = createOxlintConfig({

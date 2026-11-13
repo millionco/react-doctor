@@ -19,6 +19,8 @@ export const scrubSentryEvent = <T extends Event>(event: T): T | null => {
   try {
     delete event.server_name;
     delete event.user;
+    delete event.modules;
+    if (event.debug_meta) anonymizeInPlace(event.debug_meta);
 
     const device = event.contexts?.device;
     if (device) delete device.name;
@@ -41,6 +43,9 @@ export const scrubSentryEvent = <T extends Event>(event: T): T | null => {
         // Local variables can hold arbitrary user data we can't reliably
         // anonymize, so drop them outright rather than risk a leak.
         delete frame.vars;
+        delete frame.pre_context;
+        delete frame.context_line;
+        delete frame.post_context;
         if (typeof frame.filename === "string")
           frame.filename = scrubSensitivePaths(frame.filename);
         if (typeof frame.abs_path === "string")

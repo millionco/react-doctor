@@ -352,3 +352,85 @@ describe("neutralizeDisableDirectives — backup recovery after ungraceful exit"
     ).toBe(true);
   });
 });
+
+describe("neutralizeDisableDirectives — symlink boundaries", () => {
+  let temporaryDirectory: string;
+  let projectDirectory: string;
+  let outsideDirectory: string;
+  const originalContent = "// eslint-disable-next-line\nexport const value = 1;\n";
+
+  beforeEach(() => {
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-backup-boundary-"));
+    projectDirectory = path.join(temporaryDirectory, "project");
+    outsideDirectory = path.join(temporaryDirectory, "outside");
+    fs.mkdirSync(projectDirectory);
+    fs.mkdirSync(outsideDirectory);
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  });
+
+  it.each([".react-doctor", ".react-doctor/audit-backups"])(
+    "does not recover or create backups through %s",
+    async (linkedRelativePath) => {
+      const outsideFilePath = path.join(outsideDirectory, "app.tsx");
+      fs.writeFileSync(outsideFilePath, originalContent);
+      const linkedPath = path.join(projectDirectory, linkedRelativePath);
+      fs.mkdirSync(path.dirname(linkedPath), { recursive: true });
+      fs.symlinkSync(outsideDirectory, linkedPath, "dir");
+      fs.writeFileSync(path.join(projectDirectory, "app.tsx"), originalContent);
+
+      const recover = await neutralizeDisableDirectives(projectDirectory, undefined, {
+        recoverOnly: true,
+      });
+      recover();
+      const restore = await neutralizeDisableDirectives(projectDirectory, undefined, {
+        findFiles: async () => ["app.tsx"],
+      });
+      restore();
+
+      expect(fs.readFileSync(outsideFilePath, "utf-8")).toBe(originalContent);
+      expect(fs.readFileSync(path.join(projectDirectory, "app.tsx"), "utf-8")).toBe(
+        originalContent,
+      );
+      expect(fs.lstatSync(linkedPath).isSymbolicLink()).toBe(true);
+    },
+  );
+
+  it("does not restore an orphaned backup through a symlinked source directory", async () => {
+    const backupPath = path.join(projectDirectory, getBackupRelativePath("src/app.tsx"));
+    fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+    fs.writeFileSync(backupPath, originalContent);
+    const outsideFilePath = path.join(outsideDirectory, "app.tsx");
+    const neutralizedContent = originalContent.replace("eslint-disable", "eslint_disable");
+    fs.writeFileSync(outsideFilePath, neutralizedContent);
+    fs.symlinkSync(outsideDirectory, path.join(projectDirectory, "src"), "dir");
+
+    const restore = await neutralizeDisableDirectives(projectDirectory, undefined, {
+      recoverOnly: true,
+    });
+    restore();
+
+    expect(fs.readFileSync(outsideFilePath, "utf-8")).toBe(neutralizedContent);
+    expect(fs.readFileSync(backupPath, "utf-8")).toBe(originalContent);
+  });
+
+  it("does not restore a leased source replaced by an outside symlink", async () => {
+    const sourcePath = path.join(projectDirectory, "app.tsx");
+    fs.writeFileSync(sourcePath, originalContent);
+    const outsideFilePath = path.join(outsideDirectory, "app.tsx");
+    const neutralizedContent = originalContent.replace("eslint-disable", "eslint_disable");
+    fs.writeFileSync(outsideFilePath, neutralizedContent);
+    const restore = await neutralizeDisableDirectives(projectDirectory, undefined, {
+      findFiles: async () => ["app.tsx"],
+    });
+    fs.unlinkSync(sourcePath);
+    fs.symlinkSync(outsideFilePath, sourcePath);
+
+    restore();
+
+    expect(fs.readFileSync(outsideFilePath, "utf-8")).toBe(neutralizedContent);
+    expect(fs.existsSync(path.join(projectDirectory, getBackupRelativePath("app.tsx")))).toBe(true);
+  });
+});

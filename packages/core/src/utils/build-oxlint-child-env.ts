@@ -24,6 +24,12 @@ export const buildOxlintChildEnv = (sourceEnv: NodeJS.ProcessEnv): NodeJS.Proces
     childEnv[name] = value;
   }
 
+  childEnv.BROWSERSLIST = "defaults";
+  childEnv.BROWSERSLIST_IGNORE_OLD_DATA = "true";
+  delete childEnv.BROWSERSLIST_CONFIG;
+  delete childEnv.BROWSERSLIST_STATS;
+  delete childEnv.BROWSERSLIST_DANGEROUS_EXTEND;
+
   const isCompileCacheDisabled = Boolean(sourceEnv.NODE_DISABLE_COMPILE_CACHE);
   const isCompileCacheAlreadySet = childEnv.NODE_COMPILE_CACHE !== undefined;
   if (!isCompileCacheDisabled && !isCompileCacheAlreadySet) {

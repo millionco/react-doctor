@@ -383,7 +383,10 @@ export interface ReactDoctorConfig {
    * Only JSON-format configs are supported because oxlint's `extends`
    * cannot evaluate JS/TS configs. Flat configs (`eslint.config.js`),
    * legacy JS configs (`.eslintrc.js`), and TypeScript oxlint configs
-   * (`oxlint.config.ts`) are silently skipped.
+   * (`oxlint.config.ts`) are silently skipped. Adopted JSON configs are
+   * snapshotted before linting. Chains containing `jsPlugins`, symlinks,
+   * references outside the repository, or excessive nesting are skipped.
+   * Executable plugins belong in the explicit React Doctor `plugins` option.
    *
    * Category-level enables in the user's config (`"categories": { ... }`)
    * are NOT honored — react-doctor explicitly disables every oxlint

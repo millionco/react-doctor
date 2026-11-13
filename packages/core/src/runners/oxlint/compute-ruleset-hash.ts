@@ -59,13 +59,13 @@ export const computeRulesetHash = (input: RulesetHashInput): string =>
   crypto
     .createHash("sha1")
     .update("project-bulk-suppressions-isolated\u0000")
-    .update(JSON.stringify(normalizeConfigForHash(input.config)))
-    .update("\u0000")
-    .update([...input.toolchainVersions].join("\u0000"))
-    .update("\u0000")
-    .update([...input.ignorePatterns].join("\n"))
-    .update("\u0000")
-    .update(input.tsconfigContent ?? "")
-    .update("\u0000")
-    .update(input.respectInlineDisables ? "respect-inline-disables" : "audit-mode")
+    .update(
+      JSON.stringify([
+        normalizeConfigForHash(input.config),
+        input.toolchainVersions,
+        input.ignorePatterns,
+        input.tsconfigContent,
+        input.respectInlineDisables,
+      ]),
+    )
     .digest("hex");

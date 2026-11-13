@@ -2422,3 +2422,71 @@ describe("count-built placeholder arrays", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("generated numeric options", () => {
+  it.each(["limits.seats", "limits['seats']", "limits.seats + 1"])(
+    "accepts a count with a fixed numeric identity: %s",
+    (count) => {
+      for (const quantity of ["index", "index + 1"]) {
+        const result = runRule(
+          noArrayIndexAsKey,
+          `const Seats = ({ limits }) => Array.from({ length: ${count} }, (_, index) => <option key={${quantity}} value={${quantity}}>{${quantity}}</option>);`,
+        );
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toEqual([]);
+      }
+    },
+  );
+
+  it("accepts an explicit return of a numeric option", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from({ length: limits.seats }, (_, index) => {
+        return <option key={index + 1} value={index + 1}> {index + 1} </option>;
+      });`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `<option key={index + 1} value={records[index].id}>{index + 1}</option>`,
+    `<option key={index + 1} value={index + 1}>{records[index].label}</option>`,
+    `<option key={index + 1} value={index + 1} ref={bindOption}>{index + 1}</option>`,
+    `<option key={index + 1} value={index + 1} {...attributes}>{index + 1}</option>`,
+    `<option key={index + 1} value={index + 1} onClick={() => select(records[index])}>{index + 1}</option>`,
+    `<option key={index + 1} value={index + 2}>{index + 1}</option>`,
+    `<option key={index + 1} value={index + 1}>{index + offset}</option>`,
+    `<option key={index + 1} value={index + 1}>{index + 1}<Row record={records[index]}/></option>`,
+    `<Option key={index + 1} value={index + 1}>{index + 1}</Option>`,
+    `<input key={index + 1} defaultValue={records[index].label}/>`,
+  ])("keeps data, side effects and unknown identities checked: %s", (element) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from({ length: limits.seats }, (_, index) => ${element});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "{ length: limits.seats, 0: record }",
+    "{ length: limits.seats, ...records }",
+    "{ length: limits.seats, [Symbol.iterator]: iterate }",
+    "{ get length() { return limits.seats; } }",
+    "{ [property]: limits.seats }",
+  ])("does not extend the exemption to other array-like objects: %s", (source) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from(${source}, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `const Seats = ({ Array, limits }) => Array.from({ length: limits.seats }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>);`,
+    `Array.from({ length: limits.seats }, (_, index) => { index = selectRecord(index); return <option key={index + 1} value={index + 1}>{index + 1}</option>; });`,
+    `records.map((record, index) => <option key={index + 1} value={record.id}>{record.label}</option>);`,
+  ])("retains warnings outside a native count-only factory: %s", (source) => {
+    expect(runRule(noArrayIndexAsKey, source).diagnostics).toHaveLength(1);
+  });
+});

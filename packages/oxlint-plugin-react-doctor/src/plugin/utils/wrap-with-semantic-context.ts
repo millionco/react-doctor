@@ -1,7 +1,7 @@
 import { recordDiagnosticContext } from "./record-diagnostic-context.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { Rule } from "./rule.js";
-import type { BaseRuleContext, RuleContext } from "./rule-context.js";
+import type { BaseRuleContext, RuleContext, RuleSourceComment } from "./rule-context.js";
 import type { HostRule } from "./rule-plugin.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
@@ -83,6 +83,10 @@ class SemanticRuleContext implements RuleContext {
   // `this` and returned `undefined` under ESLint 9, crashing rules).
   get filename(): string | undefined {
     return this.baseContext.filename ?? this.baseContext.getFilename?.();
+  }
+
+  get sourceComments(): ReadonlyArray<RuleSourceComment> {
+    return this.baseContext.sourceCode?.getAllComments?.() ?? [];
   }
 
   get scopes(): ScopeAnalysis {

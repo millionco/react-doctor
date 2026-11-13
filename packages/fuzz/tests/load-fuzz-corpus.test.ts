@@ -63,6 +63,22 @@ describe("loadFuzzCorpus", () => {
     ]);
   });
 
+  it("records physical filenames only for an explicit fixture context directive", () => {
+    const directory = makeCorpusDirectory();
+    fs.writeFileSync(path.join(directory, "ordinary.tsx"), "export const ordinary = true;");
+    fs.writeFileSync(
+      path.join(directory, "opted-in.tsx"),
+      "// fixture-context: physical\r\nexport const optedIn = true;",
+    );
+    const entries = loadFuzzCorpus(directory);
+    expect(entries.find((entry) => entry.relativePath === "ordinary.tsx")).not.toHaveProperty(
+      "fixtureFilename",
+    );
+    expect(entries.find((entry) => entry.relativePath === "opted-in.tsx")?.fixtureFilename).toBe(
+      path.join(directory, "opted-in.tsx"),
+    );
+  });
+
   it.each(["tsx", "ts", "jsx", "js"])("loads .%s source files", (extension) => {
     const directory = makeCorpusDirectory();
     fs.writeFileSync(path.join(directory, `declared.${extension}`), "export const value = 1;");

@@ -457,7 +457,7 @@ export const noPassLiveStateToParent = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Move the state up to the parent (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
+    "Mirroring local state in the caller can add a render. If the caller should own the value, lift it to the nearest owner. Keep child-owned draft or interaction state, and move the notification to the event only when that preserves the required timing. If a custom hook computes the value, return it to the caller. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isReactHookCall(node, "useEffect", context.scopes)) return;
@@ -614,8 +614,7 @@ export const noPassLiveStateToParent = defineRule({
 
         context.report({
           node: callExpr,
-          message:
-            "Pushing state up to a parent from a useEffect costs your users an extra render.",
+          message: "This effect passes a value to a callback provided by the caller.",
         });
       }
     },

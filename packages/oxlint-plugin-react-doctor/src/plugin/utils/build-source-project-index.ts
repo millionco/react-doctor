@@ -8,6 +8,7 @@ import { isEverySpecifierInlineType, isTypeOnlyImport } from "./is-type-only-imp
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isTestlikeFilename } from "./is-testlike-filename.js";
 import { normalizeFilename } from "./normalize-filename.js";
+import { parseAstroSourceFile } from "./parse-astro-source-file.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { resolveModulePath } from "./resolve-module-path.js";
 import { walkAst } from "./walk-ast.js";
@@ -34,12 +35,17 @@ export interface SourceProjectIndexInput {
   readonly currentScopes: ScopeAnalysis;
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
+  readonly includeAstroSources?: boolean;
+  readonly maximumSourceFiles?: number;
 }
 
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
 const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
 const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
 const SOURCE_PROJECT_HTML_FILE_PATTERN = /\.html?$/i;
+const SOURCE_PROJECT_ASTRO_FILE_PATTERN = /\.astro$/i;
+export const SOURCE_PROJECT_BUILD_CONFIG_PATTERN =
+  /(?:^|\/)(?:astro|babel|next|nuxt|rollup|rspack|vite|webpack)\.config\.[cm]?[jt]s$/;
 const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   ".angular",
   ".astro",
@@ -73,6 +79,8 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
 
 const listProductionSourceFiles = (
   rootDirectory: string,
+  includeAstroSources: boolean,
+  maximumSourceFiles: number | undefined,
 ): {
   sourceFilePaths: ReadonlyArray<string>;
   htmlFilePaths: ReadonlyArray<string>;
@@ -104,7 +112,12 @@ const listProductionSourceFiles = (
         pendingDirectories.push(absolutePath);
         continue;
       }
-      if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
+      if (
+        !entry.isFile() ||
+        (isTestlikeFilename(absolutePath) &&
+          !(includeAstroSources && SOURCE_PROJECT_BUILD_CONFIG_PATTERN.test(entry.name)))
+      )
+        continue;
       if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
         hasOpaqueMdxConsumerSurface = true;
         continue;
@@ -113,9 +126,15 @@ const listProductionSourceFiles = (
         htmlFilePaths.push(normalizeFilename(absolutePath));
         continue;
       }
-      if (!SOURCE_PROJECT_FILE_PATTERN.test(entry.name)) continue;
+      if (
+        !SOURCE_PROJECT_FILE_PATTERN.test(entry.name) &&
+        !(includeAstroSources && SOURCE_PROJECT_ASTRO_FILE_PATTERN.test(entry.name))
+      )
+        continue;
       if (SOURCE_PROJECT_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
       sourceFilePaths.push(normalizeFilename(absolutePath));
+      if (maximumSourceFiles !== undefined && sourceFilePaths.length > maximumSourceFiles)
+        return null;
     }
   }
 
@@ -208,15 +227,18 @@ export const buildSourceProjectIndex = ({
   currentScopes,
   requiredModuleSources = [],
   knownModuleSources,
+  includeAstroSources = false,
+  maximumSourceFiles,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
-  if (
-    requiredModuleSources.length > 0 &&
-    knownModuleSources !== undefined &&
-    !requiredModuleSources.some((moduleSource) => knownModuleSources.includes(moduleSource))
-  ) {
-    return null;
+  if (requiredModuleSources.length > 0 && knownModuleSources !== undefined) {
+    const knownSources = new Set(knownModuleSources);
+    if (!requiredModuleSources.some((moduleSource) => knownSources.has(moduleSource))) return null;
   }
-  const productionSourceFiles = listProductionSourceFiles(rootDirectory);
+  const productionSourceFiles = listProductionSourceFiles(
+    rootDirectory,
+    includeAstroSources,
+    maximumSourceFiles,
+  );
   if (!productionSourceFiles) return null;
   if (
     requiredModuleSources.length > 0 &&
@@ -238,7 +260,9 @@ export const buildSourceProjectIndex = ({
       });
       continue;
     }
-    const parsedProgram = parseSourceFile(filePath);
+    const parsedProgram = SOURCE_PROJECT_ASTRO_FILE_PATTERN.test(filePath)
+      ? parseAstroSourceFile(filePath)
+      : parseSourceFile(filePath);
     if (!parsedProgram || !isNodeOfType(parsedProgram, "Program")) return null;
     modulesByFilePath.set(filePath, {
       filePath,

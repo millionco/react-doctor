@@ -1,3 +1,4 @@
+import { getNativeIntervalEffectCallback } from "./utils/get-native-interval-effect-callback.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -1343,6 +1344,7 @@ const hasUnsafePostAwaitSetter = (
   asyncFunction: EsTreeNode,
   effectCallback: EsTreeNode,
   context: RuleContext,
+  registrationCleanup?: EsTreeNode[],
 ): boolean => {
   if (!isFunctionLike(asyncFunction)) return false;
   const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
@@ -1352,11 +1354,9 @@ const hasUnsafePostAwaitSetter = (
     ? asyncFunction.range[0]
     : findFirstSuspensionStart(asyncFunction);
   if (firstSuspensionStart === null) return false;
-  const cleanupFunctions = collectCleanupFunctionsAfterInvocations(
-    effectCallback,
-    asyncFunction,
-    context,
-  );
+  const cleanupFunctions =
+    registrationCleanup ??
+    collectCleanupFunctionsAfterInvocations(effectCallback, asyncFunction, context);
   const cleanupWrites = collectCleanupGuardWrites(cleanupFunctions, context);
   const postSuspensionWrites = collectPostSuspensionWrittenReferenceKeys(
     asyncFunction,
@@ -1440,6 +1440,13 @@ export const noSetStateAfterAwaitInEffect = defineRule({
           });
           return;
         }
+      }
+      const interval = getNativeIntervalEffectCallback(node, callback, context);
+      if (
+        interval &&
+        hasUnsafePostAwaitSetter(interval.callback, callback, context, [interval.cleanup])
+      ) {
+        context.report({ node, message: MESSAGE });
       }
     },
   }),

@@ -1,6 +1,10 @@
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { hasClosedSplitAliasReferences } from "./utils/has-closed-split-alias-references.js";
+import { isSplitAliasPartGuarded } from "./utils/is-split-alias-part-guarded.js";
+import { FIRST_OPTIONAL_SPLIT_PART_INDEX } from "./utils/constants.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -659,6 +663,33 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
 
         const base = stripParenExpression(indexRead.object as EsTreeNode);
         const index = indexRead.property as EsTreeNode;
+
+        if (
+          isNodeOfType(base, "Identifier") &&
+          isNodeOfType(index, "Literal") &&
+          typeof index.value === "number" &&
+          Number.isInteger(index.value) &&
+          index.value >= FIRST_OPTIONAL_SPLIT_PART_INDEX
+        ) {
+          const symbol = context.scopes.symbolFor(base);
+          const initializer = symbol ? getDirectConstInitializer(symbol) : null;
+          const splitCall = initializer ? stripParenExpression(initializer) : null;
+          if (
+            symbol &&
+            splitCall &&
+            isSplitCall(splitCall) &&
+            hasClosedSplitAliasReferences(symbol, node, context.scopes)
+          ) {
+            const partIndex = index.value;
+            if (isStaticallyPresentSplitPart(splitCall, partIndex)) return;
+            if (isKnownFormatSplitPart(splitCall, partIndex, context)) return;
+            if (isSplitPartDerefGuarded(node, splitCall)) return;
+            if (isInsideFilteredIterationCallback(node, splitCall)) return;
+            if (isSplitAliasPartGuarded(node, symbol, partIndex, context.scopes)) return;
+            context.report({ node, message: MESSAGE });
+            return;
+          }
+        }
 
         // (a) regex exec/match result indexed then dereferenced.
         if (isRegexResultCall(base)) {

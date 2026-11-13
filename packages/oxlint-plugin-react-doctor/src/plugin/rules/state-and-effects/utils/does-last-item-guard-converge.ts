@@ -43,10 +43,12 @@ const isFixedStringTarget = (
   if (isNodeOfType(node, "Literal")) return typeof node.value === "string";
   if (!isNodeOfType(node, "Identifier")) return false;
   const symbol = scopes.symbolFor(node);
+  const parameterScope =
+    componentScope.kind === "function-body" ? componentScope.parent : componentScope;
   if (
     !symbol ||
     symbol.kind !== "parameter" ||
-    symbol.scope !== componentScope ||
+    symbol.scope !== parameterScope ||
     symbol.references.some((reference) => reference.flag !== "read")
   ) {
     return false;

@@ -60,6 +60,33 @@ describe("react-builtins/jsx-no-target-blank — target-aware regressions", () =
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["\u00a0", "\u000b", "\u2003"])(
+    "does not recognize a protection token after non-HTML whitespace %j",
+    (separator) => {
+      const noopener = JSON.stringify(`external${separator}noopener`);
+      const noreferrer = JSON.stringify(`external${separator}noreferrer`);
+      expect(
+        runLegacyChromiumRule(
+          `const Link = () => <a href="https://example.com" target="_blank" rel={${noopener}}>Example</a>;`,
+        ).diagnostics,
+      ).toHaveLength(1);
+      expect(
+        runNoreferrerRequiredRule(
+          `const Link = () => <a href="https://example.com" target="_blank" rel={${noreferrer}}>Example</a>;`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+
+  it("recognizes protection tokens separated by HTML whitespace", () => {
+    const rel = JSON.stringify("external\t\n\f\r NOREFERRER");
+    const result = runNoreferrerRequiredRule(
+      `const Link = () => <a href="https://example.com" target="_blank" rel={${rel}}>Example</a>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps relative links quiet", () => {
     const relative = runNoreferrerRequiredRule(
       'const Link = () => <a href="/docs" target="_blank">Docs</a>;',

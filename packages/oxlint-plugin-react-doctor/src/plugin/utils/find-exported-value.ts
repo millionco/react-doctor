@@ -3,12 +3,11 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
-export const findExportedValue = (
-  programRoot: EsTreeNode,
-  exportedName: string,
-): EsTreeNode | null => {
-  if (!isNodeOfType(programRoot, "Program")) return null;
+const exportedValuesByProgram = new WeakMap<EsTreeNode, ReadonlyMap<string, EsTreeNode>>();
 
+const indexExportedValues = (
+  programRoot: EsTreeNodeOfType<"Program">,
+): ReadonlyMap<string, EsTreeNode> => {
   const localBindings = new Map<string, EsTreeNode>();
   const namedExports = new Map<string, string>();
   let defaultExport: EsTreeNode | null = null;
@@ -106,13 +105,28 @@ export const findExportedValue = (
     }
   }
 
-  if (exportedName === "default") {
-    if (defaultExport) return defaultExport;
-    if (defaultExportIdentifierName) {
-      const binding = localBindings.get(defaultExportIdentifierName);
-      if (binding) return binding;
-    }
+  const exportedValues = new Map<string, EsTreeNode>();
+  for (const [exportedName, localName] of namedExports) {
+    const binding = localBindings.get(localName);
+    if (binding) exportedValues.set(exportedName, binding);
   }
-  const localName = namedExports.get(exportedName);
-  return localName ? (localBindings.get(localName) ?? null) : null;
+  if (defaultExport) exportedValues.set("default", defaultExport);
+  else if (defaultExportIdentifierName) {
+    const binding = localBindings.get(defaultExportIdentifierName);
+    if (binding) exportedValues.set("default", binding);
+  }
+  return exportedValues;
+};
+
+export const findExportedValue = (
+  programRoot: EsTreeNode,
+  exportedName: string,
+): EsTreeNode | null => {
+  if (!isNodeOfType(programRoot, "Program")) return null;
+  let exportedValues = exportedValuesByProgram.get(programRoot);
+  if (!exportedValues) {
+    exportedValues = indexExportedValues(programRoot);
+    exportedValuesByProgram.set(programRoot, exportedValues);
+  }
+  return exportedValues.get(exportedName) ?? null;
 };

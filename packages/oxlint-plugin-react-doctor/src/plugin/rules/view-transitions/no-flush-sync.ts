@@ -339,7 +339,7 @@ export const noFlushSync = defineRule({
   severity: "warn",
   category: "Performance",
   recommendation:
-    "flushSync forces an immediate update that skips View Transitions and concurrent rendering. Use startTransition for updates that are not urgent.",
+    "Use startTransition for deferrable updates. Keep flushSync when a third-party API needs the committed result synchronously.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-dom") return;

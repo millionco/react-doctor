@@ -1,0 +1,290 @@
+import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
+import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isSymbolReadOnly } from "../../../utils/is-symbol-read-only.js";
+import { isTypeScriptTypePosition } from "../../../utils/is-typescript-type-position.js";
+import { resolveImportedApiReference } from "../../../utils/resolve-imported-api-reference.js";
+import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
+import type { RuleContext } from "../../../utils/rule-context.js";
+import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
+
+interface ClosedInvariantBooleanResetInput {
+  context: RuleContext;
+  owner: EsTreeNode;
+  effectCall: EsTreeNode;
+  effectFunction: EsTreeNode;
+  setterCalls: ReadonlyArray<EsTreeNode | null>;
+}
+
+const isDirectReactApi = (
+  invocation: EsTreeNode,
+  apiName: string,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(invocation, "CallExpression") || invocation.optional) return false;
+  if (!isNodeOfType(invocation.callee, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(invocation.callee);
+  if (
+    !symbol ||
+    symbol.kind !== "import" ||
+    !isNodeOfType(symbol.declarationNode, "ImportSpecifier") ||
+    !isSymbolReadOnly(symbol)
+  )
+    return false;
+  const origin = resolveImportedApiReference(invocation.callee, context.scopes);
+  return origin?.source === "react" && origin.importedName === apiName;
+};
+
+const resolveClosedGuardState = (
+  guard: EsTreeNode,
+  remainingDeclarations: Set<EsTreeNode>,
+  remainingSetterCalls: Set<EsTreeNode | null>,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  if (!isNodeOfType(guard, "IfStatement") || guard.alternate) return null;
+  const consequent = isNodeOfType(guard.consequent, "BlockStatement")
+    ? guard.consequent.body.length === 1
+      ? guard.consequent.body[0]
+      : null
+    : guard.consequent;
+  if (!isNodeOfType(consequent, "ExpressionStatement")) return null;
+  const setterCall = consequent.expression;
+  if (
+    !remainingSetterCalls.delete(setterCall) ||
+    !isNodeOfType(setterCall, "CallExpression") ||
+    setterCall.optional ||
+    !isNodeOfType(setterCall.callee, "Identifier") ||
+    setterCall.arguments.length !== 1 ||
+    !isNodeOfType(setterCall.arguments[0], "Literal") ||
+    typeof setterCall.arguments[0].value !== "boolean"
+  )
+    return null;
+  const pair = resolveReactUseStatePair(setterCall.callee, context.scopes);
+  if (
+    !pair ||
+    !pair.stateSymbol ||
+    context.scopes.symbolFor(setterCall.callee) !== pair.setterSymbol
+  )
+    return null;
+  const { declarator, stateSymbol, setterSymbol } = pair;
+  const declaration = declarator.parent;
+  if (
+    !isNodeOfType(declarator.id, "ArrayPattern") ||
+    declarator.id.elements.length !== 2 ||
+    !isNodeOfType(declarator.id.elements[0], "Identifier") ||
+    !isNodeOfType(declarator.id.elements[1], "Identifier") ||
+    stateSymbol.bindingIdentifier !== declarator.id.elements[0] ||
+    setterSymbol.bindingIdentifier !== declarator.id.elements[1] ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    !remainingDeclarations.delete(declaration) ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(declarator.init, "CallExpression") ||
+    !isDirectReactApi(declarator.init, "useState", context) ||
+    declarator.init.arguments.length !== 1 ||
+    !isNodeOfType(declarator.init.arguments[0], "Literal") ||
+    declarator.init.arguments[0].value !== setterCall.arguments[0].value ||
+    !isSymbolReadOnly(stateSymbol) ||
+    !isSymbolReadOnly(setterSymbol)
+  )
+    return null;
+  const initialValue = setterCall.arguments[0].value;
+  const test = stripParenExpression(guard.test);
+  const stateRead = initialValue
+    ? test
+    : isNodeOfType(test, "UnaryExpression") && test.operator === "!"
+      ? stripParenExpression(test.argument)
+      : null;
+  if (!isNodeOfType(stateRead, "Identifier") || context.scopes.symbolFor(stateRead) !== stateSymbol)
+    return null;
+  const setterReferences = setterSymbol.references.filter(
+    (reference) => !isTypeScriptTypePosition(reference.identifier),
+  );
+  if (setterReferences.length !== 1 || setterReferences[0]?.identifier !== setterCall.callee)
+    return null;
+  return stateSymbol;
+};
+
+const hasClosedConditionalOutput = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  closedStates: ReadonlySet<SymbolDescriptor>,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(element.openingElement.name, "JSXIdentifier") ||
+    !/^[a-z][a-z0-9]*$/.test(element.openingElement.name.name) ||
+    element.openingElement.attributes.length !== 0
+  )
+    return false;
+  const children = element.children.filter(
+    (child) => !isNodeOfType(child, "JSXText") || child.value.trim() !== "",
+  );
+  if (
+    children.length !== 1 ||
+    !isNodeOfType(children[0], "JSXExpressionContainer") ||
+    !isNodeOfType(children[0].expression, "ConditionalExpression")
+  )
+    return false;
+  const outputStates = new Set<SymbolDescriptor>();
+  const pendingExpressions: EsTreeNode[] = [children[0].expression];
+  while (pendingExpressions.length > 0) {
+    const expression = pendingExpressions.pop();
+    if (isNodeOfType(expression, "ConditionalExpression")) {
+      if (closedStates.size === 1 && outputStates.size > 0) return false;
+      if (!isNodeOfType(expression.test, "Identifier")) return false;
+      const stateSymbol = context.scopes.symbolFor(expression.test);
+      if (!stateSymbol || !closedStates.has(stateSymbol)) return false;
+      outputStates.add(stateSymbol);
+      pendingExpressions.push(expression.consequent, expression.alternate);
+    } else if (
+      !isNodeOfType(expression, "Literal") ||
+      (expression.value !== null &&
+        !["string", "number", "boolean"].includes(typeof expression.value))
+    ) {
+      return false;
+    }
+  }
+  return outputStates.size === closedStates.size;
+};
+
+export const isClosedInvariantBooleanReset = ({
+  context,
+  owner,
+  effectCall,
+  effectFunction,
+  setterCalls,
+}: ClosedInvariantBooleanResetInput): boolean => {
+  if (
+    !(
+      isNodeOfType(owner, "ArrowFunctionExpression") ||
+      isNodeOfType(owner, "FunctionExpression") ||
+      isNodeOfType(owner, "FunctionDeclaration")
+    ) ||
+    owner.async ||
+    owner.generator ||
+    owner.params.length !== 1 ||
+    !isNodeOfType(owner.body, "BlockStatement") ||
+    setterCalls.length === 0 ||
+    owner.body.body.length !== setterCalls.length + 2
+  )
+    return false;
+  const parameter = owner.params[0];
+  if (!isNodeOfType(parameter, "Identifier")) {
+    if (
+      !isNodeOfType(parameter, "ObjectPattern") ||
+      !parameter.properties.every(
+        (property) =>
+          isNodeOfType(property, "Property") &&
+          !property.computed &&
+          isNodeOfType(property.key, "Identifier") &&
+          isNodeOfType(property.value, "Identifier"),
+      )
+    )
+      return false;
+  }
+  if (
+    !isDirectReactApi(effectCall, "useEffect", context) ||
+    !isNodeOfType(effectCall, "CallExpression") ||
+    effectCall.arguments.length !== 2 ||
+    effectCall.arguments[0] !== effectFunction ||
+    !isNodeOfType(effectCall.arguments[1], "ArrayExpression") ||
+    !effectCall.arguments[1].elements.every(
+      (dependency) =>
+        isNodeOfType(dependency, "Identifier") && Boolean(context.scopes.referenceFor(dependency)),
+    ) ||
+    !(
+      isNodeOfType(effectFunction, "ArrowFunctionExpression") ||
+      isNodeOfType(effectFunction, "FunctionExpression")
+    ) ||
+    effectFunction.async ||
+    effectFunction.generator ||
+    effectFunction.params.length !== 0 ||
+    !isNodeOfType(effectFunction.body, "BlockStatement") ||
+    effectFunction.body.body.length !== setterCalls.length
+  )
+    return false;
+  const effectStatement = owner.body.body[setterCalls.length];
+  const returnStatement = owner.body.body[setterCalls.length + 1];
+  if (
+    !isNodeOfType(effectStatement, "ExpressionStatement") ||
+    effectStatement.expression !== effectCall ||
+    !isNodeOfType(returnStatement, "ReturnStatement") ||
+    !isNodeOfType(returnStatement.argument, "JSXElement") ||
+    findEnclosingFunction(effectCall) !== owner
+  )
+    return false;
+
+  const remainingSetterCalls = new Set(setterCalls);
+  if (remainingSetterCalls.size !== setterCalls.length) return false;
+  const remainingDeclarations = new Set<EsTreeNode>(owner.body.body.slice(0, setterCalls.length));
+  const closedStates = new Set<SymbolDescriptor>();
+  for (const guard of effectFunction.body.body) {
+    const stateSymbol = resolveClosedGuardState(
+      guard,
+      remainingDeclarations,
+      remainingSetterCalls,
+      context,
+    );
+    if (!stateSymbol) return false;
+    closedStates.add(stateSymbol);
+  }
+  if (!hasClosedConditionalOutput(returnStatement.argument, closedStates, context)) return false;
+  let componentDeclaration: EsTreeNode = owner;
+  if (!isNodeOfType(owner, "FunctionDeclaration")) {
+    const componentDeclarator = owner.parent;
+    if (
+      !isNodeOfType(componentDeclarator, "VariableDeclarator") ||
+      componentDeclarator.init !== owner ||
+      !isNodeOfType(componentDeclarator.id, "Identifier") ||
+      !isNodeOfType(componentDeclarator.parent, "VariableDeclaration") ||
+      componentDeclarator.parent.kind !== "const" ||
+      componentDeclarator.parent.declarations.length !== 1
+    )
+      return false;
+    componentDeclaration = componentDeclarator.parent;
+  }
+  if (
+    isNodeOfType(componentDeclaration.parent, "ExportNamedDeclaration") ||
+    isNodeOfType(componentDeclaration.parent, "ExportDefaultDeclaration")
+  ) {
+    if (componentDeclaration.parent.declaration !== componentDeclaration) return false;
+    componentDeclaration = componentDeclaration.parent;
+  }
+  const program = componentDeclaration.parent;
+  if (!isNodeOfType(program, "Program")) return false;
+  for (const statement of program.body) {
+    if (
+      statement === componentDeclaration ||
+      isNodeOfType(statement, "TSInterfaceDeclaration") ||
+      isNodeOfType(statement, "TSTypeAliasDeclaration")
+    )
+      continue;
+    if (
+      isNodeOfType(statement, "ExpressionStatement") &&
+      isNodeOfType(statement.expression, "Literal") &&
+      typeof statement.expression.value === "string" &&
+      ["use client", "use strict"].includes(statement.expression.value)
+    )
+      continue;
+    if (!isNodeOfType(statement, "ImportDeclaration")) return false;
+    if (statement.importKind === "type") continue;
+    if (
+      statement.specifiers.length > 0 &&
+      statement.specifiers.every(
+        (specifier) =>
+          isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type",
+      )
+    )
+      continue;
+    if (statement.source.value !== "react" || statement.specifiers.length === 0) return false;
+    for (const specifier of statement.specifiers) {
+      if (!isNodeOfType(specifier, "ImportSpecifier")) return false;
+      if (specifier.importKind === "type") continue;
+      const symbol = context.scopes.symbolFor(specifier.local);
+      if (!symbol || !isSymbolReadOnly(symbol)) return false;
+    }
+  }
+  return true;
+};

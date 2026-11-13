@@ -1,5 +1,7 @@
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { FIND_METHOD_NAMES } from "./utils/native-array-find/constants.js";
+import { isClosedNativeArrayFindReceiver } from "./utils/is-closed-native-array-find-receiver.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -18,11 +20,6 @@ import { walkAst } from "../../utils/walk-ast.js";
 const MESSAGE =
   "`find` returns `undefined` when nothing matches, so reading from its result here throws `Cannot read properties of undefined` — use optional chaining (`?.`) or guard the result before you use it.";
 
-const FIND_METHOD_NAMES = new Set(["find", "findLast"]);
-// A PascalCase identifier names a class / model / component, never array data.
-// It rules out `User.find(...)` (an ORM static) as a RECEIVER and
-// `wrapper.find(Component)` (an enzyme/RTL component-selector query) as the
-// ARGUMENT — neither result is an array element that can be `undefined`.
 const PASCAL_CASE_IDENTIFIER_PATTERN = /^[A-Z]/;
 // Capitalized globals that are real element predicates (`values.find(Boolean)`),
 // not component selectors — exempt from the PascalCase argument bail.
@@ -144,10 +141,12 @@ const isArrayFindCall = (
   const callee = node.callee;
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (!FIND_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")) return false;
-  // `User.find(...)` / `Model.find(...)`: a capitalized receiver is a
-  // class/model static method, not an array instance method.
   const receiver = stripParenExpression(callee.object as EsTreeNode);
-  if (isNodeOfType(receiver, "Identifier") && PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name)) {
+  if (
+    isNodeOfType(receiver, "Identifier") &&
+    PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name) &&
+    !isClosedNativeArrayFindReceiver(receiver, context)
+  ) {
     return false;
   }
   let resolvedReceiver = receiver;

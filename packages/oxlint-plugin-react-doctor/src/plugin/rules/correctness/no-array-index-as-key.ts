@@ -4,6 +4,7 @@ import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getNonNullishGuardedKeyValue } from "../../utils/get-non-nullish-guarded-key-value.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -1967,7 +1968,18 @@ export const noArrayIndexAsKey = defineRule({
         if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-        const indexUse = getReportableIndexUse(node.value.expression, node);
+        const originalIndexUse = getReportableIndexUse(node.value.expression, node);
+        if (!originalIndexUse) return;
+        const selectedKeyValue = getNonNullishGuardedKeyValue({
+          keyExpression: node.value.expression,
+          keyUse: node,
+          mapCallback: originalIndexUse.binding.bindingFunction,
+          iteratorCall: originalIndexUse.binding.iteratorCall,
+          scopes: context.scopes,
+        });
+        const indexUse = selectedKeyValue
+          ? getReportableIndexUse(selectedKeyValue, node)
+          : originalIndexUse;
         if (!indexUse) return;
         if (
           indexUse.binding.iteratorCall &&

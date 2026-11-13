@@ -1,5 +1,32 @@
 # react-doctor
 
+## 0.9.23
+
+### Patch Changes
+
+- [#2439](https://github.com/millionco/react-doctor/pull/2439) [`94a349b`](https://github.com/millionco/react-doctor/commit/94a349b8a38c4e80f7600a74766b00ef3a76fa39) Thanks [@aidenybai](https://github.com/aidenybai)! - Allow duplicate-JSX analysis to complete on larger projects with a bounded 500,000-node default. Explicit node limits still stop the scan, now with one global reason based on observed nodes instead of repeated per-file errors and continued parsing after exhaustion.
+
+- [#2437](https://github.com/millionco/react-doctor/pull/2437) [`21eff89`](https://github.com/millionco/react-doctor/commit/21eff898bdba825f2df321844585936401117b7d) Thanks [@aidenybai](https://github.com/aidenybai)! - Run explicitly configured opt-in security-scan rules and honor their severity settings consistently in synchronous, cooperative, and normal inspect scans.
+
+- [#2346](https://github.com/millionco/react-doctor/pull/2346) [`4989042`](https://github.com/millionco/react-doctor/commit/49890429e3652f017eeb4612ee3ef706b2c96f53) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid blanket-access warnings for direct Firebase conditions that combine sign-in with a stored-owner UID equality. Preserve broad-access findings and locate later unsafe statements after a protected condition.
+
+- [#1958](https://github.com/millionco/react-doctor/pull/1958) [`5364034`](https://github.com/millionco/react-doctor/commit/53640341fce83f618f4016999d2928f88585fb4a) Thanks [@skoshx](https://github.com/skoshx)! - Accept renamed listener receivers initialized from a declared callable subscription contract when cleanup releases the handle on every path.
+
+- [#2435](https://github.com/millionco/react-doctor/pull/2435) [`e468c6f`](https://github.com/millionco/react-doctor/commit/e468c6f577ae628bf6545c4055f9ae2892b572d1) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize Alchemy server resource bundles instead of reporting browser exposure, and avoid source cryptography heuristics on generated bundles while retaining browser-artifact secret checks.
+
+- [#2438](https://github.com/millionco/react-doctor/pull/2438) [`ec45ff9`](https://github.com/millionco/react-doctor/commit/ec45ff9928ef97bf66c23ac2458ab91545b91de6) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep a project's oxlint bulk suppressions from dropping React Doctor findings or failing its lint pass while preserving the project's file selection and ignore patterns.
+
+- [#1958](https://github.com/millionco/react-doctor/pull/1958) [`5364034`](https://github.com/millionco/react-doctor/commit/53640341fce83f618f4016999d2928f88585fb4a) Thanks [@skoshx](https://github.com/skoshx)! - Reduce startup work when collecting diagnostic evidence for reports.
+
+- [#2400](https://github.com/millionco/react-doctor/pull/2400) [`0bebfec`](https://github.com/millionco/react-doctor/commit/0bebfec76df54a1013821da86ac9c20a30d81ff1) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize the `onUpdate` prop on Three.js lines rendered by React Three Fiber Canvas.
+
+- [`ed2d826`](https://github.com/millionco/react-doctor/commit/ed2d826578337b36a9f35cc65e6b6d19f1adbf87) Thanks [@aidenybai](https://github.com/aidenybai)! - Snapshot adopted lint configs without executable plugins or out-of-repository config chains. Prevent Browserslist module loading during browser detection and compiler linting, reject symlinked audit-backup paths, remove source context and dependency metadata from crash reports, preserve lint-cache hash field boundaries, and pass source paths after the lint command option separator. Keep files whose names start with two dots eligible for scanning.
+
+- [#2438](https://github.com/millionco/react-doctor/pull/2438) [`ec45ff9`](https://github.com/millionco/react-doctor/commit/ec45ff9928ef97bf66c23ac2458ab91545b91de6) Thanks [@aidenybai](https://github.com/aidenybai)! - Warn on unknown bundled rule IDs in configuration so typos and removed rule overrides do not silently weaken scan policies.
+
+- Updated dependencies [[`359dc77`](https://github.com/millionco/react-doctor/commit/359dc77cf536f6a6601bb955967b48cca0f625a0), [`b8da6b9`](https://github.com/millionco/react-doctor/commit/b8da6b9b6997c9c30e85a786d7cfdc29edaa7de5), [`654e650`](https://github.com/millionco/react-doctor/commit/654e650b8cb62733e59b0f027dae340cf6d33ea1), [`5364034`](https://github.com/millionco/react-doctor/commit/53640341fce83f618f4016999d2928f88585fb4a), [`4989042`](https://github.com/millionco/react-doctor/commit/49890429e3652f017eeb4612ee3ef706b2c96f53), [`5364034`](https://github.com/millionco/react-doctor/commit/53640341fce83f618f4016999d2928f88585fb4a), [`ab7795b`](https://github.com/millionco/react-doctor/commit/ab7795b2e2c9237a95251bb354fa50d0804c54dc), [`ec45ff9`](https://github.com/millionco/react-doctor/commit/ec45ff9928ef97bf66c23ac2458ab91545b91de6), [`e468c6f`](https://github.com/millionco/react-doctor/commit/e468c6f577ae628bf6545c4055f9ae2892b572d1), [`a182cd2`](https://github.com/millionco/react-doctor/commit/a182cd22dd31ea2c634be454e0b5129adeeaecf0), [`0bebfec`](https://github.com/millionco/react-doctor/commit/0bebfec76df54a1013821da86ac9c20a30d81ff1), [`3eda1c1`](https://github.com/millionco/react-doctor/commit/3eda1c1e208d509373eb2851f712841acfec3bc8), [`1cc1c94`](https://github.com/millionco/react-doctor/commit/1cc1c947afc87c40f8e864104e30bd65d586e518), [`8177197`](https://github.com/millionco/react-doctor/commit/8177197ade847406a800ddf5a103ac342a3618f9)]:
+  - oxlint-plugin-react-doctor@0.9.23
+
 ## 0.9.22
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/core",
-  "version": "0.9.22",
+  "version": "0.9.23",
   "private": true,
   "description": "Diagnostic engine for React Doctor.",
   "license": "SEE LICENSE IN LICENSE",

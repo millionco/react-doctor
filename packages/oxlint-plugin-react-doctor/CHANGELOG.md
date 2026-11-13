@@ -1,5 +1,39 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.23
+
+### Patch Changes
+
+- [#2410](https://github.com/millionco/react-doctor/pull/2410) [`359dc77`](https://github.com/millionco/react-doctor/commit/359dc77cf536f6a6601bb955967b48cca0f625a0) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept ASCII case variants of valid HTML button type keywords.
+
+- [#2433](https://github.com/millionco/react-doctor/pull/2433) [`b8da6b9`](https://github.com/millionco/react-doctor/commit/b8da6b9b6997c9c30e85a786d7cfdc29edaa7de5) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid inferring transition: all from unresolved custom Tailwind transition utilities paired with a duration.
+
+- [#2434](https://github.com/millionco/react-doctor/pull/2434) [`654e650`](https://github.com/millionco/react-doctor/commit/654e650b8cb62733e59b0f027dae340cf6d33ea1) Thanks [@aidenybai](https://github.com/aidenybai)! - Report a timer that a named async function scheduled by `useEffect` creates after an `await` without checking an effect-local lifecycle guard, such as `const load = async () => { await fetch(url); timer = setTimeout(...) }; void load();`. The cleanup can run before the timer exists, so clearing the stored handle does not release it. The same code written as an async IIFE was already reported. A timer created before the first `await`, or one behind a guard that the cleanup invalidates, stays accepted. Guarded async work that restarts itself stays reported, as in [#1762](https://github.com/millionco/react-doctor/issues/1762).
+
+- [#1958](https://github.com/millionco/react-doctor/pull/1958) [`5364034`](https://github.com/millionco/react-doctor/commit/53640341fce83f618f4016999d2928f88585fb4a) Thanks [@skoshx](https://github.com/skoshx)! - Fix `effect-needs-cleanup` false positive when React Navigation `useNavigation()` result is renamed. The rule now correctly recognizes cleanup for `addListener` calls regardless of the receiver variable name, while preserving support for `navigation` props.
+
+- [#2346](https://github.com/millionco/react-doctor/pull/2346) [`4989042`](https://github.com/millionco/react-doctor/commit/49890429e3652f017eeb4612ee3ef706b2c96f53) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid blanket-access warnings for direct Firebase conditions that combine sign-in with a stored-owner UID equality. Preserve broad-access findings and locate later unsafe statements after a protected condition.
+
+- [#1958](https://github.com/millionco/react-doctor/pull/1958) [`5364034`](https://github.com/millionco/react-doctor/commit/53640341fce83f618f4016999d2928f88585fb4a) Thanks [@skoshx](https://github.com/skoshx)! - Accept renamed listener receivers initialized from a declared callable subscription contract when cleanup releases the handle on every path.
+
+- [#1959](https://github.com/millionco/react-doctor/pull/1959) [`ab7795b`](https://github.com/millionco/react-doctor/commit/ab7795b2e2c9237a95251bb354fa50d0804c54dc) Thanks [@skoshx](https://github.com/skoshx)! - Accept guarded subscriptions created after a promise resolves when the effect cleanup cancels late work and releases the retained handle. This supports nullable cleanup with optional chaining, direct null checks, and logical AND guards, including Expo Accelerometer availability checks.
+
+  Keep reporting missing cancellation, skipped releases, overwritten handles, repeated acquisition, and opaque thenable producers.
+
+- [#2438](https://github.com/millionco/react-doctor/pull/2438) [`ec45ff9`](https://github.com/millionco/react-doctor/commit/ec45ff9928ef97bf66c23ac2458ab91545b91de6) Thanks [@aidenybai](https://github.com/aidenybai)! - Check cleanup for inline and named useFocusEffect callbacks from Expo Router and React Navigation without falsely flagging callbacks whose cleanup is owned by the hook.
+
+- [#2435](https://github.com/millionco/react-doctor/pull/2435) [`e468c6f`](https://github.com/millionco/react-doctor/commit/e468c6f577ae628bf6545c4055f9ae2892b572d1) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize Alchemy server resource bundles instead of reporting browser exposure, and avoid source cryptography heuristics on generated bundles while retaining browser-artifact secret checks.
+
+- [#1955](https://github.com/millionco/react-doctor/pull/1955) [`a182cd2`](https://github.com/millionco/react-doctor/commit/a182cd22dd31ea2c634be454e0b5129adeeaecf0) Thanks [@skoshx](https://github.com/skoshx)! - Recognize owned listener cleanup through supported logical receivers. Require stable receiver bindings, proven callable listener results, and cleanup on every path; retain warnings for unknown providers, receiver mutations, and subscriptions created during cleanup.
+
+- [#2400](https://github.com/millionco/react-doctor/pull/2400) [`0bebfec`](https://github.com/millionco/react-doctor/commit/0bebfec76df54a1013821da86ac9c20a30d81ff1) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize the `onUpdate` prop on Three.js lines rendered by React Three Fiber Canvas.
+
+- [#2289](https://github.com/millionco/react-doctor/pull/2289) [`3eda1c1`](https://github.com/millionco/react-doctor/commit/3eda1c1e208d509373eb2851f712841acfec3bc8) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent `no-reset-all-state-on-prop-change` from crashing when initial or next state expressions contain BigInt literals.
+
+- [#2342](https://github.com/millionco/react-doctor/pull/2342) [`1cc1c94`](https://github.com/millionco/react-doctor/commit/1cc1c947afc87c40f8e864104e30bd65d586e518) Thanks [@aidenybai](https://github.com/aidenybai)! - Clarify that the iframe sandbox escape involving `allow-scripts` and `allow-same-origin` requires content with the same origin as its embedding page, and use a title covering both missing sandbox attributes and sandbox values. Diagnostic detection and rule identifiers are unchanged.
+
+- [#2436](https://github.com/millionco/react-doctor/pull/2436) [`8177197`](https://github.com/millionco/react-doctor/commit/8177197ade847406a800ddf5a103ac342a3618f9) Thanks [@aidenybai](https://github.com/aidenybai)! - Respect React Compiler memoization for TanStack Table v9 useTable options while preserving checks for the v8 API and explicit compiler opt-outs.
+
 ## 0.9.22
 
 ### Patch Changes

@@ -3,7 +3,10 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
-import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
+import {
+  __clearParseSourceFileCacheForTests,
+  parseSourceFile,
+} from "../../utils/parse-source-file.js";
 import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noHydrationBranchOnBrowserGlobal } from "./no-hydration-branch-on-browser-global.js";
 
@@ -183,5 +186,262 @@ describe("no-hydration-branch-on-browser-global — imported helper provenance",
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+});
+
+describe("proven server snapshot gates", () => {
+  it.each([
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); }`,
+    `import { useSyncExternalStore } from 'react'; const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false); export { useReady };`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } useReady.description = 'ready';`,
+    `import { useSyncExternalStore } from 'react'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false); useReady.description = 'ready';`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } [useReady.description] = ['ready'];`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } let value; ({ [useReady]: value } = {});`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } let value; [value = useReady] = [];`,
+  ])("preserves an immutable exported hook: %s", (hook) => {
+    writeFile("src/ready.ts", hook);
+    const result = runConsumer(`
+      import { useReady } from './ready';
+      const Panel = () => { const ready = useReady(); return ready && typeof window !== 'undefined' ? <main /> : <aside />; };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `return ready && available() ? <main /> : <aside />;`,
+    `if (!ready) return null; return available() ? <main /> : <aside />;`,
+    `const supported = ready ? available() : false; return supported ? <main /> : <aside />;`,
+    `return !ready || available() ? <main /> : <aside />;`,
+    `return ready ? available() ? <main /> : <aside /> : null;`,
+    `if (ready) return available() ? <main /> : <aside />; return null;`,
+    `if (ready) {} else return null; return available() ? <main /> : <aside />;`,
+    `const selected = useMemo(() => ready ? available() : false, [ready]); return selected ? <main /> : <aside />;`,
+  ])("preserves a proven initial snapshot: %s", (body) => {
+    writeFile(
+      "src/ready.ts",
+      `import { useSyncExternalStore } from 'react'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false);`,
+    );
+    writeFile("src/available.ts", `export const available = () => typeof window !== 'undefined';`);
+    const result = runConsumer(`
+      import { useMemo } from 'react';
+      import { useReady } from './ready';
+      import { available } from './available';
+      const Panel = () => { const ready = useReady(); ${body} };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `export const useReady = () => true;`,
+    `export const useReady = () => typeof window !== 'undefined';`,
+    `import { useSyncExternalStore } from 'other'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false);`,
+    `import { useSyncExternalStore } from 'react'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => true);`,
+    `import { useSyncExternalStore } from 'react'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true);`,
+    `import { useSyncExternalStore } from 'react'; let initial = false; initial = true; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => initial);`,
+    `import { useSyncExternalStore } from 'react'; let snapshot = () => false; snapshot = () => true; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, snapshot);`,
+    `import { useSyncExternalStore } from 'react'; export let useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false); useReady = () => true;`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } useReady = () => true;`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } [useReady] = [() => true];`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } ({ value: useReady } = { value: () => true });`,
+    `import { useSyncExternalStore } from 'react'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false); [useReady] = [() => true];`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } [useReady = () => false] = [() => true];`,
+    `import { useSyncExternalStore } from 'react'; export function useReady() { return useSyncExternalStore(() => () => {}, () => true, () => false); } for ({ value: useReady } of [{ value: () => true }]) {}`,
+    `import { useSyncExternalStore } from 'react'; export const useReady = (initial = true) => useSyncExternalStore(() => () => {}, () => true, () => initial);`,
+    `import { useSyncExternalStore } from 'react'; export const useReady = () => { if (unknown) return true; return useSyncExternalStore(() => () => {}, () => true, () => false); };`,
+  ])("retains unsupported snapshot provenance: %s", (hook) => {
+    writeFile("src/ready.ts", hook);
+    writeFile("src/available.ts", `export const available = () => typeof window !== 'undefined';`);
+    const result = runConsumer(`
+      import React from 'react';
+      import { useReady } from './ready';
+      import { available } from './available';
+      const Panel = () => { const ready = useReady(); return ready && available() ? <main /> : <aside />; };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    `const ready = useReady(); return available() ? <main /> : <aside />;`,
+    `let ready = useReady(); ready = true; return ready && available() ? <main /> : <aside />;`,
+    `let ready = useReady(); [ready] = [true]; return ready && available() ? <main /> : <aside />;`,
+    `const ready = props.ready; return ready && available() ? <main /> : <aside />;`,
+    `const ready = useReady(); return (!ready && available()) ? <main /> : <aside />;`,
+    `const ready = useReady(); return (ready || available()) ? <main /> : <aside />;`,
+    `const ready = useReady(); return (ready && available()) || available() ? <main /> : <aside />;`,
+    `const ready = useReady(); if (ready) return null; return available() ? <main /> : <aside />;`,
+  ])("retains an unguarded initial browser branch: %s", (body) => {
+    writeFile(
+      "src/ready.ts",
+      `import { useSyncExternalStore } from 'react'; export const useReady = () => useSyncExternalStore(() => () => {}, () => true, () => false);`,
+    );
+    writeFile("src/available.ts", `export const available = () => typeof window !== 'undefined';`);
+    const result = runConsumer(`
+      import React from 'react';
+      import { useReady } from './ready';
+      import { available } from './available';
+      const Panel = (props) => { ${body} };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("direct eval in a server snapshot supplier", () => {
+  const hookSource = `
+    import { useSyncExternalStore } from 'react';
+    export function useReady() {
+      return useSyncExternalStore(() => () => {}, () => true, () => false);
+    }
+  `;
+
+  const writeSnapshotSupplier = (relativePath: string, source: string): void => {
+    expect(parseSourceFile(writeFile(relativePath, source))).not.toBeNull();
+  };
+
+  const runSnapshotConsumer = (supplierPath = "./ready"): ReturnType<typeof runRule> => {
+    writeFile("src/available.ts", `export const available = () => typeof window !== 'undefined';`);
+    return runConsumer(`
+      import { useReady } from '${supplierPath}';
+      import { available } from './available';
+      const Panel = () => {
+        const ready = useReady();
+        return ready && available() ? <main /> : <aside />;
+      };
+    `);
+  };
+
+  it.each([
+    `eval('useReady = () => true');`,
+    `(eval)('useReady = () => true');`,
+    String.raw`\u0065val('useReady = () => true');`,
+    `(eval as (source: string) => unknown)('useReady = () => true');`,
+    `(() => eval('useReady = () => true'))();`,
+    `eval?.('useReady = () => true');`,
+    `(eval as (source: string) => unknown)?.('useReady = () => true');`,
+    `eval === null || eval === void 0 ? void 0 : eval('useReady = () => true');`,
+  ])("keeps the warning when eval can reach the export: %s", (evaluation) => {
+    writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${evaluation}`);
+
+    const result = runSnapshotConsumer();
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `(0, eval)('void 0');`,
+    `const evaluate = eval; evaluate('void 0');`,
+    `globalThis['eval']('void 0');`,
+    `eval.call(undefined, 'void 0');`,
+    `(0, eval)?.('void 0');`,
+    `globalThis.eval?.('void 0');`,
+    `eval();`,
+    `const local = { eval: (value: string) => value }; local.eval('void 0');`,
+  ])("preserves the snapshot proof without direct lexical evaluation: %s", (evaluation) => {
+    writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${evaluation}`);
+
+    const result = runSnapshotConsumer();
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      location: "the hook supplier",
+      supplierEval: `eval('useReady = () => true');`,
+      barrelEval: "",
+      count: 1,
+    },
+    { location: "only the barrel", supplierEval: "", barrelEval: `eval('void 0');`, count: 0 },
+  ])(
+    "uses the defining module when direct eval is in $location",
+    ({ supplierEval, barrelEval, count }) => {
+      writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${supplierEval}`);
+      writeSnapshotSupplier("src/barrel.ts", `export { useReady } from './ready';\n${barrelEval}`);
+
+      const result = runSnapshotConsumer("./barrel");
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(count);
+    },
+  );
+
+  it.each([
+    { location: "outer", innerEval: "", outerEval: `eval('useReady = () => true');`, count: 1 },
+    { location: "inner", innerEval: `eval('useReady = () => true');`, outerEval: "", count: 1 },
+    { location: "neither", innerEval: "", outerEval: "", count: 0 },
+  ])(
+    "checks each supplying module in a hook chain: $location",
+    ({ innerEval, outerEval, count }) => {
+      writeSnapshotSupplier("src/ready.ts", `${hookSource}\n${innerEval}`);
+      writeSnapshotSupplier(
+        "src/wrapper.ts",
+        `import { useReady as useInnerReady } from './ready';
+      export function useReady() { return useInnerReady(); }
+      ${outerEval}`,
+      );
+
+      const result = runSnapshotConsumer("./wrapper");
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(count);
+    },
+  );
+
+  it.each(["available()", "available() === true", "true && available()"])(
+    "still follows a browser predicate from a module containing eval: %s",
+    (condition) => {
+      writeSnapshotSupplier(
+        "src/available.ts",
+        `export function available() { return typeof window !== 'undefined'; }
+        eval('void 0');`,
+      );
+      const result = runConsumer(`
+        import React from 'react';
+        import { available } from './available';
+        const Panel = () => ${condition} ? <main /> : <aside />;
+      `);
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+});
+
+describe("native server snapshot return completion", () => {
+  it.each([
+    "if (!ready) return null;",
+    "if (!ready) { return null; }",
+    "if (ready) {} else return null;",
+    "if (ready) {} else { return null; }",
+  ])("preserves a direct initial return: %s", (guard) => {
+    const result = runConsumer(`
+      import { useSyncExternalStore } from 'react';
+      const subscribe = () => () => {};
+      const Panel = () => {
+        const ready = useSyncExternalStore(subscribe, () => true, () => false);
+        ${guard}
+        return typeof window === 'undefined' ? <aside /> : <main />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "do { try { return null; } finally { break; } } while (false);",
+    "do { break; return null; } while (false);",
+  ])("retains a browser branch after a normally completed loop: %s", (body) => {
+    const result = runConsumer(`
+      import { useSyncExternalStore } from 'react';
+      const subscribe = () => () => {};
+      const Panel = () => {
+        const ready = useSyncExternalStore(subscribe, () => true, () => false);
+        if (!ready) { ${body} }
+        return typeof window === 'undefined' ? <aside /> : <main />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

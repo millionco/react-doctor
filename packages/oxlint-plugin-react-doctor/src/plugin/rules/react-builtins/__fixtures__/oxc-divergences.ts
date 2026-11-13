@@ -28,9 +28,10 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
       "Intentional: a missing button type only matters when the button has a static form owner.",
   },
   "jsx-no-target-blank": {
+    canonicalPassSkips: [57, 58, 60, 61],
     failSkips: [31],
     reason:
-      "Intentional: a later authoritative non-blank target overrides an earlier unknown spread.",
+      "Intentional: unresolved guards cannot prove target and rel agree; a later authoritative non-blank target overrides an earlier unknown spread.",
   },
   "exhaustive-deps": {
     failSkips: [81, 125, 126, 127],

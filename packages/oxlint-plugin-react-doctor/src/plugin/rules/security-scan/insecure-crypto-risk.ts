@@ -185,7 +185,8 @@ export const insecureCryptoRisk = defineRule({
         matchIndex = comparisonMatch.index;
       }
     }
-    if (matchIndex < 0) {
+    const isRandomContext = matchIndex < 0;
+    if (isRandomContext) {
       matchIndex = findRandomCallIndexWithSameLineContext(
         content,
         MATH_RANDOM_CALL_PATTERN,
@@ -197,8 +198,13 @@ export const insecureCryptoRisk = defineRule({
 
     const location = getLocationAtIndex(content, matchIndex);
     const finding: ScanFinding = {
-      message:
-        "Code uses weak hashes, deprecated ciphers, timing-unsafe comparisons, or Math.random in a security-shaped context.",
+      message: isRandomContext
+        ? "Math.random() appears on the same line as security-related text. Check whether the value must be hard to guess."
+        : "Code uses weak hashes, deprecated ciphers, timing-unsafe comparisons, or Math.random in a security-shaped context.",
+      ...(isRandomContext && {
+        title: "Potentially unsafe use of Math.random",
+        help: "Use cryptographic randomness for security tokens and CSP nonces. If the value only names a temporary file or directory, create it exclusively inside a trusted directory.",
+      }),
       line: location.line,
       column: location.column,
     };

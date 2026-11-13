@@ -141,6 +141,39 @@ export const hashPassword = (password) => createHash("md5").update(password).dig
     expect(findings).toHaveLength(1);
   });
 
+  it.each([
+    ["auth token", "const sessionToken = Math.random().toString(36).slice(2);", 22],
+    [
+      "CSP nonce",
+      "const nonce = Math.random().toString(36).slice(2);\nresponse.setHeader(\"Content-Security-Policy\", `script-src 'nonce-${nonce}'`);",
+      15,
+    ],
+    [
+      "staging path",
+      'const nonce = Math.random().toString(36).slice(2);\nconst stagingPath = join(outputParent, "stage-" + nonce);',
+      15,
+    ],
+    ["quoted text", 'const wait = Math.random(); const display = "secret";', 14],
+  ])(
+    "distinguishes security randomness from temporary path allocation: %s",
+    (_context, content, column) => {
+      const findings = runScanRule(insecureCryptoRisk, {
+        relativePath: "src/output-writer.ts",
+        content,
+      });
+      expect(findings).toEqual([
+        {
+          title: "Potentially unsafe use of Math.random",
+          message:
+            "Math.random() appears on the same line as security-related text. Check whether the value must be hard to guess.",
+          help: "Use cryptographic randomness for security tokens and CSP nonces. If the value only names a temporary file or directory, create it exclusively inside a trusted directory.",
+          line: 1,
+          column,
+        },
+      ]);
+    },
+  );
+
   it("stays silent on vendored version-pinned libraries", () => {
     const findings = runScanRule(insecureCryptoRisk, {
       relativePath: "public/libraries/jsonwebtoken@8.5.1.js",

@@ -7075,7 +7075,7 @@
       "id": "no-reset-all-state-on-prop-change",
       "title": "All state reset on prop change",
       "severity": "warn",
-      "recommendation": "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in an effect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
+      "recommendation": "Use the prop as a `key` only if the entire subtree should remount. If you need to preserve state, a request, or a subscription, keep its owner mounted and reset only the affected UI state. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

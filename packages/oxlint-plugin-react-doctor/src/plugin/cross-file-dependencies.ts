@@ -1,3 +1,4 @@
+import { isInheritedStringTokenReceiver } from "./utils/is-inherited-string-token-receiver.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -196,6 +197,19 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectInheritedStringTokenDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression"))
+      isInheritedStringTokenReceiver(node, absoluteFilePath, scopes);
+  });
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -586,6 +600,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["no-array-index-as-key", collectInheritedStringTokenDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],

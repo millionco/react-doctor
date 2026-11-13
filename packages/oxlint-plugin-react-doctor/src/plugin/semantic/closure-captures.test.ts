@@ -219,3 +219,17 @@ describe("closureCaptures", () => {
     expect(capturedNames(freshResult)).toEqual(capturedNames(firstResult));
   });
 });
+
+it("excludes own parameters and self bindings while capturing defaults outside the body", () => {
+  const { scopes, program } = analyze(`
+    const selected = 1;
+    const example = function self(value = selected, callback = () => value, recur = self) {
+      const selected = 2;
+      return callback() + selected + recur;
+    };
+  `);
+  const example = findFunctionNode(program, "example")!;
+  const captures = closureCaptures(example, scopes);
+  expect(capturedNames(captures)).toEqual(["selected"]);
+  expect(captures[0]?.resolvedSymbol?.scope).toBe(scopes.rootScope);
+});

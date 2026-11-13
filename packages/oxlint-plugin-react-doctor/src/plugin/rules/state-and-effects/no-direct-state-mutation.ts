@@ -1,3 +1,4 @@
+import { isOwnedChartOptionsStateAssignment } from "./utils/is-owned-chart-options-state-assignment.js";
 import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -266,6 +267,16 @@ export const noDirectStateMutation = defineRule({
             parent.left === expressionRoot &&
             isNodeOfType(expressionRoot, "MemberExpression")
           ) {
+            if (
+              isOwnedChartOptionsStateAssignment(
+                parent,
+                stateSymbol,
+                binding.declarator,
+                componentBody,
+                context,
+              )
+            )
+              continue;
             context.report({
               node: parent,
               message: `React can't tell you changed "${binding.valueName}" in place, so this update can be skipped or lost.`,

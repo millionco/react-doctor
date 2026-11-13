@@ -2,6 +2,7 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import {
   isProvenGlobalObjectReference,
@@ -29,8 +30,14 @@ const namespaceHasMemberMutation = (
   scopes: ScopeAnalysis,
   memberName?: string,
   considerEscapes = false,
+  considerPrototypeAccess = false,
 ): boolean => {
-  const cacheKey = JSON.stringify([namespaceName, memberName, considerEscapes]);
+  const cacheKey = JSON.stringify([
+    namespaceName,
+    memberName,
+    considerEscapes,
+    considerPrototypeAccess,
+  ]);
   const cachedMutation = namespaceMutationByAnalysis.get(scopes)?.get(cacheKey);
   if (cachedMutation !== undefined) return cachedMutation;
   const mutationByNamespace = namespaceMutationByAnalysis.get(scopes) ?? new Map<string, boolean>();
@@ -81,9 +88,24 @@ const namespaceHasMemberMutation = (
               argument === target ||
               (isNodeOfType(argument, "SpreadElement") && argument.argument === target),
           );
+        const destructuringTarget =
+          !considerPrototypeAccess || candidate !== target
+            ? null
+            : isNodeOfType(consumer, "VariableDeclarator") && consumer.init === target
+              ? consumer.id
+              : isNodeOfType(consumer, "AssignmentExpression") && consumer.right === target
+                ? consumer.left
+                : null;
+        const mayDestructurePrototype =
+          isNodeOfType(destructuringTarget, "ObjectPattern") &&
+          destructuringTarget.properties.some((property) => {
+            const name = getStaticPropertyKeyName(property, { allowComputedString: true });
+            return name === null || name === "prototype";
+          });
         if (
           (isBindingWrite ||
             isArgumentEscape ||
+            mayDestructurePrototype ||
             (isMutationCallTarget &&
               candidate === target &&
               properties !== undefined &&
@@ -114,9 +136,10 @@ const namespaceHasMemberMutation = (
           break;
         const propertyName = getResolvedStaticPropertyName(member, scopes);
         if (
-          memberIsMutated(member) &&
-          (!memberName || propertyName === null || propertyName === memberName) &&
-          referencesNamespace
+          referencesNamespace &&
+          ((considerPrototypeAccess && (propertyName === "prototype" || propertyName === null)) ||
+            (memberIsMutated(member) &&
+              (!memberName || propertyName === null || propertyName === memberName)))
         ) {
           mutationByNamespace.set(cacheKey, true);
           return true;
@@ -128,6 +151,11 @@ const namespaceHasMemberMutation = (
   mutationByNamespace.set(cacheKey, false);
   return false;
 };
+
+export const hasPossibleGlobalNamespaceMutationOrPrototypeAccess = (
+  namespaceName: string,
+  scopes: ScopeAnalysis,
+): boolean => namespaceHasMemberMutation(namespaceName, scopes, undefined, true, true);
 
 export const isProvenUnmodifiedGlobalNamespaceReference = (
   expression: EsTreeNode,

@@ -8,6 +8,133 @@ import { rulesOfHooks } from "./rules-of-hooks.js";
 
 const runTsx = (code: string) => runRule(rulesOfHooks, code, { filename: "fixture.tsx" });
 
+describe("react-builtins/rules-of-hooks — placement advice", () => {
+  it("uses a title that covers conditional and nonconditional violations", () => {
+    expect(rulesOfHooks.title).toBe("Invalid Hook placement");
+  });
+
+  it.each(["Panel", "useExample"])(
+    "explains an unconditional nested callback in %s without claiming changing Hook order",
+    (ownerName) => {
+      const result = runRule(
+        rulesOfHooks,
+        `
+        import { useEffect } from "react";
+        const invoke = (callback: () => void) => callback();
+        export const ${ownerName} = () => {
+          invoke(() => {
+            useEffect(() => {}, []);
+          });
+          return null;
+        };
+      `,
+        { filename: "fixture.tsx", includeLocations: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([
+        {
+          nodeType: "Identifier",
+          line: 6,
+          column: 12,
+          message:
+            "`useEffect` runs inside a nested callback. Call Hooks at the top level of a React component or custom Hook.",
+        },
+      ]);
+    },
+  );
+
+  it("still reports nested callback placement when the callback is conditional", () => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      const invoke = (callback: () => void) => callback();
+      export const Panel = ({ enabled }) => {
+        if (enabled) invoke(() => { useEffect(() => {}, []); });
+        return null;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      {
+        nodeType: "Identifier",
+        message:
+          "`useEffect` runs inside a nested callback. Call Hooks at the top level of a React component or custom Hook.",
+      },
+    ]);
+  });
+
+  it.each([
+    "if (enabled) useEffect(() => {}, []);",
+    "if (!enabled) return null; useEffect(() => {}, []);",
+  ])("preserves conditional-order advice for %s", (hookBody) => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      export const Panel = ({ enabled }) => {
+        ${hookBody}
+        return null;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      {
+        nodeType: "Identifier",
+        message:
+          "`useEffect` changes Hook order between renders when called conditionally, so React can attach state to the wrong Hook.",
+      },
+    ]);
+  });
+
+  it.each(["Panel", "useExample"])("keeps top-level Hooks valid in %s", (ownerName) => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      export const ${ownerName} = () => {
+        useEffect(() => {}, []);
+        return null;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves named non-Hook callback advice", () => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      export const Panel = () => {
+        const handleClick = () => { useEffect(() => {}, []); };
+        return <button onClick={handleClick} />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      {
+        nodeType: "Identifier",
+        message:
+          "`useEffect` runs inside `handleClick`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+      },
+    ]);
+  });
+
+  it("preserves the conservative skip for callbacks without a known render owner", () => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      register(() => { useEffect(() => {}, []); });
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("preserves the conditional React use exception", () => {
+    const result = runTsx(`
+      import { use } from "react";
+      export const Panel = ({ enabled, promise }) => {
+        if (enabled) use(promise);
+        return null;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});
+
 describe("react-builtins/rules-of-hooks — invariant React capability guards", () => {
   it("stays silent after the authentic named-import capability guard", () => {
     const result = runTsx(`

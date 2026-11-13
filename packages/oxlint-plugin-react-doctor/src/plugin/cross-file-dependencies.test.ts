@@ -874,6 +874,14 @@ export const App = () => {
 });
 
 describe("collector registry", () => {
+  it("keeps async effect certificates out of dependency-fingerprint replay", () => {
+    expect(CROSS_FILE_RULE_IDS.has("no-set-state-after-await-in-effect")).toBe(true);
+    expect(UNBOUNDED_CROSS_FILE_RULE_IDS.has("no-set-state-after-await-in-effect")).toBe(true);
+    expect(CROSS_FILE_DEPENDENCY_COLLECTORS.has("no-set-state-after-await-in-effect")).toBe(false);
+    const appPath = writeFixtureFile("src/App.tsx", "export const App = () => null;");
+    expect(collectFor(appPath, ["no-set-state-after-await-in-effect"])).toBeNull();
+  });
+
   it("classifies every cross-file rule as bounded or unbounded", () => {
     expect(
       [...CROSS_FILE_DEPENDENCY_COLLECTORS.keys(), ...UNBOUNDED_CROSS_FILE_RULE_IDS].sort(),

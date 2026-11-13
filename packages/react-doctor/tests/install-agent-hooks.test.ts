@@ -541,6 +541,8 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const emptyBinDirectory = path.join(fixture.projectRoot, "empty-bin");
     fs.mkdirSync(emptyBinDirectory);
     const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
+    const emptyBinDirectory = path.join(fixture.projectRoot, "empty-bin");
+    fs.mkdirSync(emptyBinDirectory);
     fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,

@@ -19,6 +19,7 @@ export interface SourceProjectModule {
 }
 
 export interface SourceProjectIndex {
+  readonly rootDirectory?: string;
   readonly modulesByFilePath: ReadonlyMap<string, SourceProjectModule>;
   readonly htmlFilePaths: ReadonlyArray<string>;
   readonly consumerModulesByFilePath: ReadonlyMap<string, ReadonlySet<SourceProjectModule>>;
@@ -260,6 +261,7 @@ export const buildSourceProjectIndex = ({
   }
 
   return {
+    rootDirectory: normalizeFilename(path.resolve(rootDirectory)),
     modulesByFilePath,
     htmlFilePaths: productionSourceFiles.htmlFilePaths,
     consumerModulesByFilePath,

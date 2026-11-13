@@ -1,22 +1,16 @@
 import * as os from "node:os";
 import * as Context from "effect/Context";
 import * as Metric from "effect/Metric";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import * as Telemetry from "../src/cli/utils/is-telemetry-enabled.js";
 import { recordCount, recordDistribution } from "../src/cli/utils/record-metric.js";
 
-// `isTelemetryEnabled()` is false under VITEST, which is what keeps this repo's
-// own test runs from phoning home. Emitting anything therefore requires
-// deliberately lifting that guard, and every test here restores it.
 const withTelemetryEnabled = (body: () => void): void => {
-  const previousVitest = process.env.VITEST;
-  const previousNodeEnv = process.env.NODE_ENV;
-  delete process.env.VITEST;
-  delete process.env.NODE_ENV;
+  const telemetryGate = vi.spyOn(Telemetry, "isTelemetryEnabled").mockReturnValue(true);
   try {
     body();
   } finally {
-    if (previousVitest !== undefined) process.env.VITEST = previousVitest;
-    if (previousNodeEnv !== undefined) process.env.NODE_ENV = previousNodeEnv;
+    telemetryGate.mockRestore();
   }
 };
 

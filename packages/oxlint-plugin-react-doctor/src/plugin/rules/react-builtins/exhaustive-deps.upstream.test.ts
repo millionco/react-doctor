@@ -14,6 +14,7 @@ import { exhaustiveDeps } from "./exhaustive-deps.js";
 runUpstreamParity("exhaustive-deps", exhaustiveDeps, {
   validSkips: EXHAUSTIVE_DEPS_DIVERGENCES.validSkips,
   invalidSkips: EXHAUSTIVE_DEPS_DIVERGENCES.invalidSkips,
+  invalidDiagnosticCountOverrides: EXHAUSTIVE_DEPS_DIVERGENCES.invalidDiagnosticCountOverrides,
   translateOptions: (upstreamOptions) => {
     if (!upstreamOptions || upstreamOptions.length === 0) return undefined;
     const firstOption = upstreamOptions[0];

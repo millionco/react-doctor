@@ -23,6 +23,57 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports both independent loading flags in the same function", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const useLoader = () => {
+        const [, setLoading] = useState(false);
+        const [, setSubmitting] = useState(false);
+        return async () => {
+          setLoading(true);
+          await readRecord();
+          setLoading(false);
+          setSubmitting(true);
+          await saveRecord();
+          setSubmitting(false);
+        };
+      };`,
+      { includeLocations: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([8, 11]);
+  });
+
+  it("reports an independent flag after a conditional reset without repeating the first flag", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const useLoader = () => {
+        const [, setLoading] = useState(false);
+        const [, setSubmitting] = useState(false);
+        return async () => {
+          setLoading(true);
+          try {
+            await readRecord();
+            setLoading(false);
+          } catch (error) {
+            reportError(error);
+          }
+          setLoading(true);
+          await readDetails();
+          setLoading(false);
+          setSubmitting(true);
+          await saveRecord();
+          setSubmitting(false);
+        };
+      };`,
+      { includeLocations: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([9, 18]);
+  });
+
   it("stays quiet when a swallowing catch makes the trailing reset run on rejection too (setError-in-catch idiom)", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

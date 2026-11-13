@@ -14,6 +14,8 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { REACT_MARKDOWN_SINGLE_VALUE_COUNT } from "./utils/constants.js";
+import { isReactMarkdownCodeClassname } from "./utils/is-react-markdown-code-classname.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -1779,6 +1781,14 @@ export const jsSetMapLookups = defineRule({
         isNodeOfType(receiver, "CallExpression") &&
         isNodeOfType(receiver.callee, "Identifier") &&
         receiver.callee.name.startsWith("split")
+      ) {
+        return;
+      }
+      if (
+        methodName === "includes" &&
+        node.arguments.length === REACT_MARKDOWN_SINGLE_VALUE_COUNT &&
+        isNodeOfType(receiver, "Identifier") &&
+        isReactMarkdownCodeClassname(receiver, context.scopes)
       ) {
         return;
       }

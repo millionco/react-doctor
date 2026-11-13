@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { hasOwnedTextareaAutoGrow } from "../../utils/has-owned-textarea-auto-grow.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -43,6 +44,7 @@ export const noNonresizableTextarea = defineRule({
         (!fieldSizingProperty || getStylePropertyStringValue(fieldSizingProperty) !== "content"),
       );
       if (!hasResizeNoneClass && !hasInlineResizeNone) return;
+      if (hasOwnedTextareaAutoGrow(node, context.scopes)) return;
       const reportNode: EsTreeNode = resizeProperty ?? node;
       if (!isNodeOfType(reportNode, "Property") && !isNodeOfType(reportNode, "JSXOpeningElement"))
         return;

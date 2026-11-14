@@ -148,11 +148,16 @@ runs:
         # file content and resolve the merge-base for baseline (PR-introduced-
         # issues-only) mode. Depth 1 covers the standard merge-ref checkout (base
         # is a parent of HEAD); for deeper history use `fetch-depth: 0` on
-        # actions/checkout. The base may ALREADY be present (e.g. `fetch-depth: 0`
-        # or a prior fetch), so don't gate the diff on this succeeding — `|| true`
-        # keeps a redundant/failed fetch from blocking the local diff below.
+        # actions/checkout. Only fetch when the commit is missing — fetching with
+        # --depth=1 in a full clone writes the commit to .git/shallow, cutting its
+        # history and making merge-base unreachable for PRs whose branch point is
+        # older than the base (issue #1961). The base may ALREADY be present (e.g.
+        # `fetch-depth: 0` or a prior fetch), so don't gate the diff on this
+        # succeeding — `|| true` keeps a failed fetch from blocking the local diff below.
         if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" rev-parse --git-dir >/dev/null 2>&1; then
-          git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          if ! git -C "$INPUT_DIRECTORY" cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          fi
         fi
 
         # The prefix that maps repo-root-relative diff paths to scan-relative

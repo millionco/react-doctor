@@ -469,3 +469,19 @@ describe("no-unsafe-json-parse", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("no-unsafe-json-parse static literal compatibility", () => {
+  it.each([
+    { code: `JSON.parse('{"caption":"East"}').caption;`, expected: 0 },
+    { code: 'JSON.parse(`{"caption":"East"}`).caption;', expected: 0 },
+    { code: `JSON.parse('["East"]').length;`, expected: 0 },
+    { code: `JSON.parse('false').value;`, expected: 0 },
+    { code: `JSON.parse('null').caption;`, expected: 1 },
+    { code: `JSON.parse('{"caption":}').caption;`, expected: 1 },
+    { code: "JSON.parse(`${source}`).caption;", expected: 1 },
+  ])("preserves the literal verdict for $code", ({ code, expected }) => {
+    const result = runRule(noUnsafeJsonParse, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

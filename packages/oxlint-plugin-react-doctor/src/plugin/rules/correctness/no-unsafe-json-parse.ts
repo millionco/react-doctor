@@ -1,3 +1,4 @@
+import { parseStaticJsonLiteral } from "../../utils/parse-static-json-literal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -37,26 +38,6 @@ const isJsonMethodCallee = (
 
 const isJsonMethodCall = (node: EsTreeNode, method: string, scopes?: ScopeAnalysis): boolean =>
   isNodeOfType(node, "CallExpression") && isJsonMethodCallee(node.callee, method, scopes);
-
-// A string/template literal that parses at lint time cannot throw at
-// runtime (`JSON.parse('{"version":"1.0.0"}')` inline fixtures).
-const isStaticallyValidJsonLiteral = (argument: EsTreeNode): boolean => {
-  let literalText: string | null = null;
-  if (isNodeOfType(argument, "Literal") && typeof argument.value === "string") {
-    literalText = argument.value;
-  } else if (
-    isNodeOfType(argument, "TemplateLiteral") &&
-    (argument.expressions?.length ?? 0) === 0
-  ) {
-    literalText = argument.quasis[0]?.value.cooked ?? null;
-  }
-  if (literalText === null) return false;
-  try {
-    return JSON.parse(literalText) !== null;
-  } catch {
-    return false;
-  }
-};
 
 // Destructuring reads properties straight off the parse result:
 // `const { foo } = JSON.parse(raw)` / `const [first] = JSON.parse(raw)`.
@@ -581,7 +562,8 @@ export const noUnsafeJsonParse = defineRule({
               return;
             }
           }
-          if (isStaticallyValidJsonLiteral(unwrappedArgument)) return;
+          const parsedLiteral = parseStaticJsonLiteral(unwrappedArgument);
+          if (parsedLiteral && parsedLiteral.value !== null) return;
           if (isRoundTripDeserializerParse(node as EsTreeNode, firstArgument, context.scopes))
             return;
           if (

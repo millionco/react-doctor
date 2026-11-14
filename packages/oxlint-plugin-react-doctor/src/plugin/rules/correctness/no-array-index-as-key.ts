@@ -1,3 +1,4 @@
+import { isInheritedStringTokenReceiver } from "../../utils/is-inherited-string-token-receiver.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -2027,7 +2028,12 @@ export const noArrayIndexAsKey = defineRule({
                 if (
                   iteratorCallee &&
                   isNodeOfType(iteratorCallee, "MemberExpression") &&
-                  isPlainStringTokenReceiver(iteratorCallee.object)
+                  (isPlainStringTokenReceiver(iteratorCallee.object) ||
+                    isInheritedStringTokenReceiver(
+                      iteratorCallee.object,
+                      context.filename,
+                      context.scopes,
+                    ))
                 )
                   primitiveItemNames = itemNames;
                 else if (keyTemplate)

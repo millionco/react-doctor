@@ -1,3 +1,4 @@
+import { isArrayApplyPlaceholderMap } from "../../utils/is-array-apply-placeholder-map.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -1972,7 +1973,8 @@ export const noArrayIndexAsKey = defineRule({
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
-            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context) ||
+            isArrayApplyPlaceholderMap(indexUse.binding.iteratorCall, context.scopes))
         )
           return;
         const indexName = indexUse.identifier.name;

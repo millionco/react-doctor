@@ -1,22 +1,16 @@
 import * as os from "node:os";
 import * as Context from "effect/Context";
 import * as Metric from "effect/Metric";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import * as Telemetry from "../src/cli/utils/is-telemetry-enabled.js";
 import { recordCount, recordDistribution } from "../src/cli/utils/record-metric.js";
 
-// `isTelemetryEnabled()` is false under VITEST, which is what keeps this repo's
-// own test runs from phoning home. Emitting anything therefore requires
-// deliberately lifting that guard, and every test here restores it.
-const withTelemetryEnabled = (body: () => void): void => {
-  const previousVitest = process.env.VITEST;
-  const previousNodeEnv = process.env.NODE_ENV;
-  delete process.env.VITEST;
-  delete process.env.NODE_ENV;
+const withMetricRecordingEnabled = (body: () => void): void => {
+  const telemetryGate = vi.spyOn(Telemetry, "isTelemetryEnabled").mockReturnValue(true);
   try {
     body();
   } finally {
-    if (previousVitest !== undefined) process.env.VITEST = previousVitest;
-    if (previousNodeEnv !== undefined) process.env.NODE_ENV = previousNodeEnv;
+    telemetryGate.mockRestore();
   }
 };
 
@@ -51,7 +45,7 @@ describe("record-metric when telemetry is disabled", () => {
 
 describe("record-metric when telemetry is enabled", () => {
   it("writes a counter into the registry the OTLP exporter reads", () => {
-    withTelemetryEnabled(() => {
+    withMetricRecordingEnabled(() => {
       recordCount("test.enabled.counter", 3);
     });
 
@@ -60,7 +54,7 @@ describe("record-metric when telemetry is enabled", () => {
   });
 
   it("records a distribution as a histogram", () => {
-    withTelemetryEnabled(() => {
+    withMetricRecordingEnabled(() => {
       recordDistribution("test.enabled.duration", 42, { unit: "millisecond" });
     });
 
@@ -68,7 +62,7 @@ describe("record-metric when telemetry is enabled", () => {
   });
 
   it("stringifies non-string attribute values, which Effect and Axiom both require", () => {
-    withTelemetryEnabled(() => {
+    withMetricRecordingEnabled(() => {
       recordCount("test.attribute.types", 1, { count: 7, enabled: true });
     });
 
@@ -78,7 +72,7 @@ describe("record-metric when telemetry is enabled", () => {
   });
 
   it("drops null and undefined attributes instead of coercing them to strings", () => {
-    withTelemetryEnabled(() => {
+    withMetricRecordingEnabled(() => {
       recordCount("test.absent.attributes", 1, {
         present: "yes",
         absentSignal: null,
@@ -97,7 +91,7 @@ describe("record-metric when telemetry is enabled", () => {
 
   it("anonymizes paths in attribute values now that no beforeSendMetric hook exists", () => {
     const homeDirectory = os.homedir();
-    withTelemetryEnabled(() => {
+    withMetricRecordingEnabled(() => {
       recordCount("test.scrubbed.attributes", 1, { directory: `${homeDirectory}/app` });
     });
 
@@ -105,7 +99,7 @@ describe("record-metric when telemetry is enabled", () => {
   });
 
   it("records the distribution unit as an attribute", () => {
-    withTelemetryEnabled(() => {
+    withMetricRecordingEnabled(() => {
       recordDistribution("test.unit.attribute", 5, { unit: "millisecond" });
     });
 

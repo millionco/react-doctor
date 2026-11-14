@@ -103,7 +103,7 @@ const createSecurityScanSession = (
       return [];
     }
     return [
-      { entry, scan, severityOverride, committedFilesOnly: rule.committedFilesOnly === true },
+      { entry, scan, severityOverride, committedFilesOnly: rule.committedFilesOnly !== false },
     ];
   });
   if (enabledScanRules.length === 0) return null;
@@ -124,13 +124,9 @@ const createSecurityScanSession = (
     if (file === null) return;
     for (const { entry, scan, severityOverride, committedFilesOnly } of enabledScanRules) {
       for (const finding of scan(file)) {
-        // A committed-file rule's finding doesn't apply to a path git ignores
-        // (it isn't actually checked in). The check is deferred to here, gated
-        // on an actual finding, on purpose: `scan` is cheap regex but
-        // `isFileGitIgnored` spawns a `git check-ignore` subprocess — hoisting
-        // it above `scan` would spawn git for every scanned file, not just the
-        // rare file that trips a committed-file rule.
-        if (committedFilesOnly && isFileGitIgnored(file)) continue;
+        // Defer Git subprocesses until a finding exists, and cache per path.
+        // Artifact rules opt out because ignored output can still be deployed.
+        if ((finding.committedFilesOnly ?? committedFilesOnly) && isFileGitIgnored(file)) continue;
         const diagnostic = buildSecurityScanDiagnostic(
           severityOverride === undefined ? finding : { ...finding, severity: severityOverride },
           entry,

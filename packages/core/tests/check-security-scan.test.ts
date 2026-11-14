@@ -1445,6 +1445,70 @@ alter table data enable row level security;
     expect(findings).toHaveLength(1);
   });
 
+  it.each([
+    { name: "synchronous", scan: checkSecurityScan },
+    { name: "cooperative", scan: checkSecurityScanCooperative },
+  ])(
+    "skips ignored source copies while retaining project source and ignored artifacts ($name)",
+    async ({ scan }) => {
+      spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
+      writeFile(".gitignore", ".worktrees/\nlocal-copy/\ndist/\n");
+      const query = `import { sql } from "drizzle-orm";
+        export const findUser = (db, id) => db.execute(sql.raw(\`SELECT * FROM users WHERE id = '\${id}'\`));`;
+      writeFile("src/query.ts", query);
+      writeFile(".worktrees/feature/src/query.ts", query);
+      writeFile("local-copy/src/query.ts", query);
+      writeFile(
+        "local-copy/src/embed.tsx",
+        `export const Embed = () => <object data="/diagram.svg" />;`,
+      );
+      writeFile("dist/assets/active.svg", `<svg onload="alert(1)"></svg>`);
+      writeFile("dist/assets/debug.log", "local diagnostic output");
+      writeFile(
+        "dist/assets/app.js.map",
+        JSON.stringify({
+          version: 3,
+          sourcesContent: ["export const secret = process.env.DATABASE_URL;"],
+        }),
+      );
+      writeFile("dist/assets/app.js", `const secret = "AKIAABCDEFGHIJKLMNOP";`);
+
+      const diagnostics = await scan(temporaryRoot);
+      expect(
+        diagnostics
+          .filter((diagnostic) => diagnostic.rule === "raw-sql-injection-risk")
+          .map((diagnostic) => diagnostic.filePath),
+      ).toEqual(["src/query.ts"]);
+      expect(rulesOf(diagnostics)).toEqual(
+        new Set([
+          "raw-sql-injection-risk",
+          "artifact-secret-leak",
+          "artifact-env-leak",
+          "public-debug-artifact",
+          "active-static-asset",
+        ]),
+      );
+      expect(
+        diagnostics
+          .filter((diagnostic) => diagnostic.rule === "active-static-asset")
+          .map((diagnostic) => diagnostic.filePath),
+      ).toEqual(["dist/assets/active.svg"]);
+    },
+  );
+
+  it("retains force-tracked source in an ignored directory", () => {
+    spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
+    writeFile(".gitignore", "local-copy/\n");
+    writeFile(
+      "local-copy/query.ts",
+      `import { sql } from "drizzle-orm";
+      export const findUser = (db, id) => db.execute(sql.raw(\`SELECT * FROM users WHERE id = '\${id}'\`));`,
+    );
+    spawnSync("git", ["add", "-f", "local-copy/query.ts"], { cwd: temporaryRoot, stdio: "ignore" });
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("raw-sql-injection-risk");
+  });
+
   it("does not flag a gitignored env file (not checked into the repository)", () => {
     spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
     writeFile(".gitignore", ".env\n");

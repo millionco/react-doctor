@@ -26,6 +26,7 @@ export const artifactBaasAuthoritySurface = defineRule({
   severity: "warn",
   recommendation:
     "Client BaaS config is often public, but shipped collection names plus owner, role, tenant, or admin fields give attackers a precise authorization map. Verify rules/RLS enforce every boundary server-side.",
+  committedFilesOnly: false,
   scan: scanByPattern({
     shouldScan: (file) => isBrowserArtifactPath(file.relativePath, file.isGeneratedBundle),
     pattern: BAAS_AUTHORITY_SURFACE_PATTERN,

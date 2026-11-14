@@ -94,11 +94,9 @@ export interface Rule {
   // generated oxlint config and executed by @react-doctor/core's
   // check-security-scan environment check over a whole-tree walk.
   scan?: FileScan;
-  // When `true`, the rule's finding only applies to files actually committed
-  // to the repository (its message asserts the file is "checked in"). The scan
-  // host drops findings for paths git ignores, so a local-only gitignored file
-  // (e.g. a `.env` in `.gitignore`) is not flagged. Lets a scan rule declare
-  // this without coupling the host to specific rule ids.
+  // File scans skip gitignored paths by default, while retaining tracked files
+  // and files outside Git repositories. Artifact rules opt out with `false`
+  // so ignored build output can still expose deployed secrets or unsafe assets.
   committedFilesOnly?: boolean;
   recommendation?: string;
   // Capability-conditioned override of `recommendation`, evaluated by

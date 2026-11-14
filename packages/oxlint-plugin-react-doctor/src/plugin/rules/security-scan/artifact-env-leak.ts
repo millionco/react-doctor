@@ -23,6 +23,7 @@ export const artifactEnvLeak = defineRule({
   severity: "error",
   recommendation:
     "Treat public env prefixes as publication, not secrecy; keep secret env vars server-only and rebuild after rotating leaked keys.",
+  committedFilesOnly: false,
   scan: (file) => {
     const artifactContent = maskThirdPartySourceMapSources(file.relativePath, file.content);
     const artifactFile =

@@ -8,6 +8,7 @@ export const artifactSecretLeak = defineRule({
   severity: "error",
   recommendation:
     "Remove the secret from client bundles/static assets, rotate it, and route privileged service calls through server-only code.",
+  committedFilesOnly: false,
   scan: (file) =>
     scanArtifactLeak(
       file,

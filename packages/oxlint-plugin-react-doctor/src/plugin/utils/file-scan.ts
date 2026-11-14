@@ -22,6 +22,8 @@ export interface ScanFinding {
   readonly message: string;
   readonly line: number;
   readonly column: number;
+  // Mixed source/artifact rules can restore Git-ignore filtering per finding.
+  readonly committedFilesOnly?: boolean;
   readonly severity?: "error" | "warn";
   readonly title?: string;
   readonly help?: string;

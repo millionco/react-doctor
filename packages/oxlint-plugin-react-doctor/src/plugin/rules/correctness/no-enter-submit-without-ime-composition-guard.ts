@@ -510,6 +510,24 @@ const compositionIsActiveWhenPredicate = (
   return null;
 };
 
+const compositionForcesPredicateResult = (
+  expression: EsTreeNode,
+  predicateResult: boolean,
+): boolean => {
+  const predicate = stripGroupingParens(expression);
+  if (isNodeOfType(predicate, "UnaryExpression") && predicate.operator === "!") {
+    return compositionForcesPredicateResult(predicate.argument, !predicateResult);
+  }
+  if (isNodeOfType(predicate, "LogicalExpression")) {
+    if (predicate.operator !== "&&" && predicate.operator !== "||") return false;
+    const left = compositionForcesPredicateResult(predicate.left, predicateResult);
+    const right = compositionForcesPredicateResult(predicate.right, predicateResult);
+    const requiresBothOperands = (predicate.operator === "&&") === predicateResult;
+    return requiresBothOperands ? left && right : left || right;
+  }
+  return compositionIsActiveWhenPredicate(predicate, predicateResult) === true;
+};
+
 const statementTerminatesFlow = (statement: EsTreeNode): boolean => {
   if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
     return true;
@@ -531,7 +549,7 @@ const hasPriorCompositionEarlyExit = (handler: EsTreeNode, branchTest: EsTreeNod
           const statement = parent.body[statementIndex];
           if (
             isNodeOfType(statement, "IfStatement") &&
-            compositionIsActiveWhenPredicate(statement.test, true) === true &&
+            compositionForcesPredicateResult(statement.test, true) &&
             statementTerminatesFlow(statement.consequent)
           ) {
             return true;

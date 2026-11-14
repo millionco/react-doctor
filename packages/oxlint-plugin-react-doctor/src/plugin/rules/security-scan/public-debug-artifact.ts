@@ -9,6 +9,7 @@ export const publicDebugArtifact = defineRule({
   severity: "warn",
   recommendation:
     "Remove debug artifacts from public output; logs and dumps often reveal source paths, internal routes, tokens, or environment snapshots.",
+  committedFilesOnly: false,
   scan: (file) => {
     if (!isPublicDebugArtifactPath(file.relativePath)) return [];
     // The finding is about the file existing at a public path, so there is

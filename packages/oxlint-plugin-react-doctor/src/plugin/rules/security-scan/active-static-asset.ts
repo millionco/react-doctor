@@ -18,6 +18,7 @@ export const activeStaticAsset = defineRule({
   severity: "warn",
   recommendation:
     "Prefer `<img>` for SVG images; if SVG must be served directly, use attachment disposition and a CSP that blocks scripts and objects.",
+  committedFilesOnly: false,
   scan: (file) => {
     const findings: ScanFinding[] = [];
 
@@ -51,6 +52,7 @@ export const activeStaticAsset = defineRule({
     if (pattern !== undefined) {
       const location = getMatchLocation(file.content, pattern);
       findings.push({
+        committedFilesOnly: true,
         message: "The app enables or embeds SVG in an executable browser context.",
         line: location.line,
         column: location.column,

@@ -3,6 +3,59 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noEnterSubmitWithoutImeCompositionGuard } from "./no-enter-submit-without-ime-composition-guard.js";
 
 describe("no-enter-submit-without-ime-composition-guard", () => {
+  it.each([
+    "e.nativeEvent.isComposing || e.keyCode === 229",
+    "e.keyCode === 229 || e.nativeEvent.isComposing",
+    "e.isComposing || disabled",
+    "disabled || (e.isComposing || e.which === 229)",
+    "!(!e.isComposing && ready)",
+  ])("accepts an early return guaranteed during composition: %s", (guard) => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `
+      const handleKeyDown = (e) => {
+        if (${guard}) return;
+        if (e.key === 'Enter') { e.preventDefault(); onSubmit(); }
+      };
+      const Field = () => <input onKeyDown={handleKeyDown} />;
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    "e.isComposing && enabled",
+    "enabled && (e.isComposing || e.which === 229)",
+    "!(!e.isComposing || enabled)",
+  ])("reports an early return that composition does not guarantee: %s", (guard) => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `
+      const Field = () => <input onKeyDown={(e) => {
+        if (${guard}) return;
+        if (e.key === 'Enter') onSubmit();
+      }} />;
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "if (e.isComposing || e.which === 229) log(); if (e.key === 'Enter') onSubmit();",
+    "if (e.key === 'Enter') onSubmit(); if (e.isComposing || disabled) return;",
+    "if (e.key === 'Enter' && (!e.isComposing || ready)) onSubmit();",
+    "if (e.isComposing && !e.isComposing) return; if (e.key === 'Enter') onSubmit();",
+  ])("does not exempt an unsafe composition path: %s", (body) => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `
+      const Field = () => <input onKeyDown={(e) => { ${body} }} />;
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an input Enter-to-commit with no composition guard", () => {
     const result = runRule(
       noEnterSubmitWithoutImeCompositionGuard,

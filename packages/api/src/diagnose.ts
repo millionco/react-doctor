@@ -198,11 +198,9 @@ const diagnoseDirectory = async (
 
 const findWorstScore = (projectResults: ProjectResult[]): ScoreResult | null => {
   let worstResult: ScoreResult | null = null;
-  let worstScore = Number.POSITIVE_INFINITY;
   for (const projectResult of projectResults) {
     if (!projectResult.ok || projectResult.score === null) continue;
-    if (projectResult.score.score < worstScore) {
-      worstScore = projectResult.score.score;
+    if (projectResult.score.score < (worstResult?.score ?? Number.POSITIVE_INFINITY)) {
       worstResult = projectResult.score;
     }
   }

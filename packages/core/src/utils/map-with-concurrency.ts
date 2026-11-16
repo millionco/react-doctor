@@ -23,23 +23,27 @@ export const mapWithConcurrency = async <Input, Output>(
 
   const workerCount = Math.min(Math.max(1, Math.floor(concurrency) || 1), items.length);
   let nextIndex = 0;
-  const errors: unknown[] = [];
+  let didTaskFail = false;
+  let firstError: unknown;
 
   const runWorker = async (): Promise<void> => {
-    while (errors.length === 0) {
+    while (!didTaskFail) {
       const index = nextIndex;
       nextIndex += 1;
       if (index >= items.length) return;
       try {
         results[index] = await task(items[index], index);
       } catch (error) {
-        errors.push(error);
+        if (!didTaskFail) {
+          didTaskFail = true;
+          firstError = error;
+        }
         return;
       }
     }
   };
 
   await Promise.all(Array.from({ length: workerCount }, runWorker));
-  if (errors.length > 0) throw errors[0];
+  if (didTaskFail) throw firstError;
   return results;
 };

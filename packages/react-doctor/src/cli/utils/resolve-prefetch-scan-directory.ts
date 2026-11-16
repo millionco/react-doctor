@@ -1,14 +1,6 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
+import { isDirectory } from "@react-doctor/core";
 import { SCAN_PREAMBLE_SKIP_FLAGS } from "./constants.js";
-
-const isExistingDirectory = (absolutePath: string): boolean => {
-  try {
-    return fs.statSync(absolutePath).isDirectory();
-  } catch {
-    return false;
-  }
-};
 
 // Guesses the directory the default scan command will resolve from raw argv,
 // before commander parses it. A wrong guess only costs an unused git child:
@@ -25,7 +17,7 @@ export const resolvePrefetchScanDirectory = (
     if (SCAN_PREAMBLE_SKIP_FLAGS.has(token)) return null;
     const isFlag = token.startsWith("-");
     if (!isFlag) {
-      if (isExistingDirectory(path.resolve(currentDirectory, token))) {
+      if (isDirectory(path.resolve(currentDirectory, token))) {
         directoryCandidates.push(token);
       } else if (previousToken === null || !previousToken.startsWith("-")) {
         return null;

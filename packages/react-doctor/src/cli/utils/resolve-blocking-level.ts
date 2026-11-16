@@ -2,7 +2,8 @@ import type { BlockingLevel, ReactDoctorConfig } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 
-const VALID_BLOCKING_LEVELS = new Set<BlockingLevel>(["error", "warning", "none"]);
+const BLOCKING_LEVELS = ["error", "warning", "none"] satisfies ReadonlyArray<BlockingLevel>;
+const VALID_BLOCKING_LEVELS: ReadonlySet<string> = new Set(BLOCKING_LEVELS);
 // react-doctor blocks CI on `"error"`-severity diagnostics by default. Opt into
 // a stricter gate with `--blocking warning` or disable it with `none`
 // (advisory). `--blocking` (or `blocking` in config) wins over the deprecated
@@ -10,7 +11,7 @@ const VALID_BLOCKING_LEVELS = new Set<BlockingLevel>(["error", "warning", "none"
 const DEFAULT_BLOCKING_LEVEL: BlockingLevel = "error";
 
 export const isValidBlockingLevel = (level: string): level is BlockingLevel =>
-  VALID_BLOCKING_LEVELS.has(level as BlockingLevel);
+  VALID_BLOCKING_LEVELS.has(level);
 
 // The configured blocking level before validation/defaulting (flag wins over
 // config; the new name wins over the deprecated `failOn` alias). `undefined`
@@ -31,7 +32,7 @@ export const resolveBlockingLevel = (
   // An invalid level resolves to the default rather than guessing a looser or
   // stricter gate the user didn't ask for, and warns.
   logger.warn(
-    `Invalid blocking level "${sourceValue}". Expected one of: error, warning, none. Falling back to "${DEFAULT_BLOCKING_LEVEL}".`,
+    `Invalid blocking level "${sourceValue}". Expected one of: ${BLOCKING_LEVELS.join(", ")}. Falling back to "${DEFAULT_BLOCKING_LEVEL}".`,
   );
   return DEFAULT_BLOCKING_LEVEL;
 };

@@ -1,3 +1,7 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -11,6 +15,13 @@ const runWith = <Value>(
   layer: ReturnType<typeof Git.layerOf>,
   program: Effect.Effect<Value, ReactDoctorError, Git>,
 ): Value => Effect.runSync(program.pipe(Effect.provide(layer)));
+
+const runGitCommand = (directory: string, args: ReadonlyArray<string>): void => {
+  const result = spawnSync("git", [...args], { cwd: directory });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+  }
+};
 
 describe("Git.layerOf", () => {
   it("returns the snapshot's current branch and default branch", () => {
@@ -213,6 +224,38 @@ describe("Git.layerOf", () => {
       status: 0,
       stdout: "src/a.ts\nsrc/b.tsx\n",
     });
+  });
+});
+
+describe("Git.layerNode", () => {
+  it("treats option-shaped branch names as missing refs", async () => {
+    const exists = await Effect.runPromise(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.branchExists(os.tmpdir(), "--help");
+      }).pipe(Effect.provide(Git.layerNode)),
+    );
+
+    expect(exists).toBe(false);
+  });
+
+  it("greps option-shaped patterns as patterns", async () => {
+    const repositoryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-git-grep-"));
+    runGitCommand(repositoryDirectory, ["init"]);
+    fs.writeFileSync(path.join(repositoryDirectory, "example.txt"), "match -n literally\n");
+    runGitCommand(repositoryDirectory, ["add", "example.txt"]);
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.grep({
+          directory: repositoryDirectory,
+          pattern: "-n",
+        });
+      }).pipe(Effect.provide(Git.layerNode)),
+    );
+
+    expect(result).toEqual({ status: 0, stdout: "example.txt\n" });
   });
 });
 

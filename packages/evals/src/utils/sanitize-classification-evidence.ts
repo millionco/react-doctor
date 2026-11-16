@@ -33,11 +33,13 @@ export const sanitizeClassificationEvidence = (value: unknown): z.core.util.JSON
         .map((entry) => visit(entry, depth + 1));
     } else {
       const entries: Array<[string, z.core.util.JSONType]> = [];
-      for (const [key, entry] of Object.entries(input).slice(
-        0,
-        CLASSIFICATION_MAX_EVIDENCE_ENTRIES,
-      )) {
+      let acceptedEntryCount = 0;
+      for (const key in input) {
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        if (descriptor === undefined) continue;
+        if (acceptedEntryCount >= CLASSIFICATION_MAX_EVIDENCE_ENTRIES) break;
         if (remaining <= 0) break;
+        acceptedEntryCount += 1;
         const safeKey = redactSensitiveText(
           gatewayKey ? key.replaceAll(gatewayKey, "<redacted>") : key,
         ).slice(0, CLASSIFICATION_MAX_RESPONSE_CHARACTERS);
@@ -46,7 +48,7 @@ export const sanitizeClassificationEvidence = (value: unknown): z.core.util.JSON
           safeKey,
           /key|token|secret|password|authorization|cookie|headers|request|prompt|code/i.test(key)
             ? "<redacted>"
-            : visit(entry, depth + 1),
+            : visit(descriptor.value, depth + 1),
         ]);
       }
       result = Object.fromEntries(entries);

@@ -579,14 +579,16 @@ export class Git extends Context.Service<
         directory: string,
         branch: string,
       ): Effect.Effect<boolean, ReactDoctorError> =>
-        runGit(directory, ["rev-parse", "--verify", branch]).pipe(
-          Effect.map((result) => result.status === 0),
-          Effect.catch((error) =>
-            error.reason._tag === "GitInvocationFailed"
-              ? Effect.succeed(false)
-              : Effect.fail(error),
-          ),
-        );
+        isSafeGitRevision(branch)
+          ? runGit(directory, ["rev-parse", "--verify", "--end-of-options", branch]).pipe(
+              Effect.map((result) => result.status === 0),
+              Effect.catch((error) =>
+                error.reason._tag === "GitInvocationFailed"
+                  ? Effect.succeed(false)
+                  : Effect.fail(error),
+              ),
+            )
+          : Effect.succeed(false);
 
       const headSha = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "HEAD"]).pipe(
@@ -973,7 +975,7 @@ export class Git extends Context.Service<
             if (input.listMatchingFiles ?? true) args.push("-l");
             if (input.includeUntracked ?? false) args.push("--untracked");
             if (input.extendedRegexp ?? false) args.push("-E");
-            args.push(input.pattern);
+            args.push("-e", input.pattern);
             if (input.includePaths && input.includePaths.length > 0) {
               args.push("--", ...input.includePaths);
             }

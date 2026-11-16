@@ -22,5 +22,5 @@ export const filterScansForSurface = (
   surface: DiagnosticSurface,
 ): Diagnostic[] =>
   completedScans.flatMap((scan) =>
-    filterDiagnosticsForSurface([...scan.result.diagnostics], surface, scan.config),
+    filterDiagnosticsForSurface(scan.result.diagnostics, surface, scan.config),
   );

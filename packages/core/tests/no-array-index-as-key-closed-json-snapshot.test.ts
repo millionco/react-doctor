@@ -2640,3 +2640,51 @@ ${SNAPSHOT_FILES["src/owner.js"].replace("load().then", `load(${argumentSource})
     expect(await runNativeSnapshotLeaf(true, false, includePaths)).toHaveLength(1);
   });
 });
+
+describe("native status rejection ignored arguments through ordinal proof", () => {
+  const requestWithIgnoredArguments = (argumentsText: string) => `
+    import axios from 'axios';
+    export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => {
+        if (response.status === 200) resolve(response.data);
+        else reject(${argumentsText});
+      }).catch(reject);
+    });
+  `;
+
+  it("removes only the primitive ordinal finding and retains a disjoint stateful sibling", () => {
+    replaceSnapshotSource({
+      name: "stateful rich-link sibling",
+      filename: "src/leaf.js",
+      before: "</section>",
+      after:
+        "{props.links.map((link, index) => <a key={index} href={link.href}>{link.title}</a>)}</section>",
+    });
+    const filename = path.join(temporaryDirectory, "src/leaf.js");
+    const diagnosticsWithLocations = () => {
+      const result = runRule(noArrayIndexAsKey, fs.readFileSync(filename, "utf8"), {
+        filename,
+        forceJsx: true,
+        includeLocations: true,
+      });
+      expect(result.parseErrors).toEqual([]);
+      return result.diagnostics;
+    };
+    const retainedSibling = diagnosticsWithLocations();
+    expect(retainedSibling).toHaveLength(1);
+    writeSnapshotFile(
+      "src/request.js",
+      requestWithIgnoredArguments("'failed', response, 0, null, response"),
+    );
+    expect(diagnosticsWithLocations()).toEqual(retainedSibling);
+  });
+
+  it.each([
+    "'failed', response, effect()",
+    "'failed', response, response.data",
+    "'failed', response, ...response",
+  ])("retains the ordinal warning for an observable later argument: %s", (argumentsText) => {
+    writeSnapshotFile("src/request.js", requestWithIgnoredArguments(argumentsText));
+    expect(runSnapshotLeaf()).toHaveLength(1);
+  });
+});

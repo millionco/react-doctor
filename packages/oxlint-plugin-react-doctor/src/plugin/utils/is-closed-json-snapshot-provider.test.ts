@@ -978,7 +978,6 @@ describe("isClosedJsonSnapshotProvider", () => {
     "foreign.status",
     "response['status']",
     "response?.status",
-    "'failed', 0",
     "1e999",
   ])("refuses an unproved status rejection payload: %s", (reason) => {
     expect(
@@ -1967,5 +1966,70 @@ describe("isClosedJsonSnapshotProvider", () => {
     "import configure from '#writer'; configure();",
   ])("declines native or library escape: %s", (source) => {
     expect(checkProvider(providerSource, { "writer.js": source })).toBe(false);
+  });
+});
+
+describe("native status rejection ignored argument evaluation", () => {
+  const statusProvider = (argumentsText: string) => `
+    import axios from 'axios';
+    export const load = () => new Promise((resolve, reject) => {
+      axios({ responseType: 'json' }).then(response => {
+        if (response.status === 200) resolve(response.data);
+        else reject(${argumentsText});
+      }).catch(reject);
+    });
+  `;
+
+  it.each([
+    "'failed', response",
+    "'failed', 0",
+    "'failed', response, 1e999",
+    "'failed', 0, null",
+    "'failed', response, response, 0, 'ignored', false, null",
+    "response.status, response, true",
+    "null, response, 1, 2, 3, 4, 5",
+  ])("accepts every independently inert ignored argument: %s", (argumentsText) => {
+    expect(checkProvider(statusProvider(argumentsText))).toBe(true);
+  });
+
+  it.each([
+    "'failed', effect()",
+    "'failed', response, effect()",
+    "'failed', response.data",
+    "'failed', 0, response.data",
+    "'failed', response.status",
+    "'failed', 0, response.status",
+    "'failed', ...response",
+    "'failed', 0, ...response",
+    "'failed', unknown",
+    "'failed', 0, unknown",
+    "'failed', (() => { return later; const later = 0; })()",
+    "'failed', 0, (() => { return later; const later = 0; })()",
+    "'failed', (response = other)",
+    "'failed', 0, (response = other)",
+    "'failed', response, (() => { resolve([{}]); })()",
+    "'failed', /pattern/",
+    "'failed', 0, 1n",
+    "response.data, response, 0",
+  ])(
+    "refuses effects, getters, spreads and unproved reads at every position: %s",
+    (argumentsText) => {
+      expect(checkProvider(statusProvider(argumentsText))).toBe(false);
+    },
+  );
+
+  it("preserves native Promise binding and resolver nonescape proofs", () => {
+    const source = statusProvider("'failed', response, 0");
+    expect(checkProvider(`const Promise = foreignPromise; ${source}`)).toBe(false);
+    expect(checkProvider(source.replace("axios({", "expose(reject); axios({"))).toBe(false);
+    expect(checkProvider(source.replace("response, 0", "response, resolve"))).toBe(false);
+  });
+
+  it("does not waive a rejection-only observable logger", () => {
+    const source = statusProvider("'failed', response, 0").replace(
+      ".catch(reject)",
+      ".catch(error => { console.log(error); reject(error); })",
+    );
+    expect(checkProvider(source)).toBe(false);
   });
 });

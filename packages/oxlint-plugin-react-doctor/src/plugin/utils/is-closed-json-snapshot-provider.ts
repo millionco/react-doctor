@@ -1822,8 +1822,7 @@ export const isClosedJsonSnapshotProvider = ({
       rejection?.type !== "CallExpression" ||
       rejection.optional ||
       rejection.callee.type !== "Identifier" ||
-      module.scopes.symbolFor(rejection.callee) !== rejectSymbol ||
-      rejection.arguments.length > 1
+      module.scopes.symbolFor(rejection.callee) !== rejectSymbol
     )
       return false;
     const body = resolution.arguments[0];
@@ -1834,6 +1833,16 @@ export const isClosedJsonSnapshotProvider = ({
       if (isResponseStatus(reason) && reason.type === "MemberExpression")
         responseReferences.add(reason.object);
       else if (!isSnapshotPrimitiveLiteral(reason, true)) return false;
+    }
+    // Native Promise reject ignores later values, but evaluates every argument.
+    // Each ignored value must be a literal or the initialized response binding.
+    for (const ignoredArgument of rejection.arguments.slice(1)) {
+      if (
+        ignoredArgument.type === "Identifier" &&
+        module.scopes.symbolFor(ignoredArgument) === responseSymbol
+      )
+        responseReferences.add(ignoredArgument);
+      else if (!isSnapshotPrimitiveLiteral(ignoredArgument)) return false;
     }
     const rejectReferences = new Set<EsTreeNode>([rejection.callee]);
     if (rejectionHandler) rejectReferences.add(rejectionHandler);

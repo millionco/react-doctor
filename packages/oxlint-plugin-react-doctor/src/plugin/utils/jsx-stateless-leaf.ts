@@ -158,7 +158,7 @@ const isStaticallyFalseAttributeValue = (attribute: EsTreeNode): boolean => {
   return isNodeOfType(value, "Literal") && (value.value === false || value.value === "false");
 };
 
-const hasStatefulHtmlAttribute = (openingElement: EsTreeNode): boolean => {
+export const hasStatefulHtmlAttribute = (openingElement: EsTreeNode): boolean => {
   if (!isNodeOfType(openingElement, "JSXOpeningElement")) return false;
   return openingElement.attributes.some((attribute) => {
     if (

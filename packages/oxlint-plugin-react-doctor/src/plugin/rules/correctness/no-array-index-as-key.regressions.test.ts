@@ -2422,3 +2422,337 @@ describe("count-built placeholder arrays", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("closed stable focus carrier", () => {
+  it("focus-inert", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} inert onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-editable-false", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} contentEditable={false} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-event-target", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = (event) => { props.onPick(event.target); };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-higher-event-target", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <section onClick={(event) => remember(event.target)}><div tabIndex={0} onClick={act}><span>{renderText()}</span></div></section>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-class-call", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} className={observe(props.text)} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-class-getter", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} className={record.name} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-dynamic-key", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} key={props.text} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-handler-alias", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  const alias = act;\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-result-binding", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { const result = props.onPick(props.text); remember(result); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-ref", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} ref={ref} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-spread", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} {...extra} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-opaque", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><Opaque>{renderText()}</Opaque></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-this", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(this.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-arguments", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(arguments[0]); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-document-alias", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const target = document;\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-unknown-data", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(getText()); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-rest-parameter", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(...text: string[]): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-result-type", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): object; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-extra-parameter", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string, index: number): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-duplicate-signature", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; onPick?: (text: string) => void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-unguarded-optional", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { props.onPick(props.text); };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-string-index", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex="0" onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-negative-index", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={-1} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-mapped-index", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index} tabIndex={0}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-mapped-input", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}><input defaultValue={part}/></b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-dangerous", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} dangerouslySetInnerHTML={value} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-plain-ancestor", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+  it("legacy-mapped-focusable-leaf", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index} tabIndex={0}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-stateful-fragment-input", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}><input defaultValue={part} /></b> : part);\n    }\n    return props.text;\n  };\n  return <div onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-editable-ancestor", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div contentEditable onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-false-editable-ancestor", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div contentEditable={false} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+  it("legacy-ref-ancestor", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div ref={node => { void node; }} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-spread-ancestor", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div {...unknownAttributes} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-opaque-parent", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div onClick={act}><UnknownShell>{renderText()}</UnknownShell></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("legacy-protocol-mutation", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nString.prototype.split = customSplit;\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("closed stable focus data actions", () => {
+  it("focus-import-alias", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const alias = publish;\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { alias(props.text); announce.success(`Selected ${props.text}`, { placement: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-import-property-mutation", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  announce.success = observer;\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { publish(props.text); announce.success(`Selected ${props.text}`, { placement: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-prototype-record", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { publish(props.text); announce.success(`Selected ${props.text}`, { constructor: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-ref-data", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { publish(ref.current); announce.success(`Selected ${props.text}`, { placement: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-import-return-value", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { const saved = publish(props.text); consume(saved); announce.success(`Selected ${props.text}`, { placement: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("focus-import-returned-result", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { return publish(props.text); announce.success(`Selected ${props.text}`, { placement: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

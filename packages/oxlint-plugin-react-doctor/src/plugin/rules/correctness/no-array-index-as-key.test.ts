@@ -724,3 +724,41 @@ describe("guarded render-helper JSX ancestor boundary", () => {
     expect(result.diagnostics).toHaveLength(expectedDiagnostics);
   });
 });
+
+describe("closed stable focus carrier", () => {
+  it("stable-focus-method", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+  it("stable-focus-property", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?: (text: string) => void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+  it("stable-focus-no-action", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("closed stable focus data actions", () => {
+  it("stable-focus-imported-actions-full-data-grammar", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      'import React from "react";\nimport publish from "authored-publisher";\nimport { announce } from "authored-announcer";\ninterface DisplayProps { text: string; pattern?: RegExp | null; onPick?(text: string): void; }\nexport function Display(props: DisplayProps) {\n  const act = () => { if (props.onPick) { props.onPick(props.text); } else { publish(props.text); announce.success(`Selected ${props.text}`, { placement: "footer", metadata: [true, null, 7, { label: props.text }] }); } };\n  const renderText = () => {\n    const { pattern } = props;\n    if (pattern) {\n      return props.text.split(pattern).map((part, index) => part.match(pattern) ? <b key={index}>{part}</b> : part);\n    }\n    return props.text;\n  };\n  return <div tabIndex={0} onClick={act}><span>{renderText()}</span></div>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

@@ -205,6 +205,287 @@ const isDirectComponentOwner = (node: EsTreeNode): boolean => {
   return isNodeOfType(declaration.parent, "Program");
 };
 
+const getPlainFocusCallbackProperty = (
+  parameter: EsTreeNode,
+  name: string,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"TSPropertySignature"> | EsTreeNodeOfType<"TSMethodSignature"> | null => {
+  if (!isNodeOfType(parameter, "Identifier") || !parameter.typeAnnotation) return null;
+  const annotation = parameter.typeAnnotation;
+  if (!isNodeOfType(annotation, "TSTypeAnnotation")) return null;
+  let declaration: EsTreeNode = annotation.typeAnnotation;
+  if (isNodeOfType(declaration, "TSTypeReference")) {
+    if (!isNodeOfType(declaration.typeName, "Identifier") || declaration.typeArguments) return null;
+    const [matchingDeclaration, ...otherDeclarations] = findSameFileTypeDeclarations(
+      parameter,
+      declaration.typeName.name,
+    );
+    if (!matchingDeclaration || Boolean(otherDeclarations.length)) return null;
+    if (
+      visibleSymbol(parameter, declaration.typeName.name, scopes)?.declarationNode !==
+      matchingDeclaration
+    )
+      return null;
+    declaration = matchingDeclaration;
+  }
+  if (isNodeOfType(declaration, "TSTypeAliasDeclaration")) {
+    if (declaration.typeParameters) return null;
+    declaration = declaration.typeAnnotation;
+  }
+  let members: ReadonlyArray<EsTreeNode>;
+  if (isNodeOfType(declaration, "TSInterfaceDeclaration")) {
+    if (declaration.typeParameters || Boolean(declaration.extends.length)) return null;
+    members = declaration.body.body;
+  } else if (isNodeOfType(declaration, "TSTypeLiteral")) members = declaration.members;
+  else return null;
+  if (members.some((member) => isNodeOfType(member, "TSIndexSignature"))) return null;
+  const matchingMembers = members.filter(
+    (member) =>
+      (isNodeOfType(member, "TSPropertySignature") || isNodeOfType(member, "TSMethodSignature")) &&
+      ((isNodeOfType(member.key, "Identifier") && member.key.name === name) ||
+        (isNodeOfType(member.key, "Literal") && member.key.value === name)),
+  );
+  const [member, ...otherMembers] = matchingMembers;
+  if (
+    (!isNodeOfType(member, "TSPropertySignature") && !isNodeOfType(member, "TSMethodSignature")) ||
+    Boolean(otherMembers.length)
+  )
+    return null;
+  return !member.computed && isNodeOfType(member.key, "Identifier") ? member : null;
+};
+
+const isFocusActionData = (
+  node: EsTreeNode,
+  props: SymbolDescriptor,
+  parameter: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isNodeOfType(node, "Literal"))
+    return node.value === null || ["string", "number", "boolean"].includes(typeof node.value);
+  if (
+    isNodeOfType(node, "MemberExpression") &&
+    !node.computed &&
+    !node.optional &&
+    isSameSymbol(node.object, props, scopes) &&
+    isNodeOfType(node.property, "Identifier")
+  ) {
+    const property = getPlainProp(parameter, node.property.name, scopes);
+    return Boolean(
+      property &&
+      !property.optional &&
+      isNodeOfType(property.typeAnnotation, "TSTypeAnnotation") &&
+      isNodeOfType(property.typeAnnotation.typeAnnotation, "TSStringKeyword"),
+    );
+  }
+  if (isNodeOfType(node, "TemplateLiteral"))
+    return node.expressions.every((value) => isFocusActionData(value, props, parameter, scopes));
+  if (isNodeOfType(node, "ArrayExpression"))
+    return node.elements.every(
+      (value) => value !== null && isFocusActionData(value, props, parameter, scopes),
+    );
+  if (isNodeOfType(node, "ObjectExpression"))
+    return node.properties.every(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        !property.computed &&
+        !property.method &&
+        property.kind === "init" &&
+        !property.shorthand &&
+        !(
+          isNodeOfType(property.key, "Identifier") &&
+          ["__proto__", "prototype", "constructor"].includes(property.key.name)
+        ) &&
+        !(
+          isNodeOfType(property.key, "Literal") &&
+          ["__proto__", "prototype", "constructor"].includes(String(property.key.value))
+        ) &&
+        (isNodeOfType(property.key, "Identifier") || isNodeOfType(property.key, "Literal")) &&
+        isFocusActionData(property.value, props, parameter, scopes),
+    );
+  return false;
+};
+
+const isClosedFocusAncestorChain = (
+  openings: ReadonlyArray<EsTreeNodeOfType<"JSXOpeningElement">>,
+  component: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isFunctionLike(component)) return false;
+  const parameter = component.params[0];
+  if (!isNodeOfType(parameter, "Identifier")) return false;
+  const props = scopes.symbolFor(parameter);
+  if (!props || props.kind !== "parameter") return false;
+  let observesDom = false;
+  walkAst(component.body, (node) => {
+    if (
+      isNodeOfType(node, "ThisExpression") ||
+      isNodeOfType(node, "MetaProperty") ||
+      (isNodeOfType(node, "Identifier") &&
+        (node.name === "arguments" ||
+          (["document", "event"].includes(node.name) && scopes.isGlobalReference(node))))
+    )
+      observesDom = true;
+  });
+  if (observesDom) return false;
+  const isPropsCallback = (node: EsTreeNode): boolean => {
+    if (
+      !isNodeOfType(node, "MemberExpression") ||
+      node.computed ||
+      node.optional ||
+      !isSameSymbol(node.object, props, scopes) ||
+      !isNodeOfType(node.property, "Identifier")
+    )
+      return false;
+    const property = getPlainFocusCallbackProperty(parameter, node.property.name, scopes);
+    if (!property) return false;
+    const signature = isNodeOfType(property, "TSMethodSignature")
+      ? property
+      : isNodeOfType(property.typeAnnotation?.typeAnnotation, "TSFunctionType")
+        ? property.typeAnnotation.typeAnnotation
+        : null;
+    if (!signature || signature.typeParameters || signature.params.length !== 1) return false;
+    const argument = signature.params[0];
+    return (
+      isNodeOfType(argument, "Identifier") &&
+      !argument.optional &&
+      isNodeOfType(argument.typeAnnotation?.typeAnnotation, "TSStringKeyword") &&
+      isNodeOfType(signature.returnType?.typeAnnotation, "TSVoidKeyword")
+    );
+  };
+  const isAction = (node: EsTreeNode, guarded: ReadonlySet<string>): boolean => {
+    if (
+      !isNodeOfType(node, "CallExpression") ||
+      node.optional ||
+      !node.arguments.every((argument) => isFocusActionData(argument, props, parameter, scopes))
+    )
+      return false;
+    if (
+      isPropsCallback(node.callee) &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.property, "Identifier")
+    ) {
+      const property = getPlainFocusCallbackProperty(parameter, node.callee.property.name, scopes);
+      return Boolean(
+        property &&
+        (!property.optional || guarded.has(node.callee.property.name)) &&
+        node.arguments.length === 1,
+      );
+    }
+    const root = isNodeOfType(node.callee, "Identifier")
+      ? node.callee
+      : isNodeOfType(node.callee, "MemberExpression") &&
+          !node.callee.computed &&
+          !node.callee.optional &&
+          isNodeOfType(node.callee.property, "Identifier") &&
+          isNodeOfType(node.callee.object, "Identifier")
+        ? node.callee.object
+        : null;
+    if (!root) return false;
+    const symbol = scopes.symbolFor(root);
+    return Boolean(
+      symbol &&
+      symbol.kind === "import" &&
+      hasOnlyReferences(symbol, new Set([root])) &&
+      getSymbolMutationInspector(scopes).getMutationPropertyNames(root) === undefined,
+    );
+  };
+  const isBody = (node: EsTreeNode, guarded: ReadonlySet<string>): boolean => {
+    if (isNodeOfType(node, "BlockStatement"))
+      return node.body.every((statement) => isBody(statement, guarded));
+    if (isNodeOfType(node, "ReturnStatement")) return node.argument === null;
+    if (isNodeOfType(node, "ExpressionStatement")) return isAction(node.expression, guarded);
+    if (
+      !isNodeOfType(node, "IfStatement") ||
+      !isPropsCallback(node.test) ||
+      !isNodeOfType(node.test, "MemberExpression") ||
+      !isNodeOfType(node.test.property, "Identifier")
+    )
+      return false;
+    return (
+      isBody(node.consequent, new Set([...guarded, node.test.property.name])) &&
+      (!node.alternate || isBody(node.alternate, guarded))
+    );
+  };
+  const isHandler = (value: EsTreeNode): boolean => {
+    if (
+      !isNodeOfType(value, "JSXExpressionContainer") ||
+      !isNodeOfType(value.expression, "Identifier")
+    )
+      return false;
+    const symbol = scopes.symbolFor(value.expression);
+    const handler = symbol?.initializer;
+    if (
+      !symbol ||
+      symbol.kind !== "const" ||
+      !hasOnlyReferences(symbol, new Set([value.expression])) ||
+      !isNodeOfType(handler, "ArrowFunctionExpression") ||
+      handler.async ||
+      Boolean(handler.params.length) ||
+      !isNodeOfType(handler.body, "BlockStatement")
+    )
+      return false;
+    const declarator = handler.parent;
+    return (
+      isNodeOfType(declarator, "VariableDeclarator") &&
+      declarator.init === handler &&
+      isNodeOfType(declarator.parent, "VariableDeclaration") &&
+      declarator.parent.kind === "const" &&
+      declarator.parent.parent === component.body &&
+      isBody(handler.body, new Set())
+    );
+  };
+  return openings.every((opening) => {
+    if (
+      !isNodeOfType(opening.name, "JSXIdentifier") ||
+      !STATELESS_HTML_LEAF_TAGS.has(opening.name.name)
+    )
+      return false;
+    const names = new Set<string>();
+    return (
+      opening.attributes.every((attribute) => {
+        if (
+          !isNodeOfType(attribute, "JSXAttribute") ||
+          !isNodeOfType(attribute.name, "JSXIdentifier")
+        )
+          return false;
+        const name = attribute.name.name;
+        if (names.has(name.toLowerCase())) return false;
+        names.add(name.toLowerCase());
+        if (
+          ["ref", "is", "inert", "contenteditable", "children", "dangerouslysetinnerhtml"].includes(
+            name.toLowerCase(),
+          )
+        )
+          return false;
+        if (name === "tabIndex")
+          return (
+            isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+            isNodeOfType(attribute.value.expression, "Literal") &&
+            attribute.value.expression.value === 0
+          );
+        if (/^on[A-Z]/.test(name)) return Boolean(attribute.value && isHandler(attribute.value));
+        if (name.toLowerCase().startsWith("on") || name.toLowerCase() === "tabindex") return false;
+        const value = isNodeOfType(attribute.value, "JSXExpressionContainer")
+          ? attribute.value.expression
+          : attribute.value;
+        return (
+          isNodeOfType(value, "Literal") &&
+          (value.value === null || ["string", "number", "boolean"].includes(typeof value.value))
+        );
+      }) &&
+      !hasStatefulHtmlAttribute({
+        ...opening,
+        attributes: opening.attributes.filter(
+          (attribute) =>
+            !isNodeOfType(attribute, "JSXAttribute") ||
+            !isNodeOfType(attribute.name, "JSXIdentifier") ||
+            attribute.name.name !== "tabIndex",
+        ),
+      })
+    );
+  });
+};
+
 const isClosedRenderHelper = (
   helper: EsTreeNode,
   component: EsTreeNode,
@@ -240,12 +521,15 @@ const isClosedRenderHelper = (
     findEnclosingFunction(call) !== component
   )
     return false;
+  const openings: Array<EsTreeNodeOfType<"JSXOpeningElement">> = [];
+  let needsFocusProof = false;
   let current: EsTreeNode = call;
   if (!isNodeOfType(current.parent, "JSXExpressionContainer")) return false;
   while (current.parent && current.parent !== component) {
     current = current.parent;
     if (isNodeOfType(current, "JSXElement")) {
       const opening = current.openingElement;
+      openings.push(opening);
       const name = opening.name;
       // A render-only helper must stay in a known DOM/fragment child position:
       // composites can transform children, and ancestor state can reach the leaves.
@@ -261,16 +545,24 @@ const isClosedRenderHelper = (
         opening.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute")) ||
         hasJsxPropIgnoreCase(opening.attributes, "ref") ||
         hasJsxPropIgnoreCase(opening.attributes, "is") ||
-        hasStatefulHtmlAttribute(opening)
+        (hasStatefulHtmlAttribute(opening) &&
+          !opening.attributes.some(
+            (attribute) =>
+              isNodeOfType(attribute, "JSXAttribute") &&
+              isNodeOfType(attribute.name, "JSXIdentifier") &&
+              attribute.name.name === "tabIndex",
+          ))
       )
         return false;
+      if (hasStatefulHtmlAttribute(opening)) needsFocusProof = true;
     }
     if (isNodeOfType(current, "ReturnStatement")) {
       return Boolean(
         current.argument &&
         (isNodeOfType(current.argument, "JSXElement") ||
           isNodeOfType(current.argument, "JSXFragment")) &&
-        findEnclosingFunction(current) === component,
+        findEnclosingFunction(current) === component &&
+        (!needsFocusProof || isClosedFocusAncestorChain(openings, component, scopes)),
       );
     }
     if (

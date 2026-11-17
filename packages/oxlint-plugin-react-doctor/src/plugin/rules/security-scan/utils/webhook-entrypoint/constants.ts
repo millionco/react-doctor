@@ -1,0 +1,13 @@
+export const WEBHOOK_EMPTY_FINDING_COUNT = 0;
+export const WEBHOOK_REGION_STEP_COUNT = 1;
+export const WEBHOOK_FIRST_ITEM_INDEX = 0;
+export const WEBHOOK_MARKER_CHAR_COUNT = 1;
+export const WEBHOOK_TEMPLATE_EXPRESSION_MARKER_CHAR_COUNT = 2;
+export const WEBHOOK_NON_ASCII_PATTERN = /\P{ASCII}/u;
+export const WEBHOOK_LITERAL_WHITESPACE_PATTERN = /\s/u;
+export const WEBHOOK_IDENTIFIER_NAME_PATTERN = /^(?:webhookHandler|webhookRoute)$/i;
+export const WEBHOOK_FUNCTION_NAME_PATTERN = /^POST$/i;
+export const WEBHOOK_VARIABLE_NAME_PATTERN = /^(?:POST|handler|webhook)$/i;
+export const WEBHOOK_SYNC_EXPORT_PATTERN = /^export\s+function\s+POST$/i;
+export const WEBHOOK_ASYNC_EXPORT_PATTERN = /^export\s+async\s+function\s+POST$/i;
+export const WEBHOOK_CONST_EXPORT_PATTERN = /^export\s+const\s+(?:POST|handler|webhook)$/i;

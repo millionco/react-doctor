@@ -1,5 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { hasPossibleStaticPropertyMutationOrEscapeBefore } from "../../utils/has-static-property-write-before.js";
 import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -9,6 +11,7 @@ import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const NOREFERRER_MESSAGE =
   '`target="_blank"` without `rel="noreferrer"` lets the linked page hijack your tab to a phishing site.';
@@ -102,16 +105,26 @@ interface BranchTuple {
 
 interface ConditionalPredicate {
   isNegated: boolean;
+  isStableLexical: boolean;
   key: string;
 }
 
+interface CorrelatedStringBranches {
+  testKey: string;
+  consequent: string;
+  alternate: string;
+}
+
 interface DestinationState {
+  value: EsTreeNode | null;
   hasValue: boolean;
   isAuthoritative: boolean;
   isValid: boolean;
 }
 
 const EXTERNAL_LINK_PATTERN = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
+
+const EXISTING_CONTEXT_TARGETS = new Set(["_self", "_parent", "_top"]);
 
 const isExternalLink = (href: string): boolean => EXTERNAL_LINK_PATTERN.test(href);
 
@@ -224,13 +237,18 @@ const resolveConditionalPredicate = (
     if (!leftPredicate || !rightPredicate) return null;
     return {
       isNegated: false,
+      isStableLexical: false,
       key: `logical:${unwrappedExpression.operator}:${leftPredicate.key}:${String(leftPredicate.isNegated)}:${rightPredicate.key}:${String(rightPredicate.isNegated)}`,
     };
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = scopes.symbolFor(unwrappedExpression);
   if (!symbol) {
-    return { isNegated: false, key: `unresolved:${unwrappedExpression.name}` };
+    return {
+      isNegated: false,
+      isStableLexical: false,
+      key: `unresolved:${unwrappedExpression.name}`,
+    };
   }
   if (symbol.references.some((reference) => reference.flag !== "read")) return null;
   if (
@@ -251,7 +269,76 @@ const resolveConditionalPredicate = (
       if (predicate) return predicate;
     }
   }
-  return { isNegated: false, key: `symbol:${String(symbol.id)}` };
+  return {
+    isNegated: false,
+    isStableLexical: symbol.kind === "const" || symbol.kind === "parameter",
+    key: `symbol:${String(symbol.id)}`,
+  };
+};
+
+const isProvenRootRelativeHref = (href: string): boolean => {
+  if (!href.startsWith("/") || href.startsWith("//")) return false;
+  for (const character of href) {
+    if (character <= " " || character === "\\") return false;
+  }
+  return true;
+};
+
+const isNativeAnchorAttributeName = (name: string): boolean => {
+  const normalizedName = name.toLowerCase();
+  return (
+    normalizedName !== "is" &&
+    normalizedName !== "xlinkhref" &&
+    normalizedName !== "xlink:href" &&
+    normalizedName !== "xmlbase" &&
+    normalizedName !== "xml:base" &&
+    (normalizedName !== "href" || name === "href") &&
+    (normalizedName !== "target" || name === "target")
+  );
+};
+
+const getCorrelatedStringBranches = (
+  attributeValue: EsTreeNode | null,
+  scopes: RuleContext["scopes"],
+): CorrelatedStringBranches | null => {
+  if (!attributeValue) return null;
+  const expression = resolveConstExpression(
+    isNodeOfType(attributeValue, "JSXExpressionContainer")
+      ? attributeValue.expression
+      : attributeValue,
+    scopes,
+  );
+  if (!isNodeOfType(expression, "ConditionalExpression")) return null;
+  const predicate = resolveConditionalPredicate(expression.test, scopes);
+  if (!predicate?.isStableLexical) return null;
+  const consequent = getStaticStringExpression(
+    resolveConstExpression(expression.consequent, scopes),
+  );
+  const alternate = getStaticStringExpression(resolveConstExpression(expression.alternate, scopes));
+  if (consequent === null || alternate === null) return null;
+  return {
+    testKey: predicate.key,
+    consequent: predicate.isNegated ? alternate : consequent,
+    alternate: predicate.isNegated ? consequent : alternate,
+  };
+};
+
+const isCorrelatedHrefSafe = (
+  hrefValue: EsTreeNode | null,
+  targetValue: EsTreeNode | null,
+  scopes: RuleContext["scopes"],
+): boolean => {
+  const href = getCorrelatedStringBranches(hrefValue, scopes);
+  const target = getCorrelatedStringBranches(targetValue, scopes);
+  return Boolean(
+    href &&
+    target &&
+    href.testKey === target.testKey &&
+    (isProvenRootRelativeHref(href.consequent) ||
+      EXISTING_CONTEXT_TARGETS.has(target.consequent.toLowerCase())) &&
+    (isProvenRootRelativeHref(href.alternate) ||
+      EXISTING_CONTEXT_TARGETS.has(target.alternate.toLowerCase())),
+  );
 };
 
 const emptyBranchTuple = (): BranchTuple => ({
@@ -436,11 +523,13 @@ const visitStaticSpreadProperties = (
   ) => void,
   visitUnknown: () => void,
   visitedSymbolIds = new Set<number>(),
+  canResolveSpreadBindings = true,
 ): void => {
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     const symbol = scopes.symbolFor(unwrappedExpression);
     if (
+      !canResolveSpreadBindings ||
       symbol?.kind !== "const" ||
       !symbol.initializer ||
       !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
@@ -466,6 +555,7 @@ const visitStaticSpreadProperties = (
       visitProperty,
       visitUnknown,
       visitedSymbolIds,
+      canResolveSpreadBindings,
     );
     visitedSymbolIds.delete(symbol.id);
     return;
@@ -484,6 +574,7 @@ const visitStaticSpreadProperties = (
         visitProperty,
         visitUnknown,
         visitedSymbolIds,
+        canResolveSpreadBindings,
       );
       continue;
     }
@@ -500,6 +591,36 @@ const visitStaticSpreadProperties = (
   }
 };
 
+const hasProvenNativeAnchorAttributes = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: RuleContext["scopes"],
+  observedPropertyNames: ReadonlySet<string>,
+): boolean =>
+  isNodeOfType(node.name, "JSXIdentifier") &&
+  node.name.name === "a" &&
+  node.attributes.every((attribute) => {
+    if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
+      let safe = true;
+      visitStaticSpreadProperties(
+        attribute.argument,
+        scopes,
+        observedPropertyNames,
+        (name) => {
+          safe &&= isNativeAnchorAttributeName(name);
+        },
+        () => {
+          safe = false;
+        },
+        undefined,
+        false,
+      );
+      return safe;
+    }
+    if (!isNodeOfType(attribute, "JSXAttribute")) return false;
+    const name = getJsxAttributeName(attribute.name);
+    return name !== null && isNativeAnchorAttributeName(name);
+  });
+
 // Port of `oxc_linter::rules::react::jsx_no_target_blank`.
 export const jsxNoTargetBlank = defineRule({
   id: "jsx-no-target-blank",
@@ -511,6 +632,24 @@ export const jsxNoTargetBlank = defineRule({
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    let hasOpaqueLexicalAccess: boolean | undefined;
+    const canCorrelateLexicalPredicates = (): boolean => {
+      if (hasOpaqueLexicalAccess !== undefined) return !hasOpaqueLexicalAccess;
+      let foundOpaqueAccess = false;
+      walkAst(context.scopes.rootScope.node, (candidate) => {
+        if (foundOpaqueAccess) return false;
+        if (
+          isNodeOfType(candidate, "WithStatement") ||
+          (isNodeOfType(candidate, "Identifier") &&
+            (candidate.name === "eval" || candidate.name === "arguments"))
+        ) {
+          foundOpaqueAccess = true;
+          return false;
+        }
+      });
+      hasOpaqueLexicalAccess = foundOpaqueAccess;
+      return !foundOpaqueAccess;
+    };
     const isLink = (tagName: string): boolean => {
       if (!settings.links) return false;
       if (tagName === "a") return true;
@@ -542,6 +681,7 @@ export const jsxNoTargetBlank = defineRule({
         const destinations = new Map<string, DestinationState>();
         for (const destinationAttributeName of destinationAttributeNames) {
           destinations.set(destinationAttributeName, {
+            value: null,
             hasValue: false,
             isAuthoritative: true,
             isValid: true,
@@ -563,6 +703,7 @@ export const jsxNoTargetBlank = defineRule({
           alternate: false,
         };
         let warnSpread = false;
+        let targetValue: EsTreeNode | null = null;
         let targetReportNode: EsTreeNode = node.name as EsTreeNode;
         let spreadReportNode: EsTreeNode | null = null;
         let isTargetAuthoritative = true;
@@ -575,6 +716,7 @@ export const jsxNoTargetBlank = defineRule({
         ): void => {
           if (propertyName === "target") {
             isTargetAuthoritative = true;
+            targetValue = propertyValue;
             targetTuple = propertyValue
               ? checkTarget(propertyValue, context.scopes)
               : { ...emptyBranchTuple(), isComplete: true };
@@ -587,6 +729,7 @@ export const jsxNoTargetBlank = defineRule({
           }
           if (destinationAttributeNames.has(propertyName)) {
             destinations.set(propertyName, {
+              value: propertyValue,
               hasValue: true,
               isAuthoritative: true,
               isValid: propertyValue
@@ -646,7 +789,18 @@ export const jsxNoTargetBlank = defineRule({
 
         const hasUnsafeAuthoritativeDestination = [...destinations.values()].some(
           (destination) =>
-            destination.hasValue && destination.isAuthoritative && !destination.isValid,
+            destination.hasValue &&
+            destination.isAuthoritative &&
+            !destination.isValid &&
+            !(
+              shouldUseCuratedBehavior &&
+              tagName === "a" &&
+              isTargetAuthoritative &&
+              targetTuple.combined &&
+              isCorrelatedHrefSafe(destination.value, targetValue, context.scopes) &&
+              hasProvenNativeAnchorAttributes(node, context.scopes, observedPropertyNames) &&
+              canCorrelateLexicalPredicates()
+            ),
         );
 
         if (hasUnsafeAuthoritativeDestination && isTargetAuthoritative && isRelAuthoritative) {

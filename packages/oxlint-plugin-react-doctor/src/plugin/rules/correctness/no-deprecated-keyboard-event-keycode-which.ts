@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -9,6 +10,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -111,6 +113,136 @@ const switchTargetsLayoutSensitiveCode = (
     const caseValue = resolveNumericValue(testNode as EsTreeNode, context);
     return caseValue !== null && isLayoutSensitiveCode(caseValue);
   });
+};
+
+const isInertInterveningDeclaration = (
+  statement: EsTreeNode | undefined,
+  aliasName: string,
+  receiverName: string,
+): boolean => {
+  if (
+    !isNodeOfType(statement, "VariableDeclaration") ||
+    (statement.kind !== "const" && statement.kind !== "let") ||
+    statement.declarations.length !== 1
+  ) {
+    return false;
+  }
+  const declarator = statement.declarations[0];
+  if (
+    !declarator?.init ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    declarator.id.name === aliasName ||
+    declarator.id.name === receiverName
+  ) {
+    return false;
+  }
+  const initializer = stripGroupingParens(declarator.init);
+  return (
+    isNodeOfType(initializer, "Literal") &&
+    !("regex" in initializer) &&
+    (initializer.value === null ||
+      typeof initializer.value === "boolean" ||
+      typeof initializer.value === "string" ||
+      typeof initializer.value === "number" ||
+      typeof initializer.value === "bigint")
+  );
+};
+
+const getAliasedNumericFallbackSwitchCondition = (
+  firstMember: EsTreeNodeOfType<"MemberExpression">,
+  initializerRoot: EsTreeNode,
+  handlerBody: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const initializer = stripGroupingParens(initializerRoot);
+  const declarator = initializerRoot.parent;
+  if (
+    !isNodeOfType(initializer, "LogicalExpression") ||
+    initializer.operator !== "||" ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "Identifier")
+  ) {
+    return null;
+  }
+
+  const alias = context.scopes.symbolFor(declarator.id);
+  const reference = alias?.references[0];
+  if (
+    !alias ||
+    (alias.kind !== "const" && alias.kind !== "let") ||
+    getDirectUnreassignedInitializer(alias) !== initializerRoot ||
+    alias.references.length !== 1 ||
+    reference?.flag !== "read"
+  ) {
+    return null;
+  }
+
+  const switchCondition = findTransparentExpressionRoot(reference.identifier);
+  const switchStatement = switchCondition.parent;
+  const declaration = declarator.parent;
+  const block = declaration?.parent;
+  if (
+    !isNodeOfType(switchStatement, "SwitchStatement") ||
+    switchStatement.discriminant !== switchCondition ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(block, "BlockStatement") ||
+    switchStatement.parent !== block ||
+    block !== handlerBody ||
+    !switchTargetsLayoutSensitiveCode(switchCondition, context)
+  ) {
+    return null;
+  }
+
+  const receiver = context.scopes.symbolFor(firstMember.object);
+  if (
+    !receiver ||
+    receiver.references.some((receiverReference) => receiverReference.flag !== "read")
+  ) {
+    return null;
+  }
+
+  const switchIndex = block.body.findIndex((statement) => statement === switchStatement);
+  const precedingStatement = block.body[switchIndex - 1];
+  if (
+    precedingStatement !== declaration &&
+    (block.body[switchIndex - 2] !== declaration ||
+      !isInertInterveningDeclaration(precedingStatement, alias.name, receiver.name))
+  ) {
+    return null;
+  }
+
+  const pendingOperands: EsTreeNode[] = [initializer];
+  const propertyNames = new Set<string>();
+  while (pendingOperands.length > 0) {
+    if (pendingOperands.length + propertyNames.size > DEPRECATED_NUMERIC_MEMBERS.size) return null;
+    const operand = pendingOperands.pop();
+    if (!operand) return null;
+    const expression = stripGroupingParens(operand);
+    if (isNodeOfType(expression, "LogicalExpression") && expression.operator === "||") {
+      pendingOperands.push(expression.right, expression.left);
+      continue;
+    }
+    if (
+      (propertyNames.size === 0 && expression !== firstMember) ||
+      !isNodeOfType(expression, "MemberExpression") ||
+      expression.optional ||
+      !isNodeOfType(expression.object, "Identifier") ||
+      context.scopes.symbolFor(expression.object) !== receiver
+    ) {
+      return null;
+    }
+    const propertyName = getStaticPropertyName(expression);
+    if (
+      !propertyName ||
+      !DEPRECATED_NUMERIC_MEMBERS.has(propertyName) ||
+      propertyNames.has(propertyName)
+    ) {
+      return null;
+    }
+    propertyNames.add(propertyName);
+  }
+  return isNodeReachableWithinFunction(switchStatement, context) ? switchCondition : null;
 };
 
 interface BranchingContext {
@@ -574,8 +706,14 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
         if (!isNodeOfType(receiver, "Identifier")) return;
         const receiverName = receiver.name;
 
-        const { conditionRoot, branching } = resolveBranchingContext(node as EsTreeNode);
-        if (!branching) return;
+        const { conditionRoot: directConditionRoot, branching } = resolveBranchingContext(node);
+        if (
+          !branching &&
+          (!isNodeOfType(directConditionRoot.parent, "VariableDeclarator") ||
+            !isNodeOfType(stripGroupingParens(directConditionRoot), "LogicalExpression"))
+        ) {
+          return;
+        }
 
         const enclosingFunction = findEnclosingFunction(node as EsTreeNode);
         if (!enclosingFunction || !isFunctionLike(enclosingFunction)) return;
@@ -607,6 +745,17 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
           return;
         }
 
+        const aliasedSwitchCondition = branching
+          ? null
+          : getAliasedNumericFallbackSwitchCondition(
+              node,
+              directConditionRoot,
+              enclosingFunction.body,
+              context,
+            );
+        if (!branching && !aliasedSwitchCondition) return;
+        const conditionRoot = aliasedSwitchCondition ?? directConditionRoot;
+
         const comparison = getComparison(node as EsTreeNode, context);
         const comparedValue = comparison ? comparison.comparedValue : null;
         if (comparedValue !== null && LEGACY_IME_KEYCODES.has(comparedValue)) return;
@@ -618,7 +767,7 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
           return;
         }
         if (
-          propertyName === "which" &&
+          (propertyName === "which" || aliasedSwitchCondition) &&
           receiverReadsAnyProperty(
             enclosingFunction,
             firstParamIdentifier,
@@ -656,7 +805,7 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
           return;
         }
 
-        if (propertyName !== "charCode") {
+        if (propertyName !== "charCode" && !aliasedSwitchCondition) {
           const isRelationalRangeCheck = Boolean(
             comparison &&
             RELATIONAL_OPERATORS.has(comparison.operator) &&

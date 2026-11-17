@@ -501,7 +501,8 @@ describe("no-array-find-result-member-access-without-guard", () => {
   it("does not treat a bare findIndex result as a positive guard", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,
-      `function read(items, predicate) {
+      `function read(predicate) {
+         const items = [{ x: 1 }];
          if (items.findIndex(predicate)) return items.find(predicate).x;
        }`,
     );
@@ -521,7 +522,8 @@ describe("no-array-find-result-member-access-without-guard", () => {
   it("does not treat a false some result as a positive guard", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,
-      `function read(items, predicate) {
+      `function read(predicate) {
+         const items = [{ x: 1 }];
          if (items.some(predicate) === false) return items.find(predicate).x;
        }`,
     );
@@ -531,7 +533,8 @@ describe("no-array-find-result-member-access-without-guard", () => {
   it("does not treat a negated some result as a positive guard", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,
-      `function read(items, predicate) {
+      `function read(predicate) {
+         const items = [{ x: 1 }];
          if (!items.some(predicate)) return items.find(predicate).x;
        }`,
     );

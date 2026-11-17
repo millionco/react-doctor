@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -56,6 +57,7 @@ const STRUCTURAL_IDENTITY_IGNORED_KEYS = new Set([
 const hasArrayCallbackFirstArgument = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
+  hasKnownPredicate: boolean,
 ): boolean => {
   const rawFirstArgument = node.arguments?.[0];
   const firstArgument = rawFirstArgument
@@ -68,11 +70,6 @@ const hasArrayCallbackFirstArgument = (
   ) {
     return true;
   }
-  // A bare identifier is a predicate reference (`items.find(isActive)`), unless
-  // it is PascalCase — a component selector (`wrapper.find(Modal)`), not a
-  // predicate — except for known global predicates like `Boolean`. An
-  // identifier that resolves to an object literal is a query filter
-  // (`collection.find(filter)`, a MongoDB cursor), not a callback.
   if (isNodeOfType(firstArgument, "MemberExpression")) {
     const callee = stripParenExpression(node.callee as EsTreeNode);
     if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -93,7 +90,27 @@ const hasArrayCallbackFirstArgument = (
   if (PASCAL_CASE_IDENTIFIER_PATTERN.test(firstArgument.name)) return false;
   const binding = findVariableInitializer(firstArgument, firstArgument.name);
   const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
-  return !(initializer && isNodeOfType(initializer, "ObjectExpression"));
+  if (initializer && isNodeOfType(initializer, "ObjectExpression")) return false;
+  if (hasKnownPredicate) return true;
+  const callee = stripParenExpression(node.callee as EsTreeNode);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  let receiver = stripParenExpression(callee.object as EsTreeNode);
+  const visitedSymbolIds = new Set<number>();
+  while (isNodeOfType(receiver, "Identifier")) {
+    const symbol = context.scopes.symbolFor(receiver);
+    const receiverInitializer = symbol ? getDirectConstInitializer(symbol) : null;
+    if (
+      !symbol ||
+      !receiverInitializer ||
+      !symbol.references.every((reference) => reference.flag === "read") ||
+      visitedSymbolIds.has(symbol.id)
+    ) {
+      return false;
+    }
+    visitedSymbolIds.add(symbol.id);
+    receiver = stripParenExpression(receiverInitializer);
+  }
+  return isNodeOfType(receiver, "ArrayExpression");
 };
 
 // `_.chain(users).filter(...).find(cb)` returns a LodashWrapper (unwrapped
@@ -184,7 +201,7 @@ const isArrayFindCall = (
   ) {
     return false;
   }
-  return hasArrayCallbackFirstArgument(node, context);
+  return hasArrayCallbackFirstArgument(node, context, hasKnownPredicate);
 };
 
 const areNodesStructurallyIdentical = (left: unknown, right: unknown): boolean => {

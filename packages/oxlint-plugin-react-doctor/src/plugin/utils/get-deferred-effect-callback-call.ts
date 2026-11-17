@@ -12,9 +12,14 @@ import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
 } from "./strip-paren-expression.js";
 
+interface DeferredEffectCallbackOptions {
+  allowNativeFetchWithoutSignal?: boolean;
+}
+
 export const getDeferredEffectCallbackCall = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
+  options: DeferredEffectCallbackOptions = {},
 ): EsTreeNodeOfType<"CallExpression"> | null => {
   if (!isFunctionLike(callback) || callback.generator) return null;
   let container = callback.parent;
@@ -36,19 +41,21 @@ export const getDeferredEffectCallbackCall = (
       : null;
   }
   if (!isNodeOfType(callee, "MemberExpression")) return null;
+  const receiver = stripParenExpression(callee.object);
   const methodName = getStaticPropertyName(callee);
   const isContinuationArgument =
     (methodName === "then" && (callbackIndex === 0 || callbackIndex === 1)) ||
     ((methodName === "catch" || methodName === "finally") && callbackIndex === 0);
   return isContinuationArgument &&
     methodName &&
-    !hasPossibleStaticPropertyMutationOrEscape(
-      stripParenExpression(callee.object),
-      methodName,
-      scopes,
-    ) &&
-    isProvenPromiseExpression(callee.object, scopes, {
+    !hasPossibleStaticPropertyMutationOrEscape(receiver, methodName, scopes) &&
+    isProvenPromiseExpression(receiver, scopes, {
       allowAsyncFunctions: false,
+      allowNativeFetchWithoutSignal:
+        options.allowNativeFetchWithoutSignal !== false &&
+        !hasPossibleStaticPropertyMutationOrEscape(receiver, "constructor", scopes) &&
+        (methodName === "then" ||
+          !hasPossibleStaticPropertyMutationOrEscape(receiver, "then", scopes)),
       requireUnmodifiedGlobalPromise: true,
     })
     ? container

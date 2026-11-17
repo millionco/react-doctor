@@ -283,6 +283,7 @@ const collectDirectlyInvokedFunctions = (
 const collectTransitivelyInvokedFunctions = (
   rootFunction: EsTreeNode,
   context: RuleContext,
+  onlyReachableCalls = false,
 ): Set<EsTreeNode> => {
   const invokedFunctions = new Set([rootFunction]);
   const pendingFunctions = [rootFunction];
@@ -290,7 +291,12 @@ const collectTransitivelyInvokedFunctions = (
     const currentFunction = pendingFunctions.pop();
     if (!currentFunction) break;
     walkOwnFunctionScope(currentFunction, (candidate: EsTreeNode) => {
-      if (!isNodeOfType(candidate, "CallExpression")) return;
+      if (
+        !isNodeOfType(candidate, "CallExpression") ||
+        (onlyReachableCalls && !isNodeReachableWithinFunction(candidate, context))
+      ) {
+        return;
+      }
       for (const invokedFunction of collectDirectlyInvokedFunctions(candidate, context)) {
         if (invokedFunctions.has(invokedFunction)) continue;
         invokedFunctions.add(invokedFunction);
@@ -306,12 +312,15 @@ const doesFunctionTransitivelyInvokeTarget = (
   targetFunction: EsTreeNode,
   context: RuleContext,
   memoizedResults: Map<EsTreeNode, boolean>,
+  onlyReachableCalls: boolean,
 ): boolean => {
   const memoizedResult = memoizedResults.get(rootFunction);
   if (memoizedResult !== undefined) return memoizedResult;
-  const doesInvokeTarget = collectTransitivelyInvokedFunctions(rootFunction, context).has(
-    targetFunction,
-  );
+  const doesInvokeTarget = collectTransitivelyInvokedFunctions(
+    rootFunction,
+    context,
+    onlyReachableCalls,
+  ).has(targetFunction);
   memoizedResults.set(rootFunction, doesInvokeTarget);
   return doesInvokeTarget;
 };
@@ -321,6 +330,7 @@ const doFunctionsHaveUnguardedTargetInvocationPath = (
   targetFunction: EsTreeNode,
   noCleanupReturn: EsTreeNode,
   context: RuleContext,
+  onlyReachableCalls: boolean,
 ): boolean => {
   const visitedFunctions = new Set<EsTreeNode>();
   const pendingFunctions = [...rootFunctions];
@@ -333,6 +343,7 @@ const doFunctionsHaveUnguardedTargetInvocationPath = (
     walkOwnFunctionScope(currentFunction, (candidate: EsTreeNode) => {
       if (
         !isNodeOfType(candidate, "CallExpression") ||
+        (onlyReachableCalls && !isNodeReachableWithinFunction(candidate, context)) ||
         areNodesOnContradictoryGuardBranches(candidate, noCleanupReturn, context.scopes)
       ) {
         return;
@@ -352,11 +363,17 @@ const collectEffectInvocationAnchors = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
+  onlyReachableCalls = false,
 ): EffectInvocationAnchor[] => {
   const invocationAnchors: EffectInvocationAnchor[] = [];
   const targetReachability = new Map<EsTreeNode, boolean>();
   walkOwnFunctionScope(effectCallback, (candidate: EsTreeNode) => {
-    if (!isNodeOfType(candidate, "CallExpression")) return;
+    if (
+      !isNodeOfType(candidate, "CallExpression") ||
+      (onlyReachableCalls && !isNodeReachableWithinFunction(candidate, context))
+    ) {
+      return;
+    }
     const targetReachableFunctions = collectDirectlyInvokedFunctions(candidate, context).filter(
       (directlyInvokedFunction) =>
         doesFunctionTransitivelyInvokeTarget(
@@ -364,6 +381,7 @@ const collectEffectInvocationAnchors = (
           invokedFunction,
           context,
           targetReachability,
+          onlyReachableCalls,
         ),
     );
     if (targetReachableFunctions.length === 0) return;
@@ -376,6 +394,7 @@ const collectCleanupFunctionsAfterInvocations = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
+  reachableInvocations?: readonly EffectInvocationAnchor[],
 ): EsTreeNode[] => {
   if (!isFunctionLike(effectCallback)) return [];
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
@@ -391,19 +410,18 @@ const collectCleanupFunctionsAfterInvocations = (
     );
     return cleanupFunctions.length > 0 ? [{ cleanupFunctions, returnStatement }] : [];
   });
-  const invocationAnchors = collectEffectInvocationAnchors(
-    effectCallback,
-    invokedFunction,
-    context,
-  );
+  const invocationAnchors =
+    reachableInvocations ??
+    collectEffectInvocationAnchors(effectCallback, invokedFunction, context);
   const reachableCleanupReturns = new Set<(typeof cleanupReturns)[number]>();
   for (const { anchor, targetReachableFunctions } of invocationAnchors) {
     const returnsAfterInvocation = returnStatements.filter((returnStatement) =>
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
     if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const reachableReturns = new Set(returnsAfterInvocation);
     const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      returnsAfterInvocation.includes(returnStatement),
+      reachableReturns.has(returnStatement),
     );
     const cleanupReturnStatements = new Set(
       cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
@@ -421,6 +439,7 @@ const collectCleanupFunctionsAfterInvocations = (
           invokedFunction,
           returnStatement,
           context,
+          reachableInvocations !== undefined,
         );
       },
     );
@@ -1348,6 +1367,22 @@ const hasUnsafePostAwaitSetter = (
   const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
   if (deferredCall && !isNodeReachableWithinFunction(deferredCall, context)) return false;
   if (!asyncFunction.async && !deferredCall) return false;
+  let reachableInvocations: readonly EffectInvocationAnchor[] | undefined;
+  if (
+    deferredCall &&
+    findEnclosingFunction(deferredCall) !== effectCallback &&
+    !getDeferredEffectCallbackCall(asyncFunction, context.scopes, {
+      allowNativeFetchWithoutSignal: false,
+    })
+  ) {
+    reachableInvocations = collectEffectInvocationAnchors(
+      effectCallback,
+      asyncFunction,
+      context,
+      true,
+    );
+    if (reachableInvocations.length === 0) return false;
+  }
   const firstSuspensionStart = deferredCall
     ? asyncFunction.range[0]
     : findFirstSuspensionStart(asyncFunction);
@@ -1356,6 +1391,7 @@ const hasUnsafePostAwaitSetter = (
     effectCallback,
     asyncFunction,
     context,
+    reachableInvocations,
   );
   const cleanupWrites = collectCleanupGuardWrites(cleanupFunctions, context);
   const postSuspensionWrites = collectPostSuspensionWrittenReferenceKeys(

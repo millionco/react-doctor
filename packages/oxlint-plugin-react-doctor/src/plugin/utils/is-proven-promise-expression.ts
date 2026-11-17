@@ -5,6 +5,7 @@ import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "./has-static-property-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isProvenNativeFetchWithoutSignal } from "./is-proven-native-fetch-without-signal.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
 import { isSymbolReadOnly } from "./is-symbol-read-only.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -21,6 +22,7 @@ const PROMISE_DEFERRED_METHOD_NAMES = new Set(["catch", "finally", "then"]);
 
 interface ProvenPromiseExpressionOptions {
   allowAsyncFunctions?: boolean;
+  allowNativeFetchWithoutSignal?: boolean;
   requireUnmodifiedGlobalPromise?: boolean;
 }
 
@@ -79,6 +81,12 @@ export const isProvenPromiseExpression = (
     );
   }
   if (!isNodeOfType(expression, "CallExpression")) return false;
+  if (
+    options.allowNativeFetchWithoutSignal &&
+    isProvenNativeFetchWithoutSignal(expression, scopes)
+  ) {
+    return true;
+  }
   const callee = stripParenExpression(expression.callee);
   if (isNodeOfType(callee, "Identifier")) {
     return (
@@ -96,7 +104,14 @@ export const isProvenPromiseExpression = (
     ) {
       return false;
     }
-    return isProvenPromiseExpression(callee.object, scopes, options, visitedSymbolIds);
+    return isProvenPromiseExpression(
+      callee.object,
+      scopes,
+      options.allowNativeFetchWithoutSignal
+        ? { ...options, allowNativeFetchWithoutSignal: false }
+        : options,
+      visitedSymbolIds,
+    );
   }
   return Boolean(
     PROMISE_FACTORY_METHOD_NAMES.has(methodName ?? "") &&

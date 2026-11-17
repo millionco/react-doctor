@@ -51,7 +51,7 @@ describe("no-set-state-after-await-in-effect forwarded setters", () => {
     ],
     ["const unused = () => queueMicrotask(() => setValue(id));", 0],
     ["load(id).then((result) => setValue(result));", 0],
-    ["fetch(id).then((result) => setValue(result));", 0],
+    ["fetch(`/catalog/${id}`).then((result) => setValue(result));", 1],
     ["queueMicrotask(() => { if (false) setValue(id); });", 0],
     ["setValue(id);", 0],
   ])("matches the direct decision for %s", (effectBody, expectedCount) => {

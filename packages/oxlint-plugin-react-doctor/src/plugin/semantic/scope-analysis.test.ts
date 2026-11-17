@@ -406,3 +406,120 @@ describe("scope-analysis", () => {
     });
   });
 });
+
+describe("parameter expression environments", () => {
+  it.each([
+    "const selected = 2;",
+    "let selected = 2;",
+    "var selected = 2;",
+    "function selected() {}",
+    "class selected {}",
+  ])("keeps body declarations out of parameter defaults: %s", (declaration) => {
+    const analysis = analyze(`
+      const selected = 1;
+      function example(value = selected) {
+        ${declaration}
+        return selected;
+      }
+    `);
+    const references = findAllNamedNodes(analysis.program, "Identifier", "selected").filter(
+      (identifier) => analysis.referenceFor(identifier) !== null,
+    );
+    expect(references).toHaveLength(2);
+    expect(analysis.symbolFor(references[0]!)?.scope).toBe(analysis.rootScope);
+    expect(analysis.symbolFor(references[1]!)?.scope.kind).toBe("function-body");
+  });
+
+  it.each([
+    "value = selected",
+    "{ value = selected }",
+    "[value = selected]",
+    "{ nested: [value = selected] }",
+    "{ [selected]: value }",
+    "value = () => selected",
+    "{ [(() => selected)()]: value }",
+  ])("resolves parameter expressions and their closures outside the body: %s", (parameter) => {
+    const analysis = analyze(`
+      const selected = "outside";
+      function example(${parameter}) {
+        const selected = "inside";
+        return selected;
+      }
+    `);
+    const references = findAllNamedNodes(analysis.program, "Identifier", "selected").filter(
+      (identifier) => analysis.referenceFor(identifier) !== null,
+    );
+    expect(references).toHaveLength(2);
+    expect(analysis.symbolFor(references[0]!)?.scope).toBe(analysis.rootScope);
+    expect(analysis.symbolFor(references[1]!)?.scope.kind).toBe("function-body");
+  });
+
+  it("preserves earlier parameter bindings and function scope ownership", () => {
+    const analysis = analyze(`
+      function example(selected, value = selected) {
+        return selected + value;
+      }
+    `);
+    const functionNode = findFirstNamedNode(analysis.program, "FunctionDeclaration")!;
+    const functionScope = analysis.ownScopeFor(functionNode)!;
+    const body = findFirstNamedNode(functionNode, "BlockStatement")!;
+    expect(analysis.scopeFor(functionNode)).toBe(analysis.rootScope);
+    expect(functionScope.kind).toBe("function");
+    expect(functionScope.node).toBe(functionNode);
+    expect(analysis.ownScopeFor(body)?.kind).toBe("function-body");
+    expect(analysis.ownScopeFor(body)?.parent).toBe(functionScope);
+    for (const reference of findAllNamedNodes(functionNode, "Identifier", "selected")) {
+      expect(analysis.symbolFor(reference)).toBe(functionScope.symbolsByName.get("selected"));
+    }
+    expect(functionScope.symbolsByName.get("selected")?.kind).toBe("parameter");
+  });
+
+  it("keeps body var hoisting separate from parameter bindings", () => {
+    const analysis = analyze(`
+      function example(selected, value = selected) {
+        consume(selected);
+        if (value) { var selected = 2; }
+        return selected;
+      }
+    `);
+    const functionNode = findFirstNamedNode(analysis.program, "FunctionDeclaration")!;
+    const functionScope = analysis.ownScopeFor(functionNode)!;
+    const references = findAllNamedNodes(functionNode, "Identifier", "selected").filter(
+      (identifier) => analysis.referenceFor(identifier) !== null,
+    );
+    expect(analysis.symbolFor(references[0]!)).toBe(functionScope.symbolsByName.get("selected"));
+    const bodySymbol = analysis.symbolFor(references[1]!);
+    expect(bodySymbol?.kind).toBe("var");
+    expect(bodySymbol?.scope.kind).toBe("function-body");
+    expect(analysis.symbolFor(references[2]!)).toBe(bodySymbol);
+  });
+
+  it("keeps named function expression self bindings visible in defaults", () => {
+    const analysis = analyze(`
+      const example = function self(value = self) {
+        const self = 1;
+        return self;
+      };
+    `);
+    const functionNode = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+    const references = findAllNamedNodes(functionNode, "Identifier", "self").filter(
+      (identifier) => analysis.referenceFor(identifier) !== null,
+    );
+    expect(analysis.symbolFor(references[0]!)?.declarationNode).toBe(functionNode);
+    expect(analysis.symbolFor(references[0]!)?.scope).toBe(analysis.ownScopeFor(functionNode));
+    expect(analysis.symbolFor(references[1]!)?.kind).toBe("const");
+  });
+
+  it("preserves a single scope for parameters without expressions", () => {
+    const analysis = analyze(
+      `function example(selected, { value }) { var local = value; return selected; }`,
+    );
+    const functionNode = findFirstNamedNode(analysis.program, "FunctionDeclaration")!;
+    const functionScope = analysis.ownScopeFor(functionNode)!;
+    const body = findFirstNamedNode(functionNode, "BlockStatement")!;
+    expect(analysis.ownScopeFor(body)).toBeNull();
+    expect(analysis.scopeFor(body)).toBe(functionScope);
+    expect(functionScope.symbolsByName.get("selected")?.kind).toBe("parameter");
+    expect(functionScope.symbolsByName.get("local")?.kind).toBe("var");
+  });
+});

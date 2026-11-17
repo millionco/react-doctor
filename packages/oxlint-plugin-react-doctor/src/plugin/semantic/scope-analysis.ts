@@ -36,6 +36,7 @@ export type ScopeKind =
   | "module"
   | "function"
   | "arrow-function"
+  | "function-body"
   | "method"
   | "block"
   | "class"
@@ -94,7 +95,8 @@ export interface ScopeAnalysis {
   // returns the scope they open. Returns null for nodes that don't
   // open a scope. Note `scopeFor` returns the ENCLOSING scope (where
   // the node lives), which for a FunctionDeclaration is the parent
-  // scope, NOT the function's body scope.
+  // scope, NOT the function's own scope. Functions with parameter
+  // expressions open a separate child scope for their block body.
   readonly ownScopeFor: (node: EsTreeNode) => ScopeDescriptor | null;
   readonly symbolFor: (identifier: EsTreeNode) => SymbolDescriptor | null;
   readonly referenceFor: (identifier: EsTreeNode) => ReferenceDescriptor | null;
@@ -112,6 +114,7 @@ const findHoistTargetScope = (scope: ScopeDescriptor): ScopeDescriptor => {
       current.kind === "module" ||
       current.kind === "function" ||
       current.kind === "arrow-function" ||
+      current.kind === "function-body" ||
       current.kind === "method"
     ) {
       return current;
@@ -325,9 +328,7 @@ const recordReference = (
   state.referenceByIdentifier.set(identifier, reference);
 };
 
-// True for AST node types where the .body is a function-body block. We
-// DON'T want to push a separate block scope for the function body — its
-// scope is the function scope itself.
+// Function body blocks use the scope selected by the function handler.
 const isFunctionBodyBlock = (block: EsTreeNode): boolean => {
   if (!block.parent) return false;
   return isFunctionLike(block.parent);
@@ -573,27 +574,31 @@ const openScope = (kind: ScopeKind, node: EsTreeNode, state: BuilderState): Scop
 // this the identifiers in defaults / computed keys would never be
 // recorded as references — leaving closure-capture and exhaustive-deps
 // analysis blind to them (e.g. misclassifying a module constant used as
-// a default). References are parked on the current (function) scope.
+// a default). Returns whether the pattern contains parameter expressions.
 const walkParameterReferences = (
   pattern: EsTreeNode,
   state: BuilderState,
   inheritedScope: ScopeDescriptor,
-): void => {
+): boolean => {
   if (pattern.type === "AssignmentPattern") {
     walkParameterReferences(pattern.left as EsTreeNode, state, inheritedScope);
     const defaultValue = (pattern.right as EsTreeNode | null) ?? null;
     if (defaultValue) walk(defaultValue, state, inheritedScope);
-    return;
+    return true;
   }
   if (pattern.type === "ObjectPattern") {
+    let hasParameterExpressions = false;
     for (const property of pattern.properties) {
       const propertyNode = property as EsTreeNode;
       if (propertyNode.type === "RestElement") {
-        walkParameterReferences(
-          (propertyNode as { argument: EsTreeNode }).argument,
-          state,
-          inheritedScope,
-        );
+        if (
+          walkParameterReferences(
+            (propertyNode as { argument: EsTreeNode }).argument,
+            state,
+            inheritedScope,
+          )
+        )
+          hasParameterExpressions = true;
         continue;
       }
       if (propertyNode.type !== "Property") continue;
@@ -602,20 +607,27 @@ const walkParameterReferences = (
         key: EsTreeNode;
         value: EsTreeNode;
       };
-      if (propertyDetail.computed) walk(propertyDetail.key, state, inheritedScope);
-      walkParameterReferences(propertyDetail.value, state, inheritedScope);
+      if (propertyDetail.computed) {
+        walk(propertyDetail.key, state, inheritedScope);
+        hasParameterExpressions = true;
+      }
+      if (walkParameterReferences(propertyDetail.value, state, inheritedScope))
+        hasParameterExpressions = true;
     }
-    return;
+    return hasParameterExpressions;
   }
   if (pattern.type === "ArrayPattern") {
+    let hasParameterExpressions = false;
     for (const element of pattern.elements) {
-      if (element) walkParameterReferences(element as EsTreeNode, state, inheritedScope);
+      if (element && walkParameterReferences(element as EsTreeNode, state, inheritedScope))
+        hasParameterExpressions = true;
     }
-    return;
+    return hasParameterExpressions;
   }
   if (pattern.type === "RestElement") {
-    walkParameterReferences(pattern.argument as EsTreeNode, state, inheritedScope);
+    return walkParameterReferences(pattern.argument as EsTreeNode, state, inheritedScope);
   }
+  return false;
 };
 
 // Single-pass walker. For each node we:
@@ -637,8 +649,7 @@ const walk = (
   // their own children. Keep these in source order to match JS scope
   // semantics.
 
-  // Function-like: scope opens; parameters bind into the function scope;
-  // body's BlockStatement is suppressed (already in function scope).
+  // Parameters bind before any separate body scope opens.
   if (
     node.type === "ArrowFunctionExpression" ||
     node.type === "FunctionExpression" ||
@@ -661,12 +672,12 @@ const walk = (
     }
     setNodeScope(node, state);
     const kind: ScopeKind = node.type === "ArrowFunctionExpression" ? "arrow-function" : "function";
-    const fnScope = pushScope(kind, node, state);
-    // FunctionExpression name is visible only inside the body (not in
+    const functionEntryScope = pushScope(kind, node, state);
+    // FunctionExpression name is visible only inside the function (not in
     // the parent). FunctionDeclaration name is ALSO visible inside the
     // body for recursive calls — bind it in the inner scope too.
     if ((node.type === "FunctionExpression" || node.type === "FunctionDeclaration") && node.id) {
-      recordSymbol(fnScope, state, {
+      recordSymbol(functionEntryScope, state, {
         name: node.id.name,
         kind: "function",
         bindingIdentifier: node.id as EsTreeNode,
@@ -674,15 +685,20 @@ const walk = (
         initializer: node,
       });
     }
-    handleFunctionParameters(functionParams, fnScope, state);
+    handleFunctionParameters(functionParams, functionEntryScope, state);
     // Record references inside parameter default values and computed
     // destructuring keys (the handler above binds names but doesn't walk
     // these reference-bearing sub-expressions).
-    for (const param of functionParams) walkParameterReferences(param, state, enclosingScope);
-    // Walk the body inline; if it's a BlockStatement, we mark it so the
-    // BlockStatement handler doesn't push a duplicate scope.
+    let hasParameterExpressions = false;
+    for (const param of functionParams) {
+      if (walkParameterReferences(param, state, enclosingScope)) hasParameterExpressions = true;
+    }
+    // Parameter expressions cannot see declarations in the body.
     const body = (node as { body: EsTreeNode }).body;
+    const hasSeparateBodyScope = hasParameterExpressions && body?.type === "BlockStatement";
+    if (hasSeparateBodyScope) pushScope("function-body", body, state);
     if (body) walk(body, state, enclosingScope);
+    if (hasSeparateBodyScope) popScope(state);
     popScope(state);
     return;
   }

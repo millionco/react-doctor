@@ -334,3 +334,57 @@ describe("ref writes through Object.assign during render", () => {
     expect(result.diagnostics).toHaveLength(diagnosticCount);
   });
 });
+
+describe("Object.assign in component parameter environments", () => {
+  it.each([
+    ["const Object = { assign(...values: unknown[]) { return {}; } };", "", 0],
+    [
+      "const Object = { assign(...values: unknown[]) { return {}; } };",
+      "const Object = globalThis.Object;",
+      0,
+    ],
+    ["", "", 1],
+    ["", "const Object = { assign(...values: unknown[]) { return {}; } };", 1],
+  ])(
+    "uses the parameter environment rather than body providers: %s / %s",
+    (outerProvider, bodyProvider, count) => {
+      const result = runRule(
+        noRefCurrentInRender,
+        `
+      import { useRef } from "react";
+      export function Outer() {
+        const shared = useRef(0);
+        ${outerProvider}
+        function Panel({ value = Object.assign(shared, { current: 1 }) } = {}) {
+          ${bodyProvider}
+          return null;
+        }
+        return <Panel />;
+      }
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(count);
+    },
+  );
+
+  it("still reports direct body writes with a custom parameter provider", () => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `
+      import { useRef } from "react";
+      export function Outer() {
+        const shared = useRef(0);
+        const Object = { assign(...values: unknown[]) { return {}; } };
+        function Panel({ value = Object.assign(shared, { current: 1 }) } = {}) {
+          shared.current = 1;
+          return null;
+        }
+        return <Panel />;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

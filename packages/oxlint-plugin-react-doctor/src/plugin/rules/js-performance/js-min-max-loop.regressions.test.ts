@@ -228,3 +228,32 @@ describe("js-performance/js-min-max-loop — regressions", () => {
     );
   });
 });
+
+describe("Math recommendation in parameter environments", () => {
+  it.each([
+    ["const Math = { min(...values: number[]) { return 99; } };", "", 0],
+    [
+      "const Math = { min(...values: number[]) { return 99; } };",
+      "const Math = globalThis.Math;",
+      0,
+    ],
+    ["", "", 1],
+    ["", "const Math = { min(...values: number[]) { return 99; } };", 1],
+  ])(
+    "checks the Math provider available to the default: %s / %s",
+    (outerProvider, bodyProvider, count) => {
+      const result = runRule(
+        jsMinMaxLoop,
+        `
+      ${outerProvider}
+      export function choose(value = [3, 1, 2].sort((left, right) => left - right)[0]) {
+        ${bodyProvider}
+        return value;
+      }
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(count);
+    },
+  );
+});

@@ -884,3 +884,40 @@ export const Input = () => { React.createRef(); localReact.createRef(); return <
     expect(negativeResult.diagnostics).toEqual([]);
   });
 });
+
+it("recognizes render-only body declarations with parameter expressions", () => {
+  const result = runRule(
+    noCreateRefInFunctionComponent,
+    `
+    import { createRef } from "react";
+    export function Input({ value = 1 } = {}) {
+      const target = createRef();
+      function render() { return <input ref={target} value={value} />; }
+      return render();
+    }
+  `,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toEqual([]);
+});
+
+it.each(["", "{ value = 1 } = {}"])(
+  "keeps block-hoisted render declarations local with parameters: %s",
+  (parameters) => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `
+    import { createRef } from "react";
+    export const Input = (${parameters}) => {
+      const target = createRef();
+      {
+        function render() { return <input ref={target} />; }
+        return render();
+      }
+    };
+  `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  },
+);

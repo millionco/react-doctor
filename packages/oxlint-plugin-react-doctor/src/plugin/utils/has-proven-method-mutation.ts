@@ -589,26 +589,41 @@ const callMayMutateArgument = (
     .ownScopeFor(calledFunction)
     ?.symbolsByName.get(parameter.name);
   if (!parameterSymbol) return true;
-  const parameterIdentity = `symbol:${parameterSymbol.id}`;
-  if (
-    mutationIndex.memberMutationCandidatesByReceiverIdentity
-      .get(parameterIdentity)
-      ?.some((mutation) => context.cfg.enclosingFunction(mutation) === calledFunction)
-  ) {
-    return true;
-  }
-  const doesParameterEscape = getSymbolEscapeCalls(parameterSymbol, context).some((escape) => {
-    if (context.cfg.enclosingFunction(escape.callExpression) !== calledFunction) return false;
-    return callMayMutateArgument(
-      escape.callExpression,
-      escape.argumentIndex,
-      context,
-      mutationIndex,
-      visitedParameterIndexesByFunction,
+  const incomingValueSymbols = [parameterSymbol];
+  const bodyScope = context.scopes.ownScopeFor(calledFunction.body);
+  const copiedBodySymbol =
+    bodyScope?.kind === "function-body" ? bodyScope.symbolsByName.get(parameter.name) : null;
+  if (copiedBodySymbol?.kind === "var") incomingValueSymbols.push(copiedBodySymbol);
+  for (const incomingValueSymbol of incomingValueSymbols) {
+    const incomingValueIdentity = `symbol:${incomingValueSymbol.id}`;
+    if (
+      mutationIndex.memberMutationCandidatesByReceiverIdentity
+        .get(incomingValueIdentity)
+        ?.some((mutation) => context.cfg.enclosingFunction(mutation) === calledFunction)
+    ) {
+      return true;
+    }
+    const doesParameterEscape = getSymbolEscapeCalls(incomingValueSymbol, context).some(
+      (escape) => {
+        if (context.cfg.enclosingFunction(escape.callExpression) !== calledFunction) return false;
+        return callMayMutateArgument(
+          escape.callExpression,
+          escape.argumentIndex,
+          context,
+          mutationIndex,
+          visitedParameterIndexesByFunction,
+        );
+      },
     );
-  });
-  if (doesParameterEscape) return true;
-  if (!functionReturnsParameter(calledFunction, parameterIdentity, context)) return false;
+    if (doesParameterEscape) return true;
+  }
+  if (
+    !incomingValueSymbols.some((incomingValueSymbol) =>
+      functionReturnsParameter(calledFunction, `symbol:${incomingValueSymbol.id}`, context),
+    )
+  ) {
+    return false;
+  }
   const resultSymbol = getCallResultSymbol(callExpression, context);
   if (!resultSymbol) return false;
   return getSymbolEscapeCalls(resultSymbol, context).some((escape) =>

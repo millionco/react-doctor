@@ -7,6 +7,88 @@ import { clientPassiveEventListeners } from "./client-passive-event-listeners.js
 
 const temporaryDirectories: string[] = [];
 
+describe("copied parameter body-var mutation", () => {
+  it.each([
+    [
+      "separate body var",
+      "receiver, ignored = 0",
+      "var receiver; receiver.addEventListener = customListener;",
+      0,
+    ],
+    [
+      "simple parameters",
+      "receiver",
+      "var receiver; receiver.addEventListener = customListener;",
+      0,
+    ],
+    ["direct parameter", "receiver, ignored = 0", "receiver.addEventListener = customListener;", 0],
+    ["no method replacement", "receiver, ignored = 0", "var receiver;", 1],
+    [
+      "nested block var hoisting",
+      "receiver, ignored = 0",
+      "if (enabled) { var receiver; } receiver.addEventListener = customListener;",
+      0,
+    ],
+    [
+      "var after mutation",
+      "receiver, ignored = 0",
+      "receiver.addEventListener = customListener; var receiver;",
+      0,
+    ],
+    [
+      "initializer reads incoming value",
+      "receiver, ignored = 0",
+      "var receiver = (receiver.addEventListener = customListener, {});",
+      0,
+    ],
+    [
+      "conditional initializer",
+      "receiver, ignored = 0",
+      "if (enabled) { var receiver = {}; } receiver.addEventListener = customListener;",
+      0,
+    ],
+    ["fresh initializer without mutation", "receiver, ignored = 0", "var receiver = {};", 1],
+    [
+      "distinct block binding",
+      "receiver, ignored = 0",
+      "{ const receiver = {}; receiver.addEventListener = customListener; }",
+      1,
+    ],
+    ["forwarded body var", "receiver, ignored = 0", "var receiver; mutate(receiver);", 0],
+    [
+      "forwarded body-var alias",
+      "receiver, ignored = 0",
+      "var receiver; const alias = receiver; mutate(alias);",
+      0,
+    ],
+  ])("%s", (_, parameters, body, diagnosticCount) => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `function mutate(value) { value.addEventListener = customListener; }
+       function replace(${parameters}) { ${body} }
+       const target = new EventTarget();
+       replace(target);
+       target.addEventListener("wheel", () => track());`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it("tracks returned body-var values forwarded to a mutating helper", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `function copy(receiver, ignored = 0) { var receiver; return receiver; }
+       function replace(receiver) { receiver.addEventListener = customListener; }
+       const target = new EventTarget();
+       const alias = copy(target);
+       replace(alias);
+       target.addEventListener("wheel", () => track());`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});
+
 const writeImportedPredicate = (source: string): string => {
   const directory = mkdtempSync(join(tmpdir(), "react-doctor-passive-predicate-"));
   temporaryDirectories.push(directory);

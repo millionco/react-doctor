@@ -113,16 +113,21 @@ interface DestinationState {
 
 const EXTERNAL_LINK_PATTERN = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
 
-const isExternalLink = (href: string): boolean => EXTERNAL_LINK_PATTERN.test(href);
+const isExternalLink = (href: string, isNativeDestination: boolean): boolean =>
+  EXTERNAL_LINK_PATTERN.test(isNativeDestination ? href.replace(/^[\t\n\f\r ]+/, "") : href);
 
 const matchHrefExpression = (
   expression: EsTreeNode,
   state: { isExternal: boolean; isDynamic: boolean },
   scopes: RuleContext["scopes"],
+  isNativeDestination: boolean,
 ): void => {
   const resolvedExpression = resolveConstExpression(expression, scopes);
   if (isNodeOfType(resolvedExpression, "Literal")) {
-    if (typeof resolvedExpression.value === "string" && isExternalLink(resolvedExpression.value)) {
+    if (
+      typeof resolvedExpression.value === "string" &&
+      isExternalLink(resolvedExpression.value, isNativeDestination)
+    ) {
       state.isExternal = true;
     }
     return;
@@ -134,12 +139,12 @@ const matchHrefExpression = (
     }
     const staticText =
       resolvedExpression.quasis[0]?.value.cooked ?? resolvedExpression.quasis[0]?.value.raw ?? "";
-    if (isExternalLink(staticText)) state.isExternal = true;
+    if (isExternalLink(staticText, isNativeDestination)) state.isExternal = true;
     return;
   }
   if (isNodeOfType(resolvedExpression, "ConditionalExpression")) {
-    matchHrefExpression(resolvedExpression.consequent, state, scopes);
-    matchHrefExpression(resolvedExpression.alternate, state, scopes);
+    matchHrefExpression(resolvedExpression.consequent, state, scopes, isNativeDestination);
+    matchHrefExpression(resolvedExpression.alternate, state, scopes, isNativeDestination);
     return;
   }
   state.isDynamic = true;
@@ -149,14 +154,15 @@ const checkHref = (
   attributeValue: EsTreeNode,
   enforceDynamicLinks: "always" | "never",
   scopes: RuleContext["scopes"],
+  isNativeDestination: boolean,
 ): boolean => {
   const state = { isExternal: false, isDynamic: false };
   if (isNodeOfType(attributeValue, "Literal") && typeof attributeValue.value === "string") {
-    state.isExternal = isExternalLink(attributeValue.value);
+    state.isExternal = isExternalLink(attributeValue.value, isNativeDestination);
   } else if (isNodeOfType(attributeValue, "JSXExpressionContainer")) {
-    matchHrefExpression(attributeValue.expression, state, scopes);
+    matchHrefExpression(attributeValue.expression, state, scopes, isNativeDestination);
   } else {
-    matchHrefExpression(attributeValue, state, scopes);
+    matchHrefExpression(attributeValue, state, scopes, isNativeDestination);
   }
   if (enforceDynamicLinks === "never") {
     return !state.isExternal || state.isDynamic;
@@ -586,11 +592,19 @@ export const jsxNoTargetBlank = defineRule({
             return;
           }
           if (destinationAttributeNames.has(propertyName)) {
+            const isNativeDestination =
+              (tagName === "a" && propertyName === "href") ||
+              (tagName === "form" && propertyName === "action");
             destinations.set(propertyName, {
               hasValue: true,
               isAuthoritative: true,
               isValid: propertyValue
-                ? checkHref(propertyValue, settings.enforceDynamicLinks, context.scopes)
+                ? checkHref(
+                    propertyValue,
+                    settings.enforceDynamicLinks,
+                    context.scopes,
+                    isNativeDestination,
+                  )
                 : true,
             });
             return;

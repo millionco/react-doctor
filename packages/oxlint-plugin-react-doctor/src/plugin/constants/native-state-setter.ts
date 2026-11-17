@@ -1,0 +1,4 @@
+export const STATE_PAIR_SIZE = 2;
+export const STATE_SETTER_INDEX = 1;
+export const COMMONJS_ZERO_SEQUENCE_SIZE = 2;
+export const COMMONJS_DEFINE_PROPERTY_ARITY = 3;

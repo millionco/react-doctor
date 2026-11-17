@@ -1,0 +1,1 @@
+export const LOCAL_FORMATTER_ARGUMENT_COUNT = 1;

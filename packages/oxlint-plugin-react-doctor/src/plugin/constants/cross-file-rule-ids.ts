@@ -47,6 +47,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "anchor-target-exists",
   "exhaustive-deps",
   "no-barrel-import",
+  "no-async-event-handler-without-reentry-guard",
   "nextjs-async-dynamic-api-not-awaited",
   "nextjs-missing-metadata",
   "nextjs-no-img-element",

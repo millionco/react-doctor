@@ -202,6 +202,9 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   getProgram,
 }) => {
+  if (normalizeFilename(absoluteFilePath).endsWith("/browser.api.js")) {
+    readNearestPackageManifest(absoluteFilePath);
+  }
   const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);

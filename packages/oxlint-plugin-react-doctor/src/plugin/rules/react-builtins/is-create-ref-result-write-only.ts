@@ -918,7 +918,7 @@ const isSynchronouslyInvokedLocalFunction = (
 ): boolean => {
   if (
     !functionNode ||
-    !callerFunction ||
+    !isFunctionLike(callerFunction) ||
     !isFunctionLike(functionNode) ||
     functionNode.async ||
     functionNode.generator
@@ -935,7 +935,7 @@ const isSynchronouslyInvokedLocalFunction = (
       : findEnclosingFunction(bindingIdentifier);
   if (bindingOwner !== callerFunction) return false;
   const symbol = isNodeOfType(functionNode, "FunctionDeclaration")
-    ? scopes.ownScopeFor(callerFunction)?.symbolsByName.get(bindingIdentifier.name)
+    ? scopes.scopeFor(callerFunction.body).symbolsByName.get(bindingIdentifier.name)
     : scopes.symbolFor(bindingIdentifier);
   return Boolean(
     symbol &&

@@ -284,6 +284,210 @@ describe("scope-analysis", () => {
     });
   });
 
+  describe("parameter expression environments", () => {
+    it.each([
+      "function named(value = named) { var named; return value; }",
+      "function named(value = named) { return named; }",
+      "function named() { return named; }",
+    ])("resolves declaration self references to the outer mutable binding: %s", (functionCode) => {
+      const analysis = analyze(`${functionCode} named = () => "replacement";`);
+      const declarationSymbol = analysis.rootScope.symbolsByName.get("named")!;
+      const declarationScope = analysis.ownScopeFor(declarationSymbol.declarationNode)!;
+      const reads = declarationSymbol.references.filter((reference) => reference.flag === "read");
+
+      expect(reads.length).toBeGreaterThan(0);
+      expect(declarationSymbol.references.some((reference) => reference.flag === "write")).toBe(
+        true,
+      );
+      expect(declarationScope.symbolsByName.get("named")).toBeUndefined();
+      expect(analysis.symbolFor(declarationSymbol.bindingIdentifier)?.id).toBe(
+        declarationSymbol.id,
+      );
+      for (const reference of reads) {
+        expect(analysis.symbolFor(reference.identifier)?.id).toBe(declarationSymbol.id);
+      }
+    });
+
+    it("preserves parameter shadowing of a declaration name in defaults and the body", () => {
+      const analysis = analyze(`
+        function named(named, capture = () => named) { return named; }
+        named = () => "replacement";
+      `);
+      const declarationSymbol = analysis.rootScope.symbolsByName.get("named")!;
+      const parameterSymbol = analysis
+        .ownScopeFor(declarationSymbol.declarationNode)!
+        .symbolsByName.get("named")!;
+      const shadowedReferences = findAllNamedNodes(analysis.program, "Identifier", "named").filter(
+        (identifier) =>
+          identifier.parent?.type === "ReturnStatement" ||
+          identifier.parent?.type === "ArrowFunctionExpression",
+      );
+
+      expect(parameterSymbol.kind).toBe("parameter");
+      for (const reference of shadowedReferences) {
+        expect(analysis.symbolFor(reference)?.id).toBe(parameterSymbol.id);
+      }
+    });
+
+    it.each([
+      "function change(unused = NativeObject.assign) { var NativeObject; }",
+      "function change(unused = NativeObject.assign) { function NativeObject() {} }",
+      "function change(unused = NativeObject.assign) { let NativeObject; }",
+      "function change(unused = NativeObject.assign) { class NativeObject {} }",
+      "function change(unused = () => NativeObject.assign) { var NativeObject; }",
+      "function change(unused = function (inner = NativeObject.assign) { var NativeObject; }) { var NativeObject; }",
+      "function change({ value = NativeObject.assign }) { var NativeObject; }",
+      "function change([value = NativeObject.assign]) { var NativeObject; }",
+      "function change({ [NativeObject.assign]: value }) { var NativeObject; }",
+      "const change = (unused = NativeObject.assign) => { var NativeObject; };",
+      "const change = function (unused = NativeObject.assign) { var NativeObject; };",
+      "const change = { method(unused = NativeObject.assign) { var NativeObject; } };",
+      "class Change { method(unused = NativeObject.assign) { var NativeObject; } }",
+      "function change(unused = NativeObject.assign) { { var NativeObject; } }",
+      "function change(unused = NativeObject.assign) { try {} catch (error) { var NativeObject; } }",
+    ])("resolves the outer alias before body declarations: %s", (functionCode) => {
+      const analysis = analyze(`const NativeObject = Object; ${functionCode}`);
+      const aliasReference = findAllNamedNodes(analysis.program, "Identifier", "NativeObject").find(
+        (identifier) => identifier.parent?.type === "MemberExpression",
+      )!;
+
+      expect(analysis.symbolFor(aliasReference)?.id).toBe(
+        analysis.rootScope.symbolsByName.get("NativeObject")?.id,
+      );
+    });
+
+    it.each(["Object", "Array", "globalThis"])(
+      "preserves global references in defaults despite body var %s",
+      (globalName) => {
+        const analysis = analyze(
+          `function change(unused = ${globalName}.property) { var ${globalName}; }`,
+        );
+        const globalReference = findAllNamedNodes(analysis.program, "Identifier", globalName).find(
+          (identifier) => identifier.parent?.type === "MemberExpression",
+        )!;
+
+        expect(analysis.isGlobalReference(globalReference)).toBe(true);
+      },
+    );
+
+    it("keeps parameter closures on the parameter binding when a body var copies its name", () => {
+      const analysis = analyze(`
+        function change(value = "parameter", capture = () => value) {
+          var value = "body";
+          return value;
+        }
+      `);
+      const references = findAllNamedNodes(analysis.program, "Identifier", "value");
+      const parameterReference = references.find(
+        (identifier) => identifier.parent?.type === "ArrowFunctionExpression",
+      )!;
+      const bodyReference = references.find(
+        (identifier) => identifier.parent?.type === "ReturnStatement",
+      )!;
+      const parameterSymbol = analysis.symbolFor(parameterReference)!;
+      const bodySymbol = analysis.symbolFor(bodyReference)!;
+
+      expect(parameterSymbol.kind).toBe("parameter");
+      expect(bodySymbol.kind).toBe("var");
+      expect(bodySymbol.id).not.toBe(parameterSymbol.id);
+      expect(bodySymbol.scope.parent?.id).toBe(parameterSymbol.scope.id);
+    });
+
+    it("does not fabricate a parameter initializer for a copied body var", () => {
+      const analysis = analyze(`function change(value = Object) { var value; return value; }`);
+      const bodyReference = findAllNamedNodes(analysis.program, "Identifier", "value").find(
+        (identifier) => identifier.parent?.type === "ReturnStatement",
+      )!;
+
+      expect(analysis.symbolFor(bodyReference)?.initializer).toBeNull();
+      expect(analysis.symbolFor(bodyReference)?.kind).toBe("var");
+    });
+
+    it.each(["value", "...value", "{ value }", "[value]"])(
+      "preserves a shared parameter and body scope without expressions: %s",
+      (parameterPattern) => {
+        const analysis = analyze(
+          `function change(${parameterPattern}) { var value; return value; }`,
+        );
+        const functionNode = findFirstNamedNode(analysis.program, "FunctionDeclaration")!;
+        const bodyReference = findAllNamedNodes(analysis.program, "Identifier", "value").find(
+          (identifier) => identifier.parent?.type === "ReturnStatement",
+        )!;
+        const functionScope = analysis.ownScopeFor(functionNode)!;
+
+        expect(analysis.scopeFor(bodyReference).id).toBe(functionScope.id);
+        expect(functionScope.children).toHaveLength(0);
+      },
+    );
+
+    it("preserves named function-expression self references in defaults", () => {
+      const analysis = analyze(
+        `const change = function self(value = self) { var self; return self; };`,
+      );
+      const functionNode = findFirstNamedNode(analysis.program, "FunctionExpression")!;
+      const selfReferences = findAllNamedNodes(analysis.program, "Identifier", "self");
+      const defaultReference = selfReferences.find(
+        (identifier) => identifier.parent?.type === "AssignmentPattern",
+      )!;
+      const bodyReference = selfReferences.find(
+        (identifier) => identifier.parent?.type === "ReturnStatement",
+      )!;
+
+      expect(analysis.symbolFor(defaultReference)?.kind).toBe("function");
+      expect(analysis.symbolFor(defaultReference)?.scope.id).toBe(
+        analysis.ownScopeFor(functionNode)?.id,
+      );
+      expect(analysis.symbolFor(bodyReference)?.kind).toBe("var");
+    });
+
+    it("keeps all parameter bindings visible to defaults and body references", () => {
+      const analysis = analyze(`function change(value = later, later = value) { return value; }`);
+      const functionNode = findFirstNamedNode(analysis.program, "FunctionDeclaration")!;
+      const parameterScope = analysis.ownScopeFor(functionNode)!;
+      for (const name of ["value", "later"]) {
+        const references = findAllNamedNodes(analysis.program, "Identifier", name).filter(
+          (identifier) => analysis.referenceFor(identifier),
+        );
+        for (const reference of references) {
+          expect(analysis.symbolFor(reference)?.id).toBe(
+            parameterScope.symbolsByName.get(name)?.id,
+          );
+          expect(analysis.symbolFor(reference)?.kind).toBe("parameter");
+        }
+      }
+    });
+
+    it("resolves an enclosing catch binding before body var declarations", () => {
+      const analysis = analyze(`
+        try {} catch (NativeObject) {
+          function change(value = NativeObject.assign) { var NativeObject; }
+        }
+      `);
+      const aliasReference = findAllNamedNodes(analysis.program, "Identifier", "NativeObject").find(
+        (identifier) => identifier.parent?.type === "MemberExpression",
+      )!;
+
+      expect(analysis.symbolFor(aliasReference)?.kind).toBe("catch-clause-parameter");
+    });
+
+    it("preserves shadowing inside a function created by a parameter expression", () => {
+      const analysis = analyze(`
+        const NativeObject = Object;
+        function change(value = () => { var NativeObject; return NativeObject; }) {
+          var NativeObject;
+        }
+      `);
+      const nestedReference = findAllNamedNodes(
+        analysis.program,
+        "Identifier",
+        "NativeObject",
+      ).find((identifier) => identifier.parent?.type === "ReturnStatement")!;
+
+      expect(analysis.symbolFor(nestedReference)?.kind).toBe("var");
+      expect(analysis.symbolFor(nestedReference)?.scope.kind).toBe("arrow-function");
+    });
+  });
+
   describe("scopeFor", () => {
     it("returns the function scope for a node inside a function body", () => {
       const analysis = analyze(`function fn() { const x = 1; }`);

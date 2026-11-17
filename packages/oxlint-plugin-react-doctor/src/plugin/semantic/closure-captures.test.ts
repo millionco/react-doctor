@@ -54,6 +54,33 @@ const capturedNames = (captures: ReadonlyArray<{ resolvedSymbol: { name: string 
   captures.map((capture) => capture.resolvedSymbol?.name).sort();
 
 describe("closureCaptures", () => {
+  it("captures outer values in defaults despite same-name body declarations", () => {
+    const { scopes, program } = analyze(`
+      const external = 1;
+      const change = (value = external) => {
+        var external;
+        return value;
+      };
+    `);
+    const change = findFunctionNode(program, "change")!;
+
+    expect(capturedNames(closureCaptures(change, scopes))).toEqual(["external"]);
+  });
+
+  it("bubbles captures from parameter closures without capturing body locals", () => {
+    const { scopes, program } = analyze(`
+      const external = 1;
+      const change = (capture = () => external, value = 1) => {
+        var external;
+        const local = value;
+        return capture() + local;
+      };
+    `);
+    const change = findFunctionNode(program, "change")!;
+
+    expect(capturedNames(closureCaptures(change, scopes))).toEqual(["external"]);
+  });
+
   it("collects references whose binding lives outside the function", () => {
     const { scopes, program } = analyze(`
       const useGreeting = () => {
@@ -77,7 +104,7 @@ describe("closureCaptures", () => {
     expect(closureCaptures(shout, scopes)).toEqual([]);
   });
 
-  it("excludes the function's own recursive self-reference", () => {
+  it("captures a function declaration's outer recursive binding", () => {
     const { scopes, program } = analyze(`
       function countdown(steps) {
         if (steps === 0) return;
@@ -85,7 +112,34 @@ describe("closureCaptures", () => {
       }
     `);
     const countdown = findFunctionNode(program, "countdown")!;
+    expect(capturedNames(closureCaptures(countdown, scopes))).toEqual(["countdown"]);
+  });
+
+  it("excludes a named function expression's inner self-reference", () => {
+    const { scopes, program } = analyze(`
+      const countdown = function self(steps) {
+        if (steps === 0) return;
+        self(steps - 1);
+      };
+    `);
+    const countdown = findFunctionNode(program, "countdown")!;
+
     expect(closureCaptures(countdown, scopes)).toEqual([]);
+  });
+
+  it("captures the written declaration binding from a default before a same-name body var", () => {
+    const { scopes, program } = analyze(`
+      function named(value = named) { var named; return value; }
+      named = () => "replacement";
+    `);
+    const named = findFunctionNode(program, "named")!;
+    const captures = closureCaptures(named, scopes);
+
+    expect(capturedNames(captures)).toEqual(["named"]);
+    expect(captures[0]?.resolvedSymbol?.scope.kind).toBe("module");
+    expect(
+      captures[0]?.resolvedSymbol?.references.some((reference) => reference.flag === "write"),
+    ).toBe(true);
   });
 
   it("bubbles nested-function captures up to every enclosing function", () => {

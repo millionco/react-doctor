@@ -72,8 +72,8 @@ const capturesByAnalysis = new WeakMap<
 // callback closes over.
 //
 // Excludes: globals (unresolved references), references whose binding
-// is the function itself (recursive call) or its parameters /
-// internal locals.
+// is a named function expression's inner self binding, its parameters,
+// or its internal locals.
 export const closureCaptures = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,

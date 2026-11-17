@@ -30,6 +30,21 @@ const guardedAppend = `
 `;
 
 describe("no-self-updating-effect: convergent-effect tail equality", () => {
+  it("accepts fixed string props when an unrelated default creates a body environment", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      carousel(
+        guardedAppend,
+        "",
+        "{ text, replace }: { text: string; replace: boolean }, unrelated = true",
+      ),
+      { filename: "carousel.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each([
     guardedAppend,
     `${guardedAppend}

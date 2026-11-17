@@ -9436,6 +9436,12 @@ const isReleaseReachableForUsage = (
     return isReactRefCallbackCleanupOwnedByEffect(usageFunction, releaseFunction, usage, context);
   }
   if (isSelfReleasingListenerRelease(releaseNode, releaseFunction, usage, context)) return true;
+  if (
+    usage.registrationVerbName === "addEventListener" &&
+    isLocallyRegisteredEventHandlerFunction(releaseFunction, context)
+  ) {
+    return false;
+  }
   return isPotentiallyReachableFunction(releaseFunction, context);
 };
 

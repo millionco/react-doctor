@@ -12,6 +12,7 @@ import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-p
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isPureIdentityFunction } from "../../utils/is-pure-identity-function.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -812,6 +813,7 @@ const isSetStateToInitialValue = (
     return false;
   }
   if (stateInitialValue && setStateToValue) {
+    if (isPureIdentityFunction(setStateToValue, context.scopes)) return false;
     const initialLivePropIdentity = getLivePropExpressionIdentity(
       analysis,
       context,

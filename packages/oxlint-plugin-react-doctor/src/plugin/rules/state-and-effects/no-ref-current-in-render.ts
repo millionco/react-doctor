@@ -8,7 +8,9 @@ import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -21,6 +23,7 @@ import {
   resolveReactRefSymbol,
 } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { someAst } from "../../utils/some-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -30,6 +33,73 @@ interface RefCurrentWrite {
   value: EsTreeNode | null;
   operator: string;
 }
+
+const dynamicAssignProviderByScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasDynamicAssignProvider = (scopes: ScopeAnalysis): boolean => {
+  const cached = dynamicAssignProviderByScope.get(scopes);
+  if (cached !== undefined) return cached;
+  const hasDynamicProvider = someAst(scopes.rootScope.node, (node) => {
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = stripParenExpression(node.callee);
+      if (isNodeOfType(callee, "Identifier") && callee.name === "eval") return true;
+    }
+    return (
+      (isNodeOfType(node, "MemberExpression") ||
+        (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern"))) &&
+      getResolvedStaticPropertyName(node, scopes) === "defaultView"
+    );
+  });
+  dynamicAssignProviderByScope.set(scopes, hasDynamicProvider);
+  return hasDynamicProvider;
+};
+
+const getOwnedAssignSource = (
+  source: EsTreeNodeOfType<"Identifier">,
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const symbol = scopes.symbolFor(source);
+  const reference = symbol?.references[0];
+  if (
+    symbol?.references.length !== 1 ||
+    reference?.identifier !== source ||
+    reference.flag !== "read"
+  ) {
+    return null;
+  }
+  const initializer = getDirectConstInitializer(symbol);
+  const object = initializer && stripParenExpression(initializer);
+  if (!isNodeOfType(object, "ObjectExpression") || object.properties.length !== 1) return null;
+  const property = object.properties[0];
+  if (
+    !isNodeOfType(property, "Property") ||
+    property.kind !== "init" ||
+    property.method ||
+    getStaticPropertyKeyName(property, { allowComputedString: true }) !== "current"
+  ) {
+    return null;
+  }
+  const declaration = symbol.declarationNode.parent;
+  const callRoot = findTransparentExpressionRoot(call);
+  const statement = callRoot.parent;
+  const block = statement?.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    statement.expression !== callRoot ||
+    !isNodeOfType(block, "BlockStatement") ||
+    declaration.parent !== block ||
+    block.body[block.body.findIndex((candidate) => candidate === statement) - 1] !== declaration
+  ) {
+    return null;
+  }
+  for (let ancestor = block.parent; ancestor; ancestor = ancestor.parent) {
+    if (isNodeOfType(ancestor, "WithStatement")) return null;
+  }
+  return object;
+};
 
 const getRefCurrentWrite = (node: EsTreeNode, scopes: ScopeAnalysis): RefCurrentWrite | null => {
   if (isNodeOfType(node, "AssignmentExpression")) {
@@ -57,8 +127,17 @@ const getRefCurrentWrite = (node: EsTreeNode, scopes: ScopeAnalysis): RefCurrent
   let hasUnprovenInitialization = false;
   let initializationValue: EsTreeNode | null = null;
   for (const source of sources) {
-    const expression = stripParenExpression(source);
-    if (!isNodeOfType(expression, "ObjectExpression")) {
+    const sourceExpression = stripParenExpression(source);
+    const expression =
+      sources.length === 1 && isNodeOfType(sourceExpression, "Identifier")
+        ? getOwnedAssignSource(sourceExpression, node, scopes)
+        : sourceExpression;
+    if (
+      !isNodeOfType(expression, "ObjectExpression") ||
+      (sourceExpression !== expression &&
+        (!isProvenUnmodifiedGlobalNamespaceReference(receiver, "Object", scopes, "assign", true) ||
+          hasDynamicAssignProvider(scopes)))
+    ) {
       hasUnprovenInitialization = true;
       continue;
     }

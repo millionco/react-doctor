@@ -33,6 +33,121 @@ describe("ref writes through Object.assign during render", () => {
   });
 
   it.each([
+    [
+      "reports the local data source",
+      "const patch = { current: value }; Object.assign(valueRef, patch);",
+      1,
+    ],
+    [
+      "reports unstable initialization",
+      "if (valueRef.current === null) { const patch = { current: Math.random() }; Object.assign(valueRef, patch); }",
+      1,
+    ],
+    [
+      "preserves lazy initialization",
+      "if (valueRef.current === null) { const patch = { current: new Map() }; Object.assign(valueRef, patch); }",
+      0,
+    ],
+    [
+      "declines an accessor",
+      "const patch = { get current() { return value; } }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines a method",
+      "const patch = { current() { return value; } }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines a spread",
+      "const patch = { ...extra, current: value }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines an intervening deletion",
+      "const patch = { current: value }; delete patch.current; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines an escaped source",
+      "const patch = { current: value }; consume(patch); Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines another read even after the call",
+      "const patch = { current: value }; Object.assign(valueRef, patch); consume(patch);",
+      0,
+    ],
+    [
+      "declines a different binding",
+      "const patch = { current: value }; { const patch = {}; Object.assign(valueRef, patch); }",
+      0,
+    ],
+    [
+      "declines a destructuring fallback",
+      "const { patch = { current: value } } = { patch: {} }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines a fake Object",
+      "const Object = { assign(target) { return target; } }; const patch = { current: value }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines a replaced method",
+      "Object.assign = (target) => target; const patch = { current: value }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines an escaped provider",
+      "replaceAssign(Object); const patch = { current: value }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines an alternate window provider",
+      "document.defaultView.Object.assign = (target) => target; const patch = { current: value }; Object.assign(valueRef, patch);",
+      0,
+    ],
+    [
+      "declines an aliased window provider",
+      'const key = "defaultView"; const { [key]: view } = document; view.Object.assign = (target) => target; const patch = { current: value }; Object.assign(valueRef, patch);',
+      0,
+    ],
+    [
+      "declines provider replacement while preparing the source",
+      'const patch = { current: eval("Object.assign = (target) => target; 42") }; Object.assign(valueRef, patch);',
+      0,
+    ],
+    [
+      "declines multiple sources",
+      "const patch = { current: value }; Object.assign(valueRef, patch, extra);",
+      0,
+    ],
+    [
+      "preserves deferred work",
+      "queueMicrotask(() => { const patch = { current: value }; Object.assign(valueRef, patch); });",
+      0,
+    ],
+    [
+      "preserves effect work",
+      "useEffect(() => { const patch = { current: value }; Object.assign(valueRef, patch); }, [value]);",
+      0,
+    ],
+  ])("%s", (_name, statement, diagnosticCount) => {
+    const result = runRule(
+      noRefCurrentInRender,
+      `import { useEffect, useRef } from "react";
+       const Panel = ({ value, extra, consume, replaceAssign }) => {
+         const valueRef = useRef(null);
+         ${statement}
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(diagnosticCount);
+  });
+
+  it.each([
     ['import { useRef as makeRef } from "react";', "const valueRef = makeRef(null);"],
     ['import * as React from "react";', "const valueRef = React.useRef(null);"],
   ])("uses proven React provenance: %s", (imports, declaration) => {

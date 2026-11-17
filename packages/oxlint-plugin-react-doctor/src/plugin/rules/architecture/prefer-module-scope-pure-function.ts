@@ -74,7 +74,7 @@ const hasComponentLocalCaptures = (
 export const preferModuleScopePureFunction = defineRule({
   id: "prefer-module-scope-pure-function",
   defaultEnabled: false,
-  title: "Pure function rebuilt every render",
+  title: "Function with no component-local captures",
   tags: ["test-noise", "react-jsx-only"],
   severity: "warn",
   category: "Architecture",
@@ -84,12 +84,12 @@ export const preferModuleScopePureFunction = defineRule({
   // Mirrors the gate on its sibling `prefer-module-scope-static-value`.
   disabledWhen: ["react-compiler"],
   recommendation:
-    "Move the function above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted work.",
+    "Consider moving the function above the component if your build creates it on each render and moving it preserves its framework behavior.",
   create: (context: RuleContext) => {
     const report = (functionNode: EsTreeNode, name: string, componentName: string): void => {
       context.report({
         node: functionNode,
-        message: `\`${name}\` inside \`${componentName}\` uses no local state but is rebuilt on every render, so it wastes work & breaks memoized children. Move it to the top of the file, outside the component.`,
+        message: `\`${name}\` inside \`${componentName}\` captures no component-local bindings. If your build creates it on each render, consider moving it outside the component after checking its framework behavior.`,
       });
     };
 

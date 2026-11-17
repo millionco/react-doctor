@@ -16,6 +16,7 @@ export const getSymbolWriteExecutionPathsBefore = (
   scopes: ScopeAnalysis,
   options: HasSymbolWriteBeforeOptions = {},
 ): number[][] => {
+  if (options.isSynchronousNode && !options.isSynchronousNode(writeIdentifier)) return [];
   const writeFunction = findEnclosingFunction(writeIdentifier);
   const referenceFunction = findEnclosingFunction(referenceNode);
   if (writeFunction === referenceFunction) {
@@ -44,9 +45,14 @@ export const getSymbolWriteExecutionPathsBefore = (
         writeIdentifier,
         options.isSynchronousNode,
       ).map((invocationPath) => [...invocationPath, writeIdentifier.range[0]])
-    : getFunctionSynchronousInvocationPathsBefore(writeFunction, referenceNode, scopes).map(
-        (invocationPath) => [...invocationPath, writeIdentifier.range[0]],
-      );
+    : getFunctionSynchronousInvocationPathsBefore(
+        writeFunction,
+        referenceNode,
+        scopes,
+        new Set(),
+        null,
+        options.isSynchronousNode,
+      ).map((invocationPath) => [...invocationPath, writeIdentifier.range[0]]);
 };
 
 export const isSymbolWriteBefore = (

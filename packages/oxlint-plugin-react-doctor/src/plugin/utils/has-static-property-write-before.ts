@@ -226,7 +226,7 @@ export const getFunctionSynchronousInvocationPathsBefore = (
     const callBoundary = findExecutionBoundary(call);
     if (!callBoundary) return [];
     if (synchronousNode !== null && !isNodeOnUnconditionalPath(call, callBoundary)) return [];
-    if (synchronousNode !== null && isSynchronousNode !== undefined && !isSynchronousNode(call)) {
+    if (isSynchronousNode !== undefined && !isSynchronousNode(call)) {
       return [];
     }
     if (callBoundary === referenceBoundary) {

@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isCachedAsyncResultIdentityStamp } from "./utils/is-cached-async-result-identity-stamp.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
 export const noDerivedStateEffect = defineRule({
@@ -26,8 +27,14 @@ export const noDerivedStateEffect = defineRule({
         context.filename,
       ).find(
         (fact) =>
-          (fact.isRenderKnownCopy && !fact.resetsSourceState) ||
-          isRenderKnownSelectionRepair(analysis, node, fact),
+          ((fact.isRenderKnownCopy && !fact.resetsSourceState) ||
+            isRenderKnownSelectionRepair(analysis, node, fact)) &&
+          !isCachedAsyncResultIdentityStamp(
+            node,
+            fact.stateDeclarator,
+            fact.callExpression,
+            context,
+          ),
       );
       if (!derivedWrite) return;
       context.report({

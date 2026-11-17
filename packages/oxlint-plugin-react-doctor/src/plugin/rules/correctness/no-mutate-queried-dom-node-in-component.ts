@@ -32,8 +32,7 @@ const EXCLUDED_QUERY_TOKENS = new Set(["root", "__next"]);
 // element means the component deliberately manages it imperatively, so
 // query-based writes to it are part of that sanctioned pattern.
 interface OwnedStyleAttributeInfo {
-  hasDynamicValue: boolean;
-  knownPropertyNames: Set<string> | null;
+  dynamicPropertyNames: Set<string> | null;
 }
 
 interface OwnedElementInfo {
@@ -82,33 +81,35 @@ const styleAttributeInfoFromValue = (
   value: EsTreeNode | null | undefined,
 ): OwnedStyleAttributeInfo => {
   if (!value || isNodeOfType(value, "Literal")) {
-    return { hasDynamicValue: false, knownPropertyNames: null };
+    return { dynamicPropertyNames: new Set() };
   }
   if (!isNodeOfType(value, "JSXExpressionContainer")) {
-    return { hasDynamicValue: true, knownPropertyNames: null };
+    return { dynamicPropertyNames: null };
   }
   const expression = stripParenExpression(value.expression);
   if (!isNodeOfType(expression, "ObjectExpression")) {
-    return { hasDynamicValue: true, knownPropertyNames: null };
+    return { dynamicPropertyNames: null };
   }
-  let hasDynamicValue = false;
-  let knownPropertyNames: Set<string> | null = new Set<string>();
+  const dynamicPropertyNames = new Set<string>();
   for (const property of expression.properties) {
     if (!isNodeOfType(property, "Property") || property.computed) {
-      hasDynamicValue = true;
-      knownPropertyNames = null;
-      continue;
+      return { dynamicPropertyNames: null };
     }
+    let propertyName: string;
     if (isNodeOfType(property.key, "Identifier")) {
-      knownPropertyNames?.add(property.key.name);
+      propertyName = property.key.name;
     } else if (isNodeOfType(property.key, "Literal")) {
-      knownPropertyNames?.add(String(property.key.value));
+      propertyName = String(property.key.value);
     } else {
-      knownPropertyNames = null;
+      return { dynamicPropertyNames: null };
     }
-    if (!isStaticLiteralExpression(property.value)) hasDynamicValue = true;
+    if (isStaticLiteralExpression(property.value)) {
+      dynamicPropertyNames.delete(propertyName);
+    } else {
+      dynamicPropertyNames.add(propertyName);
+    }
   }
-  return { hasDynamicValue, knownPropertyNames };
+  return { dynamicPropertyNames };
 };
 
 const classNameAttributeInfoFromValue = (
@@ -250,22 +251,22 @@ const camelizeCssPropertyName = (propertyName: string): string =>
     : propertyName.replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
 
 // React re-applies inline style only when the element's `style` prop diffs
-// to new per-key values, so a clobber is only provable when the matched
-// element has a style prop with at least one non-literal value AND the
-// mutated property is (or could be) among its keys. An element that also
-// carries a `ref` is deliberately hybrid-managed — stay quiet.
+// to new per-key values, so the mutated property must have (or could have)
+// a non-literal style value. An element that also carries a `ref` is
+// deliberately hybrid-managed — stay quiet.
 const canReactClobberStyleMutation = (
   elementInfos: OwnedElementInfo[],
   mutatedPropertyName: string | null,
 ): boolean =>
   elementInfos.some((info) => {
     if (info.hasRefAttribute) return false;
-    if (!info.styleAttribute || !info.styleAttribute.hasDynamicValue) return false;
-    const knownPropertyNames = info.styleAttribute.knownPropertyNames;
-    if (mutatedPropertyName === null || knownPropertyNames === null) return true;
+    if (!info.styleAttribute) return false;
+    const dynamicPropertyNames = info.styleAttribute.dynamicPropertyNames;
+    if (dynamicPropertyNames === null) return true;
+    if (mutatedPropertyName === null) return dynamicPropertyNames.size > 0;
     return (
-      knownPropertyNames.has(mutatedPropertyName) ||
-      knownPropertyNames.has(camelizeCssPropertyName(mutatedPropertyName))
+      dynamicPropertyNames.has(mutatedPropertyName) ||
+      dynamicPropertyNames.has(camelizeCssPropertyName(mutatedPropertyName))
     );
   });
 

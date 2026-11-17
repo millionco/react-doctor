@@ -19,6 +19,7 @@ import { resolveEffectiveTailwindClassNameToken } from "./utils/resolve-effectiv
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
+import { isNativeIndeterminateProgressFeedback } from "./utils/is-native-indeterminate-progress-feedback.js";
 import { splitCssTopLevel } from "./utils/split-css-top-level.js";
 
 const BUSY_TEXT_PATTERN = /\b(?:loading|processing|saving|syncing|uploading)\b/i;
@@ -301,6 +302,13 @@ export const noDecorativePulse = defineRule({
       const text = getStaticJsxText(node).replace(/\s+/g, " ").trim();
       if (!text || BUSY_TEXT_PATTERN.test(text)) return;
       if (isBusyStatus(openingElement)) return;
+      if (
+        isNodeOfType(openingElement.name, "JSXIdentifier") &&
+        openingElement.name.name === "progress" &&
+        isNativeIndeterminateProgressFeedback(getAncestorOpeningElements(node))
+      ) {
+        return;
+      }
       context.report({
         node: openingElement,
         message:

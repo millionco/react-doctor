@@ -11,6 +11,7 @@
 export interface UpstreamDivergence {
   validSkips?: ReadonlyArray<number>;
   invalidSkips?: ReadonlyArray<number>;
+  invalidDiagnosticCountOverrides?: Readonly<Record<number, number>>;
   reason: string;
 }
 
@@ -21,6 +22,7 @@ export const RULES_OF_HOOKS_DIVERGENCES: UpstreamDivergence = {
 
 export const EXHAUSTIVE_DEPS_DIVERGENCES: UpstreamDivergence = {
   invalidSkips: [82, 130, 131, 132, 187],
+  invalidDiagnosticCountOverrides: { 37: 1 },
   reason:
-    "Intentional: exact props members suppress a synthetic whole-props dependency; unknown or deferred state values can converge through React's same-value bailout; and useMemo accepts extra reactive invalidation tokens while useCallback remains strict.",
+    "Intentional: exact props members suppress a synthetic whole-props dependency; matching numeric slot dependencies retain complex-expression advice without requiring the root; unknown or deferred state values can converge through React's same-value bailout; and useMemo accepts extra reactive invalidation tokens while useCallback remains strict.",
 };

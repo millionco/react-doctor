@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import * as fs from "node:fs";
+import { NON_BLOCKING_REACT_DOCTOR_COMMAND } from "../src/cli/utils/git-hook-shared.js";
 import {
   detectGitHookTarget,
   installReactDoctorGitHook,
@@ -56,7 +57,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(hookContent).toContain("react-doctor --staged --blocking warning");
     expect(hookContent).toContain("pnpm dlx react-doctor@latest --staged --blocking warning");
     expect(hookContent).toContain("npx --yes react-doctor@latest --staged --blocking warning");
-    expect(hookContent).toContain("Want them fixed?");
+    expect(hookContent).toContain("investigate the result");
     expect(hookContent).not.toContain("Stop commit");
     expect(hookContent).not.toContain(".react-doctor/hooks/pre-commit");
     expect(hookContent).not.toContain("husky");
@@ -390,7 +391,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(target.kind).toBe("lefthook");
     expect(configContent.match(/react_doctor_output=\$\(mktemp/g)).toHaveLength(1);
     expect(configContent).toContain("run: react_doctor_output=$(mktemp");
-    expect(configContent).toContain("React Doctor found staged regressions.");
+    expect(configContent).toContain("React Doctor staged check failed.");
   });
 
   it("merges React Doctor into an existing Lefthook pre-commit section", () => {
@@ -736,24 +737,34 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     fs.mkdirSync(path.dirname(localBinaryPath), { recursive: true });
     fs.writeFileSync(
       localBinaryPath,
-      ["#!/bin/sh", "printf '%s\\n' \"$@\" > hook-invocation.txt", "exit 0", ""].join("\n"),
+      [
+        "#!/bin/sh",
+        "printf '%s\\n' \"$@\" > hook-invocation.txt",
+        "printf '%s\\n' 'successful scanner output'",
+        "exit 0",
+        "",
+      ].join("\n"),
     );
     fs.chmodSync(localBinaryPath, fs.constants.S_IRWXU);
 
     fs.writeFileSync(path.join(packageDirectory, "app.tsx"), "export const App = () => null;\n");
     execFileSync("git", ["add", "packages/app/app.tsx"], { cwd: fixture.projectRoot });
-    execFileSync("git", ["commit", "-m", "test configured hook"], {
+    const commitResult = spawnSync("git", ["commit", "-m", "test configured hook"], {
       cwd: packageDirectory,
       encoding: "utf8",
     });
 
+    expect(commitResult.status).toBe(0);
+    expect(commitResult.stderr).toBe("");
+    expect(commitResult.stdout).not.toContain("successful scanner output");
     expect(target.hookPath).toBe(
       path.join(fs.realpathSync(fixture.projectRoot), ".githooks/pre-commit"),
     );
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
   });
 
-  it("surfaces the diagnostics and still allows the commit (non-blocking)", () => {
+  it.each([1, 2])("keeps a scanner exit %i advisory without claiming regressions", (exitCode) => {
+    const scannerOutput = exitCode === 1 ? "reported diagnostic" : "scanner initialization failed";
     execFileSync("git", ["init"], { cwd: fixture.projectRoot, stdio: "ignore" });
     execFileSync("git", ["config", "user.email", "doctor@example.com"], {
       cwd: fixture.projectRoot,
@@ -781,9 +792,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
       [
         "#!/bin/sh",
         "printf '%s\\n' \"$@\" > hook-invocation.txt",
-        "printf '%s\\n' 'noisy stdout diagnostic'",
+        `printf '%s\\n' '${scannerOutput}'`,
         "printf '%s\\n' 'noisy stderr diagnostic' >&2",
-        "exit 1",
+        `exit ${exitCode}`,
         "",
       ].join("\n"),
     );
@@ -797,16 +808,15 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     });
 
     expect(commitResult.status).toBe(0);
-    expect(commitResult.stderr).toContain("React Doctor found staged regressions.");
+    expect(commitResult.stderr).toContain("React Doctor staged check failed.");
+    expect(commitResult.stderr).not.toContain("found staged regressions");
     expect(commitResult.stderr).toContain(
       "Run react-doctor --staged --blocking warning to inspect.",
     );
     expect(commitResult.stderr).toContain(
-      "Want them fixed? Ask your agent to run that command and resolve the findings.",
+      "Ask your agent to run that command and investigate the result.",
     );
-    // The scan output is surfaced (not swallowed) so the developer sees what was
-    // flagged — #969. The commit still succeeds (non-blocking).
-    expect(commitResult.stderr).toContain("noisy stdout diagnostic");
+    expect(commitResult.stderr).toContain(scannerOutput);
     expect(commitResult.stderr).toContain("noisy stderr diagnostic");
     expect(commitResult.stderr).not.toContain("Stop commit");
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
@@ -816,6 +826,47 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
         encoding: "utf8",
       }).trim(),
     ).toHaveLength(40);
+  });
+
+  it.each([0, 1, 2])("keeps manager hooks non-blocking for scanner exit %i", (exitCode) => {
+    const binaryDirectory = path.join(fixture.projectRoot, "bin");
+    const binaryPath = path.join(binaryDirectory, "react-doctor");
+    fs.mkdirSync(binaryDirectory);
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        "printf '%s\\n' \"$@\" > hook-invocation.txt",
+        "printf '%s\\n' 'scanner result'",
+        `exit ${exitCode}`,
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, fs.constants.S_IRWXU);
+
+    const hookResult = spawnSync("sh", ["-c", NON_BLOCKING_REACT_DOCTOR_COMMAND], {
+      cwd: fixture.projectRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${binaryDirectory}${path.delimiter}${process.env.PATH}`,
+      },
+    });
+
+    expect(hookResult.status).toBe(0);
+    expect(hookResult.stdout).toBe("");
+    expect(fs.readFileSync(path.join(fixture.projectRoot, "hook-invocation.txt"), "utf8")).toBe(
+      "--staged\n--blocking\nwarning\n",
+    );
+    if (exitCode === 0) {
+      expect(hookResult.stderr).toBe("");
+      return;
+    }
+    expect(hookResult.stderr).toContain("scanner result");
+    expect(hookResult.stderr).toContain("React Doctor staged check failed.");
+    expect(hookResult.stderr).not.toContain("found staged regressions");
+    expect(hookResult.stderr).toContain("Run react-doctor --staged --blocking warning to inspect.");
+    expect(hookResult.stderr).toContain("investigate the result");
   });
 
   it("preserves and executes existing hook content during a real git commit", () => {

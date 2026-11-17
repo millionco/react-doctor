@@ -62,7 +62,7 @@ const buildReactDoctorHookBlock = (): string =>
     // which findings were reported instead of just a generic notice (#969).
     '  cat "$react_doctor_output" >&2',
     '  rm -f "$react_doctor_output"',
-    `  printf '%s\\n' "React Doctor found staged regressions." "Run ${REACT_DOCTOR_COMMAND} to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2`,
+    `  printf '%s\\n' "React Doctor staged check failed." "Run ${REACT_DOCTOR_COMMAND} to inspect." "Ask your agent to run that command and investigate the result." >&2`,
     "fi",
     REACT_DOCTOR_BLOCK_END,
   ].join("\n");

@@ -1,0 +1,2 @@
+export const IMPERATIVE_CERTIFICATE_MAX_DEPTH = 32;
+export const IMPERATIVE_NATIVE_ANCESTOR_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;

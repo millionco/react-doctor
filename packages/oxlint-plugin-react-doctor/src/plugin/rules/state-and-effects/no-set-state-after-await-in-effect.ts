@@ -1,4 +1,5 @@
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
+import { createLiveEffectContinuationCertifier } from "../../utils/effect/certify-live-effect-continuations.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
@@ -590,6 +591,17 @@ const awaitUsesAbortedControllerSignal = (
   controllerKeys: ReadonlySet<string>,
   context: RuleContext,
 ): boolean => {
+  const awaited = stripParenExpression(awaitNode.argument);
+  const awaitedCalleeSymbol = isNodeOfType(awaited, "CallExpression")
+    ? context.scopes.symbolFor(stripParenExpression(awaited.callee))
+    : null;
+  if (
+    isNodeOfType(awaited, "CallExpression") &&
+    (resolveExactLocalFunction(awaited.callee, context.scopes) ||
+      (awaitedCalleeSymbol && awaitedCalleeSymbol.kind !== "import"))
+  ) {
+    return false;
+  }
   let usesSignal = false;
   walkWithoutNestedFunctions(awaitNode.argument, (child: EsTreeNode) => {
     const receiver = isNodeOfType(child, "MemberExpression")
@@ -1023,13 +1035,15 @@ interface AsyncPathState {
   hasDominatingGuard: boolean;
   isAbortProtected: boolean;
   suspensionNode: EsTreeNode | null;
+  pendingAbruptFinalizer?: EsTreeNode;
 }
 
 const dedupeAsyncPathStates = (states: AsyncPathState[]): AsyncPathState[] => {
   const dedupedStates = new Map<string, AsyncPathState>();
   for (const state of states) {
     const suspensionStart = state.suspensionNode?.range?.[0] ?? "none";
-    const key = `${String(state.didSuspend)}:${String(state.hasDominatingGuard)}:${String(state.isAbortProtected)}:${String(suspensionStart)}`;
+    const finalizerStart = state.pendingAbruptFinalizer?.range?.[0] ?? "none";
+    const key = `${String(state.didSuspend)}:${String(state.hasDominatingGuard)}:${String(state.isAbortProtected)}:${String(suspensionStart)}:${String(finalizerStart)}`;
     if (!dedupedStates.has(key)) dedupedStates.set(key, state);
   }
   return [...dedupedStates.values()];
@@ -1049,14 +1063,38 @@ const collectSwitchPathStatements = (
   return statements;
 };
 
-const collectOrderedAsyncEvents = (root: EsTreeNode, context: RuleContext): EsTreeNode[] => {
+const collectOrderedAsyncEvents = (
+  root: EsTreeNode,
+  context: RuleContext,
+  includeThrowStatements = false,
+): EsTreeNode[] => {
   const events: EsTreeNode[] = [];
+  const finalizerOwners: EsTreeNodeOfType<"TryStatement">[] = [];
+  let descendant = root;
+  let ancestor = root.parent;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (isNodeOfType(ancestor, "TryStatement") && ancestor.finalizer === descendant) {
+      finalizerOwners.push(ancestor);
+    }
+    descendant = ancestor;
+    ancestor = ancestor.parent;
+  }
+  let entryNode: EsTreeNode | undefined;
+  for (const finalizerOwner of finalizerOwners.reverse()) {
+    const finalizerEntry = finalizerOwner.finalizer?.body[0];
+    if (!finalizerEntry || !isNodeReachableWithinFunction(finalizerOwner, context, entryNode)) {
+      entryNode = undefined;
+      break;
+    }
+    entryNode = finalizerEntry;
+  }
   walkWithoutNestedFunctions(root, (child: EsTreeNode) => {
     if (
       (isNodeOfType(child, "AwaitExpression") ||
         (isNodeOfType(child, "ForOfStatement") && child.await === true) ||
-        (isNodeOfType(child, "CallExpression") && isStateDispatcherCall(child, context))) &&
-      isNodeReachableWithinFunction(child, context)
+        (isNodeOfType(child, "CallExpression") && isStateDispatcherCall(child, context)) ||
+        (includeThrowStatements && isNodeOfType(child, "ThrowStatement"))) &&
+      isNodeReachableWithinFunction(child, context, entryNode)
     ) {
       events.push(child);
     }
@@ -1276,16 +1314,18 @@ const analyzeAsyncStatements = (
       continue;
     }
     if (isNodeOfType(statement, "TryStatement")) {
+      const tryEntryStates = states;
       const tried = analyzeAsyncStatements(
         statement.block.body as EsTreeNode[],
-        states,
+        tryEntryStates,
         context,
         cleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
       );
       if (tried.hasUnsafeSetter) return tried;
-      const trySuspension = collectOrderedAsyncEvents(statement.block, context).find(
+      const tryEvents = collectOrderedAsyncEvents(statement.block, context, true);
+      const trySuspension = tryEvents.find(
         (event) =>
           isNodeOfType(event, "AwaitExpression") ||
           (isNodeOfType(event, "ForOfStatement") && event.await === true),
@@ -1293,7 +1333,7 @@ const analyzeAsyncStatements = (
       const caught = statement.handler
         ? analyzeAsyncStatements(
             statement.handler.body.body as EsTreeNode[],
-            states.map((state) =>
+            tryEntryStates.map((state) =>
               trySuspension
                 ? {
                     ...state,
@@ -1314,16 +1354,43 @@ const analyzeAsyncStatements = (
       states = [...tried.states, ...caught.states];
       states = dedupeAsyncPathStates(states);
       if (statement.finalizer) {
+        const directThrow = statement.block.body[0];
+        const handlerEntry = statement.handler?.body.body[0];
+        const handlerExpression = isNodeOfType(handlerEntry, "ExpressionStatement")
+          ? stripParenExpression(handlerEntry.expression)
+          : null;
+        const finalizerSuspension =
+          trySuspension ??
+          (statement.block.body.length === 1 &&
+          isNodeOfType(directThrow, "ThrowStatement") &&
+          tryEvents.includes(directThrow) &&
+          statement.handler &&
+          (!statement.handler.param || isNodeOfType(statement.handler.param, "Identifier")) &&
+          isNodeOfType(handlerExpression, "AwaitExpression")
+            ? handlerExpression
+            : null);
+        const abruptStates = tryEntryStates.map((state) => ({
+          ...state,
+          ...(finalizerSuspension
+            ? {
+                didSuspend: true,
+                hasDominatingGuard: false,
+                isAbortProtected: false,
+                suspensionNode: finalizerSuspension,
+              }
+            : {}),
+          pendingAbruptFinalizer: statement,
+        }));
         const finalized = analyzeAsyncStatements(
           statement.finalizer.body as EsTreeNode[],
-          states,
+          dedupeAsyncPathStates([...states, ...abruptStates]),
           context,
           cleanupWrites,
           abortProtectedControllers,
           sequenceSnapshots,
         );
         if (finalized.hasUnsafeSetter) return finalized;
-        states = finalized.states;
+        states = finalized.states.filter((state) => state.pendingAbruptFinalizer !== statement);
       }
       continue;
     }
@@ -1410,37 +1477,49 @@ export const noSetStateAfterAwaitInEffect = defineRule({
   category: "Bugs",
   recommendation:
     "In an effect whose dependencies can change, guard setters after `await` or inside deferred microtask and Promise callbacks with a cancellation/ignore flag checked after deferral, or return a cleanup that cancels the async work.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (
-        !isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes, {
-          allowGlobalReactNamespace: true,
-          allowUnboundBareCalls: true,
-        })
-      ) {
-        return;
-      }
-      const callback = getEffectCallback(node);
-      if (!isFunctionLike(callback)) return;
-      if (callback.async) return;
-      const dependencyArray = getDependencyArray(node);
-      if (dependencyArray && hasOnlyStableIdentityDependencies({ dependencyArray, context })) {
-        return;
-      }
-      for (const asyncFunction of collectTransitivelyInvokedFunctions(callback, context)) {
+  create: (context: RuleContext) => {
+    let certifyLiveEffectContinuations = createLiveEffectContinuationCertifier(context);
+    return {
+      Program() {
+        certifyLiveEffectContinuations = createLiveEffectContinuationCertifier(context);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
-          asyncFunction !== callback &&
-          hasUnsafePostAwaitSetter(asyncFunction, callback, context)
+          !isReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes, {
+            allowGlobalReactNamespace: true,
+            allowUnboundBareCalls: true,
+          })
         ) {
-          context.report({
-            node,
-            message: getDeferredEffectCallbackCall(asyncFunction, context.scopes)
-              ? DEFERRED_MESSAGE
-              : MESSAGE,
-          });
           return;
         }
-      }
-    },
-  }),
+        const callback = getEffectCallback(node);
+        if (!isFunctionLike(callback)) return;
+        if (callback.async) return;
+        const dependencyArray = getDependencyArray(node);
+        if (dependencyArray && hasOnlyStableIdentityDependencies({ dependencyArray, context })) {
+          return;
+        }
+        let areEffectContinuationsCertified: boolean | undefined;
+        for (const asyncFunction of collectTransitivelyInvokedFunctions(callback, context)) {
+          if (
+            asyncFunction !== callback &&
+            hasUnsafePostAwaitSetter(asyncFunction, callback, context)
+          ) {
+            const deferredCall = getDeferredEffectCallbackCall(asyncFunction, context.scopes);
+            if (
+              !deferredCall &&
+              (areEffectContinuationsCertified ??= certifyLiveEffectContinuations(callback, node))
+            ) {
+              continue;
+            }
+            context.report({
+              node,
+              message: deferredCall ? DEFERRED_MESSAGE : MESSAGE,
+            });
+            return;
+          }
+        }
+      },
+    };
+  },
 });

@@ -1,3 +1,4 @@
+import { getContainedDependencyMajor } from "oxlint-plugin-react-doctor/core";
 import * as semver from "semver";
 import type { PackageJson } from "../types/index.js";
 import {
@@ -226,16 +227,16 @@ export const getLowestDependencyMajor = (version: string): number | null => {
 export const getDependencyMajorWithinSupportedRange = (
   version: string,
   latestSupportedMajor: number,
-): number | null => {
-  const normalizedVersion = normalizeDependencyVersion(version);
-  if (normalizedVersion === null) return null;
-  const validRange = semver.validRange(normalizedVersion);
-  if (validRange === null) return null;
-  const minimumVersion = semver.minVersion(validRange);
-  if (minimumVersion === null || minimumVersion.major > latestSupportedMajor) return null;
-  if (semver.intersects(validRange, `>=${latestSupportedMajor + 1}.0.0`)) return null;
-  return minimumVersion.major;
-};
+): number | null =>
+  getContainedDependencyMajor(version, latestSupportedMajor, {
+    normalize: normalizeDependencyVersion,
+    minimumMajor: (normalizedVersion) => {
+      const validRange = semver.validRange(normalizedVersion);
+      return validRange === null ? null : (semver.minVersion(validRange)?.major ?? null);
+    },
+    permitsMajorAbove: (normalizedVersion, supportedMajor) =>
+      semver.intersects(normalizedVersion, `>=${supportedMajor + 1}.0.0`),
+  });
 
 export const isConcreteDependencyVersion = (version: string): boolean => {
   const normalizedVersion = normalizeDependencyVersion(version);

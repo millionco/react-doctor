@@ -13,11 +13,13 @@ import type { PackageManifest } from "./read-nearest-package-manifest.js";
 export interface ResolvedPackageVersion {
   version: ParsedPackageVersion;
   declaredRange: string | null;
+  installedPackageName: string | null;
 }
 
 interface InstalledDependencyVersionResolution {
   didFindPackage: boolean;
   version: ParsedPackageVersion | null;
+  packageName: string | null;
 }
 
 interface CachedDependencyVersionResolution {
@@ -67,7 +69,9 @@ const getDeclaredDependencyVersion = (
     manifest.peerDependencies?.[packageName] ??
     manifest.optionalDependencies?.[packageName];
   const version = parseDeclaredLowerBound(declaredRange);
-  return version && typeof declaredRange === "string" ? { version, declaredRange } : null;
+  return version && typeof declaredRange === "string"
+    ? { version, declaredRange, installedPackageName: null }
+    : null;
 };
 
 const findInstalledDependencyVersion = (
@@ -82,6 +86,7 @@ const findInstalledDependencyVersion = (
     if (installedManifest) {
       return {
         didFindPackage: true,
+        packageName: typeof installedManifest.name === "string" ? installedManifest.name : null,
         version:
           typeof installedManifest.version === "string"
             ? parsePackageVersion(installedManifest.version)
@@ -90,7 +95,7 @@ const findInstalledDependencyVersion = (
     }
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) {
-      return { didFindPackage: false, version: null };
+      return { didFindPackage: false, version: null, packageName: null };
     }
     currentDirectory = parentDirectory;
   }
@@ -103,7 +108,11 @@ const resolvePackageDependencyVersion = (
   const installedVersionResolution = findInstalledDependencyVersion(packageDirectory, packageName);
   if (installedVersionResolution.didFindPackage) {
     return installedVersionResolution.version
-      ? { version: installedVersionResolution.version, declaredRange: null }
+      ? {
+          version: installedVersionResolution.version,
+          declaredRange: null,
+          installedPackageName: installedVersionResolution.packageName,
+        }
       : null;
   }
   const owningManifest = readPackageManifest(packageDirectory);

@@ -237,6 +237,9 @@ importers:
       oxc-parser:
         specifier: ^0.148.0
         version: 0.148.0
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: ^25.6.0

@@ -38,16 +38,22 @@ const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
   return false;
 };
 
-export const isNodeReachableWithinFunction = (node: EsTreeNode, context: RuleContext): boolean => {
+export const isNodeReachableWithinFunction = (
+  node: EsTreeNode,
+  context: RuleContext,
+  entryNode?: EsTreeNode,
+): boolean => {
   if (isInsideStaticallyUnreachableBranch(node)) return false;
   const owner = context.cfg.enclosingFunction(node);
   if (!owner) return true;
   const functionCfg = context.cfg.cfgFor(owner);
   if (!functionCfg) return true;
+  const entryBlock = entryNode ? functionCfg.blockOf(entryNode) : functionCfg.entry;
+  if (!entryBlock) return false;
   const targetBlock = functionCfg.blockOf(node);
   if (!targetBlock) return true;
-  const visitedBlocks = new Set([functionCfg.entry]);
-  const pendingBlocks = [functionCfg.entry];
+  const visitedBlocks = new Set([entryBlock]);
+  const pendingBlocks = [entryBlock];
   while (pendingBlocks.length > 0) {
     const currentBlock = pendingBlocks.pop();
     if (!currentBlock) break;

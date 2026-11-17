@@ -16,6 +16,7 @@ import {
   STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK,
 } from "../../constants/react.js";
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
+import { callHasImportedCookieWrite } from "../../utils/call-has-imported-cookie-write.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { collectSynchronouslyInvokedLocalFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -2321,7 +2322,10 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
               }
               return;
             }
-            if (!callHasSideEffectName(child, updaterFunction, executedFunctions, node, context)) {
+            if (
+              !callHasSideEffectName(child, updaterFunction, executedFunctions, node, context) &&
+              !callHasImportedCookieWrite(child, context)
+            ) {
               return;
             }
             if (reportedSideEffectNodes.has(child)) return;

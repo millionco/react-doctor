@@ -36,7 +36,7 @@ export const noDuplicateStaticIdReference = defineRule({
         const elementType = resolveJsxElementType(openingElement);
         if (/^[A-Z]/.test(elementType)) continue;
         const idAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "id", false);
-        const id = idAttribute ? getStringLiteralAttributeValue(idAttribute)?.trim() : null;
+        const id = idAttribute ? getStringLiteralAttributeValue(idAttribute) : null;
         if (idAttribute && id) {
           const attributes = idAttributes.get(id) ?? [];
           attributes.push(idAttribute);
@@ -52,7 +52,7 @@ export const noDuplicateStaticIdReference = defineRule({
             ? getStringLiteralAttributeValue(referenceAttribute)
             : null;
           if (!referenceValue) continue;
-          for (const referencedId of referenceValue.split(/\s+/)) {
+          for (const referencedId of referenceValue.split(/[ \t\n\r\f]+/)) {
             if (referencedId) referencedIds.add(referencedId);
           }
         }

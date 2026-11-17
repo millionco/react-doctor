@@ -1,5 +1,6 @@
 import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isClosedLocalTextWrapperKey } from "./utils/is-closed-local-text-wrapper-key.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
@@ -1976,6 +1977,7 @@ export const noArrayIndexAsKey = defineRule({
             isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
         )
           return;
+        if (isClosedLocalTextWrapperKey({ attribute: node, context })) return;
         const indexName = indexUse.identifier.name;
         const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
 

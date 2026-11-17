@@ -4,6 +4,7 @@ import {
 } from "../../constants/js.js";
 import { JS_COMBINE_ITERATIONS_SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { callbackNeedsCompletedIterationArray } from "../../utils/callback-needs-completed-iteration-array.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -393,6 +394,7 @@ export const jsCombineIterations = defineRule({
           return;
         if (isSmallLiteralArrayRootedChain(innerCall.callee.object, context.scopes)) return;
         if (isStringSplitRootedChain(innerCall.callee.object)) return;
+        if (callbackNeedsCompletedIterationArray(node.arguments[0], outerMethod, context)) return;
 
         coveredChainCalls.add(innerCall as EsTreeNode);
         context.report({

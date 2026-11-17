@@ -61,6 +61,9 @@ export const MUTATING_COLLECTION_METHODS = new Set(["add", "clear", "delete", "s
 
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 
+export const ARRAY_ITERATION_CALLBACK_ARGUMENT_COUNT = 3;
+export const ARRAY_ITERATION_CALLBACK_ARRAY_ARGUMENT_INDEX = 2;
+
 export const PROMISE_SETTLE_METHODS = new Set(["then", "catch", "finally"]);
 
 // Method names that, when invoked on a non-`Object` receiver, yield a

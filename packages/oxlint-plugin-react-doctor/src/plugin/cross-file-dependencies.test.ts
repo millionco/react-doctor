@@ -252,94 +252,96 @@ describe("effect value helper collectors", () => {
     "no-reset-all-state-on-prop-change",
   ];
 
-  it("records imported helper content for every affected rule and replays cached parse probes", () => {
-    writeFixtureFile(
-      "src/derive-visible.ts",
-      "export const deriveVisible = (items) => items.filter((item) => item.visible);\n",
-    );
-    const appPath = writeFixtureFile(
-      "src/App.tsx",
-      `import { deriveVisible as selectVisible } from "./derive-visible";
+  describe.each([
+    { label: "existing affected rules", ruleIds: affectedRuleIds },
+    { label: "no-chain-state-updates alone", ruleIds: ["no-chain-state-updates"] },
+  ])("$label", ({ ruleIds }) => {
+    it("records imported helper content for every affected rule and replays cached parse probes", () => {
+      writeFixtureFile(
+        "src/derive-visible.ts",
+        "export const deriveVisible = (items) => items.filter((item) => item.visible);\n",
+      );
+      const appPath = writeFixtureFile(
+        "src/App.tsx",
+        `import { deriveVisible as selectVisible } from "./derive-visible";
 export const App = ({ items }) => {
   const [visible, setVisible] = useState([]);
   useEffect(() => setVisible(selectVisible(items)), [items]);
   return visible.length;
 };\n`,
-    );
-    const firstTrace = collectFor(appPath, affectedRuleIds);
-    const repeatTrace = collectFor(appPath, affectedRuleIds);
-    for (const trace of [firstTrace, repeatTrace]) {
-      expect(trace?.contentPaths.has(fixturePath("src/derive-visible.ts"))).toBe(true);
-    }
-  });
+      );
+      const firstTrace = collectFor(appPath, ruleIds);
+      const repeatTrace = collectFor(appPath, ruleIds);
+      for (const trace of [firstTrace, repeatTrace]) {
+        expect(trace?.contentPaths.has(fixturePath("src/derive-visible.ts"))).toBe(true);
+      }
+    });
 
-  it("records alias manifests and every renamed re-export target on cached collections", () => {
-    writeFixtureFile("tsconfig.json", `{ "extends": "./tsconfig.base.json" }\n`);
-    writeFixtureFile(
-      "tsconfig.base.json",
-      `{ "compilerOptions": { "baseUrl": ".", "paths": { "@helpers": ["src/index"] } } }\n`,
-    );
-    writeFixtureFile(
-      "src/derive-visible.ts",
-      "export const internalVisible = (items) => items.filter((item) => item.visible);\n",
-    );
-    writeFixtureFile(
-      "src/index.ts",
-      `export { internalVisible as deriveVisible } from "./derive-visible";\n`,
-    );
-    const appPath = writeFixtureFile(
-      "src/App.tsx",
-      `import { deriveVisible } from "@helpers";
+    it("records alias manifests and every renamed re-export target on cached collections", () => {
+      writeFixtureFile("tsconfig.json", `{ "extends": "./tsconfig.base.json" }\n`);
+      writeFixtureFile(
+        "tsconfig.base.json",
+        `{ "compilerOptions": { "baseUrl": ".", "paths": { "@helpers": ["src/index"] } } }\n`,
+      );
+      writeFixtureFile(
+        "src/derive-visible.ts",
+        "export const internalVisible = (items) => items.filter((item) => item.visible);\n",
+      );
+      writeFixtureFile(
+        "src/index.ts",
+        `export { internalVisible as deriveVisible } from "./derive-visible";\n`,
+      );
+      const appPath = writeFixtureFile(
+        "src/App.tsx",
+        `import { deriveVisible } from "@helpers";
 export const App = ({ items }) => {
   const [visible, setVisible] = useState([]);
   useEffect(() => setVisible(deriveVisible(items)), [items]);
   return visible.length;
 };\n`,
-    );
-    const expectedContentPaths = [
-      fixturePath("tsconfig.json"),
-      fixturePath("tsconfig.base.json"),
-      fixturePath("src/index.ts"),
-      fixturePath("src/derive-visible.ts"),
-    ];
-    for (const trace of [
-      collectFor(appPath, affectedRuleIds),
-      collectFor(appPath, affectedRuleIds),
-    ]) {
-      for (const expectedPath of expectedContentPaths) {
-        expect(trace?.contentPaths.has(expectedPath)).toBe(true);
+      );
+      const expectedContentPaths = [
+        fixturePath("tsconfig.json"),
+        fixturePath("tsconfig.base.json"),
+        fixturePath("src/index.ts"),
+        fixturePath("src/derive-visible.ts"),
+      ];
+      for (const trace of [collectFor(appPath, ruleIds), collectFor(appPath, ruleIds)]) {
+        for (const expectedPath of expectedContentPaths) {
+          expect(trace?.contentPaths.has(expectedPath)).toBe(true);
+        }
       }
-    }
-  });
+    });
 
-  it("refreshes export resolutions after scan caches reset", () => {
-    writeFixtureFile("src/old.ts", "export const deriveVisible = (items) => items;\n");
-    writeFixtureFile("src/index.ts", `export { deriveVisible } from "./old";\n`);
-    const appPath = writeFixtureFile(
-      "src/App.tsx",
-      `import { deriveVisible } from "./index";
+    it("refreshes export resolutions after scan caches reset", () => {
+      writeFixtureFile("src/old.ts", "export const deriveVisible = (items) => items;\n");
+      writeFixtureFile("src/index.ts", `export { deriveVisible } from "./old";\n`);
+      const appPath = writeFixtureFile(
+        "src/App.tsx",
+        `import { deriveVisible } from "./index";
 export const App = ({ items }) => {
   useEffect(() => deriveVisible(items), [items]);
   return null;
 };\n`,
-    );
+      );
 
-    const firstTrace = collectFor(appPath, affectedRuleIds);
-    expect(firstTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(true);
+      const firstTrace = collectFor(appPath, ruleIds);
+      expect(firstTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(true);
 
-    writeFixtureFile(
-      "src/fresh-target.ts",
-      "export const deriveVisible = (items) => items.filter(Boolean);\n",
-    );
-    writeFixtureFile("src/index.ts", `export { deriveVisible } from "./fresh-target";\n`);
+      writeFixtureFile(
+        "src/fresh-target.ts",
+        "export const deriveVisible = (items) => items.filter(Boolean);\n",
+      );
+      writeFixtureFile("src/index.ts", `export { deriveVisible } from "./fresh-target";\n`);
 
-    const cachedTrace = collectFor(appPath, affectedRuleIds);
-    expect(cachedTrace).toEqual(firstTrace);
+      const cachedTrace = collectFor(appPath, ruleIds);
+      expect(cachedTrace).toEqual(firstTrace);
 
-    resetCrossFileExportCaches();
-    const refreshedTrace = collectFor(appPath, affectedRuleIds);
-    expect(refreshedTrace?.contentPaths.has(fixturePath("src/fresh-target.ts"))).toBe(true);
-    expect(refreshedTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(false);
+      resetCrossFileExportCaches();
+      const refreshedTrace = collectFor(appPath, ruleIds);
+      expect(refreshedTrace?.contentPaths.has(fixturePath("src/fresh-target.ts"))).toBe(true);
+      expect(refreshedTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(false);
+    });
   });
 });
 

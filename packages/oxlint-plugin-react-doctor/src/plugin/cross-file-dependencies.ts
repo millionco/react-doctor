@@ -600,6 +600,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
+    ["no-derived-useState", (input) => collectFunctionExportDependencies(input, 0)],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],

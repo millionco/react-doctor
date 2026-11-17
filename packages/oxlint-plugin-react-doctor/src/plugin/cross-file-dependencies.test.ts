@@ -82,6 +82,73 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-derived-useState dependency collector", () => {
+  it("records type-only record domains, input providers, and alias resolution probes on cached collections", () => {
+    const config = writeFixtureFile(
+      "tsconfig.json",
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@/*": ["src/*"] },
+        },
+      }),
+    );
+    const domain = writeFixtureFile(
+      "src/domain/index.ts",
+      "export interface Entity {slug:string;label:string}",
+    );
+    const input = writeFixtureFile(
+      "src/input.tsx",
+      "export const Field=({...props})=><input {...props}/>;",
+    );
+    const app = writeFixtureFile(
+      "src/App.tsx",
+      "import type {Entity} from '@/domain';import {Field} from './input';export const App=()=>null;",
+    );
+    const first = collectFor(app, ["no-derived-useState"]);
+    const cached = collectFor(app, ["no-derived-useState"]);
+    for (const trace of [first, cached]) {
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(config)).toBe(true);
+      expect(trace?.contentPaths.has(domain)).toBe(true);
+      expect(trace?.contentPaths.has(input)).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("src/domain.ts"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("src/domain.tsx"))).toBe(true);
+    }
+    expect([...(cached?.contentPaths ?? [])].sort()).toEqual(
+      [...(first?.contentPaths ?? [])].sort(),
+    );
+    expect([...(cached?.existencePaths ?? [])].sort()).toEqual(
+      [...(first?.existencePaths ?? [])].sort(),
+    );
+  });
+
+  it("records an absent record provider so adding it invalidates the verdict", () => {
+    const app = writeFixtureFile(
+      "src/App.tsx",
+      "import type {Entity} from './missing-domain';export const App=()=>null;",
+    );
+    const trace = collectFor(app, ["no-derived-useState"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.existencePaths.has(fixturePath("src/missing-domain.ts"))).toBe(true);
+  });
+
+  it("records a controlled wrapper reached through a re-export", () => {
+    const input = writeFixtureFile(
+      "src/input.tsx",
+      "export const Field=({...props})=><textarea {...props}/>;",
+    );
+    const barrel = writeFixtureFile("src/controls.ts", "export {Field} from './input';");
+    const app = writeFixtureFile(
+      "src/App.tsx",
+      "import {Field} from './controls';export const App=()=>null;",
+    );
+    const trace = collectFor(app, ["no-derived-useState"]);
+    expect(trace?.contentPaths.has(barrel)).toBe(true);
+    expect(trace?.contentPaths.has(input)).toBe(true);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

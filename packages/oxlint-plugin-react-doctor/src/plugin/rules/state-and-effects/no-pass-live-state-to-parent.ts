@@ -346,6 +346,7 @@ const getTransparentWrapperPropReference = (
 const isSetterNamedCallbackReceivingData = (callbackRef: Reference): boolean => {
   const callExpr = getCallExpr(callbackRef);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  if (!isNodeOfType(stripParenExpression(callExpr.callee), "Identifier")) return false;
   const calleeName = getCallCalleeName(callExpr);
   if (!calleeName || !SETTER_NAMED_CALLBACK_PATTERN.test(calleeName)) return false;
   if (!isCustomHookParameter(callbackRef)) return false;

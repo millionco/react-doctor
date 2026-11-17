@@ -1,8 +1,33 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import * as coExecution from "../../utils/nodes-can-co-execute.js";
 import { noMutateThenSetOrReturnSameReference } from "./no-mutate-then-set-or-return-same-reference.js";
 
-const MEASUREMENT_SAMPLE_COUNT = 3;
+const PAIR_COUNTS = [8, 40];
+
+const buildAmortizedPairingSource = (pairCount: number, hasCoExecutableLeaf = false): string => {
+  const mutations = "items.push(1);".repeat(pairCount);
+  const conditions = Array.from(
+    { length: pairCount },
+    (_, conditionIndex) => `condition${conditionIndex}`,
+  );
+  const resultExpressions = [
+    ...conditions.map(
+      (condition, conditionIndex) =>
+        `(${condition}&&(${hasCoExecutableLeaf && conditionIndex === 0 ? "flag" : "!flag"}&&items))`,
+    ),
+    "[...items]",
+  ];
+  const buildBalancedResultExpression = (startIndex: number, endIndex: number): string => {
+    if (endIndex - startIndex === 1) {
+      return resultExpressions[startIndex] ?? "[...items]";
+    }
+    const middleIndex = startIndex + Math.floor((endIndex - startIndex) / 2);
+    return `(${buildBalancedResultExpression(startIndex, middleIndex)}||${buildBalancedResultExpression(middleIndex, endIndex)})`;
+  };
+  const sameReferenceResults = buildBalancedResultExpression(0, resultExpressions.length);
+  return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}return ${sameReferenceResults}})}`;
+};
 
 describe("no-mutate-then-set-or-return-same-reference", () => {
   it("flags setX(state.add(index)) on a state Set", () => {
@@ -560,40 +585,34 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     expect(restoredOriginal.diagnostics).toHaveLength(1);
   });
 
-  it("amortizes mutation and same-reference pairing by control-flow block", () => {
-    const buildSource = (pairCount: number): string => {
-      const mutations = "items.push(1);".repeat(pairCount);
-      const conditions = Array.from(
-        { length: pairCount },
-        (_, conditionIndex) => `condition${conditionIndex}`,
+  it.each(PAIR_COUNTS)("amortizes %i mutation/result pairs by control-flow block", (pairCount) => {
+    let pairingQueryCount = 0;
+    const originalNodesCanCoExecute = coExecution.nodesCanCoExecute;
+    const querySpy = vi
+      .spyOn(coExecution, "nodesCanCoExecute")
+      .mockImplementation((left, right, context) => {
+        pairingQueryCount += 1;
+        return originalNodesCanCoExecute(left, right, context);
+      });
+    try {
+      const result = runRule(
+        noMutateThenSetOrReturnSameReference,
+        buildAmortizedPairingSource(pairCount),
       );
-      const resultExpressions = [
-        ...conditions.map((condition) => `(${condition}&&items)`),
-        "[...items]",
-      ];
-      const buildBalancedResultExpression = (startIndex: number, endIndex: number): string => {
-        if (endIndex - startIndex === 1) {
-          return resultExpressions[startIndex] ?? "[...items]";
-        }
-        const middleIndex = startIndex + Math.floor((endIndex - startIndex) / 2);
-        return `(${buildBalancedResultExpression(startIndex, middleIndex)}||${buildBalancedResultExpression(middleIndex, endIndex)})`;
-      };
-      const sameReferenceResults = buildBalancedResultExpression(0, resultExpressions.length);
-      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){return ${sameReferenceResults}}return [...items]})}`;
-    };
-    runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
-    const measureFastestDuration = (pairCount: number): number => {
-      let fastestDuration = Number.POSITIVE_INFINITY;
-      for (let repetition = 0; repetition < MEASUREMENT_SAMPLE_COUNT; repetition += 1) {
-        const startedAt = performance.now();
-        const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(pairCount));
-        fastestDuration = Math.min(fastestDuration, performance.now() - startedAt);
-        expect(result.diagnostics).toHaveLength(0);
-      }
-      return fastestDuration;
-    };
-    const smallDuration = measureFastestDuration(800);
-    const largeDuration = measureFastestDuration(4_000);
-    expect(largeDuration).toBeLessThan(smallDuration * 18);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+      expect(pairingQueryCount).toBe(pairCount + 1);
+    } finally {
+      querySpy.mockRestore();
+    }
+  });
+
+  it.each(PAIR_COUNTS)("reports a co-executable leaf among %i result alternatives", (pairCount) => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      buildAmortizedPairingSource(pairCount, true),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

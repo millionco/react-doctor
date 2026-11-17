@@ -75,6 +75,7 @@ export const MATRIX_BASE_LANE_ID = "matrix-base";
 export const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
 export const MATRIX_FULL_PARITY_RULE_KEYS = ["react-doctor/react-compiler-no-manual-memoization"];
 export const MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS = 120;
+export const TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES = 10;
 export const MATRIX_CLEANUP_VERIFICATION_POLL_INTERVAL_MS = 500;
 export const MATRIX_IMPACT_MANIFEST_OPERATION_TIMEOUT_MS = 20_000;
 export const MATRIX_IMPACT_MANIFEST_TEST_TIMEOUT_MS = 45_000;

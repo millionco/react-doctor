@@ -14,6 +14,7 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { functionReturnsDisplayNameRenderOutput } from "../../utils/function-returns-display-name-render-output.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { hasTypedDisplayNameAssignment } from "./utils/has-typed-display-name-assignment.js";
 
 const hasOnlyNullArgumentRenderPaths = (
   functionNode: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
@@ -627,7 +628,10 @@ export const displayName = defineRule({
           reportAt(node as EsTreeNode);
           return;
         }
-        if (shouldReportHoCDisplayName(node as EsTreeNode, settings)) {
+        if (
+          shouldReportHoCDisplayName(node as EsTreeNode, settings) &&
+          !hasTypedDisplayNameAssignment({ node, scopes: context.scopes })
+        ) {
           reportAt(node as EsTreeNode);
           return;
         }

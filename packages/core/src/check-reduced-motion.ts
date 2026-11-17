@@ -5,9 +5,9 @@ import ts from "typescript";
 import type { Diagnostic } from "./types/index.js";
 import { getImportModuleSource } from "./utils/get-import-module-source.js";
 import { getTypescriptScriptKind } from "./utils/get-typescript-script-kind.js";
+import { hasMotionLibraryDependency } from "./utils/has-motion-library-dependency.js";
 import { unwrapTypescriptExpression } from "./utils/unwrap-typescript-expression.js";
 import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
-import { isFile, readPackageJson } from "./project-info/index.js";
 
 interface MotionExpressionEvidence {
   isAnimationFunction: boolean;
@@ -777,20 +777,7 @@ const collectProjectMotionEvidence = (rootDirectory: string): ProjectMotionEvide
 };
 
 export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
-  const packageJsonPath = path.join(rootDirectory, "package.json");
-  if (!isFile(packageJsonPath)) return [];
-
-  try {
-    const packageJson = readPackageJson(packageJsonPath);
-    const allDependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-    if (
-      !Object.keys(allDependencies).some((packageName) => MOTION_LIBRARY_PACKAGES.has(packageName))
-    ) {
-      return [];
-    }
-  } catch {
-    return [];
-  }
+  if (!hasMotionLibraryDependency(rootDirectory)) return [];
 
   const evidence = collectProjectMotionEvidence(rootDirectory);
   return evidence.hasMotionUse && !evidence.hasReducedMotionHandling

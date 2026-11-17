@@ -18,6 +18,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getRef, resolveToFunction } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { getPrivateFactoryNativeStateSetter } from "./utils/get-private-factory-native-state-setter.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getUseStateDecl,
@@ -366,13 +367,19 @@ export const noImpureStateUpdater = defineRule({
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
         const calleeReference = getRef(analysis, node.callee);
+        const privateFactoryStateDeclarator = getPrivateFactoryNativeStateSetter(
+          node.callee,
+          context,
+        );
         if (
           !calleeReference ||
-          !isUpdaterConsumingSetterCall(analysis, context.scopes, calleeReference)
+          (!isUpdaterConsumingSetterCall(analysis, context.scopes, calleeReference) &&
+            !privateFactoryStateDeclarator)
         ) {
           return;
         }
-        const stateDeclarator = getUseStateDecl(analysis, calleeReference);
+        const stateDeclarator =
+          privateFactoryStateDeclarator ?? getUseStateDecl(analysis, calleeReference);
         if (
           !isNodeOfType(stateDeclarator, "VariableDeclarator") ||
           !isNodeOfType(stateDeclarator.init, "CallExpression") ||

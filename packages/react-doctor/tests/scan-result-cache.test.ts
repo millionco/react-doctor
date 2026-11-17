@@ -18,8 +18,10 @@ import {
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
+  SCAN_RESULT_CACHE_WORKSPACE_DEPENDENCY_SECTIONS,
 } from "../src/cli/utils/constants.js";
 import { runGit } from "../src/cli/utils/git-hook-shared.js";
+import { canUseWorkspaceIndependentScanCache } from "../src/cli/utils/can-use-workspace-independent-scan-cache.js";
 import { VERSION } from "../src/cli/utils/version.js";
 import { commitAll, initGitRepo, setupReactProject } from "./regressions/_helpers.js";
 
@@ -721,5 +723,147 @@ describe("scan result cache", () => {
     });
 
     expect(verboseResult.diagnostics).toEqual([diagnostic(projectDirectory)]);
+  });
+});
+
+describe("workspace declaration scan-cache eligibility", () => {
+  it.each(SCAN_RESULT_CACHE_WORKSPACE_DEPENDENCY_SECTIONS)(
+    "reads %s again before reusing a repository identity",
+    async (section) => {
+      const projectDirectory = setupReactProject(tempDirectory, `transition-${section}`, {
+        files: { "src/App.tsx": "export const App = () => <div />;\n" },
+        packageJsonExtras: { [section]: { "relay-kit": "workspace:^" } },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      const manifestPath = path.join(projectDirectory, "package.json");
+      const originalManifest = fs.readFileSync(manifestPath, "utf8");
+      const normalizedDate = new Date(fs.statSync(manifestPath).mtime.getTime());
+      fs.utimesSync(manifestPath, normalizedDate, normalizedDate);
+      const originalStats = fs.statSync(manifestPath);
+      const invocationState = createScanResultCacheInvocationState();
+      const initialKey = await cacheKey(
+        projectDirectory,
+        baseOptions(),
+        VERSION,
+        null,
+        invocationState,
+      );
+      expect(initialKey).not.toBeNull();
+      expect(invocationState.repositoryIdentityByRoot.size).toBe(1);
+      const initialIdentities = [...invocationState.repositoryIdentityByRoot];
+      const initialIdentityPromise = invocationState.firstProjectIdentity;
+      const workspaceManifest = originalManifest.replace('"workspace:^"', '"workspace:*"');
+      expect(workspaceManifest).not.toBe(originalManifest);
+      expect(Buffer.byteLength(workspaceManifest)).toBe(Buffer.byteLength(originalManifest));
+      fs.writeFileSync(manifestPath, workspaceManifest);
+      fs.utimesSync(manifestPath, originalStats.atime, originalStats.mtime);
+      expect(fs.statSync(manifestPath).size).toBe(originalStats.size);
+      expect(fs.statSync(manifestPath).mtimeMs).toBe(originalStats.mtimeMs);
+      expect(
+        await cacheKey(projectDirectory, baseOptions(), VERSION, null, invocationState),
+      ).toBeNull();
+      expect([...invocationState.repositoryIdentityByRoot]).toEqual(initialIdentities);
+      expect(invocationState.firstProjectIdentity).toBe(initialIdentityPromise);
+      fs.writeFileSync(manifestPath, originalManifest);
+      fs.utimesSync(manifestPath, originalStats.atime, originalStats.mtime);
+      expect(await cacheKey(projectDirectory, baseOptions(), VERSION, null, invocationState)).toBe(
+        initialKey,
+      );
+    },
+  );
+
+  it.each(["workspace:^", "workspace:~", "workspace:../relay-kit", "file:../relay-kit", "^1.0.0"])(
+    "preserves eligibility for the unsupported relay protocol %s",
+    (dependencyVersion) => {
+      const projectDirectory = setupReactProject(tempDirectory, "ordinary-dependency", {
+        packageJsonExtras: { dependencies: { "relay-kit": dependencyVersion } },
+      });
+      expect(canUseWorkspaceIndependentScanCache(projectDirectory)).toBe(true);
+    },
+  );
+
+  it.each(SCAN_RESULT_CACHE_WORKSPACE_DEPENDENCY_SECTIONS)(
+    "does not cache an uncertain %s shape",
+    async (section) => {
+      const projectDirectory = setupReactProject(tempDirectory, `malformed-${section}`, {
+        files: { "src/App.tsx": "export const App = () => <div />;\n" },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      const invocationState = createScanResultCacheInvocationState();
+      expect(
+        await cacheKey(projectDirectory, baseOptions(), VERSION, null, invocationState),
+      ).not.toBeNull();
+      for (const dependencies of [null, [], true, "workspace:*", { "relay-kit": null }]) {
+        fs.writeFileSync(
+          path.join(projectDirectory, "package.json"),
+          JSON.stringify({ name: "uncertain-dependencies", [section]: dependencies }),
+        );
+        expect(
+          await cacheKey(projectDirectory, baseOptions(), VERSION, null, invocationState),
+        ).toBeNull();
+      }
+    },
+  );
+
+  it.each(["null", "[]", "true", '"package"', "{"])(
+    "refuses an uncertain own manifest %s",
+    (contents) => {
+      const projectDirectory = setupReactProject(tempDirectory, "uncertain-own-manifest");
+      fs.writeFileSync(path.join(projectDirectory, "package.json"), contents);
+      expect(canUseWorkspaceIndependentScanCache(projectDirectory)).toBe(false);
+    },
+  );
+
+  it("does not substitute an ancestor manifest when the own manifest disappears", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "nested/consumer", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    fs.writeFileSync(
+      path.join(tempDirectory, "package.json"),
+      JSON.stringify({ name: "ancestor" }),
+    );
+    initGitRepo(tempDirectory, { commit: true });
+    const invocationState = createScanResultCacheInvocationState();
+    expect(
+      await cacheKey(projectDirectory, baseOptions(), VERSION, null, invocationState),
+    ).not.toBeNull();
+    fs.rmSync(path.join(projectDirectory, "package.json"));
+    expect(
+      await cacheKey(projectDirectory, baseOptions(), VERSION, null, invocationState),
+    ).toBeNull();
+  });
+
+  it("refuses directory and oversized manifests", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "nonregular-manifest");
+    const manifestPath = path.join(projectDirectory, "package.json");
+    fs.rmSync(manifestPath);
+    fs.mkdirSync(manifestPath);
+    expect(canUseWorkspaceIndependentScanCache(projectDirectory)).toBe(false);
+    fs.rmSync(manifestPath, { recursive: true });
+    fs.writeFileSync(manifestPath, " ".repeat(SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES) + "{}");
+    expect(canUseWorkspaceIndependentScanCache(projectDirectory)).toBe(false);
+    expect(canUseWorkspaceIndependentScanCache(path.join(projectDirectory, "missing"))).toBe(false);
+  });
+
+  it("reads the canonical own manifest through a linked directory ancestor", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "canonical/consumer");
+    const aliasDirectory = path.join(tempDirectory, "linked");
+    fs.symlinkSync(path.dirname(projectDirectory), aliasDirectory, "junction");
+    const aliasedProjectDirectory = path.join(aliasDirectory, "consumer");
+    expect(canUseWorkspaceIndependentScanCache(aliasedProjectDirectory)).toBe(true);
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "relay-kit": "workspace:*" } }),
+    );
+    expect(canUseWorkspaceIndependentScanCache(aliasedProjectDirectory)).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("refuses a linked own manifest", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "linked-manifest");
+    const manifestPath = path.join(projectDirectory, "package.json");
+    const targetManifestPath = path.join(tempDirectory, "manifest-target.json");
+    fs.renameSync(manifestPath, targetManifestPath);
+    fs.symlinkSync(targetManifestPath, manifestPath, "file");
+    expect(canUseWorkspaceIndependentScanCache(projectDirectory)).toBe(false);
   });
 });

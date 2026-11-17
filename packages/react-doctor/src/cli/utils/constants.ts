@@ -84,6 +84,12 @@ export const SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT = 300;
 // Dirty files larger than this are fingerprinted by `mtimeMs:size` instead of
 // a content hash, bounding the key builder's read cost and memory.
 export const SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+export const SCAN_RESULT_CACHE_WORKSPACE_DEPENDENCY_SECTIONS: ReadonlyArray<string> = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+];
 
 // Stdout cap for `runGit` (git-hook-shared.ts). Node's default `maxBuffer`
 // is 1 MiB, and `git ls-files -v` alone exceeds that on repos with ~15-25k

@@ -6,6 +6,7 @@ import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { parseSourceText } from "../../utils/parse-source-file.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { collectClosedSockjsMessageAssignments } from "./utils/collect-closed-sockjs-message-assignments.js";
 import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
@@ -114,10 +115,19 @@ export const postmessageOriginRisk = defineRule({
     });
     if (ast === null) return [];
 
+    let closedSockjsAssignments: ReadonlySet<EsTreeNode> = new Set();
+    if (mayHaveOnMessageAssignment && file.content.includes("sockjs-client")) {
+      try {
+        closedSockjsAssignments = collectClosedSockjsMessageAssignments(ast);
+      } catch {
+        closedSockjsAssignments = new Set();
+      }
+    }
     const findings: ScanFinding[] = [];
     walkAst(ast, (node) => {
       const targetText = getMessageHandlerTarget(file.content, node);
       if (targetText === null) return;
+      if (closedSockjsAssignments.has(node)) return;
       if (SAME_APPLICATION_CHANNEL_TARGET_PATTERN.test(targetText)) return;
       if (isSameApplicationChannelInstance(targetText, file.content)) return;
       if (isSameApplicationChannelTypedReceiver(targetText, file.content)) return;

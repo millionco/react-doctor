@@ -258,11 +258,11 @@ const getTransparentWrappedPropCallbackName = (
 // effect-driven sync at all.
 export const noPropCallbackInEffect = defineRule({
   id: "no-prop-callback-in-effect",
-  title: "Parent kept in sync with a callback effect",
+  title: "Callback prop called from an effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Move the shared state into a Provider so both sides read the same value. Then you don't need a useEffect to keep them in sync.",
+    "If this callback mirrors local state in a parent, lift the shared state to a common owner. For event-driven changes, call the callback in the same event handler as the local update. Keep effects that synchronize with external systems.",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 
@@ -425,7 +425,7 @@ export const noPropCallbackInEffect = defineRule({
           reportedNodes.add(child);
           context.report({
             node: child,
-            message: `Your parent re-renders on every local state change because this useEffect calls the prop "${calleeName}" just to stay in sync.`,
+            message: `This effect calls the callback prop "${calleeName}". If it updates parent state to mirror local state, that can add a render pass.`,
           });
         });
       },

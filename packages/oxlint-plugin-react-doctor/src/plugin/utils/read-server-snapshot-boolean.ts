@@ -6,13 +6,16 @@ import {
 } from "../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "./component-or-hook-display-name.js";
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
+import { containsPotentialDirectEval } from "./contains-potential-direct-eval.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { resolveImportedExportName } from "./find-exported-function-body.js";
+import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 import { isReactHookName } from "./is-react-hook-name.js";
+import { isBindingAssignmentTarget } from "./is-binding-assignment-target.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "./resolve-cross-file-function-export.js";
 import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
@@ -40,7 +43,9 @@ const getCrossFileScopes = (programNode: EsTreeNode): ScopeAnalysis => {
 
 const symbolIsImmutable = (symbol: SymbolDescriptor): boolean =>
   (symbol.kind === "const" || symbol.kind === "function") &&
-  symbol.references.every((reference) => reference.flag === "read");
+  symbol.references.every(
+    (reference) => reference.flag === "read" && !isBindingAssignmentTarget(reference.identifier),
+  );
 
 const identifierAliasChainIsImmutable = (
   identifier: EsTreeNode,
@@ -84,8 +89,8 @@ const getImportedHookBinding = (
 
 const functionBindingIsImmutable = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
-    const symbol = scopes.symbolFor(functionNode.id);
-    return Boolean(symbol && symbolIsImmutable(symbol));
+    const bindingSymbols = getFunctionBindingSymbols(functionNode, scopes);
+    return bindingSymbols.length > 0 && bindingSymbols.every(symbolIsImmutable);
   }
   const expressionRoot = findTransparentExpressionRoot(functionNode);
   const parentNode = expressionRoot.parent;
@@ -283,7 +288,11 @@ const readServerSnapshotBooleanInternal = (
       importedHookBinding.source,
       importedHookBinding.exportedName,
     );
-    if (resolvedHook && !resolvedHook.filePath.split(path.sep).includes("node_modules")) {
+    if (
+      resolvedHook &&
+      !resolvedHook.filePath.split(path.sep).includes("node_modules") &&
+      !containsPotentialDirectEval(resolvedHook.programNode)
+    ) {
       const resolvedScopes = getCrossFileScopes(resolvedHook.programNode);
       const displayName =
         componentOrHookDisplayNameForFunction(resolvedHook.functionNode) ??

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
+import { getUtf16Offset } from "../../utils/get-utf16-offset.js";
 import { getTypescriptScriptKind } from "../../utils/get-typescript-script-kind.js";
 
 // React Compiler diagnostics fire on `sharedValue.value` reads/writes even
@@ -52,9 +53,6 @@ interface OxlintDiagnosticCandidate {
 interface ReanimatedProjectInfo {
   readonly hasReanimated: boolean;
 }
-
-const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
-  Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
 
 const hasWorkletDirective = (node: ts.SignatureDeclaration): boolean => {
   if (

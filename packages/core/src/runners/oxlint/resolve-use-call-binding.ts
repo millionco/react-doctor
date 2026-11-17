@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { getUtf16Offset } from "../../utils/get-utf16-offset.js";
 import { getImportModuleSource } from "../../utils/get-import-module-source.js";
 import { getTypescriptScriptKind } from "../../utils/get-typescript-script-kind.js";
 import { unwrapTypescriptExpression } from "../../utils/unwrap-typescript-expression.js";
@@ -31,9 +32,6 @@ const REACT_USE_BINDING_RESOLUTION: BindingResolution = {
   isReactUseBinding: true,
   isReactNamespaceBinding: false,
 };
-
-const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
-  Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
 
 const getStaticPropertyName = (node: ts.PropertyName | undefined): string | null => {
   if (!node) return null;

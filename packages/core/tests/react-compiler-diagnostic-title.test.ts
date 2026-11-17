@@ -41,7 +41,7 @@ describe("parseOxlintOutput react-hooks-js diagnostic titles", () => {
         "help": "(BuildHIR::lowerExpression) Handle TaggedTemplateExpression expressions",
         "length": 1,
         "line": 12,
-        "message": "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.",
+        "message": "React Compiler flagged this code during analysis. Review the compiler's reason before changing the code.",
         "offset": 0,
         "plugin": "react-hooks-js",
         "rule": "todo",
@@ -58,7 +58,7 @@ describe("parseOxlintOutput react-hooks-js diagnostic titles", () => {
 
     expect(diagnostic.title).toBe("React Compiler can't optimize this");
     expect(diagnostic.category).toBe("Performance");
-    expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
+    expect(diagnostic.message).toContain("React Compiler flagged this code during analysis");
   });
 
   it("does not apply the adopted-rule override to another plugin", () => {

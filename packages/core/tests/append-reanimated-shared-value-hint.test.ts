@@ -89,7 +89,7 @@ describe("parseOxlintOutput react-hooks-js immutability messaging", () => {
     );
 
     expect(diagnostic.title).toBe("React Compiler can't optimize this");
-    expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
+    expect(diagnostic.message).toContain("React Compiler flagged this code during analysis");
     expect(diagnostic.message).toContain("This value cannot be modified");
     expect(diagnostic.category).toBe("Performance");
     expect(diagnostic.help).toContain("Modifying a value returned from a hook is not allowed");

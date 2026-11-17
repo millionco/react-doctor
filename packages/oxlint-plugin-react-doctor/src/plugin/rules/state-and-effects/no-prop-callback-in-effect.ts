@@ -292,9 +292,10 @@ export const noPropCallbackInEffect = defineRule({
         const reactStateDeps = dependencyElements.filter((element) =>
           isReactStateDependency(analysis, element, propStackTracker.isPropName),
         );
+        const reactStateDependencySet = new Set(reactStateDeps);
         const customHookStateDeps = dependencyElements.filter(
           (element) =>
-            !reactStateDeps.includes(element) &&
+            !reactStateDependencySet.has(element) &&
             isCustomHookStateDependency(
               analysis,
               element,

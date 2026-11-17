@@ -1,5 +1,6 @@
 import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
 import { awaitedStatementsMayShareWork } from "../../utils/awaited-statements-may-share-work.js";
+import { awaitedStatementsShareVsCodeQuickPick } from "../../utils/awaited-statements-share-vscode-quick-pick.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
 import { findSideEffect } from "../../utils/find-side-effect.js";
@@ -205,6 +206,8 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyPatternBinding(nextStatement, declaredPatterns, context)) continue;
+        if (awaitedStatementsShareVsCodeQuickPick(currentStatement, nextStatement, context.scopes))
+          continue;
         if (
           awaitedStatementsMayShareWork(
             currentStatement,

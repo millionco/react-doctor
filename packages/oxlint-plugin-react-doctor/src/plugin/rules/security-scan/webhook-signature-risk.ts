@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { hasCanonicalShopifyWebhookGate } from "./utils/has-canonical-shopify-webhook-gate.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
@@ -49,27 +50,32 @@ const REQUEST_READ_PATTERN = /\b(?:req|request)\b/;
 const COMMENT_OR_STRING_PATTERN =
   /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`/g;
 
+const scanWebhookSignatureRisk = scanByPattern({
+  shouldScan: (file) => {
+    if (!isProductionSourcePath(file.relativePath)) return false;
+    if (OUTBOUND_WEBHOOK_CONFIG_PATTERN.test(file.content)) return false;
+    const judgeableContent = file.content
+      .replace(COMMENT_OR_STRING_PATTERN, "")
+      .replace(OUTBOUND_WEBHOOK_URL_MENTION_PATTERN, "");
+    return (
+      WEBHOOK_HANDLER_PATTERN.test(file.relativePath) ||
+      WEBHOOK_HANDLER_PATTERN.test(judgeableContent)
+    );
+  },
+  pattern: WEBHOOK_ENTRYPOINT_PATTERN,
+  requireAll: [REQUEST_READ_PATTERN],
+  suppressWhen: WEBHOOK_SIGNATURE_VERIFICATION_PATTERN,
+  message: "Webhook handler code does not show an obvious signature verification step.",
+});
+
 export const webhookSignatureRisk = defineRule({
   id: "webhook-signature-risk",
   title: "Webhook handler lacks signature verification",
   severity: "warn",
   recommendation:
     "Verify provider signatures before parsing or acting on webhook bodies. Use provider SDK helpers or HMAC verification with timing-safe comparison.",
-  scan: scanByPattern({
-    shouldScan: (file) => {
-      if (!isProductionSourcePath(file.relativePath)) return false;
-      if (OUTBOUND_WEBHOOK_CONFIG_PATTERN.test(file.content)) return false;
-      const judgeableContent = file.content
-        .replace(COMMENT_OR_STRING_PATTERN, "")
-        .replace(OUTBOUND_WEBHOOK_URL_MENTION_PATTERN, "");
-      return (
-        WEBHOOK_HANDLER_PATTERN.test(file.relativePath) ||
-        WEBHOOK_HANDLER_PATTERN.test(judgeableContent)
-      );
-    },
-    pattern: WEBHOOK_ENTRYPOINT_PATTERN,
-    requireAll: [REQUEST_READ_PATTERN],
-    suppressWhen: WEBHOOK_SIGNATURE_VERIFICATION_PATTERN,
-    message: "Webhook handler code does not show an obvious signature verification step.",
-  }),
+  scan: (file) => {
+    const findings = scanWebhookSignatureRisk(file);
+    return findings.length > 0 && hasCanonicalShopifyWebhookGate(file) ? [] : findings;
+  },
 });

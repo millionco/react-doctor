@@ -12,6 +12,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isMemoizedHookReturnHandler } from "../../utils/is-memoized-hook-return-handler.js";
 
 // Hooks whose return value carries a stable identity across renders, so a
 // handler bound to one never forces the listener to re-subscribe. Includes
@@ -127,8 +128,12 @@ export const advancedEventHandlerRefs = defineRule({
       if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
       const depIdentifierNames = new Set<string>();
+      const depIdentifiers = new Map<string, EsTreeNodeOfType<"Identifier">>();
       for (const element of depsNode.elements) {
-        if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
+        if (isNodeOfType(element, "Identifier")) {
+          depIdentifierNames.add(element.name);
+          depIdentifiers.set(element.name, element);
+        }
       }
       if (depIdentifierNames.size === 0) return;
 
@@ -137,6 +142,7 @@ export const advancedEventHandlerRefs = defineRule({
       // (`socket` in `socket.on(...)`) of every subscription call so we can
       // tell when re-subscription is forced by a non-handler dep.
       let registeredHandlerName: string | null = null;
+      let originalRegisteredHandlerName: string | null = null;
       const subscriptionReceiverNames = new Set<string>();
       walkAst(callback.body, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
@@ -147,19 +153,33 @@ export const advancedEventHandlerRefs = defineRule({
         if (receiverName) subscriptionReceiverNames.add(receiverName);
         const handlerArg = child.arguments?.[1];
         if (!isNodeOfType(handlerArg, "Identifier")) return;
+        if (depIdentifierNames.has(handlerArg.name)) {
+          originalRegisteredHandlerName ??= handlerArg.name;
+        }
         if (!registeredHandlerName && depIdentifierNames.has(handlerArg.name)) {
+          const dependency = depIdentifiers.get(handlerArg.name);
+          if (
+            dependency &&
+            isMemoizedHookReturnHandler({
+              handler: handlerArg,
+              dependency,
+              effect: node,
+              scopes: context.scopes,
+            })
+          )
+            return;
           registeredHandlerName = handlerArg.name;
         }
       });
 
-      if (!registeredHandlerName) return;
+      if (!originalRegisteredHandlerName) return;
 
       // The handler has a stable identity (useCallback / useEvent /
       // useMemo with [] deps / a `ref.current` read), so listing it in
       // the deps never actually churns the subscription. Scope-aware
       // lookup: a prop param shadowing an outer stable binding resolves
       // to the (unstable) param, not the outer const.
-      const handlerBinding = findVariableInitializer(node, registeredHandlerName);
+      const handlerBinding = findVariableInitializer(node, originalRegisteredHandlerName);
       if (
         handlerBinding?.initializer &&
         isStableHandlerInitializer(handlerBinding.initializer, context.scopes)
@@ -175,11 +195,20 @@ export const advancedEventHandlerRefs = defineRule({
       // never changes, so the handler churn is still the only churn.
       const hasNonHandlerDepTarget = [...depIdentifierNames].some(
         (depName) =>
-          depName !== registeredHandlerName &&
+          depName !== originalRegisteredHandlerName &&
           subscriptionReceiverNames.has(depName) &&
           !isStableRefReceiverDep(node, depName, context.scopes),
       );
       if (hasNonHandlerDepTarget) return;
+      if (!registeredHandlerName) return;
+      const selectedBinding = findVariableInitializer(node, registeredHandlerName);
+      if (
+        registeredHandlerName !== originalRegisteredHandlerName &&
+        selectedBinding?.initializer &&
+        isStableHandlerInitializer(selectedBinding.initializer, context.scopes)
+      ) {
+        registeredHandlerName = originalRegisteredHandlerName;
+      }
 
       context.report({
         node,

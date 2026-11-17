@@ -347,6 +347,9 @@ describe("runScanApp", () => {
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
+    expect(mockState.scanStores[0]?.getSnapshot().report?.skippedCheckReasons).toEqual({
+      "dead-code": "Maintainability analysis failed.",
+    });
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain(
       "lint or maintainability analysis could not complete",
     );

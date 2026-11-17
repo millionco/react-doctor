@@ -13,6 +13,7 @@ export interface ReportLandingProps {
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly skippedChecks?: ReadonlyArray<string>;
+  readonly skippedCheckReasons?: Readonly<Record<string, string>>;
   readonly incompleteMessage?: string;
   readonly actions: ReadonlyArray<ActionMenuAction>;
   readonly selectedIndex: number;
@@ -25,6 +26,7 @@ interface ReportStatusProps {
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly skippedChecks?: ReadonlyArray<string>;
+  readonly skippedCheckReasons?: Readonly<Record<string, string>>;
   readonly incompleteMessage?: string;
 }
 
@@ -33,14 +35,24 @@ const ReportStatus = ({
   emptyStateMessage,
   lintFailureReason,
   skippedChecks,
+  skippedCheckReasons,
   incompleteMessage,
 }: ReportStatusProps) => {
+  const failureDetails = (skippedChecks ?? []).flatMap((check) => {
+    if (check === "lint" && lintFailureReason) return [];
+    const reason = skippedCheckReasons?.[check];
+    return reason ? [{ check, reason }] : [];
+  });
   const skippedCheckLabel = skippedChecks
     ?.flatMap((skippedCheck) =>
-      skippedCheck === "lint" && lintFailureReason ? [] : [formatSkippedCheckLabel(skippedCheck)],
+      (skippedCheck === "lint" && lintFailureReason) || skippedCheckReasons?.[skippedCheck]
+        ? []
+        : [formatSkippedCheckLabel(skippedCheck)],
     )
     .join(" and ");
-  const hasIncompleteResult = Boolean(incompleteMessage || lintFailureReason || skippedCheckLabel);
+  const hasIncompleteResult = Boolean(
+    incompleteMessage || lintFailureReason || skippedCheckLabel || failureDetails.length,
+  );
   if (!hasIncompleteResult && issueCount > 0) return null;
 
   return (
@@ -49,6 +61,11 @@ const ReportStatus = ({
       {lintFailureReason ? (
         <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
       ) : null}
+      {failureDetails.map(({ check, reason }) => (
+        <Text key={check} color="yellow">
+          ⚠ {formatSkippedCheckLabel(check)} did not complete: {reason}
+        </Text>
+      ))}
       {skippedCheckLabel ? (
         <Text color="yellow">
           ⚠ {issueCount === 0 ? "No issues detected, but " : ""}
@@ -69,6 +86,7 @@ export const ReportLanding = ({
   emptyStateMessage,
   lintFailureReason,
   skippedChecks,
+  skippedCheckReasons,
   incompleteMessage,
   actions,
   selectedIndex,
@@ -91,6 +109,7 @@ export const ReportLanding = ({
         emptyStateMessage={emptyStateMessage}
         lintFailureReason={lintFailureReason}
         skippedChecks={skippedChecks}
+        skippedCheckReasons={skippedCheckReasons}
         incompleteMessage={incompleteMessage}
       />
       {phase === "actions" ? (

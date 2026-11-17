@@ -23,6 +23,16 @@ export const Summary = ({
   onAddToCi,
 }: SummaryProps) => {
   const skippedProjects = summary.skippedProjects ?? [];
+  const failureReasons = new Map<string, string>();
+  for (const project of summary.projects) {
+    for (const check of project.skippedChecks ?? []) {
+      const reason = project.skippedCheckReasons?.[check];
+      if (!reason) continue;
+      const detail = `${project.projectName}: ${reason}`;
+      const previous = failureReasons.get(check);
+      failureReasons.set(check, previous ? `${previous}\n${detail}` : detail);
+    }
+  }
   const report: ScanReport = {
     diagnostics: summary.combinedDiagnostics,
     score: summary.aggregateScore,
@@ -34,13 +44,16 @@ export const Summary = ({
     isOffline: summary.isOffline,
     noScoreMessage: summary.noScoreMessage,
     skippedChecks: [...new Set(summary.projects.flatMap((project) => project.skippedChecks ?? []))],
+    skippedCheckReasons: Object.fromEntries(failureReasons),
     ...(skippedProjects.length > 0
       ? {
           incompleteMessage: formatSkippedProjectsMessage(skippedProjects.length),
         }
       : {}),
     ...(summary.emptyStateMessage ? { emptyStateMessage: summary.emptyStateMessage } : {}),
-    ...(summary.lintFailureReason ? { lintFailureReason: summary.lintFailureReason } : {}),
+    ...(summary.lintFailureReason && !failureReasons.has("lint")
+      ? { lintFailureReason: summary.lintFailureReason }
+      : {}),
   };
   return (
     <Report

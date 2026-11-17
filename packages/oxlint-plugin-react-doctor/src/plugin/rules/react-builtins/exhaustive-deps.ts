@@ -5,6 +5,7 @@ import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-targe
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
+import { collectMemoizedCallbackCoveredDependencies } from "../../utils/collect-memoized-callback-covered-dependencies.js";
 import type {
   ReferenceDescriptor,
   ScopeAnalysis,
@@ -2456,14 +2457,21 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (isCoveredByDeclared) continue;
           missingCaptureKeys.push(captureKey);
         }
+        const callbackCoveredKeys =
+          shouldUseCuratedBehavior && hookName === "useEffect" && missingCaptureKeys.length > 0
+            ? collectMemoizedCallbackCoveredDependencies(node, depsArgument, context.scopes)
+            : null;
+        const reportedMissingCaptureKeys = callbackCoveredKeys?.size
+          ? missingCaptureKeys.filter((key) => !callbackCoveredKeys.has(key))
+          : missingCaptureKeys;
         const shouldGroupMissingDeps = !hasLiteralDepElement;
-        if (missingCaptureKeys.length > 0 && shouldGroupMissingDeps) {
+        if (reportedMissingCaptureKeys.length > 0 && shouldGroupMissingDeps) {
           report({
             node: depsArgument,
-            message: buildMissingDepMessage(hookName, missingCaptureKeys.join(", ")),
+            message: buildMissingDepMessage(hookName, reportedMissingCaptureKeys.join(", ")),
           });
         } else {
-          for (const missingCaptureKey of missingCaptureKeys) {
+          for (const missingCaptureKey of reportedMissingCaptureKeys) {
             report({
               node: depsArgument,
               message: buildMissingDepMessage(hookName, missingCaptureKey),

@@ -45,12 +45,11 @@ const buildResolvedControls = (
 const intersects = (values: ReadonlyArray<string>, candidates: ReadonlySet<string>): boolean =>
   values.some((value) => candidates.has(value));
 
-export const isDiagnosticOnSurface = (
+const isDiagnosticAllowedByControls = (
   diagnostic: Diagnostic,
   surface: DiagnosticSurface,
-  config: ReactDoctorConfig | null,
+  resolved: ResolvedSurfaceControls,
 ): boolean => {
-  const resolved = buildResolvedControls(surface, config?.surfaces?.[surface]);
   const { ruleKey, category, tags } = getDiagnosticRuleIdentity(diagnostic);
 
   // Include wins over exclude — checked first so a single rule can be
@@ -74,9 +73,24 @@ export const isDiagnosticOnSurface = (
   return true;
 };
 
-export const filterDiagnosticsForSurface = (
-  diagnostics: Diagnostic[],
+export const isDiagnosticOnSurface = (
+  diagnostic: Diagnostic,
   surface: DiagnosticSurface,
   config: ReactDoctorConfig | null,
-): Diagnostic[] =>
-  diagnostics.filter((diagnostic) => isDiagnosticOnSurface(diagnostic, surface, config));
+): boolean =>
+  isDiagnosticAllowedByControls(
+    diagnostic,
+    surface,
+    buildResolvedControls(surface, config?.surfaces?.[surface]),
+  );
+
+export const filterDiagnosticsForSurface = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  surface: DiagnosticSurface,
+  config: ReactDoctorConfig | null,
+): Diagnostic[] => {
+  const resolved = buildResolvedControls(surface, config?.surfaces?.[surface]);
+  return diagnostics.filter((diagnostic) =>
+    isDiagnosticAllowedByControls(diagnostic, surface, resolved),
+  );
+};

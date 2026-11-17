@@ -4,10 +4,16 @@ import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 import { prompts } from "./prompts.js";
 
-const SCOPE_VALUES = new Set<ScopeValue>(["full", "files", "changed", "lines", "contextual"]);
+const SCOPE_VALUES = [
+  "full",
+  "files",
+  "changed",
+  "lines",
+  "contextual",
+] satisfies ReadonlyArray<ScopeValue>;
+const VALID_SCOPE_VALUES: ReadonlySet<string> = new Set(SCOPE_VALUES);
 
-export const isScopeValue = (value: string): value is ScopeValue =>
-  SCOPE_VALUES.has(value as ScopeValue);
+export const isScopeValue = (value: string): value is ScopeValue => VALID_SCOPE_VALUES.has(value);
 
 export interface RequestedScope {
   /** Explicit scope from `--scope` / `config.scope` / the `--diff` alias; `undefined` when unset. */
@@ -50,7 +56,7 @@ export const resolveScope = (
       return { scope: flags.scope, base, usedDeprecatedDiff: false };
     }
     logger.warn(
-      `Invalid --scope "${flags.scope}". Expected one of: full, files, changed, lines, contextual. Ignoring.`,
+      `Invalid --scope "${flags.scope}". Expected one of: ${SCOPE_VALUES.join(", ")}. Ignoring.`,
     );
   }
 
@@ -64,7 +70,7 @@ export const resolveScope = (
       return { scope: userConfig.scope, base, usedDeprecatedDiff: false };
     }
     logger.warn(
-      `Invalid scope "${userConfig.scope}" in config. Expected one of: full, files, changed, lines, contextual. Ignoring.`,
+      `Invalid scope "${userConfig.scope}" in config. Expected one of: ${SCOPE_VALUES.join(", ")}. Ignoring.`,
     );
   }
 

@@ -19,6 +19,10 @@ const parseVteVersion = (raw: string | undefined): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+interface HyperlinkStream {
+  readonly isTTY?: boolean;
+}
+
 /**
  * Whether `stream` is a terminal that renders OSC 8 hyperlinks. Auto-detected
  * from terminal-identity env vars; the de-facto `FORCE_HYPERLINK` env var
@@ -28,7 +32,7 @@ const parseVteVersion = (raw: string | undefined): number => {
  * raw escape rather than a link). Unknown terminals default to off.
  */
 export const supportsHyperlinks = (
-  stream: NodeJS.WriteStream = process.stdout,
+  stream: HyperlinkStream = process.stdout,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean => {
   const forced = env.FORCE_HYPERLINK;

@@ -54,7 +54,7 @@ const buildInspectPresentation = ({
   payload,
 }: FinalizeInspectResultInput): InspectPresentation => {
   const surfaceDiagnostics = filterDiagnosticsForSurface(
-    [...payload.diagnostics],
+    payload.diagnostics,
     options.outputSurface,
     payload.userConfig,
   );

@@ -1,3 +1,4 @@
+import { hasOnlyImportedBundledImageSources } from "./utils/has-only-imported-bundled-image-sources.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
@@ -191,7 +192,15 @@ export const rnPreferExpoImage = defineRule({
               (sourceExpression) =>
                 sourceExpression !== null && isStaticAssetExpression(sourceExpression),
             );
-          if (everyUsageIsBundledAsset) continue;
+          if (
+            everyUsageIsBundledAsset ||
+            hasOnlyImportedBundledImageSources({
+              specifier: flagged.specifier,
+              context,
+              bundledAssetSourcePattern: BUNDLED_ASSET_SOURCE_PATTERN,
+            })
+          )
+            continue;
           context.report({
             node: flagged.specifier,
             message: `Your users watch images reload often because ${flagged.importedName} from react-native has no caching.`,

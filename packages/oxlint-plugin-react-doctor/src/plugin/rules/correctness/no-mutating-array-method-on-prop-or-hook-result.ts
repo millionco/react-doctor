@@ -11,6 +11,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { stripThisParameter } from "../../utils/strip-this-parameter.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -565,18 +566,15 @@ const isUseMemoReturningOnlyFreshArrays = (hookCall: EsTreeNode | null): boolean
   return sawFreshReturn && !sawUnprovenReturn;
 };
 
-// True when the binding is a parameter of its scope-owning function
-// (rather than a local declaration inside it).
-const isParameterBinding = (binding: BindingInfo): boolean => {
+const parameterForBinding = (binding: BindingInfo): EsTreeNode | null => {
   const owner = binding.scopeOwner;
-  const params = (owner as { params?: EsTreeNode[] }).params;
-  if (!Array.isArray(params)) return false;
+  if (!isFunctionLike(owner)) return null;
   let cursor: EsTreeNode | null | undefined = binding.bindingIdentifier;
   while (cursor && cursor !== owner) {
-    if (params.includes(cursor)) return true;
+    if (owner.params.some((parameter) => parameter === cursor)) return cursor;
     cursor = cursor.parent ?? null;
   }
-  return false;
+  return null;
 };
 
 // `events = events.filter(...)` before the flagged call rebinds the name to a
@@ -689,12 +687,14 @@ const resolveSharedArraySource = (
     }
     return "hook-result";
   }
-  // A parameter of a React component (or hook) is a prop — shared with
-  // the parent across renders. Plain-function/utility params and the
-  // draft/mutation params of `produce`/`useMutation` callbacks are not
-  // components, so they never reach this branch.
-  if (isParameterBinding(binding)) {
-    return componentOrHookDisplayNameForFunction(binding.scopeOwner) ? "prop" : null;
+  const parameter = parameterForBinding(binding);
+  if (parameter) {
+    const owner = binding.scopeOwner;
+    const displayName = componentOrHookDisplayNameForFunction(owner);
+    if (!displayName || !isFunctionLike(owner)) return null;
+    return isReactHookName(displayName) || stripThisParameter(owner.params)[0] === parameter
+      ? "prop"
+      : null;
   }
   const aliasSource = aliasSourceFor(binding);
   if (!aliasSource) return null;

@@ -1,4 +1,5 @@
 import { DEMO_CONTEXT_PATTERN } from "../../constants/security-scan.js";
+import { createRandomErrorProseFilter } from "../../utils/create-random-error-prose-filter.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
@@ -124,6 +125,7 @@ const findRandomCallIndexWithSameLineContext = (
   pattern: RegExp,
   contextPattern: RegExp,
   excludeContextPattern: RegExp,
+  isUnrelatedErrorProse: ReturnType<typeof createRandomErrorProseFilter>,
 ): number => {
   for (const callMatch of content.matchAll(pattern)) {
     const lineStartIndex = content.lastIndexOf("\n", callMatch.index) + 1;
@@ -131,7 +133,9 @@ const findRandomCallIndexWithSameLineContext = (
     const lineEndIndex = lineEndCandidate < 0 ? content.length : lineEndCandidate;
     const lineText = content.slice(lineStartIndex, lineEndIndex);
     if (excludeContextPattern.test(lineText)) continue;
-    if (contextPattern.test(lineText)) return callMatch.index;
+    if (!contextPattern.test(lineText)) continue;
+    if (isUnrelatedErrorProse(callMatch.index, lineStartIndex, lineEndIndex)) continue;
+    return callMatch.index;
   }
   return -1;
 };
@@ -191,6 +195,12 @@ export const insecureCryptoRisk = defineRule({
         MATH_RANDOM_CALL_PATTERN,
         SECURITY_RANDOM_CONTEXT_PATTERN,
         UI_NONCE_CONTEXT_PATTERN,
+        createRandomErrorProseFilter({
+          filename: file.absolutePath,
+          sourceText: file.content,
+          scannableContent: content,
+          contextPattern: SECURITY_RANDOM_CONTEXT_PATTERN,
+        }),
       );
     }
     if (matchIndex < 0) return [];

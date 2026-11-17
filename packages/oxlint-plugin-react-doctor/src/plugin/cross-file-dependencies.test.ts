@@ -239,6 +239,30 @@ describe("no-mutating-reducer-state collector", () => {
   });
 });
 
+it("tracks the imported handler provider and its unresolved React remap", () => {
+  const callerConfig = writeFixtureFile(
+    "tsconfig.json",
+    '{"compilerOptions":{"paths":{"~/*":["./hooks/*"]}}}',
+  );
+  const providerConfig = writeFixtureFile(
+    "hooks/tsconfig.json",
+    '{"compilerOptions":{"paths":{"react":["./local-react"]}}}',
+  );
+  const provider = writeFixtureFile("hooks/selection.ts", "export const useSelection = () => ({})");
+  const unrelated = writeFixtureFile("view/unused.ts", "export const unused = () => null;");
+  const consumer = writeFixtureFile(
+    "view/View.tsx",
+    'import { useSelection as useLocalSelection } from "~/selection"; import { unused } from "./unused";',
+  );
+  const trace = collectFor(consumer, ["advanced-event-handler-refs"]);
+
+  expect(trace?.contentPaths.has(callerConfig)).toBe(true);
+  expect(trace?.contentPaths.has(providerConfig)).toBe(true);
+  expect(trace?.contentPaths.has(provider)).toBe(true);
+  expect(trace?.existencePaths.has(fixturePath("hooks/local-react.ts"))).toBe(true);
+  expect(trace?.contentPaths.has(unrelated)).toBe(false);
+});
+
 describe("effect value helper collectors", () => {
   const affectedRuleIds = [
     "client-passive-event-listeners",

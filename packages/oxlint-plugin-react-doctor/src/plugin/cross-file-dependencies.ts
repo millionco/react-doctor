@@ -31,12 +31,14 @@ import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
+import { isReactHookName } from "./utils/is-react-hook-name.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { parseCrossFileSource, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
   resolveCrossFileFunctionExport,
+  resolveCrossFileFunctionExportWithFilePath,
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
@@ -195,6 +197,23 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   readNearestPackageManifest(absoluteFilePath);
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+// All named Hook imports cover the selected listener subset; resolving React
+// from each provider also captures that provider's own config and remap probes.
+const collectImportedMemoizedHandlerDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  for (const entry of flattenImportEntries(staticImports)) {
+    if (!isReactHookName(entry.exportedName)) continue;
+    const provider = resolveCrossFileFunctionExportWithFilePath(
+      absoluteFilePath,
+      entry.source,
+      entry.exportedName,
+    );
+    if (provider) resolveModulePath(provider.filePath, "react");
   }
 };
 
@@ -580,6 +599,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
       collectInkVersionDependencies,
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
+    ["advanced-event-handler-refs", collectImportedMemoizedHandlerDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],

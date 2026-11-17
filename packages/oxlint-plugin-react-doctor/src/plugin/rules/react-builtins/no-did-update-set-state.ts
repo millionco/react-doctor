@@ -1,3 +1,4 @@
+import { isClosedClassPrimitiveProducer } from "./utils/is-closed-class-primitive-producer.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { collectMutationReceiverKinds } from "../../utils/collect-mutation-receiver-kinds.js";
@@ -8,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticThisOrAliasFieldName } from "../../utils/get-static-this-or-alias-field-name.js";
 import { getPropertyKeyName } from "../../utils/get-property-key-name.js";
@@ -840,6 +842,7 @@ const isStableConvergenceValue = (
   callbackRefFieldNames: ReadonlySet<string>,
   setStateCall?: EsTreeNode,
   visitedSymbolIds: ReadonlySet<number> = new Set(),
+  allowsClosedClassProducer = true,
 ): boolean => {
   const unwrappedValue = stripParenExpression(value);
   const sourcePath = getStateSourcePath(unwrappedValue, NO_PREVIOUS_SOURCE_PATHS, scopes);
@@ -852,6 +855,17 @@ const isStableConvergenceValue = (
   ) {
     return true;
   }
+  if (
+    allowsClosedClassProducer &&
+    setStateCall &&
+    isClosedClassPrimitiveProducer({
+      call: unwrappedValue,
+      setStateCall,
+      scopes,
+      resolveClassMember: getClassMemberCallback,
+    })
+  )
+    return true;
   if (!isNodeOfType(unwrappedValue, "Identifier")) return false;
   const symbol = scopes.symbolFor(unwrappedValue);
   if (
@@ -869,6 +883,7 @@ const isStableConvergenceValue = (
     callbackRefFieldNames,
     setStateCall,
     new Set([...visitedSymbolIds, symbol.id]),
+    allowsClosedClassProducer && getDirectConstInitializer(symbol) === symbol.initializer,
   );
 };
 

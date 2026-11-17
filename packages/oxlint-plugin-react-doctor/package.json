@@ -57,6 +57,7 @@
     "test": "pnpm gen && vp test run"
   },
   "dependencies": {
+    "@astrojs/compiler": "4.0.0",
     "@shaderfrog/glsl-parser": "^7.0.1",
     "@typescript-eslint/types": "^8.59.3",
     "eslint-scope": "^9.1.2",

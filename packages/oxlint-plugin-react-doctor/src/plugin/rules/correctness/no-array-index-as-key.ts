@@ -1,5 +1,6 @@
 import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { createClosedRegExpTokenCheck } from "../../utils/create-closed-regexp-token-check.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
@@ -1946,6 +1947,7 @@ export const noArrayIndexAsKey = defineRule({
   recommendation:
     "Use a stable id from the item, like `key={item.id}` or `key={item.slug}`. Index keys break when the list reorders or filters.",
   create: (context: RuleContext) => {
+    const isClosedRegExpTokenMap = createClosedRegExpTokenCheck(context);
     const reportIndexKey = (node: EsTreeNode, indexName: string): void => {
       context.report({
         node,
@@ -2037,9 +2039,12 @@ export const noArrayIndexAsKey = defineRule({
                   return;
                 let primitiveItemNames = EMPTY_NAME_SET;
                 if (
-                  iteratorCallee &&
-                  isNodeOfType(iteratorCallee, "MemberExpression") &&
-                  isPlainStringTokenReceiver(iteratorCallee.object)
+                  (iteratorCallee &&
+                    isNodeOfType(iteratorCallee, "MemberExpression") &&
+                    isPlainStringTokenReceiver(iteratorCallee.object)) ||
+                  (isInlineTextRun &&
+                    indexUse.binding.iteratorCall &&
+                    isClosedRegExpTokenMap(indexUse.binding.iteratorCall))
                 )
                   primitiveItemNames = itemNames;
                 else if (keyTemplate)

@@ -219,6 +219,9 @@ importers:
 
   packages/oxlint-plugin-react-doctor:
     dependencies:
+      '@astrojs/compiler':
+        specifier: 4.0.0
+        version: 4.0.0
       '@shaderfrog/glsl-parser':
         specifier: ^7.0.1
         version: 7.0.1

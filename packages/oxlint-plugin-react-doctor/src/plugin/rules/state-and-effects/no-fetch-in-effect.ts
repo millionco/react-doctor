@@ -19,6 +19,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isManagedLocalFetchEffect } from "./utils/is-managed-local-fetch-effect.js";
 
 const IMPORT_INITIALIZER_TYPES = new Set([
   "ImportSpecifier",
@@ -523,6 +524,7 @@ export const noFetchInEffect = defineRule({
 
       const cleanup = findEffectCleanupFunction(callback);
       if (cleanup) {
+        if (isManagedLocalFetchEffect(node, callback, requests, context)) return;
         const completionSinks = collectNodesFromAnalysisFunctions(analysisFunctions, isSetterCall);
         if (
           allRequestsHaveCorrelatedCancellation(

@@ -767,6 +767,120 @@ export const isGuardedStateTransition = (
   return false;
 };
 
+const isBooleanTransitionAfterEarlyReturn = (
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  callback: EsTreeNode,
+  frameCall: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    isInsideRepeatedExecution(setterCall, callback)
+  ) {
+    return false;
+  }
+  const frameArgument = frameCall.arguments[0];
+  if (!frameArgument) return false;
+  const callbackArgument = stripParenExpression(frameArgument);
+  if (callbackArgument !== callback) {
+    if (!isNodeOfType(callbackArgument, "Identifier")) return false;
+    const callbackSymbol = scopes.symbolFor(callbackArgument);
+    if (
+      callbackSymbol?.kind !== "const" ||
+      !callbackSymbol.initializer ||
+      stripParenExpression(callbackSymbol.initializer) !== callback ||
+      callbackSymbol.references.some((reference) => reference.identifier !== callbackArgument)
+    ) {
+      return false;
+    }
+  }
+  let ancestor = setterCall.parent;
+  while (ancestor && ancestor !== callback) {
+    if (isFunctionLike(ancestor) || isNodeOfType(ancestor, "TryStatement")) return false;
+    ancestor = ancestor.parent;
+  }
+  if (ancestor !== callback) return false;
+  const setterIdentifier = stripParenExpression(setterCall.callee);
+  if (!isNodeOfType(setterIdentifier, "Identifier")) return false;
+  const setterSymbol = scopes.symbolFor(setterIdentifier);
+  const declaration = setterSymbol?.declarationNode;
+  if (
+    setterSymbol?.kind !== "const" ||
+    setterSymbol.references.some((reference) => reference.identifier !== setterIdentifier) ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    !isNodeOfType(declaration.id, "ArrayPattern") ||
+    declaration.id.elements[1] !== setterSymbol.bindingIdentifier ||
+    !declaration.init
+  ) {
+    return false;
+  }
+  const stateIdentifier = declaration.id.elements[0];
+  if (!isNodeOfType(stateIdentifier, "Identifier")) return false;
+  const stateSymbol = scopes.symbolFor(stateIdentifier);
+  if (
+    stateSymbol?.kind !== "const" ||
+    stateSymbol.references.some((reference) => reference.flag !== "read") ||
+    resolveStateSetterBinding(setterIdentifier, scopes)?.stateSymbolId !== stateSymbol.id
+  ) {
+    return false;
+  }
+  const hookCall = stripParenExpression(declaration.init);
+  if (
+    !isNodeOfType(hookCall, "CallExpression") ||
+    !isR3fReactApiCall(hookCall, USE_STATE_HOOK, scopes, { resolveNamedAliases: true })
+  ) {
+    return false;
+  }
+  const initialState = hookCall.arguments[0];
+  const [nextState, extraArgument] = setterCall.arguments;
+  if (
+    !initialState ||
+    !isNodeOfType(initialState, "Literal") ||
+    typeof initialState.value !== "boolean" ||
+    !nextState ||
+    extraArgument
+  ) {
+    return false;
+  }
+  const nextStateCandidate = stripParenExpression(nextState);
+  if (
+    !isNodeOfType(nextStateCandidate, "Literal") ||
+    typeof nextStateCandidate.value !== "boolean"
+  ) {
+    return false;
+  }
+  for (const statement of callback.body.body) {
+    if (statement.range[1] > setterCall.range[0]) break;
+    if (!isNodeOfType(statement, "IfStatement") || statement.alternate) continue;
+    const test = stripParenExpression(statement.test);
+    if (
+      !isNodeOfType(test, "Identifier") &&
+      !(
+        isNodeOfType(test, "UnaryExpression") &&
+        test.operator === "!" &&
+        isNodeOfType(stripParenExpression(test.argument), "Identifier")
+      )
+    ) {
+      continue;
+    }
+    const [exitStatement, extraStatement] = isNodeOfType(statement.consequent, "BlockStatement")
+      ? statement.consequent.body
+      : [statement.consequent];
+    if (
+      !extraStatement &&
+      isNodeOfType(exitStatement, "ReturnStatement") &&
+      !exitStatement.argument &&
+      branchGuaranteesBooleanState(test, false, stateSymbol.id, !nextStateCandidate.value, scopes)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const r3fNoStateInUseFrame = defineRule({
   id: "r3f-no-state-in-use-frame",
   title: "React state update inside useFrame",
@@ -784,7 +898,8 @@ export const r3fNoStateInUseFrame = defineRule({
           }
           if (
             !resolveStateSetterBinding(candidate.callee, context.scopes) ||
-            isGuardedStateTransition(candidate, callback, context.scopes)
+            isGuardedStateTransition(candidate, callback, context.scopes) ||
+            isBooleanTransitionAfterEarlyReturn(candidate, callback, node, context.scopes)
           ) {
             return;
           }

@@ -132,6 +132,11 @@ interface InvocationSuspensionState {
   canInvokeBeforeSuspension: boolean;
 }
 
+interface ClassSuspensionAnalysis {
+  callsByFunction: Map<EsTreeNode, EsTreeNode[]> | null;
+  resultsByMount: Map<EsTreeNode, Map<EsTreeNode, boolean>>;
+}
+
 const isAfterAwaitInEnclosingFunction = (node: EsTreeNode, context: RuleContext): boolean => {
   const functionNode = findEnclosingFunction(node);
   if (!functionNode) return false;
@@ -442,10 +447,37 @@ const isEnclosingFunctionInvokedAfterSuspension = (
   mountBody: EsTreeNode,
   classBody: EsTreeNode | null,
   context: RuleContext,
+  analysis: ClassSuspensionAnalysis,
 ): boolean => {
   const targetFunction = findEnclosingFunction(node);
   const mountFunction = findEnclosingFunction(mountBody);
   if (!targetFunction || !mountFunction || targetFunction === mountFunction) return false;
+  let results = analysis.resultsByMount.get(mountBody);
+  if (!results) {
+    results = new Map();
+    analysis.resultsByMount.set(mountBody, results);
+  }
+  const cachedResult = results.get(targetFunction);
+  if (cachedResult !== undefined) return cachedResult;
+  if (!analysis.callsByFunction) {
+    const callsByFunction = new Map<EsTreeNode, EsTreeNode[]>();
+    walkAst(classBody ?? mountBody, (candidate) => {
+      if (!isNodeOfType(candidate, "CallExpression")) return;
+      const callee = stripParenExpression(candidate.callee);
+      const invokedFunction = isNodeOfType(callee, "Identifier")
+        ? resolveExactLocalFunction(callee, context.scopes)
+        : isNodeOfType(callee, "MemberExpression") &&
+            isNodeOfType(stripParenExpression(callee.object), "ThisExpression")
+          ? classMemberFunction(classBody, getStaticPropertyName(callee) ?? "", candidate)
+          : null;
+      if (!invokedFunction) return;
+      const calls = callsByFunction.get(invokedFunction) ?? [];
+      calls.push(candidate);
+      callsByFunction.set(invokedFunction, calls);
+    });
+    analysis.callsByFunction = callsByFunction;
+  }
+  const callsByFunction = analysis.callsByFunction;
   const invocationStates = new Map<EsTreeNode, InvocationSuspensionState>();
   const activeFunctions = new Set<EsTreeNode>();
   const resolveInvocationState = (functionNode: EsTreeNode): InvocationSuspensionState => {
@@ -462,32 +494,25 @@ const isEnclosingFunctionInvokedAfterSuspension = (
       canInvokeAfterSuspension: false,
       canInvokeBeforeSuspension: false,
     };
-    walkAst(classBody ?? mountBody, (candidate) => {
-      if (!isNodeOfType(candidate, "CallExpression")) return;
-      const callee = stripParenExpression(candidate.callee);
-      const invokedFunction = isNodeOfType(callee, "Identifier")
-        ? resolveExactLocalFunction(callee, context.scopes)
-        : isNodeOfType(callee, "MemberExpression") &&
-            isNodeOfType(stripParenExpression(callee.object), "ThisExpression")
-          ? classMemberFunction(classBody, getStaticPropertyName(callee) ?? "", candidate)
-          : null;
-      if (invokedFunction !== functionNode) return;
+    for (const candidate of callsByFunction.get(functionNode) ?? []) {
       const callerFunction = findEnclosingFunction(candidate);
-      if (!callerFunction) return;
+      if (!callerFunction) continue;
       const callerState = resolveInvocationState(callerFunction);
       if (callerState.canInvokeAfterSuspension) state.canInvokeAfterSuspension = true;
-      if (!callerState.canInvokeBeforeSuspension) return;
+      if (!callerState.canInvokeBeforeSuspension) continue;
       if (isAfterAwaitInEnclosingFunction(candidate, context)) {
         state.canInvokeAfterSuspension = true;
       } else {
         state.canInvokeBeforeSuspension = true;
       }
-    });
+    }
     activeFunctions.delete(functionNode);
     invocationStates.set(functionNode, state);
     return state;
   };
-  return resolveInvocationState(targetFunction).canInvokeAfterSuspension;
+  const result = resolveInvocationState(targetFunction).canInvokeAfterSuspension;
+  results.set(targetFunction, result);
+  return result;
 };
 
 const functionSetsComponentState = (
@@ -1852,6 +1877,11 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
       const classNode = node.parent;
       if (!classNode || !isEs6Component(classNode)) return;
 
+      const suspensionAnalysis: ClassSuspensionAnalysis = {
+        callsByFunction: null,
+        resultsByMount: new Map(),
+      };
+
       const members = node.body ?? [];
       const componentWillUnmountMember = members.find(
         (member) => getClassMemberName(member) === "componentWillUnmount",
@@ -1892,7 +1922,13 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
             node,
             context,
             suspendedClassHelperNodes.has(candidate) ||
-              isEnclosingFunctionInvokedAfterSuspension(candidate, body, node, context),
+              isEnclosingFunctionInvokedAfterSuspension(
+                candidate,
+                body,
+                node,
+                context,
+                suspensionAnalysis,
+              ),
           );
           if (candidateHazard) mountHazards.push(candidateHazard);
         });

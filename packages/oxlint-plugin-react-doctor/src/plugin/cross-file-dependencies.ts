@@ -1,3 +1,4 @@
+import { findNextPagesDefaultComponent } from "./utils/find-next-pages-default-component.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -205,6 +206,7 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
+  findNextPagesDefaultComponent({ program, filename: absoluteFilePath, getScopes: () => scopes });
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
     const imported = resolveImportedApiReference(node.callee, scopes);

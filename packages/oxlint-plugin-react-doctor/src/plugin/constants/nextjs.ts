@@ -90,3 +90,14 @@ export const GOOGLE_ANALYTICS_SCRIPT_PATTERN = /google-analytics\.com|googletagm
 export const OG_IMAGE_FILE_PATTERN = new RegExp(
   `/(opengraph-image|twitter-image)\\d*\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
 );
+
+export const PAGES_COMPONENT_FILE_PATTERN =
+  /^(?:src\/)?pages\/(?!api\/|_document\.).+\.(?:tsx?|jsx?)$/;
+export const NEXT_CONFIG_FILENAMES = [
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.cjs",
+  "next.config.ts",
+  "next.config.mts",
+  "next.config.cts",
+];

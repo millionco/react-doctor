@@ -1,4 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { findNextPagesDefaultComponent } from "../../utils/find-next-pages-default-component.js";
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -831,6 +832,7 @@ const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpressio
 const findEnclosingFunctionInfo = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  pageComponent: EsTreeNode | null,
 ): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -847,6 +849,7 @@ const findEnclosingFunctionInfo = (
         hasResolvedName: resolvedName !== null,
         isAsync: Boolean(current.async),
         isComponentOrHook:
+          current === pageComponent ||
           isReactHocCallbackArgument(current, scopes) ||
           (resolvedName === null ? false : isComponentOrHookDisplayName(displayName, current)),
       };
@@ -913,11 +916,12 @@ const isInsideLoop = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => 
 const findEnclosingComponentOrHookFunction = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  pageComponent: EsTreeNode | null,
 ): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
-      if (isReactHocCallbackArgument(current, scopes)) return current;
+      if (current === pageComponent || isReactHocCallbackArgument(current, scopes)) return current;
       const resolvedName = inferFunctionName(current);
       if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
         return current;
@@ -932,9 +936,10 @@ const isSameComponentOrHookScope = (
   symbol: SymbolDescriptor,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  pageComponent: EsTreeNode | null,
 ): boolean =>
-  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes) ===
-  findEnclosingComponentOrHookFunction(referenceNode, scopes);
+  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes, pageComponent) ===
+  findEnclosingComponentOrHookFunction(referenceNode, scopes, pageComponent);
 
 const isAllowedEffectEventHook = (
   hookName: string,
@@ -1034,7 +1039,15 @@ export const rulesOfHooks = defineRule({
     const additionalEffectHooksRegex = buildAdditionalEffectHooksRegex(
       settings.additionalEffectHooks,
     );
+    let pageComponent: EsTreeNode | null = null;
     return {
+      Program(program: EsTreeNodeOfType<"Program">) {
+        pageComponent = findNextPagesDefaultComponent({
+          program,
+          filename: context.filename,
+          getScopes: () => context.scopes,
+        });
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const hookContext = isHookCall(node, context.scopes, settings);
         if (!hookContext) return;
@@ -1064,7 +1077,7 @@ export const rulesOfHooks = defineRule({
             return;
         }
 
-        const enclosing = findEnclosingFunctionInfo(node, context.scopes);
+        const enclosing = findEnclosingFunctionInfo(node, context.scopes, pageComponent);
 
         if (!enclosing) {
           if (isPackageImportedNonReactHookCallee(node)) return;
@@ -1101,7 +1114,8 @@ export const rulesOfHooks = defineRule({
           !enclosing.isComponentOrHook &&
           enclosing.hasResolvedName &&
           RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
-          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes) === null &&
+          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes, pageComponent) ===
+            null &&
           countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
             MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
@@ -1114,7 +1128,11 @@ export const rulesOfHooks = defineRule({
           let outerWalker: EsTreeNode | null = enclosing.node;
           let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
-            const parentInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+            const parentInfo = findEnclosingFunctionInfo(
+              outerWalker,
+              context.scopes,
+              pageComponent,
+            );
             if (!parentInfo) break;
             outerWalker = parentInfo.node;
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
@@ -1147,7 +1165,11 @@ export const rulesOfHooks = defineRule({
             let outerWalker: EsTreeNode | null = enclosing.node;
             let outerIsComponentOrHook = false;
             while (outerWalker) {
-              const outerInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+              const outerInfo = findEnclosingFunctionInfo(
+                outerWalker,
+                context.scopes,
+                pageComponent,
+              );
               if (!outerInfo) break;
               if (outerInfo.isComponentOrHook) {
                 outerIsComponentOrHook = true;
@@ -1197,7 +1219,7 @@ export const rulesOfHooks = defineRule({
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
         if (!symbol || !symbolHasReactUseEffectEventOrigin(symbol, context.scopes)) return;
-        if (!isSameComponentOrHookScope(symbol, node, context.scopes)) return;
+        if (!isSameComponentOrHookScope(symbol, node, context.scopes, pageComponent)) return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 
         context.report({

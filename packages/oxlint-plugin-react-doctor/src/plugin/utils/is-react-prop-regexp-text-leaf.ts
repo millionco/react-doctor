@@ -80,11 +80,11 @@ const visibleSymbol = (
   }
 };
 
-const getPlainProp = (
+const getPlainPropMember = (
   parameter: EsTreeNode,
   name: string,
   scopes: ScopeAnalysis,
-): EsTreeNodeOfType<"TSPropertySignature"> | null => {
+): EsTreeNodeOfType<"TSPropertySignature"> | EsTreeNodeOfType<"TSMethodSignature"> | null => {
   if (!isNodeOfType(parameter, "Identifier") || !parameter.typeAnnotation) return null;
   const annotation = parameter.typeAnnotation;
   if (!isNodeOfType(annotation, "TSTypeAnnotation")) return null;
@@ -116,13 +116,26 @@ const getPlainProp = (
   if (members.some((member) => isNodeOfType(member, "TSIndexSignature"))) return null;
   const matchingMembers = members.filter(
     (member) =>
-      isNodeOfType(member, "TSPropertySignature") &&
+      (isNodeOfType(member, "TSPropertySignature") || isNodeOfType(member, "TSMethodSignature")) &&
       ((isNodeOfType(member.key, "Identifier") && member.key.name === name) ||
         (isNodeOfType(member.key, "Literal") && member.key.value === name)),
   );
   const [member, ...otherMembers] = matchingMembers;
-  if (!isNodeOfType(member, "TSPropertySignature") || Boolean(otherMembers.length)) return null;
+  if (
+    (!isNodeOfType(member, "TSPropertySignature") && !isNodeOfType(member, "TSMethodSignature")) ||
+    Boolean(otherMembers.length)
+  )
+    return null;
   return !member.computed && isNodeOfType(member.key, "Identifier") ? member : null;
+};
+
+const getPlainProp = (
+  parameter: EsTreeNode,
+  name: string,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"TSPropertySignature"> | null => {
+  const member = getPlainPropMember(parameter, name, scopes);
+  return isNodeOfType(member, "TSPropertySignature") ? member : null;
 };
 
 const hasOrdinaryRegExpType = (
@@ -203,55 +216,6 @@ const isDirectComponentOwner = (node: EsTreeNode): boolean => {
   )
     declaration = declaration.parent;
   return isNodeOfType(declaration.parent, "Program");
-};
-
-const getPlainFocusCallbackProperty = (
-  parameter: EsTreeNode,
-  name: string,
-  scopes: ScopeAnalysis,
-): EsTreeNodeOfType<"TSPropertySignature"> | EsTreeNodeOfType<"TSMethodSignature"> | null => {
-  if (!isNodeOfType(parameter, "Identifier") || !parameter.typeAnnotation) return null;
-  const annotation = parameter.typeAnnotation;
-  if (!isNodeOfType(annotation, "TSTypeAnnotation")) return null;
-  let declaration: EsTreeNode = annotation.typeAnnotation;
-  if (isNodeOfType(declaration, "TSTypeReference")) {
-    if (!isNodeOfType(declaration.typeName, "Identifier") || declaration.typeArguments) return null;
-    const [matchingDeclaration, ...otherDeclarations] = findSameFileTypeDeclarations(
-      parameter,
-      declaration.typeName.name,
-    );
-    if (!matchingDeclaration || Boolean(otherDeclarations.length)) return null;
-    if (
-      visibleSymbol(parameter, declaration.typeName.name, scopes)?.declarationNode !==
-      matchingDeclaration
-    )
-      return null;
-    declaration = matchingDeclaration;
-  }
-  if (isNodeOfType(declaration, "TSTypeAliasDeclaration")) {
-    if (declaration.typeParameters) return null;
-    declaration = declaration.typeAnnotation;
-  }
-  let members: ReadonlyArray<EsTreeNode>;
-  if (isNodeOfType(declaration, "TSInterfaceDeclaration")) {
-    if (declaration.typeParameters || Boolean(declaration.extends.length)) return null;
-    members = declaration.body.body;
-  } else if (isNodeOfType(declaration, "TSTypeLiteral")) members = declaration.members;
-  else return null;
-  if (members.some((member) => isNodeOfType(member, "TSIndexSignature"))) return null;
-  const matchingMembers = members.filter(
-    (member) =>
-      (isNodeOfType(member, "TSPropertySignature") || isNodeOfType(member, "TSMethodSignature")) &&
-      ((isNodeOfType(member.key, "Identifier") && member.key.name === name) ||
-        (isNodeOfType(member.key, "Literal") && member.key.value === name)),
-  );
-  const [member, ...otherMembers] = matchingMembers;
-  if (
-    (!isNodeOfType(member, "TSPropertySignature") && !isNodeOfType(member, "TSMethodSignature")) ||
-    Boolean(otherMembers.length)
-  )
-    return null;
-  return !member.computed && isNodeOfType(member.key, "Identifier") ? member : null;
 };
 
 const isFocusActionData = (
@@ -336,7 +300,7 @@ const isClosedFocusAncestorChain = (
       !isNodeOfType(node.property, "Identifier")
     )
       return false;
-    const property = getPlainFocusCallbackProperty(parameter, node.property.name, scopes);
+    const property = getPlainPropMember(parameter, node.property.name, scopes);
     if (!property) return false;
     const signature = isNodeOfType(property, "TSMethodSignature")
       ? property
@@ -364,7 +328,7 @@ const isClosedFocusAncestorChain = (
       isNodeOfType(node.callee, "MemberExpression") &&
       isNodeOfType(node.callee.property, "Identifier")
     ) {
-      const property = getPlainFocusCallbackProperty(parameter, node.callee.property.name, scopes);
+      const property = getPlainPropMember(parameter, node.callee.property.name, scopes);
       return Boolean(
         property &&
         (!property.optional || guarded.has(node.callee.property.name)) &&

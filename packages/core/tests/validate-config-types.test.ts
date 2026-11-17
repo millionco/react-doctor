@@ -276,6 +276,58 @@ describe("validateConfigTypes", () => {
       expect(stderrSpy).toHaveBeenCalledTimes(3);
     });
   });
+
+  describe("onlyExportComponents", () => {
+    it("passes through valid options untouched", () => {
+      const input: ReactDoctorConfig = {
+        onlyExportComponents: {
+          customHOCs: ["withErrorBoundary", "withScreenBoundary"],
+          allowExportNames: ["meta"],
+          allowConstantExport: false,
+          checkJS: true,
+        },
+      };
+      expect(validateConfigTypes(input)).toEqual(input);
+      expect(stderrSpy).not.toHaveBeenCalled();
+    });
+
+    it("drops a non-object value with a warning", () => {
+      const result = validateConfigTypes({
+        onlyExportComponents: [
+          "withErrorBoundary",
+        ] as unknown as ReactDoctorConfig["onlyExportComponents"],
+      });
+      expect(result.onlyExportComponents).toBeUndefined();
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('config field "onlyExportComponents" must be an object'),
+      );
+    });
+
+    it("drops unknown keys, invalid entries, and coerces boolean strings", () => {
+      const result = validateConfigTypes({
+        onlyExportComponents: {
+          customHOCs: ["withErrorBoundary", 42],
+          allowConstantExport: "false",
+          checkJs: true,
+        } as unknown as ReactDoctorConfig["onlyExportComponents"],
+      });
+      expect(result.onlyExportComponents).toEqual({
+        customHOCs: ["withErrorBoundary"],
+        allowConstantExport: false,
+      });
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('config field "onlyExportComponents.customHOCs"'),
+      );
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('config field "onlyExportComponents.allowConstantExport"'),
+      );
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'config field "onlyExportComponents.checkJs" is not a known option',
+        ),
+      );
+    });
+  });
 });
 
 describe("unknown bundled rule overrides", () => {

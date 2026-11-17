@@ -726,6 +726,15 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.customRulesOnly"]).toBe(false);
   });
 
+  it("records whether only-export-components options are configured", () => {
+    const configured = buildRunEventAttributes(
+      baseInput({ userConfig: { onlyExportComponents: { customHOCs: ["withErrorBoundary"] } } }),
+    );
+    const unconfigured = buildRunEventAttributes(baseInput({ result: buildResult() }));
+    expect(configured["scan.onlyExportComponentsConfigured"]).toBe(true);
+    expect(unconfigured["scan.onlyExportComponentsConfigured"]).toBe(false);
+  });
+
   it("counts analyzed non-JSX source files for partial-scan coverage telemetry", () => {
     const attributes = buildRunEventAttributes(
       baseInput({

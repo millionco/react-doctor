@@ -1,6 +1,7 @@
 import type {
   DiagnosticFileContext,
   DiagnosticSurface,
+  OnlyExportComponentsConfig,
   ReactDoctorConfig,
   ReactDoctorIgnoreOverride,
   RuleSeverityOverride,
@@ -282,6 +283,44 @@ const validateSeverityMap = (
   return validated;
 };
 
+const ONLY_EXPORT_COMPONENTS_STRING_ARRAY_KEYS = ["allowExportNames", "customHOCs"] as const;
+const ONLY_EXPORT_COMPONENTS_BOOLEAN_KEYS = ["allowConstantExport", "checkJS"] as const;
+
+const validateOnlyExportComponentsField = (
+  rawOptions: unknown,
+): OnlyExportComponentsConfig | undefined => {
+  if (!isRecord(rawOptions)) {
+    warnConfigIssue(
+      `config field "onlyExportComponents" must be an object (got ${typeof rawOptions}); ignoring this field.`,
+    );
+    return undefined;
+  }
+  const validated: OnlyExportComponentsConfig = {};
+  for (const [key, value] of Object.entries(rawOptions)) {
+    const fieldName = `onlyExportComponents.${key}`;
+    const stringArrayKey = ONLY_EXPORT_COMPONENTS_STRING_ARRAY_KEYS.find(
+      (candidateKey) => candidateKey === key,
+    );
+    if (stringArrayKey !== undefined) {
+      const entries = validateStringArrayField(fieldName, value);
+      if (entries !== undefined) validated[stringArrayKey] = entries;
+      continue;
+    }
+    const booleanKey = ONLY_EXPORT_COMPONENTS_BOOLEAN_KEYS.find(
+      (candidateKey) => candidateKey === key,
+    );
+    if (booleanKey !== undefined) {
+      const flag = coerceMaybeBooleanString(fieldName, value);
+      if (flag !== undefined) validated[booleanKey] = flag;
+      continue;
+    }
+    warnConfigIssue(
+      `config field "${fieldName}" is not a known option (expected one of: ${[...ONLY_EXPORT_COMPONENTS_STRING_ARRAY_KEYS, ...ONLY_EXPORT_COMPONENTS_BOOLEAN_KEYS].join(", ")}); ignoring.`,
+    );
+  }
+  return validated;
+};
+
 // Applies a validator to one config field: undefined skips, an `undefined`
 // return strips the field, anything else replaces it. Keeps the main
 // loop free of the repeating "if (raw === undefined) continue; result =
@@ -323,6 +362,7 @@ export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfi
   }
   applyFieldValidator(config, validated, "ignore", validateIgnoreField);
   applyFieldValidator(config, validated, "surfaces", validateSurfacesField);
+  applyFieldValidator(config, validated, "onlyExportComponents", validateOnlyExportComponentsField);
   for (const fieldName of SEVERITY_FIELD_NAMES) {
     applyFieldValidator(config, validated, fieldName, (value) =>
       validateSeverityMap(fieldName, value, fieldName === "categories"),

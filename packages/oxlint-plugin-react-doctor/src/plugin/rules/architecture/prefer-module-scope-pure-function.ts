@@ -2,6 +2,13 @@ import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getProjectRelativeFilenameFromRoots } from "../../utils/get-project-relative-filename-from-roots.js";
+import {
+  getReactDoctorStringSetting,
+  hasCapability,
+} from "../../utils/get-react-doctor-setting.js";
+import { hasCookedDirective } from "../../utils/has-cooked-directive.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
@@ -86,6 +93,19 @@ export const preferModuleScopePureFunction = defineRule({
   recommendation:
     "Move the function above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted work.",
   create: (context: RuleContext) => {
+    const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
+    const relativeFilename = getProjectRelativeFilenameFromRoots(
+      context.filename ?? "",
+      rootDirectory ? [rootDirectory] : [],
+    );
+    const isNextServerActionEntry =
+      hasCapability(context.settings, "nextjs") &&
+      hasCapability(context.settings, "server-actions") &&
+      relativeFilename !== null &&
+      (relativeFilename.startsWith("app/") || relativeFilename.startsWith("src/app/")) &&
+      /\/(?:page|layout)\.[jt]sx?$/.test(relativeFilename) &&
+      !relativeFilename.split("/").some((segment) => segment.startsWith("_") || segment === "..");
+
     const report = (functionNode: EsTreeNode, name: string, componentName: string): void => {
       context.report({
         node: functionNode,
@@ -113,6 +133,24 @@ export const preferModuleScopePureFunction = defineRule({
       if (ownScope === component.bodyScope) return;
       if (!isDescendantScope(ownScope, component.bodyScope)) return;
       if (hasComponentLocalCaptures(functionNode, component.bodyScope, context.scopes)) return;
+      if (
+        isNextServerActionEntry &&
+        isNodeOfType(functionNode, "FunctionDeclaration") &&
+        functionNode.async &&
+        !functionNode.generator &&
+        isNodeOfType(functionNode.parent, "BlockStatement") &&
+        functionNode.parent.parent === component.functionNode &&
+        hasCookedDirective(functionNode.body.body, "use server")
+      ) {
+        const program = findProgramRoot(functionNode);
+        if (
+          program &&
+          !hasCookedDirective(program.body, "use client") &&
+          !hasCookedDirective(program.body, "use server")
+        ) {
+          return;
+        }
+      }
       report(functionNode, bindingName, component.displayName);
     };
 

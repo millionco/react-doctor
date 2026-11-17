@@ -2,6 +2,40 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
+const reconnectingTimerSource = `
+import { useEffect } from "react";
+
+export function StreamPoller({ onPoll }: { onPoll: () => void }) {
+  useEffect(() => {
+    const stream = new EventSource("/events");
+    let timer: number | undefined;
+
+    const beginPolling = () => {
+      if (timer === undefined) timer = window.setInterval(onPoll, 1_000);
+    };
+
+    const endPolling = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+
+    stream.addEventListener("error", beginPolling);
+    stream.addEventListener("open", endPolling);
+
+    return () => {
+      stream.removeEventListener("error", beginPolling);
+      stream.removeEventListener("open", endPolling);
+      stream.close();
+      endPolling();
+    };
+  }, [onPoll]);
+
+  return null;
+}
+`;
+
 describe("qualified native timers", () => {
   it.each([
     "setInterval",
@@ -106,6 +140,113 @@ describe("qualified native timers", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "nullish allocation guard",
+      reconnectingTimerSource
+        .replaceAll("timer === undefined", "timer == null")
+        .replaceAll("timer !== undefined", "timer != null"),
+      0,
+    ],
+    [
+      "reversed allocation comparison",
+      reconnectingTimerSource.replace("timer === undefined", "undefined === timer"),
+      0,
+    ],
+    [
+      "conjunctive allocation condition",
+      reconnectingTimerSource.replace("timer === undefined", "enabled && timer === undefined"),
+      0,
+    ],
+    ["unqualified timer pair", reconnectingTimerSource.replaceAll("window.", ""), 0],
+    [
+      "two live allocations under one guard",
+      reconnectingTimerSource.replace(
+        "if (timer === undefined) timer = window.setInterval(onPoll, 1_000);",
+        "if (timer === undefined) { timer = window.setInterval(onPoll, 1_000); timer = window.setInterval(onPoll, 1_000); }",
+      ),
+      1,
+    ],
+    [
+      "missing allocation guard",
+      reconnectingTimerSource.replace("if (timer === undefined)", ""),
+      1,
+    ],
+    [
+      "disjunctive allocation condition",
+      reconnectingTimerSource.replace("timer === undefined", "timer === undefined || force"),
+      1,
+    ],
+    [
+      "unrelated allocation guard",
+      reconnectingTimerSource.replace("timer === undefined", "otherTimer === undefined"),
+      1,
+    ],
+    ["missing unmount release", reconnectingTimerSource.replace("      endPolling();", ""), 1],
+    [
+      "unreleased error listener",
+      reconnectingTimerSource
+        .replace('stream.removeEventListener("error", beginPolling);', "")
+        .replace("stream.close();", ""),
+      1,
+    ],
+    [
+      "closed EventSource owns its listener",
+      reconnectingTimerSource.replace('stream.removeEventListener("error", beginPolling);', ""),
+      0,
+    ],
+    [
+      "conditional release",
+      reconnectingTimerSource.replace(
+        "window.clearInterval(timer);",
+        "if (enabled) window.clearInterval(timer);",
+      ),
+      1,
+    ],
+    [
+      "reset before release",
+      reconnectingTimerSource.replace(
+        "window.clearInterval(timer);",
+        "timer = undefined; window.clearInterval(timer);",
+      ),
+      1,
+    ],
+    [
+      "wrong timer release",
+      reconnectingTimerSource.replace(
+        "window.clearInterval(timer);",
+        "window.clearInterval(otherTimer);",
+      ),
+      1,
+    ],
+    [
+      "replaced live handle",
+      reconnectingTimerSource.replace(
+        "window.clearInterval(timer);",
+        "timer = otherTimer; window.clearInterval(timer);",
+      ),
+      1,
+    ],
+    [
+      "allocation after await",
+      reconnectingTimerSource.replace(
+        "const beginPolling = () => {",
+        "const beginPolling = async () => { await ready();",
+      ),
+      1,
+    ],
+  ])("checks reconnecting timer %s", (_name, code, expected) => {
+    const result = runRule(effectNeedsCleanup, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it("accepts issue #2447 cleanup lifecycle", () => {
+    const result = runRule(effectNeedsCleanup, reconnectingTimerSource);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("does not attribute an uncalled local callback to its effect", () => {

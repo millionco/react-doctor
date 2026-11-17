@@ -10,6 +10,7 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const [helperSyncSelection, setHelperSyncSelection] = useState(0); const [helperSyncShown, setHelperSyncShown] = useState(true); const resetHelperSyncSelection = () => { setHelperSyncSelection(-1); setHelperSyncShown(false); }; useEffect(() => { if (helperSyncSelection > 0) resetHelperSyncSelection(); }, [helperSyncSelection]); const helperSyncTrigger = <button onClick={() => setHelperSyncSelection(1)}>{String(helperSyncShown)}</button>;`,
   `{ function createFuzzNavigationDisposer() { return () => {}; } createFuzzNavigationDisposer = () => ({ remove() {} }); const navigation = { addListener: () => createFuzzNavigationDisposer() }; useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return () => unsubscribe(); }, [navigation]); }`,
   `{ const navigation = { addListener: (_event, _callback) => () => {} }; useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return () => unsubscribe(); }, [navigation]); }`,
   `{ const navigation = { addListener: (_event, _callback) => () => {} }; useEffect(() => { const unsubscribe = navigation.addListener("event", handle); return unsubscribe; }, [navigation]); }`,

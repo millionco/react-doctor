@@ -4,6 +4,10 @@ import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -14,11 +18,13 @@ import {
   getArgsUpstreamRefs,
   getCallExpr,
   getDownstreamRefs,
+  getEventualCallRefsTo,
   getRef,
   getUpstreamRefs,
 } from "./utils/effect/ast.js";
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
+import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -248,6 +254,130 @@ export const noChainStateUpdates = defineRule({
           )
         ) {
           continue;
+        }
+        if (
+          setterDeclarator === null &&
+          isNodeOfType(callExpr, "CallExpression") &&
+          isNodeOfType(callExpr.callee, "Identifier") &&
+          callExpr.arguments.length === 0
+        ) {
+          const helper = resolveExactLocalFunction(callExpr.callee, context.scopes);
+          const helperSymbol = context.scopes.symbolFor(callExpr.callee);
+          if (
+            isFunctionLike(helper) &&
+            !helper.async &&
+            !helper.generator &&
+            helper.params.length === 0 &&
+            helperSymbol?.kind === "const" &&
+            helperSymbol.initializer === helper &&
+            helperSymbol.references.every((reference) => reference.flag === "read")
+          ) {
+            let hasNestedFunction = false;
+            walkAst(helper.body, (child) => {
+              if (isFunctionLike(child)) {
+                hasNestedFunction = true;
+                return false;
+              }
+            });
+            const writeFacts = collectEffectStateWriteFacts(
+              analysis,
+              context,
+              node,
+              context.filename,
+            );
+            const setterReferences = getEventualCallRefsTo(
+              analysis,
+              ref,
+              (innerRef) => resolveStateSetterReference(analysis, innerRef) !== null,
+            );
+            const setterReferenceSet = new Set(setterReferences);
+            // Bare or escaped setter references are outside this direct-helper proof.
+            const allSetterReferences = getUpstreamRefs(analysis, ref).filter(
+              (innerRef) => resolveStateSetterReference(analysis, innerRef) !== null,
+            );
+            if (
+              !hasNestedFunction &&
+              setterReferences.length > 0 &&
+              allSetterReferences.every((innerRef) => setterReferenceSet.has(innerRef)) &&
+              setterReferences.every((innerRef) => {
+                const innerCall = getCallExpr(innerRef);
+                const innerSetter = resolveStateSetterReference(analysis, innerRef);
+                const innerDeclarator = innerSetter ? getUseStateDeclarator(innerSetter) : null;
+                const matchingFacts = writeFacts.filter(
+                  (fact) =>
+                    fact.callExpression === innerCall &&
+                    fact.setterReference === innerSetter &&
+                    fact.stateDeclarator === innerDeclarator,
+                );
+                return (
+                  innerCall !== null &&
+                  isNodeOfType(innerCall, "CallExpression") &&
+                  isNodeOfType(innerCall.callee, "Identifier") &&
+                  innerCall.callee === innerRef.identifier &&
+                  findEnclosingFunction(innerCall) === helper &&
+                  innerDeclarator !== null &&
+                  stateDepDeclarators.has(innerDeclarator) &&
+                  matchingFacts.length > 0 &&
+                  matchingFacts.every(
+                    (fact) => !fact.isDeferred && fact.isSynchronousRenderValue,
+                  ) &&
+                  innerCall.arguments.length === 1 &&
+                  innerCall.arguments.every((argument) => {
+                    if (isNodeOfType(argument, "SpreadElement")) return false;
+                    const sourceBindingsAreClosed = getDownstreamRefs(analysis, argument)
+                      .flatMap((argumentRef) => getUpstreamRefs(analysis, argumentRef))
+                      .every((sourceRef) => {
+                        const symbol = context.scopes.symbolFor(
+                          sourceRef.identifier as unknown as EsTreeNode,
+                        );
+                        return (
+                          symbol?.kind === "const" &&
+                          symbol.references.every((reference) => reference.flag === "read") &&
+                          isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+                          symbol.declarationNode.id === symbol.bindingIdentifier
+                        );
+                      });
+                    if (!sourceBindingsAreClosed) return false;
+                    const expression = stripParenExpression(argument);
+                    const sourceSymbol = isNodeOfType(expression, "Identifier")
+                      ? resolveConstIdentifierAlias(expression, context.scopes)
+                      : null;
+                    if (
+                      isNodeOfType(expression, "Identifier") &&
+                      (sourceSymbol?.kind !== "const" ||
+                        !sourceSymbol.initializer ||
+                        sourceSymbol.references.some((reference) => reference.flag !== "read") ||
+                        !isNodeOfType(sourceSymbol.declarationNode, "VariableDeclarator") ||
+                        sourceSymbol.declarationNode.id !== sourceSymbol.bindingIdentifier)
+                    )
+                      return false;
+                    const value = sourceSymbol?.initializer
+                      ? stripParenExpression(sourceSymbol.initializer)
+                      : expression;
+                    const isPrimitiveLiteral =
+                      isNodeOfType(value, "Literal") &&
+                      !("regex" in value) &&
+                      (value.value === null ||
+                        ["string", "number", "boolean", "bigint"].includes(typeof value.value));
+                    const unaryArgument = isNodeOfType(value, "UnaryExpression")
+                      ? stripParenExpression(value.argument)
+                      : null;
+                    const isSignedNumberLiteral =
+                      isNodeOfType(value, "UnaryExpression") &&
+                      (value.operator === "+" || value.operator === "-") &&
+                      isNodeOfType(unaryArgument, "Literal") &&
+                      typeof unaryArgument.value === "number";
+                    return (
+                      (isPrimitiveLiteral || isSignedNumberLiteral) &&
+                      isSimpleExpression(analysis, argument as EsTreeNode, helper, new WeakSet())
+                    );
+                  })
+                );
+              })
+            ) {
+              continue;
+            }
+          }
         }
         context.report({
           node: callExpr,

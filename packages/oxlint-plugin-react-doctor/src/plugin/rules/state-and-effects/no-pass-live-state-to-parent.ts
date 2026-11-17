@@ -6,6 +6,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isCallResultConsumedAsArgument } from "../../utils/is-call-result-consumed-as-argument.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isReactForwardedRefParameter } from "../../utils/is-react-forwarded-ref-parameter.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import {
   DATA_SINK_METHOD_NAMES,
@@ -119,6 +120,7 @@ const isParentNotificationCallbackRef = (
   if (!isPropCallbackInvocationRef(analysis, ref)) return false;
   const callExpr = getCallExpr(ref);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  if (isReactForwardedRefParameter(callExpr.callee, context.scopes)) return false;
   const hasUnresolvedCurrentSnapshot = Boolean(
     ref.resolved?.defs.some((definition) => {
       const definitionNode = definition.node as unknown as EsTreeNode;
@@ -477,6 +479,7 @@ export const noPassLiveStateToParent = defineRule({
       for (const ref of effectFnRefs) {
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        if (isReactForwardedRefParameter(callExpr.callee, context.scopes)) continue;
         const directLocalEffectHelper = getDirectLocalEffectHelper(callExpr, effectFn, context);
         const discardedDirectLocalEffectHelper =
           directLocalEffectHelper && !isCallResultCapturedToLocal(callExpr)

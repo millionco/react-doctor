@@ -1,5 +1,15 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.24
+
+### Patch Changes
+
+- [#2444](https://github.com/millionco/react-doctor/pull/2444) [`b6ba66e`](https://github.com/millionco/react-doctor/commit/b6ba66ef427bf81995555e380eeba679f8b5d305) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid incorrect array index key warnings for guarded string splits rendered as stateless text leaves.
+
+- [#2448](https://github.com/millionco/react-doctor/pull/2448) [`190b5b6`](https://github.com/millionco/react-doctor/commit/190b5b69d1acd304976aab09f5ad8d86274310ef) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid effect-needs-cleanup false positives for cancellation-guarded async listener registration and guarded reconnect intervals released through local cleanup helpers. Preserve diagnostics when cancellation, registration identity, handle ownership, or cleanup coverage is incomplete.
+
+- [#2442](https://github.com/millionco/react-doctor/pull/2442) [`661cb18`](https://github.com/millionco/react-doctor/commit/661cb187fbfe4e992acc89f76933e4f51244639f) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept composition early returns using logical OR without accepting partial AND guards. Skip Git-ignored source security findings while preserving scans of ignored browser build artifacts.
+
 ## 0.9.23
 
 ### Patch Changes

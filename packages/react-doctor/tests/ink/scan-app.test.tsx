@@ -317,6 +317,63 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it.each([0, 1])("shows maintainability failure details with %s findings", (issueCount) => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: issueCount ? [makeDiagnostic({})] : [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      skippedChecks: ["dead-code", "security-scan"],
+      skippedCheckReasons: { "dead-code": "Project analysis worker exited with code 1." },
+    });
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("Project analysis worker exited with code 1.");
+    expect(lastFrame()).toContain("security-scan checks failed");
+    expect(lastFrame()).not.toContain("maintainability checks failed");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
+  it("preserves each project's maintainability failure in a workspace summary", () => {
+    const store = createScanStore();
+    const projects = ["web", "api"].map((projectName) => ({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName,
+      rootDirectory: `/tmp/repo/${projectName}`,
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      skippedChecks: ["dead-code"],
+      skippedCheckReasons: { "dead-code": `${projectName} worker failed.` },
+    }));
+    store.setSummary({
+      projects,
+      aggregateScore: null,
+      projectedScore: null,
+      combinedDiagnostics: [],
+      scannedFileCount: 2,
+      elapsedMilliseconds: 10,
+      projectName: "repo",
+      rootDirectory: "/tmp/repo",
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("web: web worker failed.");
+    expect(lastFrame()).toContain("api: api worker failed.");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
   it("shows incomplete checks when the scan also found issues", () => {
     const store = createScanStore();
     store.setReport({

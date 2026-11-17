@@ -25,6 +25,7 @@ export interface ScanReport {
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly skippedChecks?: ReadonlyArray<string>;
+  readonly skippedCheckReasons?: Readonly<Record<string, string>>;
   readonly incompleteMessage?: string;
 }
 

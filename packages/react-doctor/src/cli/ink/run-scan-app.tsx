@@ -253,6 +253,7 @@ const toScanReport = ({
     noScoreMessage,
     emptyStateMessage,
     skippedChecks: result.skippedChecks,
+    skippedCheckReasons: result.skippedCheckReasons,
     ...(lintFailureReason ? { lintFailureReason } : {}),
   };
 };

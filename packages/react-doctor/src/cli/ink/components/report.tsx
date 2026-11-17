@@ -272,6 +272,7 @@ export const Report = ({
         emptyStateMessage={report.emptyStateMessage}
         lintFailureReason={report.lintFailureReason}
         skippedChecks={report.skippedChecks}
+        skippedCheckReasons={report.skippedCheckReasons}
         incompleteMessage={report.incompleteMessage}
         actions={landingActions}
         selectedIndex={resolvedLandingSelectedIndex}

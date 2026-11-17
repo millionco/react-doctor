@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { getClosedTemplateClassNamePrefix } from "./utils/get-closed-template-class-name-prefix.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // Tailwind v4 renamed/removed these utilities. Map each deprecated base token
@@ -30,7 +31,8 @@ export const noDeprecatedTailwindClass = defineRule({
     "Tailwind v4 renamed these utilities: `bg-gradient-*` → `bg-linear-*`, `flex-shrink-*` → `shrink-*`, `flex-grow-*` → `grow-*`, `overflow-ellipsis` → `text-ellipsis`. Use the new names.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const classNameValue = getStringFromClassNameAttr(node);
+      const classNameValue =
+        getStringFromClassNameAttr(node) ?? getClosedTemplateClassNamePrefix(node);
       if (!classNameValue) return;
       for (const token of getClassNameTokens(classNameValue)) {
         const replacement = renameDeprecatedToken(token);

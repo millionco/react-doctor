@@ -31,6 +31,32 @@ function subscribePushState(listener) {
 `;
 
 describe("prefer-use-sync-external-store — module-scope store shape", () => {
+  it.each(["useState()", "useState<string>()", "useState(undefined)", "useState(null)"])(
+    "ignores unrelated empty local state from %s beside a module store",
+    (initializer) => {
+      const result = run(`${MODULE_STORE_PREAMBLE}
+export const Panel = () => {
+  const [localValue, setLocalValue] = ${initializer};
+  return <span>{localValue}</span>;
+};`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("still reports a module snapshot when another state hook has no initializer", () => {
+    const result = run(`${MODULE_STORE_PREAMBLE}
+export const Panel = () => {
+  const [localValue, setLocalValue] = useState();
+  const [snapshot, setSnapshot] = useState(sharedPushState);
+  useEffect(() => subscribePushState(setSnapshot), []);
+  return <span>{localValue}{snapshot}</span>;
+};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("sharedPushState");
+  });
+
   it("stays silent when a subscription callback is received as a custom-hook parameter", () => {
     const result = run(
       `import { useEffect, useState } from "react";

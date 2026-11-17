@@ -4,6 +4,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
@@ -305,6 +307,24 @@ export const clickEventsHaveKeyEvents = defineRule({
           resolvedSpreadEventValues.get(name.toLowerCase()),
         ).find((expression) => expression !== undefined);
         if (!onClick && !spreadOnClickExpression) {
+          return;
+        }
+        if (
+          onClick &&
+          !node.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute")) &&
+          node.attributes.filter(
+            (attribute) =>
+              isNodeOfType(attribute, "JSXAttribute") &&
+              CLICK_HANDLERS.some(
+                (handlerName) =>
+                  getJsxAttributeName(attribute.name)?.toLowerCase() === handlerName.toLowerCase(),
+              ),
+          ).length === 1 &&
+          getStringLiteralAttributeValue(onClick) === "" &&
+          (isNodeOfType(onClick.value, "Literal") ||
+            (isNodeOfType(onClick.value, "JSXExpressionContainer") &&
+              isNodeOfType(onClick.value.expression, "Literal")))
+        ) {
           return;
         }
         if (onClick && isPureEventBlockerHandler(onClick)) return;

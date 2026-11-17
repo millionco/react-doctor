@@ -20,7 +20,9 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics.length).toBeGreaterThanOrEqual(minimumDiagnosticCount);
   for (const diagnostic of result.diagnostics) {
-    expect(diagnostic.message).toContain("Pushing state up to a parent");
+    expect(diagnostic.message).toBe(
+      "This effect passes a value to a callback provided by the caller.",
+    );
   }
 };
 
@@ -28,7 +30,9 @@ const expectFiresOnce = (code: string): void => {
   const result = runRule(noPassLiveStateToParent, code);
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics).toHaveLength(1);
-  expect(result.diagnostics[0]?.message).toContain("Pushing state up to a parent");
+  expect(result.diagnostics[0]?.message).toBe(
+    "This effect passes a value to a callback provided by the caller.",
+  );
 };
 
 const makeInternxtHelperFixture = ({
@@ -57,6 +61,49 @@ const makeInternxtHelperFixture = ({
     return { hasMoreTrashFolders };
   };
 `;
+
+describe("no-pass-live-state-to-parent advice", () => {
+  it.each(["observeSelection", "setMirroredSelection"])(
+    "preserves the reported occurrence when the caller uses %s",
+    (parentCallback) => {
+      const result = runRule(
+        noPassLiveStateToParent,
+        `
+          import { useEffect, useState } from "react";
+          const observeSelection = (selection) => console.info(selection);
+          function Child({ onSelection }) {
+            const [selection, setSelection] = useState("");
+            useEffect(() => onSelection(selection), [onSelection, selection]);
+            return <button onClick={() => setSelection("A")}>Choose</button>;
+          }
+          export function Parent() {
+            const [, setMirroredSelection] = useState("");
+            return <Child onSelection={${parentCallback}} />;
+          }
+        `,
+        { includeLocations: true },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([
+        {
+          column: 28,
+          line: 6,
+          message: "This effect passes a value to a callback provided by the caller.",
+          nodeType: "CallExpression",
+        },
+      ]);
+    },
+  );
+
+  it("makes the extra render conditional and preserves child ownership and notification timing", () => {
+    const recommendation = noPassLiveStateToParent.recommendation;
+    expect(recommendation).toContain("Mirroring local state in the caller can add a render");
+    expect(recommendation).toContain("If the caller should own the value");
+    expect(recommendation).toContain("Keep child-owned draft or interaction state");
+    expect(recommendation).toContain("only when that preserves the required timing");
+  });
+});
 
 describe("no-pass-live-state-to-parent — must-detect regressions", () => {
   it("preserves live-state flow through direct React useEffectEvent wrappers", () => {

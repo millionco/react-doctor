@@ -1,3 +1,4 @@
+import { isClassPostMountProducer } from "./utils/is-class-post-mount-producer.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { collectMutationReceiverKinds } from "../../utils/collect-mutation-receiver-kinds.js";
@@ -840,6 +841,7 @@ const isStableConvergenceValue = (
   callbackRefFieldNames: ReadonlySet<string>,
   setStateCall?: EsTreeNode,
   visitedSymbolIds: ReadonlySet<number> = new Set(),
+  allowsClassPostMountProducer = true,
 ): boolean => {
   const unwrappedValue = stripParenExpression(value);
   const sourcePath = getStateSourcePath(unwrappedValue, NO_PREVIOUS_SOURCE_PATHS, scopes);
@@ -848,7 +850,15 @@ const isStableConvergenceValue = (
     isNodeOfType(unwrappedValue, "Literal") ||
     (sourcePath !== null &&
       (!setStateCall || setStatePreservesSourcePath(setStateCall, sourcePath))) ||
-    derivesFromPostMountValue(unwrappedValue, localInitializers, callbackRefFieldNames)
+    derivesFromPostMountValue(unwrappedValue, localInitializers, callbackRefFieldNames) ||
+    (allowsClassPostMountProducer &&
+      setStateCall !== undefined &&
+      isClassPostMountProducer({
+        call: unwrappedValue,
+        setStateCall,
+        scopes,
+        callbackRefFields: callbackRefFieldNames,
+      }))
   ) {
     return true;
   }
@@ -869,6 +879,11 @@ const isStableConvergenceValue = (
     callbackRefFieldNames,
     setStateCall,
     new Set([...visitedSymbolIds, symbol.id]),
+    allowsClassPostMountProducer &&
+      isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+      isNodeOfType(symbol.declarationNode.id, "Identifier") &&
+      symbol.declarationNode.id === symbol.bindingIdentifier &&
+      symbol.declarationNode.init === symbol.initializer,
   );
 };
 

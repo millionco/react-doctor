@@ -421,6 +421,35 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `import fuzzKatexSanitizer from "katex"; import fuzzPurifier from "dompurify"; Object.assign(fuzzPurifier, { sanitize: (value) => value }); const renderFuzzSanitizedMath = (value) => { try { return fuzzKatexSanitizer.renderToString(value); } catch { return fuzzPurifier.sanitize(value); } }; export const FuzzMutatedSanitizerMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: renderFuzzSanitizedMath(value) }} />;`,
   `import fuzzKatexPurified from "katex"; import fuzzPurifierNamespace from "dompurify"; fuzzPurifierNamespace.renderToString = (value) => value; const renderFuzzPurifiedMath = (value) => { try { return fuzzKatexPurified.renderToString(value); } catch { return fuzzPurifierNamespace.sanitize(value); } }; export const FuzzPurifiedMathPreview = ({ value }) => <span dangerouslySetInnerHTML={{ __html: renderFuzzPurifiedMath(value) }} />;`,
   `import fuzzKatexSibling from "katex"; import fuzzSiblingPurifier from "dompurify"; const replaceFuzzSanitizer = () => { fuzzSiblingPurifier.sanitize = (value) => value; }; const renderFuzzSiblingMath = (value) => { try { return fuzzKatexSibling.renderToString(value); } catch { return fuzzSiblingPurifier.sanitize(value); } }; export const FuzzSiblingMutationMathPreview = ({ value }) => { replaceFuzzSanitizer(); return <span dangerouslySetInnerHTML={{ __html: renderFuzzSiblingMath(value) }} />; };`,
+  `import * as FuzzMeasuredReact from "react";
+type FuzzMeasuredKind = 'wide' | 'tall';
+interface FuzzMeasuredProps { revision: number; onMeasured?(): void; }
+interface FuzzMeasuredState { layoutKind: FuzzMeasuredKind; other: boolean; }
+export class FuzzMeasuredPanel extends FuzzMeasuredReact.Component<FuzzMeasuredProps, FuzzMeasuredState> {
+  state: FuzzMeasuredState = { layoutKind: 'tall', other: false };
+  hostRef = FuzzMeasuredReact.createRef<HTMLDivElement>();
+  mediaRef = FuzzMeasuredReact.createRef<HTMLImageElement>();
+  lastBounds: DOMRect | null = null;
+  details() { return { caption: 'layout' }; }
+  caption() {
+    const record = this.details();
+    const { caption: text } = record;
+    return text;
+  }
+  readLayout(): FuzzMeasuredKind {
+    const host = this.hostRef.current;
+    if (host === null) return 'tall';
+    const bounds = host.getBoundingClientRect();
+    this.lastBounds = bounds;
+    const naturalWidth = this.mediaRef.current?.naturalWidth || 0;
+    return naturalWidth > bounds.width ? 'wide' : 'tall';
+  }
+  componentDidUpdate(_previousFuzzMeasuredProps: FuzzMeasuredProps): void {
+    const next = this.readLayout();
+    if (next !== this.state.layoutKind) { this.setState({ layoutKind: next }); }
+  }
+  render() { return <div ref={this.hostRef}>{this.caption()}</div>; }
+}`,
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [

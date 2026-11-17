@@ -14,6 +14,7 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { functionReturnsDisplayNameRenderOutput } from "../../utils/function-returns-display-name-render-output.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { hasNamedForwardRefFactoryResults } from "./utils/has-named-forward-ref-factory-results.js";
 
 const hasOnlyNullArgumentRenderPaths = (
   functionNode: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
@@ -628,6 +629,9 @@ export const displayName = defineRule({
           return;
         }
         if (shouldReportHoCDisplayName(node as EsTreeNode, settings)) {
+          if (shouldUseCuratedBehavior && hasNamedForwardRefFactoryResults(node, context.scopes)) {
+            return;
+          }
           reportAt(node as EsTreeNode);
           return;
         }

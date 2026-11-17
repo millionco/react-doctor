@@ -26,26 +26,33 @@ export const runReducedMotionCheck = async ({
   if (!hasMotionLibraryDependency(rootDirectory)) return [];
   if (!fs.existsSync(workerScriptPath)) return checkReducedMotion(rootDirectory);
 
+  let worker: Worker;
+  try {
+    worker = new Worker(workerScriptPath, { workerData: rootDirectory });
+  } catch {
+    return checkReducedMotion(rootDirectory);
+  }
+
   return new Promise((resolve, reject) => {
-    const worker = new Worker(workerScriptPath, { workerData: rootDirectory });
-    const onAbort = (): void => {
+    let isSettled = false;
+    const settle = (): boolean => {
+      if (isSettled) return false;
+      isSettled = true;
+      signal?.removeEventListener("abort", onAbort);
       void worker.terminate();
-      reject(signal?.reason);
+      return true;
+    };
+    const onAbort = (): void => {
+      if (settle()) reject(signal?.reason);
+    };
+    const fallBack = (): void => {
+      if (settle()) resolve(Promise.resolve().then(() => checkReducedMotion(rootDirectory)));
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     worker.once("message", (diagnostics: Diagnostic[]) => {
-      signal?.removeEventListener("abort", onAbort);
-      void worker.terminate();
-      resolve(diagnostics);
+      if (settle()) resolve(diagnostics);
     });
-    worker.once("error", (error) => {
-      signal?.removeEventListener("abort", onAbort);
-      void worker.terminate();
-      reject(error);
-    });
-    worker.once("exit", (exitCode) => {
-      signal?.removeEventListener("abort", onAbort);
-      reject(new Error(`Reduced-motion worker exited with code ${exitCode} before replying.`));
-    });
+    worker.once("error", fallBack);
+    worker.once("exit", fallBack);
   });
 };

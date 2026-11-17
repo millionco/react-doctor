@@ -75,18 +75,24 @@ export const App = () => <MotionConfig reducedMotion="always"><motion.div animat
     await expect(runReducedMotionCheck({ rootDirectory, workerScriptPath })).resolves.toEqual([]);
   });
 
-  it.each([
-    { script: 'throw new Error("motion analysis failed");', message: "motion analysis failed" },
-    { script: "process.exit(0);", message: "exited with code 0 before replying" },
-    { script: "process.exit(3);", message: "exited with code 3 before replying" },
-  ])("propagates worker failure: $message", async ({ script, message }) => {
-    const rootDirectory = createProject();
-    const brokenWorkerScriptPath = path.join(rootDirectory, "broken-worker.js");
-    fs.writeFileSync(brokenWorkerScriptPath, script);
-    await expect(
-      runReducedMotionCheck({ rootDirectory, workerScriptPath: brokenWorkerScriptPath }),
-    ).rejects.toThrow(message);
-  });
+  describe.each([motionSource, "export const App = () => <div>still</div>;"])(
+    "worker failure with source: %s",
+    (source) => {
+      it.each([
+        'throw new Error("motion analysis failed");',
+        "process.exit(0);",
+        "process.exit(3);",
+      ])("falls back to synchronous diagnostics: %s", async (script) => {
+        const rootDirectory = createProject();
+        fs.writeFileSync(path.join(rootDirectory, "app.tsx"), source);
+        const brokenWorkerScriptPath = path.join(rootDirectory, "broken-worker.js");
+        fs.writeFileSync(brokenWorkerScriptPath, script);
+        await expect(
+          runReducedMotionCheck({ rootDirectory, workerScriptPath: brokenWorkerScriptPath }),
+        ).resolves.toEqual(checkReducedMotion(rootDirectory));
+      });
+    },
+  );
 
   it.each([true, false])(
     "terminates on cancellation (already aborted: %s)",

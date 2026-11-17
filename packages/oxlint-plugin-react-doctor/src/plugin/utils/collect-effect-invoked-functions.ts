@@ -136,13 +136,19 @@ export const collectSynchronouslyEffectInvokedFunctions = (
 export const collectSynchronouslyInvokedLocalFunctions = (
   executionRoot: EsTreeNode,
   scopes: ScopeAnalysis,
+  shouldFollowCall?: (call: EsTreeNode) => boolean,
+  shouldFollowFunction?: (functionNode: EsTreeNode) => boolean,
 ): Set<EsTreeNode> => {
   const invokedFunctions = new Set<EsTreeNode>();
   const pendingExecutionRoots: EsTreeNode[] = [executionRoot];
   const visitedExecutionRoots = new Set<EsTreeNode>();
   const enqueue = (candidate: EsTreeNode | null): void => {
     if (!candidate || !isFunctionLike(candidate) || candidate.generator) return;
-    if (invokedFunctions.has(candidate)) return;
+    if (
+      invokedFunctions.has(candidate) ||
+      (shouldFollowFunction && !shouldFollowFunction(candidate))
+    )
+      return;
     invokedFunctions.add(candidate);
     pendingExecutionRoots.push(candidate);
   };
@@ -155,7 +161,7 @@ export const collectSynchronouslyInvokedLocalFunctions = (
     visitedExecutionRoots.add(currentRoot);
     walkAst(currentRoot, (node) => {
       if (node !== currentRoot && isFunctionLike(node)) return false;
-      if (node.type !== "CallExpression") return;
+      if (node.type !== "CallExpression" || (shouldFollowCall && !shouldFollowCall(node))) return;
       enqueue(resolveExactLocalFunction(node.callee, scopes));
       for (const argument of node.arguments) {
         if (

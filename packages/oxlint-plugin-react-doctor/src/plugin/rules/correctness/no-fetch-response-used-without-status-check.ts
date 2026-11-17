@@ -3,14 +3,20 @@ import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbol
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isProvenGlobalObjectReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
@@ -26,6 +32,39 @@ const PROMISE_CHAIN_METHODS = new Set(["then", "catch", "finally"]);
 // `data:` / `blob:` URLs decode in-process — they can never produce an
 // HTTP 4xx/5xx, so the Response is always ok and a status check is noise.
 const INERT_URL_SCHEME_PATTERN = /^(?:data|blob):/i;
+const PROMISE_STATIC_METHOD_NAMES = new Set([
+  "all",
+  "allSettled",
+  "any",
+  "race",
+  "reject",
+  "resolve",
+  "try",
+  "withResolvers",
+]);
+const ARRAY_STATIC_METHOD_NAMES = new Set(["from", "fromAsync", "isArray", "of"]);
+const GLOBAL_NATIVE_CAPABILITY_NAMES = new Set([
+  "Array",
+  "Function",
+  "Object",
+  "Promise",
+  "Reflect",
+  "eval",
+  "fetch",
+  "global",
+  "globalThis",
+  "self",
+  "window",
+]);
+const PROMISE_ALL_ITERATION_ESCAPE_PROPERTIES = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+  "getPrototypeOf",
+  "getOwnPropertyDescriptor",
+  "getOwnPropertyDescriptors",
+  "setPrototypeOf",
+]);
 const MAX_URL_BINDING_RESOLUTION_DEPTH = 4;
 // Build-time scripts (Gatsby node APIs, *.config.* files) run once at
 // build and fail the build loudly on a bad response — not user-facing.
@@ -953,6 +992,196 @@ const reportUnguarded = ({
   context.report({ node: reportNode, message: MESSAGE });
 };
 
+const hasVisiblePromiseAllIterationEscape = (context: RuleContext): boolean => {
+  let hasEscape = false;
+  walkAst(context.scopes.rootScope.node, (node) => {
+    if (hasEscape || isTypeScriptTypePosition(node)) return false;
+    if (
+      isNodeOfType(node, "Identifier") &&
+      context.scopes.referenceFor(node) &&
+      context.scopes.isGlobalReference(node)
+    ) {
+      const root = findTransparentExpressionRoot(node);
+      const parent = root.parent;
+      const member =
+        isNodeOfType(parent, "MemberExpression") && parent.object === root ? parent : null;
+      const memberName = member ? getStaticPropertyName(member) : null;
+      const staticMethods =
+        node.name === "Promise"
+          ? PROMISE_STATIC_METHOD_NAMES
+          : node.name === "Array"
+            ? ARRAY_STATIC_METHOD_NAMES
+            : null;
+      if (staticMethods) {
+        const memberRoot = member ? findTransparentExpressionRoot(member) : null;
+        const call = memberRoot?.parent;
+        const directNativeUse =
+          (isNodeOfType(parent, "NewExpression") && parent.callee === root) ||
+          (node.name === "Array" &&
+            isNodeOfType(parent, "CallExpression") &&
+            parent.callee === root) ||
+          (memberName &&
+            staticMethods.has(memberName) &&
+            isNodeOfType(call, "CallExpression") &&
+            call.callee === memberRoot);
+        if (!directNativeUse) hasEscape = true;
+      } else if (
+        node.name === "Function" ||
+        node.name === "Reflect" ||
+        (node.name === "Object" && !memberName) ||
+        (isProvenGlobalObjectReference(node, context.scopes) &&
+          (!memberName || GLOBAL_NATIVE_CAPABILITY_NAMES.has(memberName)))
+      ) {
+        hasEscape = true;
+      }
+      if (hasEscape) return false;
+    }
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") &&
+        node.name === "eval" &&
+        context.scopes.referenceFor(node)) ||
+      (isNodeOfType(node, "MemberExpression") &&
+        (PROMISE_ALL_ITERATION_ESCAPE_PROPERTIES.has(getStaticPropertyName(node) ?? "") ||
+          (node.computed && isProvenGlobalObjectReference(node.object, context.scopes)))) ||
+      (isNodeOfType(node, "Property") &&
+        isNodeOfType(node.parent, "ObjectPattern") &&
+        PROMISE_ALL_ITERATION_ESCAPE_PROPERTIES.has(
+          getStaticPropertyKeyName(node, { allowComputedString: true }) ?? "",
+        ))
+    ) {
+      hasEscape = true;
+    }
+  });
+  return hasEscape;
+};
+
+const getPromiseAllInputOrigin = (
+  rawInput: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  let input = stripParenExpression(rawInput);
+  const visited = new Set<number>();
+  while (isNodeOfType(input, "Identifier")) {
+    const symbol = context.scopes.symbolFor(input);
+    const initializer = symbol ? getDirectConstInitializer(symbol) : null;
+    if (
+      !symbol ||
+      !initializer ||
+      visited.has(symbol.id) ||
+      findEnclosingFunction(symbol.declarationNode) !== owner ||
+      symbol.references.length !== 1 ||
+      symbol.references[0].flag !== "read" ||
+      symbol.references[0].identifier !== input ||
+      initializer.range[1] > input.range[0]
+    ) {
+      return null;
+    }
+    visited.add(symbol.id);
+    input = stripParenExpression(initializer);
+  }
+  return input;
+};
+
+const reportPromiseAllResponses = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+  hasIterationEscape: () => boolean,
+): void => {
+  const callee = stripParenExpression(call.callee);
+  if (
+    call.optional ||
+    call.arguments.length !== 1 ||
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.optional ||
+    callee.computed ||
+    getStaticPropertyName(callee) !== "all" ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    callee.object.name !== "Promise"
+  ) {
+    return;
+  }
+  const input = stripParenExpression(call.arguments[0]);
+  const callRoot = findTransparentExpressionRoot(call);
+  const awaitNode = callRoot.parent;
+  if (!isNodeOfType(input, "ArrayExpression") || !isNodeOfType(awaitNode, "AwaitExpression")) {
+    return;
+  }
+  const awaitRoot = findTransparentExpressionRoot(awaitNode);
+  const declarator = awaitRoot.parent;
+  const owner = findEnclosingFunction(call);
+  if (
+    !owner ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== awaitRoot ||
+    !isNodeOfType(declarator.parent, "VariableDeclaration") ||
+    declarator.parent.kind !== "const" ||
+    !isNodeOfType(declarator.id, "ArrayPattern") ||
+    declarator.id.elements.length > input.elements.length ||
+    declarator.id.elements.some((element) => !isNodeOfType(element, "Identifier"))
+  ) {
+    return;
+  }
+
+  const fetches: Array<EsTreeNodeOfType<"CallExpression"> | null> = [];
+  for (const element of input.elements) {
+    if (!element || isNodeOfType(element, "SpreadElement")) return;
+    const origin = getPromiseAllInputOrigin(element, owner, context);
+    if (
+      isNodeOfType(origin, "CallExpression") &&
+      !origin.optional &&
+      isGlobalFetchCall(origin, context) &&
+      isProvenUnmodifiedGlobalNamespaceReference(
+        origin.callee,
+        "fetch",
+        context.scopes,
+        undefined,
+        true,
+      )
+    ) {
+      fetches.push(fetchesInertUrlScheme(origin, context) ? null : origin);
+    } else if (
+      (isNodeOfType(origin, "Literal") &&
+        (origin.value === null ||
+          ["string", "number", "boolean", "bigint"].includes(typeof origin.value))) ||
+      (isNodeOfType(origin, "NewExpression") &&
+        isNodeOfType(origin.callee, "Identifier") &&
+        origin.callee.name === "Promise" &&
+        context.scopes.isGlobalReference(origin.callee))
+    ) {
+      fetches.push(null);
+    } else {
+      return;
+    }
+  }
+  if (
+    !fetches.some(Boolean) ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      callee.object,
+      "Promise",
+      context.scopes,
+      undefined,
+      true,
+    ) ||
+    hasIterationEscape()
+  ) {
+    return;
+  }
+  for (const [index, responseBinding] of declarator.id.elements.entries()) {
+    const fetch = fetches[index];
+    if (!fetch || !isNodeOfType(responseBinding, "Identifier")) continue;
+    const symbol = context.scopes.symbolFor(responseBinding);
+    if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) continue;
+    reportUnguarded({
+      context,
+      reportNode: fetch,
+      responseBinding,
+      responseBindingCanBeUndefined: false,
+    });
+  }
+};
+
 // Flags consuming a global-`fetch` Response without an `ok`/`status`
 // check: `.json()`/`.text()`/`.blob()` (or a truthiness test on the
 // Response, which is always truthy) with no preceding `response.ok` /
@@ -974,9 +1203,17 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
     const normalizedFilename = (context.filename ?? "").replaceAll("\\", "/");
     const basename = normalizedFilename.slice(normalizedFilename.lastIndexOf("/") + 1);
     if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return EMPTY_RULE_VISITORS;
+    let hasIterationEscape: boolean | undefined;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isGlobalFetchCall(node, context)) return;
+        if (!isGlobalFetchCall(node, context)) {
+          reportPromiseAllResponses(
+            node,
+            context,
+            () => (hasIterationEscape ??= hasVisiblePromiseAllIterationEscape(context)),
+          );
+          return;
+        }
         if (fetchesInertUrlScheme(node, context)) return;
         const fetchExpression = findTransparentExpressionRoot(node as EsTreeNode);
         const parent = getMeaningfulParent(fetchExpression);

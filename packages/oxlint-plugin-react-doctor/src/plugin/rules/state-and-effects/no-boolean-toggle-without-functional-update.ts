@@ -21,6 +21,7 @@ import { statementTerminates } from "../../utils/statement-terminates.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { getBranchAssignedListenerFunctions } from "./utils/get-branch-assigned-listener-functions.js";
 
 const TIMER_CALLBACK_INDEX_BY_NAME = new Map([
   ["setTimeout", 0],
@@ -242,6 +243,11 @@ const collectDeferredFunctions = (
     if (methodName === "addEventListener") {
       const callback = resolveFunctionExpression(child.arguments?.[1], context);
       addDeferredFunction(callback, child);
+      if (!callback) {
+        for (const assignedCallback of getBranchAssignedListenerFunctions(child, context)) {
+          addDeferredFunction(assignedCallback, child);
+        }
+      }
       return;
     }
     if (methodName === "subscribe") {

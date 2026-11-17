@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { fuzzRule, fuzzRuleWithStats } from "../src/fuzz-rule.js";
 import { generateStructuredFuzzProgram } from "../src/generate-fuzz-program.js";
 import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
+import { getFuzzCorpusFilename } from "../src/utils/get-fuzz-corpus-filename.js";
 import { createSeededRandom } from "../src/seeded-random.js";
 import { buildAstEquivalentFuzzVariants } from "../src/ast-equivalent-fuzz-variants.js";
 import { buildVerdictPreservingVariants } from "../src/verdict-preserving-variants.js";
@@ -100,11 +101,11 @@ describe("fuzz harness oracles", () => {
         const diagnosticCount =
           typeof rule.scan === "function"
             ? runScanRule(rule, {
-                relativePath: entry.sourcePath ?? entry.relativePath,
+                relativePath: getFuzzCorpusFilename(entry, true),
                 content: entry.code,
               }).length
             : runRule(rule, entry.code, {
-                filename: entry.sourcePath ?? entry.relativePath,
+                filename: getFuzzCorpusFilename(entry, false),
                 settings: livenessFixturesById.get(ruleId)?.settings,
                 forceJsx: true,
               }).diagnostics.length;

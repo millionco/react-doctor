@@ -271,7 +271,7 @@ const isMemberWriteTarget = (memberExpression: EsTreeNode): boolean => {
   );
 };
 
-const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
+export const getMemberWriteTarget = (identifier: EsTreeNode): EsTreeNode | null => {
   let parent = identifier.parent;
   while (parent && stripParenExpression(parent) === identifier) {
     parent = parent.parent;
@@ -325,7 +325,7 @@ const symbolHasStaticPropertyWriteBefore = (
     );
   });
 
-const isStableStaticPropertyReference = (identifier: EsTreeNode): boolean => {
+export const isStableStaticPropertyReference = (identifier: EsTreeNode): boolean => {
   if (isDirectAliasSourceReference(identifier)) return true;
   const identifierRoot = findTransparentExpressionRoot(identifier);
   const memberExpression = identifierRoot.parent;

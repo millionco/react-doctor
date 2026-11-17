@@ -5,15 +5,17 @@ import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getStaticObjectProperty } from "../../utils/get-static-object-property.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
-import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
-import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
+import { isPrimitiveLiteral } from "../../utils/is-primitive-literal.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
@@ -431,9 +433,9 @@ const spreadCannotSupplyType = (
       if (isNodeOfType(property, "SpreadElement")) {
         return spreadCannotSupplyType(property.argument as EsTreeNode, visitedIdentifiers);
       }
-      if (!isNodeOfType(property, "Property")) return false;
+      if (!isNodeOfType(property, "Property") || property.kind === "get") return false;
       const keyName = propertyKeyName(property);
-      return keyName !== null && keyName !== "type";
+      return keyName !== null && keyName.toLowerCase() !== "type";
     });
   }
   if (isNodeOfType(expression, "CallExpression")) {
@@ -460,8 +462,105 @@ const spreadCannotSupplyType = (
   return false;
 };
 
-const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTreeNode): void => {
-  context.report({ node: reportNode, message: INVALID_MESSAGE });
+interface TypePropKeys {
+  typeName: string | null;
+  hasUnknownKeys: boolean;
+}
+
+const analyzeTypePropKeys = (
+  root: EsTreeNode,
+  isTypeFreeSpread: (expression: EsTreeNode) => boolean,
+): TypePropKeys | null => {
+  let typeName: string | null = null;
+  let hasUnknownKeys = false;
+  const hasConflict = (node: EsTreeNode): boolean => {
+    if (isNodeOfType(node, "JSXOpeningElement")) return node.attributes.some(hasConflict);
+    if (isNodeOfType(node, "ObjectExpression")) return node.properties.some(hasConflict);
+    if (isNodeOfType(node, "JSXSpreadAttribute") || isNodeOfType(node, "SpreadElement")) {
+      const expression = stripParenExpression(node.argument);
+      if (isNodeOfType(expression, "ObjectExpression")) return hasConflict(expression);
+      if (!isTypeFreeSpread(expression)) hasUnknownKeys = true;
+      return false;
+    }
+    if (!isNodeOfType(node, "JSXAttribute") && !isNodeOfType(node, "Property")) {
+      hasUnknownKeys = true;
+      return false;
+    }
+    const propertyName = isNodeOfType(node, "JSXAttribute")
+      ? getJsxAttributeName(node.name)
+      : getStaticPropertyKeyName(node, {
+          allowComputedString: true,
+          stringifyNonStringLiterals: isPrimitiveLiteral(node.key),
+        });
+    if (propertyName === null) {
+      hasUnknownKeys = true;
+      return false;
+    }
+    if (propertyName === "__proto__") {
+      return (
+        !isNodeOfType(node, "Property") ||
+        node.computed ||
+        node.method ||
+        node.shorthand ||
+        node.kind !== "init"
+      );
+    }
+    if (propertyName.toLowerCase() !== "type") return false;
+    if (typeName !== null) return typeName !== propertyName;
+    typeName = propertyName;
+    return false;
+  };
+  return hasConflict(root) ? null : { typeName, hasUnknownKeys };
+};
+
+interface EffectiveButtonType {
+  value: EsTreeNode | null;
+  reportNode: EsTreeNode;
+}
+
+const reportInvalidType = (
+  context: Parameters<Rule["create"]>[0],
+  { value, reportNode }: EffectiveButtonType,
+  settings: Required<ButtonHasTypeSettings>,
+): void => {
+  if (value && isConsumerPropForward(value, settings)) return;
+  if (!value || !isProvenValidExpression(value, settings)) {
+    context.report({ node: reportNode, message: INVALID_MESSAGE });
+  }
+};
+
+const getEffectiveJsxType = (
+  attributes: EsTreeNodeOfType<"JSXOpeningElement">["attributes"],
+  typeName: string,
+  readObjectType: (
+    expression: EsTreeNode,
+    typeName: string,
+  ) => EffectiveButtonType | null | undefined,
+): EffectiveButtonType | null | undefined => {
+  for (let attributeIndex = attributes.length - 1; attributeIndex >= 0; attributeIndex -= 1) {
+    const attribute = attributes[attributeIndex];
+    if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
+      const type = readObjectType(attribute.argument, typeName);
+      if (type !== undefined) return type;
+      continue;
+    }
+    if (
+      !isNodeOfType(attribute, "JSXAttribute") ||
+      getJsxAttributeName(attribute.name) !== typeName
+    ) {
+      continue;
+    }
+    const value = attribute.value;
+    if (!value || isNodeOfType(value, "Literal")) return { value, reportNode: attribute };
+    if (
+      isNodeOfType(value, "JSXExpressionContainer") &&
+      value.expression.type !== "JSXEmptyExpression"
+    ) {
+      return { value: value.expression, reportNode: attribute };
+    }
+    return null;
+  }
+  return undefined;
 };
 
 const jsxButtonHasAssociatedForm = (
@@ -519,6 +618,28 @@ export const buttonHasType = defineRule({
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    const isTypeFreeSpread = (spread: EsTreeNode): boolean =>
+      isNodeOfType(spread, "TemplateLiteral") ||
+      isNodeOfType(spread, "Literal") ||
+      isNodeOfType(spread, "UnaryExpression") ||
+      (isNodeOfType(spread, "Identifier") &&
+        spread.name === "undefined" &&
+        context.scopes.isGlobalReference(spread));
+    const readObjectType = (
+      expression: EsTreeNode,
+      typeName: string,
+    ): EffectiveButtonType | null | undefined => {
+      const property = getStaticObjectProperty(expression, typeName, {
+        followLiteralSpreads: true,
+        isSpreadKnownToOmitProperty: isTypeFreeSpread,
+      });
+      if (!property) return property;
+      if (property.kind === "get") return null;
+      return {
+        value: property.kind === "init" ? property.value : null,
+        reportNode: property.value,
+      };
+    };
     // Storybook stories and tests routinely render bare `<button>` without
     // a `type` attribute — the buttons aren't inside a real form so the
     // implicit `submit` behaviour is irrelevant. Skip these.
@@ -528,8 +649,15 @@ export const buttonHasType = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (shouldUseCuratedBehavior && isTestlikeFile) return;
         if (resolveJsxElementType(node) !== "button") return;
-        const typeAttr = hasJsxPropIgnoreCase(node.attributes, "type");
-        if (!typeAttr) {
+        const keys = analyzeTypePropKeys(node, isTypeFreeSpread);
+        if (!keys || (keys.typeName && keys.hasUnknownKeys)) return;
+        const effectiveType = getEffectiveJsxType(
+          node.attributes,
+          keys.typeName ?? "type",
+          readObjectType,
+        );
+        if (!effectiveType) {
+          if (keys.typeName) return;
           if (
             shouldUseCuratedBehavior &&
             !jsxButtonHasAssociatedForm(node) &&
@@ -537,40 +665,20 @@ export const buttonHasType = defineRule({
           ) {
             return;
           }
-          // A spread (`<button {...props} />`) can forward `type` at
-          // runtime, so the absence of an explicit attribute isn't proof —
-          // unless every spread provably cannot carry a `type` key (e.g.
-          // react-aria event-handler prop bags).
-          if (hasJsxSpreadAttribute(node.attributes)) {
-            const everySpreadIsTypeFree = node.attributes.every(
+          if (
+            effectiveType === null &&
+            node.attributes.some(
               (attribute) =>
-                !isNodeOfType(attribute, "JSXSpreadAttribute") ||
-                spreadCannotSupplyType(attribute.argument as EsTreeNode),
-            );
-            if (!everySpreadIsTypeFree) return;
+                isNodeOfType(attribute, "JSXSpreadAttribute") &&
+                !spreadCannotSupplyType(attribute.argument),
+            )
+          ) {
+            return;
           }
           context.report({ node: node.name, message: MISSING_MESSAGE });
           return;
         }
-        const value = typeAttr.value;
-        // Bare `<button type />` is shorthand for `type={true}` — not
-        // any of the allowed string values.
-        if (!value) {
-          reportInvalid(context, typeAttr);
-          return;
-        }
-        if (isNodeOfType(value, "Literal")) {
-          if (!isProvenValidExpression(value, settings)) reportInvalid(context, typeAttr);
-          return;
-        }
-        if (isNodeOfType(value, "JSXExpressionContainer")) {
-          const expression = value.expression;
-          if (!expression || expression.type === "JSXEmptyExpression") return;
-          if (isConsumerPropForward(expression as EsTreeNode, settings)) return;
-          if (!isProvenValidExpression(expression as EsTreeNode, settings)) {
-            reportInvalid(context, typeAttr);
-          }
-        }
+        reportInvalidType(context, effectiveType, settings);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (shouldUseCuratedBehavior && isTestlikeFile) return;
@@ -597,47 +705,19 @@ export const buttonHasType = defineRule({
         // An opaque props bag (`createElement("button", props)`) may forward
         // `type` at runtime — mirror the JSX spread bailout, which doesn't
         // report a missing attribute it cannot see.
-        if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
-        let typeProp: EsTreeNode | null = null;
-        let hasSpread = false;
-        for (const property of propsArgument.properties) {
-          if (isNodeOfType(property, "SpreadElement")) {
-            hasSpread = true;
-            continue;
-          }
-          if (!isNodeOfType(property, "Property")) continue;
-          const propertyKey = property.key;
-          const matches =
-            (isNodeOfType(propertyKey, "Identifier") && propertyKey.name === "type") ||
-            (isNodeOfType(propertyKey, "Literal") && propertyKey.value === "type");
-          if (matches) {
-            typeProp = property.value;
-            break;
-          }
-        }
+        const propsObject = stripParenExpression(propsArgument);
+        if (!isNodeOfType(propsObject, "ObjectExpression")) return;
+        const keys = analyzeTypePropKeys(propsObject, isTypeFreeSpread);
+        if (!keys || (keys.typeName && keys.hasUnknownKeys)) return;
+        const typeProp = readObjectType(propsObject, keys.typeName ?? "type");
         if (!typeProp) {
+          if (keys.typeName) return;
           if (shouldUseCuratedBehavior && !hasFormOwner) return;
-          // `{ ...props }` may supply `type` at runtime, just like a JSX
-          // spread — unless every spread provably cannot carry `type`.
-          if (hasSpread) {
-            const everySpreadIsTypeFree = propsArgument.properties.every(
-              (property) =>
-                !isNodeOfType(property, "SpreadElement") ||
-                spreadCannotSupplyType(property.argument as EsTreeNode),
-            );
-            if (!everySpreadIsTypeFree) return;
-          }
+          if (typeProp === null && !spreadCannotSupplyType(propsObject)) return;
           context.report({ node: propsArgument, message: MISSING_MESSAGE });
           return;
         }
-        // Mirror the JSX branch: consumer-forwarded `type` (`{ type: type }`
-        // / `{ type: props.type }` / defaulted forwards) is a wrapper
-        // re-exporting the prop, so the diagnostic should fire at the
-        // caller's literal, not at the trampoline.
-        if (isConsumerPropForward(typeProp, settings)) return;
-        if (!isProvenValidExpression(typeProp, settings)) {
-          reportInvalid(context, typeProp);
-        }
+        reportInvalidType(context, typeProp, settings);
       },
     };
   },

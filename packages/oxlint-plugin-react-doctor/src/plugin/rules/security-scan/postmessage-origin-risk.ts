@@ -1,3 +1,5 @@
+import { analyzeScopes, type ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { getNamedWindowMessageDataRead } from "../../utils/get-named-window-message-data-read.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
@@ -110,11 +112,12 @@ export const postmessageOriginRisk = defineRule({
     const ast = parseSourceText({
       filename: file.absolutePath,
       sourceText: file.content,
-      shouldAttachParentReferences: false,
+      shouldAttachParentReferences: true,
     });
     if (ast === null) return [];
 
     const findings: ScanFinding[] = [];
+    let namedCallbackScopes: ScopeAnalysis | null = null;
     walkAst(ast, (node) => {
       const targetText = getMessageHandlerTarget(file.content, node);
       if (targetText === null) return;
@@ -123,14 +126,27 @@ export const postmessageOriginRisk = defineRule({
       if (isSameApplicationChannelTypedReceiver(targetText, file.content)) return;
 
       const nodeText = getNodeText(file.content, node);
-      const messageDataIndex = nodeText.search(MESSAGE_DATA_READ_PATTERN);
-      if (messageDataIndex < 0) return;
-      const originCheckIndex = nodeText.search(POSTMESSAGE_ORIGIN_CHECK_PATTERN);
+      let handlerText = nodeText;
+      let messageDataIndex = nodeText.search(MESSAGE_DATA_READ_PATTERN);
+      let isLocalDataBinding = MESSAGE_DATA_BINDING_PATTERN.test(
+        nodeText.slice(0, messageDataIndex),
+      );
+      if (messageDataIndex < 0) {
+        namedCallbackScopes ??= analyzeScopes(ast);
+        const namedRead = getNamedWindowMessageDataRead(node, ast, namedCallbackScopes);
+        if (namedRead === null) return;
+        handlerText = getNodeText(file.content, namedRead.body);
+        messageDataIndex = getNodeStartIndex(namedRead.read) - getNodeStartIndex(namedRead.body);
+        isLocalDataBinding =
+          namedRead.isLocalBinding ||
+          MESSAGE_DATA_BINDING_PATTERN.test(handlerText.slice(0, messageDataIndex));
+      }
+      const originCheckIndex = handlerText.search(POSTMESSAGE_ORIGIN_CHECK_PATTERN);
       if (originCheckIndex >= 0) {
         // When the data is bound to a local first, the guard protects the
         // later use regardless of textual order (read-then-guard-then-use).
         // When the data is used directly, the guard must precede that use.
-        if (MESSAGE_DATA_BINDING_PATTERN.test(nodeText.slice(0, messageDataIndex))) return;
+        if (isLocalDataBinding) return;
         if (originCheckIndex < messageDataIndex) return;
       }
 

@@ -165,7 +165,7 @@ const checkHref = (
 };
 
 const checkRelValue = (text: string, allowReferrer: boolean): boolean => {
-  const tokens = text.split(/\s+/).map((token) => token.toLowerCase());
+  const tokens = text.split(/[ \t\n\r\f]+/).map((token) => token.toLowerCase());
   if (allowReferrer) {
     return tokens.includes("noopener") || tokens.includes("noreferrer");
   }

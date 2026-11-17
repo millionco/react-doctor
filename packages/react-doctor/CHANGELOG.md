@@ -1,5 +1,18 @@
 # react-doctor
 
+## 0.9.24
+
+### Patch Changes
+
+- [#2451](https://github.com/millionco/react-doctor/pull/2451) [`05dfafe`](https://github.com/millionco/react-doctor/commit/05dfafe5c1872c7f65bdf06c307eaeafb3e58549) Thanks [@aidenybai](https://github.com/aidenybai)! - Show the actual failure reason when maintainability or another analysis cannot complete in the terminal report. Preserve each project's reason in workspace summaries instead of only displaying a generic incomplete-results notice.
+
+- [#2450](https://github.com/millionco/react-doctor/pull/2450) [`0914288`](https://github.com/millionco/react-doctor/commit/0914288ea5fdc27f82fd38845e3c3aa53c174322) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an `onlyExportComponents` config option that forwards `customHOCs`, `allowExportNames`, `allowConstantExport`, and `checkJS` to the `only-export-components` rule, so exports wrapped in project HOCs (for example `export const Screen = withErrorBoundary(ScreenContent)`) stop being reported.
+
+- [#2442](https://github.com/millionco/react-doctor/pull/2442) [`661cb18`](https://github.com/millionco/react-doctor/commit/661cb187fbfe4e992acc89f76933e4f51244639f) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept composition early returns using logical OR without accepting partial AND guards. Skip Git-ignored source security findings while preserving scans of ignored browser build artifacts.
+
+- Updated dependencies [[`b6ba66e`](https://github.com/millionco/react-doctor/commit/b6ba66ef427bf81995555e380eeba679f8b5d305), [`190b5b6`](https://github.com/millionco/react-doctor/commit/190b5b69d1acd304976aab09f5ad8d86274310ef), [`661cb18`](https://github.com/millionco/react-doctor/commit/661cb187fbfe4e992acc89f76933e4f51244639f)]:
+  - oxlint-plugin-react-doctor@0.9.24
+
 ## 0.9.23
 
 ### Patch Changes

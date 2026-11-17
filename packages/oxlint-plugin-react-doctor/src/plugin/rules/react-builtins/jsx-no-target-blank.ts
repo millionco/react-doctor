@@ -1,14 +1,17 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasPossibleStaticPropertyMutationOrEscapeBefore } from "../../utils/has-static-property-write-before.js";
 import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { someAst } from "../../utils/some-ast.js";
 
 const NOREFERRER_MESSAGE =
   '`target="_blank"` without `rel="noreferrer"` lets the linked page hijack your tab to a phishing site.';
@@ -511,6 +514,17 @@ export const jsxNoTargetBlank = defineRule({
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    let hasDynamicScope: boolean | undefined;
+    const isUnshadowedUndefined = (identifier: EsTreeNode): boolean => {
+      if (!context.scopes.isGlobalReference(identifier)) return false;
+      hasDynamicScope ??= someAst(context.scopes.rootScope.node, (candidate) => {
+        if (isNodeOfType(candidate, "WithStatement")) return true;
+        if (!isNodeOfType(candidate, "CallExpression") || candidate.optional) return false;
+        const callee = stripParenExpression(candidate.callee);
+        return isNodeOfType(callee, "Identifier") && callee.name === "eval";
+      });
+      return !hasDynamicScope;
+    };
     const isLink = (tagName: string): boolean => {
       if (!settings.links) return false;
       if (tagName === "a") return true;
@@ -524,6 +538,7 @@ export const jsxNoTargetBlank = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const isNativeAnchor = node.name.name === "a";
         const tagName = resolveJsxElementType(node);
         if (!tagName) return;
         const tagIsLink = isLink(tagName);
@@ -568,6 +583,32 @@ export const jsxNoTargetBlank = defineRule({
         let isTargetAuthoritative = true;
         let isRelAuthoritative = true;
 
+        const isAbsentNativeHref = (propertyName: string, value: EsTreeNode): boolean => {
+          if (
+            !isNativeAnchor ||
+            propertyName !== "href" ||
+            !isNodeOfType(value, "JSXExpressionContainer")
+          ) {
+            return false;
+          }
+          const expression = stripParenExpression(value.expression);
+          if (!isNullishExpression(expression)) return false;
+          if (isNodeOfType(expression, "Identifier") && !isUnshadowedUndefined(expression)) {
+            return false;
+          }
+          return node.attributes.every((attribute) => {
+            if (!isNodeOfType(attribute, "JSXAttribute")) return false;
+            const attributeName = getJsxAttributeName(attribute.name);
+            const normalizedName = attributeName?.toLowerCase();
+            return (
+              normalizedName !== "is" &&
+              normalizedName !== "xlinkhref" &&
+              normalizedName !== "xlink:href" &&
+              (normalizedName !== "href" || attributeName === "href")
+            );
+          });
+        };
+
         const applyProperty = (
           propertyName: string,
           propertyValue: EsTreeNode | null,
@@ -589,9 +630,10 @@ export const jsxNoTargetBlank = defineRule({
             destinations.set(propertyName, {
               hasValue: true,
               isAuthoritative: true,
-              isValid: propertyValue
-                ? checkHref(propertyValue, settings.enforceDynamicLinks, context.scopes)
-                : true,
+              isValid:
+                !propertyValue ||
+                isAbsentNativeHref(propertyName, propertyValue) ||
+                checkHref(propertyValue, settings.enforceDynamicLinks, context.scopes),
             });
             return;
           }

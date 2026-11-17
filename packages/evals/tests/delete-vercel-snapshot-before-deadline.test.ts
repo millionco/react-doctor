@@ -6,6 +6,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("deleteVercelSnapshotBeforeDeadline", () => {
   it("recovers snapshots when the create response was lost", async () => {
+    vi.spyOn(globalThis.performance, "now").mockReturnValue(0);
     const deleteSnapshot = vi.fn(async () => undefined);
     vi.spyOn(Snapshot, "get").mockResolvedValue(
       Object.assign(Object.create(null), { delete: deleteSnapshot }),

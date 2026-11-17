@@ -23,6 +23,7 @@ import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
+import { getDynamicImportReturnedThen } from "./utils/get-dynamic-import-returned-then.js";
 import { getRuntimeStaticDependencySource } from "./utils/get-runtime-static-dependency-source.js";
 import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
@@ -40,6 +41,7 @@ import {
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
+import { resolveDirectDynamicImportModule } from "./utils/resolve-direct-dynamic-import-module.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
@@ -196,6 +198,16 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectReturnedImportPromiseDependencies: CrossFileDependencyCollector = (input) => {
+  if (!input.sourceText.includes("import")) return;
+  walkAst(input.getProgram(), (node) => {
+    const exported = getDynamicImportReturnedThen(node)?.exportedCall;
+    if (exported) {
+      resolveDirectDynamicImportModule(input.absoluteFilePath, exported.specifier);
+    }
+  });
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -604,6 +616,10 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
+    [
+      "no-promise-then-side-effect-in-effect-without-catch",
+      collectReturnedImportPromiseDependencies,
+    ],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],

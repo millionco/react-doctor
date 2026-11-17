@@ -1,13 +1,22 @@
+import { analyzeScopes } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
 import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDynamicImportReturnedThen } from "../../utils/get-dynamic-import-returned-then.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { getModuleSpecifierName } from "../../utils/get-module-specifier-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
+import { isProvenPromiseExpression } from "../../utils/is-proven-promise-expression.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import {
   chainCarriesRejectionHandler,
   isDefinitelyNonThenableValue,
@@ -15,8 +24,13 @@ import {
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import { resolveDirectDynamicImportModule } from "../../utils/resolve-direct-dynamic-import-module.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -27,6 +41,22 @@ const REJECTING_PROMISE_COMBINATOR_NAMES = new Set(["all", "race", "any"]);
 const MAX_INITIATOR_RESOLUTION_DEPTH = 3;
 const STATE_DISPATCHER_HOOK_NAMES = new Set(["useState", "useReducer"]);
 const REF_HOOK_NAMES = new Set(["useRef"]);
+const PROMISE_REALM_NAMES = new Set(["globalThis", "global", "window", "self", "document"]);
+const PROMISE_REFLECTION_NAMESPACE_NAMES = new Set(["Object", "Reflect"]);
+const OPAQUE_PROMISE_PROPERTY_NAMES = new Set([
+  "Promise",
+  "constructor",
+  "prototype",
+  "__proto__",
+  "defaultView",
+  "eval",
+  "Function",
+  "getPrototypeOf",
+  "setPrototypeOf",
+  "defineProperty",
+  "defineProperties",
+]);
+const closedPromiseMethodsByScope = new WeakMap<ScopeAnalysis, boolean>();
 const MESSAGE =
   "This promise chain runs in an effect, ends in a `.then` that sets state or mutates a ref, and has no `.catch` or enclosing try/catch, so a rejection leaves the state unset and surfaces as an unhandled rejection. Add a `.catch` handler on the chain (`.finally` does not count).";
 
@@ -225,7 +255,11 @@ const hasRejectionHandler = (
   return !doesExplicitlyReject;
 };
 
-const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): PromiseChainWalk => {
+const walkPromiseChain = (
+  chainExpression: EsTreeNode,
+  context: RuleContext,
+  inspectEarlierHandlers = false,
+): PromiseChainWalk => {
   let cursor = stripParenExpression(chainExpression);
   let hasCatch = false;
   let hasRejectionHandlerArgument = false;
@@ -245,7 +279,7 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
         ? (cursor.arguments[0] as EsTreeNode | undefined)
         : (cursor.arguments[1] as EsTreeNode | undefined);
     if (
-      !didReachTerminalThen &&
+      (!didReachTerminalThen || inspectEarlierHandlers) &&
       methodName === "catch" &&
       hasRejectionHandler(cursor, rejectionHandlerArgument, context, true)
     ) {
@@ -253,7 +287,7 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
     }
     if (methodName === "then") {
       if (
-        !didReachTerminalThen &&
+        (!didReachTerminalThen || inspectEarlierHandlers) &&
         hasRejectionHandler(cursor, rejectionHandlerArgument, context, false)
       ) {
         hasRejectionHandlerArgument = true;
@@ -461,6 +495,191 @@ const collectStateSideEffectNodes = (callback: EsTreeNode, context: RuleContext)
   });
   return sideEffectNodes;
 };
+
+const isReadonlyStateDispatch = (setter: EsTreeNode, context: RuleContext): boolean => {
+  const symbol = context.scopes.symbolFor(setter);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !isSymbolReadOnly(symbol) ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    !isNodeOfType(symbol.declarationNode.id, "ArrayPattern") ||
+    symbol.declarationNode.id.elements[1] !== symbol.bindingIdentifier
+  ) {
+    return false;
+  }
+  if (isReactHookResultReference(setter, STATE_DISPATCHER_HOOK_NAMES, 1, context.scopes)) {
+    return true;
+  }
+  const initializer = symbol.declarationNode.init;
+  const call = initializer ? stripParenExpression(initializer) : null;
+  if (!isNodeOfType(call, "CallExpression") || call.optional) return false;
+  const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const hookSymbol = context.scopes.symbolFor(callee);
+  if (
+    !hookSymbol ||
+    !isNodeOfType(hookSymbol.declarationNode, "ImportSpecifier") ||
+    !isSymbolReadOnly(hookSymbol)
+  ) {
+    return false;
+  }
+  const hook = resolveImportedApiReference(callee, context.scopes);
+  return hook?.source === "jotai" && hook.importedName === "useAtom";
+};
+
+const hasClosedPromiseMethods = (scopes: ScopeAnalysis): boolean => {
+  const cachedResult = closedPromiseMethodsByScope.get(scopes);
+  if (cachedResult !== undefined) return cachedResult;
+  let isClosed = true;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (!isClosed) return false;
+    if (isNodeOfType(node, "WithStatement")) {
+      isClosed = false;
+      return false;
+    }
+    if (isNodeOfType(node, "CallExpression") && !node.optional) {
+      const callee = stripParenExpression(node.callee);
+      if (isNodeOfType(callee, "Identifier") && callee.name === "eval") {
+        isClosed = false;
+        return false;
+      }
+    }
+    if (isNodeOfType(node, "Identifier") && scopes.isGlobalReference(node)) {
+      if (
+        node.name === "eval" ||
+        node.name === "Function" ||
+        (node.name === "Promise" &&
+          !isProvenUnmodifiedGlobalNamespaceReference(node, "Promise", scopes, undefined, true))
+      ) {
+        isClosed = false;
+      } else if (
+        PROMISE_REALM_NAMES.has(node.name) ||
+        PROMISE_REFLECTION_NAMESPACE_NAMES.has(node.name)
+      ) {
+        const receiver = findTransparentExpressionRoot(node);
+        const member = receiver.parent;
+        if (
+          !isNodeOfType(member, "MemberExpression") ||
+          member.object !== receiver ||
+          getStaticPropertyName(member) === null ||
+          (PROMISE_REALM_NAMES.has(node.name) &&
+            PROMISE_REFLECTION_NAMESPACE_NAMES.has(getStaticPropertyName(member) ?? ""))
+        ) {
+          isClosed = false;
+        }
+      }
+      return;
+    }
+    if (isNodeOfType(node, "MemberExpression")) {
+      const name = getStaticPropertyName(node);
+      if (
+        OPAQUE_PROMISE_PROPERTY_NAMES.has(name ?? "") ||
+        (name !== null && PROMISE_METHOD_NAMES.has(name) && isWithinAssignmentTarget(node))
+      ) {
+        isClosed = false;
+      }
+    }
+  });
+  closedPromiseMethodsByScope.set(scopes, isClosed);
+  return isClosed;
+};
+
+const hasPossibleModuleThenExport = (program: EsTreeNodeOfType<"Program">): boolean =>
+  program.body.some((statement) => {
+    if (isNodeOfType(statement, "ExportAllDeclaration")) {
+      return (
+        statement.exportKind !== "type" &&
+        (!statement.exported || getModuleSpecifierName(statement.exported) === "then")
+      );
+    }
+    if (isNodeOfType(statement, "TSExportAssignment")) return true;
+    if (!isNodeOfType(statement, "ExportNamedDeclaration") || statement.exportKind === "type") {
+      return false;
+    }
+    if (
+      statement.specifiers.some(
+        (specifier) =>
+          specifier.exportKind !== "type" && getModuleSpecifierName(specifier.exported) === "then",
+      )
+    ) {
+      return true;
+    }
+    const declaration = statement.declaration;
+    if (isNodeOfType(declaration, "VariableDeclaration")) {
+      const names = new Set<string>();
+      for (const declarator of declaration.declarations) collectPatternNames(declarator.id, names);
+      return names.has("then");
+    }
+    return Boolean(
+      declaration && "id" in declaration && getModuleSpecifierName(declaration.id) === "then",
+    );
+  });
+
+const isReadonlyAsyncExport = (
+  filename: string,
+  specifier: string,
+  exportedName: string,
+): boolean => {
+  const program = resolveDirectDynamicImportModule(filename, specifier);
+  if (!program || hasPossibleModuleThenExport(program)) return false;
+  const exported = findExportedValue(program, exportedName);
+  if (
+    !isNodeOfType(exported, "FunctionDeclaration") ||
+    !exported.async ||
+    exported.generator ||
+    exported.id?.name !== exportedName ||
+    !isNodeOfType(exported.parent, "ExportNamedDeclaration")
+  ) {
+    return false;
+  }
+  const exportScopes = analyzeScopes(program);
+  const binding = exportScopes.scopeFor(exported).symbolsByName.get(exportedName);
+  const functionBinding = exportScopes.ownScopeFor(exported)?.symbolsByName.get(exportedName);
+  return Boolean(
+    binding &&
+    binding.declarationNode === exported &&
+    isSymbolReadOnly(binding) &&
+    functionBinding?.declarationNode === exported &&
+    isSymbolReadOnly(functionBinding) &&
+    hasClosedPromiseMethods(exportScopes),
+  );
+};
+
+const hasReturnedImportStateDispatch = (
+  callback: EsTreeNode,
+  importer: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const parent = findTransparentExpressionRoot(callback).parent;
+  const candidate = parent ? getDynamicImportReturnedThen(parent) : null;
+  if (
+    !candidate ||
+    candidate.importer !== importer ||
+    !isReadonlyStateDispatch(candidate.setter, context) ||
+    !hasClosedPromiseMethods(context.scopes)
+  ) {
+    return false;
+  }
+  if (
+    isProvenPromiseExpression(candidate.returned, context.scopes, {
+      requireUnmodifiedGlobalPromise: true,
+    })
+  ) {
+    return true;
+  }
+  const imported = candidate.exportedCall;
+  if (!imported || !context.filename) return false;
+  const binding = context.scopes.symbolFor(imported.callee);
+  return Boolean(
+    binding &&
+    binding.kind === "parameter" &&
+    binding.bindingIdentifier === imported.binding &&
+    isSymbolReadOnly(binding) &&
+    isReadonlyAsyncExport(context.filename, imported.specifier, imported.exportedName),
+  );
+};
+
 const getReferenceRejectionHandlerCall = (
   reference: EsTreeNode,
   context: RuleContext,
@@ -632,7 +851,19 @@ export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
           chainWalk.thenCallbacks.some((thenCallback) => {
             return collectStateSideEffectNodes(thenCallback, context).length > 0;
           });
-        if (!hasUnguardedStateSideEffect) continue;
+        if (!hasUnguardedStateSideEffect) {
+          const importer = stripParenExpression(chainWalk.root);
+          if (
+            !isNodeOfType(importer, "ImportExpression") ||
+            !chainWalk.thenCallbacks.some((thenCallback) =>
+              hasReturnedImportStateDispatch(thenCallback, importer, context),
+            )
+          ) {
+            continue;
+          }
+          const outerHandlers = walkPromiseChain(chainExpression, context, true);
+          if (outerHandlers.hasCatch || outerHandlers.hasRejectionHandlerArgument) continue;
+        }
         const resolved = resolveRootInitiator(chainWalk.root, context);
         if (resolved.hasUpstreamRejectionHandling) continue;
         if (

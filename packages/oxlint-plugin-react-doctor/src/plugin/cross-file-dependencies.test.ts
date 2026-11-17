@@ -82,6 +82,34 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-promise-then-side-effect-in-effect-without-catch collector", () => {
+  it("tracks an aliased export and missing resolution candidates for returned chains", () => {
+    const configurationPath = writeFixtureFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } } }),
+    );
+    const helperPath = writeFixtureFile(
+      "src/task.ts",
+      "export async function loadValue() { return true; }",
+    );
+    const componentPath = writeFixtureFile(
+      "src/Panel.tsx",
+      `useEffect(() => {
+        import("@/task").then(({ loadValue: request }) => request().then(setValue));
+        import("@/missing").then(({ loadValue }) => loadValue().then(setValue));
+      }, []);`,
+    );
+
+    const trace = collectFor(componentPath, [
+      "no-promise-then-side-effect-in-effect-without-catch",
+    ]);
+
+    expect(trace?.contentPaths.has(configurationPath)).toBe(true);
+    expect(trace?.contentPaths.has(helperPath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("src/missing.ts"))).toBe(true);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

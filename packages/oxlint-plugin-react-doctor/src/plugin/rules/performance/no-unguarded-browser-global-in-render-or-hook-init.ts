@@ -27,6 +27,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { isClosedNativeClickHandler } from "./utils/is-closed-native-click-handler.js";
 
 const BROWSER_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "window",
@@ -284,11 +285,18 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
     let moduleExitsOnServer = false;
     let clientOnlyDynamicTargets: ReadonlySet<EsTreeNode> = new Set();
     const reportedNodes = new Set<EsTreeNode>();
+    const nativeClickOwners = new WeakMap<EsTreeNode, boolean>();
 
     const reportBrowserRead = (node: EsTreeNode, browserGlobalName: string): void => {
       if (reportedNodes.has(node) || isTypeofProbe(node)) return;
       const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
       if (!componentOrHookNode) return;
+      let isNativeClickOwner = nativeClickOwners.get(componentOrHookNode);
+      if (isNativeClickOwner === undefined) {
+        isNativeClickOwner = isClosedNativeClickHandler(componentOrHookNode, context);
+        nativeClickOwners.set(componentOrHookNode, isNativeClickOwner);
+      }
+      if (isNativeClickOwner) return;
       let enclosingFunction: EsTreeNode | null = componentOrHookNode;
       while (enclosingFunction) {
         if (isEffectCallbackReference(enclosingFunction, context.scopes)) return;

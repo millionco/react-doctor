@@ -85,6 +85,10 @@ class SemanticRuleContext implements RuleContext {
     return this.baseContext.filename ?? this.baseContext.getFilename?.();
   }
 
+  getSourceText(): string | undefined {
+    return this.baseContext.sourceCode?.getText?.();
+  }
+
   get scopes(): ScopeAnalysis {
     const programRoot = this.programRoot;
     if (!programRoot) return buildFallbackScopes();
@@ -115,6 +119,11 @@ class SemanticRuleContext implements RuleContext {
     return resolvedControlFlow;
   }
 }
+
+export const getRuleSourceText = (context: RuleContext): string | undefined =>
+  context instanceof SemanticRuleContext
+    ? context.getSourceText()
+    : context.sourceCode?.getText?.();
 
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
   ...rule,

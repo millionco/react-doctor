@@ -6,6 +6,27 @@ import type { Rule } from "./rule.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
 describe("wrapWithSemanticContext", () => {
+  it("reads host comments with their receiver intact", () => {
+    const comments = [{ type: "Block", value: "* @jsx paint ", end: 17 }];
+    let observedComments: unknown;
+    const rule: Rule = {
+      id: "source-comments",
+      severity: "warn",
+      create: (context) => {
+        observedComments = context.sourceComments;
+        return EMPTY_RULE_VISITORS;
+      },
+    };
+    const sourceCode = {
+      comments,
+      getAllComments() {
+        return this.comments;
+      },
+    };
+    wrapWithSemanticContext(rule).create({ report: () => {}, sourceCode });
+    expect(observedComments).toBe(comments);
+  });
+
   it("preserves the bound getFilename fallback and adds the root-capture Program visitor", () => {
     let resolvedFilename: string | undefined;
     const callExpressionHandler = (): void => {};

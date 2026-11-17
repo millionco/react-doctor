@@ -1,3 +1,4 @@
+import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -2023,6 +2024,17 @@ export const noArrayIndexAsKey = defineRule({
               const jsxElement = openingElement.parent;
               if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
                 const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
+                if (
+                  isInlineTextRun &&
+                  indexUse.binding.iteratorCall &&
+                  isReactPropRegExpTextLeaf({
+                    jsxElement,
+                    iteratorCall: indexUse.binding.iteratorCall,
+                    indexIdentifier: indexUse.identifier,
+                    context,
+                  })
+                )
+                  return;
                 let primitiveItemNames = EMPTY_NAME_SET;
                 if (
                   iteratorCallee &&

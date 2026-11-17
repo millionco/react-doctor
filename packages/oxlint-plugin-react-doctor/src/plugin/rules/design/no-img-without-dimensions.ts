@@ -809,7 +809,7 @@ const hasUnresolvedParentBox = (
 
 export const noImgWithoutDimensions = defineRule({
   id: "no-img-without-dimensions",
-  title: "Image has no reserved layout space",
+  title: "Image may lack a complete size reservation",
   severity: "warn",
   category: "Performance",
   defaultEnabled: false,
@@ -846,7 +846,7 @@ export const noImgWithoutDimensions = defineRule({
         context.report({
           node,
           message:
-            "This image reserves no dimensions or aspect ratio before loading, so surrounding content can shift. Add width and height or an explicit aspect-ratio box.",
+            "This image may not reserve its full size before loading, so surrounding content can shift. Add width and height or an explicit aspect-ratio box.",
         });
       },
     };

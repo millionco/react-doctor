@@ -574,7 +574,7 @@
     "originallyExternal": false,
     "rule": {
       "id": "client-passive-event-listeners",
-      "title": "Non-passive scroll listener",
+      "title": "Non-passive wheel or touch listener",
       "severity": "warn",
       "recommendation": "Add `{ passive: true }` as the third argument: `addEventListener('touchmove', handler, { passive: true })`. Only do this if the handler doesn't call `event.preventDefault()`, since passive listeners ignore it (which breaks pull-to-refresh, custom gestures, and nested scrolling).",
       "category": "Performance",

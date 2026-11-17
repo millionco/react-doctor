@@ -21,6 +21,7 @@ import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import { isOpaqueImportedObjectResultReference } from "./utils/is-opaque-imported-object-result-reference.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   isCustomHookParameter,
@@ -280,6 +281,11 @@ const hasProvenComponentPropOrigin = (
   reference: Reference,
   scopes: ScopeAnalysis,
 ): boolean => {
+  if (
+    isOpaqueImportedObjectResultReference(reference.identifier as unknown as EsTreeNode, scopes)
+  ) {
+    return false;
+  }
   const customHookParameterReferences = getUpstreamRefs(analysis, reference).filter(
     isCustomHookParameter,
   );

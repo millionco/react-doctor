@@ -1,0 +1,1 @@
+export const SINGLE_SELECT_DISPLAY_SIZE_ROWS = 1;

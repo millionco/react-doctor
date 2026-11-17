@@ -19,7 +19,9 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
+import { isProvenReactClassComponent } from "../../utils/is-proven-react-class-component.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -39,6 +41,18 @@ const MESSAGE =
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
+const TIMER_PROVIDER_UNCERTAINTY_NAMES = new Set([
+  "document",
+  "Object",
+  "Reflect",
+  "eval",
+  "Function",
+  "require",
+  "module",
+  "process",
+]);
+const REACT_INSTANCE_MEMBER_NAMES = new Set(["props", "state", "context", "refs", "updater"]);
+const INSTANCE_REFLECTION_MEMBER_NAMES = new Set(["constructor", "__proto__", "prototype"]);
 const STABLE_GLOBAL_MEMBER_NAMES = new Set(["body", "documentElement", "visualViewport"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
@@ -1103,6 +1117,355 @@ const storedCallResultReferenceKey = (
   return storageTarget ? serializeLifecycleReference(storageTarget, scopes, classBody) : null;
 };
 
+const getOwnSynchronousMethod = (
+  classBody: EsTreeNodeOfType<"ClassBody">,
+  name: string,
+): EsTreeNodeOfType<"FunctionExpression"> | null => {
+  const matchingMembers = classBody.body.filter((member) => getClassMemberName(member) === name);
+  const member = matchingMembers[0];
+  return matchingMembers.length === 1 &&
+    isNodeOfType(member, "MethodDefinition") &&
+    member.kind === "method" &&
+    !member.static &&
+    !member.computed &&
+    isNodeOfType(member.value, "FunctionExpression") &&
+    !member.value.async &&
+    !member.value.generator
+    ? member.value
+    : null;
+};
+
+const getDirectThisMemberName = (node: EsTreeNode | null | undefined): string | null =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.optional &&
+  !node.computed &&
+  isNodeOfType(node.object, "ThisExpression") &&
+  isNodeOfType(node.property, "Identifier")
+    ? node.property.name
+    : null;
+
+const isClosedReturnedIntervalHandleReleased = (
+  node: EsTreeNode,
+  classBody: EsTreeNodeOfType<"ClassBody">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    node.optional ||
+    !isNodeOfType(node.callee, "Identifier") ||
+    node.callee.name !== "setInterval" ||
+    !scopes.isGlobalReference(node.callee)
+  ) {
+    return false;
+  }
+  const returned = findTransparentExpressionRoot(node).parent;
+  if (!isNodeOfType(returned, "ReturnStatement")) return false;
+  const helperMember = getEnclosingClassMember(returned, classBody);
+  const helperName = helperMember && getClassMemberName(helperMember);
+  if (!helperName) return false;
+  const helper = getOwnSynchronousMethod(classBody, helperName);
+  if (!helper || helper.body.body.length !== 1 || helper.body.body[0] !== returned) return false;
+
+  const owner = classBody.parent;
+  if (
+    !isNodeOfType(owner, "ClassDeclaration") ||
+    !owner.id ||
+    !isProvenReactClassComponent(owner, scopes) ||
+    owner.decorators?.length ||
+    classBody.body.some(
+      (member) =>
+        isNodeOfType(member, "StaticBlock") ||
+        ((isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition")) &&
+          (member.computed || member.decorators?.length)),
+    )
+  ) {
+    return false;
+  }
+  const superClass = owner.superClass;
+  const reactBinding = isNodeOfType(superClass, "MemberExpression")
+    ? superClass.object
+    : superClass;
+  if (!isNodeOfType(reactBinding, "Identifier")) return false;
+  const reactSymbol = scopes.symbolFor(reactBinding);
+  const reactImport = reactSymbol?.declarationNode.parent;
+  if (
+    reactSymbol?.kind !== "import" ||
+    !isNodeOfType(reactImport, "ImportDeclaration") ||
+    reactImport.importKind === "type" ||
+    reactImport.source.value !== "react" ||
+    (isNodeOfType(reactSymbol.declarationNode, "ImportSpecifier") &&
+      reactSymbol.declarationNode.importKind === "type") ||
+    reactSymbol.references.some(
+      ({ identifier, flag }) =>
+        !isTypeScriptTypePosition(identifier) && (identifier !== reactBinding || flag !== "read"),
+    )
+  ) {
+    return false;
+  }
+  const ownerSymbol = scopes.symbolFor(owner.id);
+  if (
+    !ownerSymbol ||
+    ownerSymbol.references.some(({ identifier, flag }) => {
+      if (identifier === owner.id) return false;
+      const parent = identifier.parent;
+      return (
+        flag !== "read" ||
+        !isNodeOfType(parent, "ExportDefaultDeclaration") ||
+        parent.declaration !== identifier
+      );
+    })
+  ) {
+    return false;
+  }
+
+  const mount = getOwnSynchronousMethod(classBody, "componentDidMount");
+  const unmount = getOwnSynchronousMethod(classBody, "componentWillUnmount");
+  if (!mount || !unmount || mount.body.body.length !== 1 || unmount.body.body.length !== 1) {
+    return false;
+  }
+  const getHandleAssignment = (statement: EsTreeNode | undefined) => {
+    if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+    const assignment = statement.expression;
+    if (
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      !isNodeOfType(assignment.right, "CallExpression") ||
+      assignment.right.optional ||
+      getDirectThisMemberName(assignment.right.callee) !== helperName ||
+      assignment.right.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))
+    ) {
+      return null;
+    }
+    return assignment;
+  };
+  const mountAssignment = getHandleAssignment(mount.body.body[0]);
+  const handleName = getDirectThisMemberName(mountAssignment?.left);
+  if (
+    !mountAssignment ||
+    !handleName ||
+    handleName === helperName ||
+    REACT_INSTANCE_MEMBER_NAMES.has(handleName)
+  ) {
+    return false;
+  }
+  const fieldMembers = classBody.body.filter((member) => getClassMemberName(member) === handleName);
+  const field = fieldMembers[0];
+  if (
+    fieldMembers.length !== 1 ||
+    !isNodeOfType(field, "PropertyDefinition") ||
+    field.accessibility !== "private" ||
+    field.computed ||
+    field.static ||
+    (field.value && (!isNodeOfType(field.value, "Literal") || field.value.value !== null))
+  ) {
+    return false;
+  }
+  const getHandleClear = (statement: EsTreeNode | undefined) => {
+    if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+    const call = statement.expression;
+    if (
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      !isNodeOfType(call.callee, "Identifier") ||
+      call.callee.name !== "clearInterval" ||
+      !scopes.isGlobalReference(call.callee) ||
+      call.arguments.length !== 1 ||
+      getDirectThisMemberName(call.arguments[0]) !== handleName
+    ) {
+      return null;
+    }
+    return call;
+  };
+  const unmountClear = getHandleClear(unmount.body.body[0]);
+  if (!unmountClear) return false;
+
+  const allowedHandleUses = new Set<EsTreeNode>([mountAssignment.left, unmountClear.arguments[0]]);
+  const allowedHelperUses = new Set<EsTreeNode>();
+  if (isNodeOfType(mountAssignment.right, "CallExpression")) {
+    allowedHelperUses.add(mountAssignment.right.callee);
+  }
+  if (classBody.body.some((member) => getClassMemberName(member) === "componentDidUpdate")) {
+    const update = getOwnSynchronousMethod(classBody, "componentDidUpdate");
+    const updateGuard = update?.body.body[0];
+    if (
+      update?.body.body.length !== 1 ||
+      !isNodeOfType(updateGuard, "IfStatement") ||
+      updateGuard.alternate ||
+      !isNodeOfType(updateGuard.consequent, "BlockStatement") ||
+      updateGuard.consequent.body.length !== 2
+    ) {
+      return false;
+    }
+    const [clearStatement, storeStatement] = updateGuard.consequent.body;
+    const updateClear = getHandleClear(clearStatement);
+    const updateAssignment = getHandleAssignment(storeStatement);
+    if (
+      !updateClear ||
+      !updateAssignment ||
+      getDirectThisMemberName(updateAssignment.left) !== handleName ||
+      !isNodeOfType(updateAssignment.right, "CallExpression")
+    ) {
+      return false;
+    }
+    allowedHandleUses.add(updateClear.arguments[0]);
+    allowedHandleUses.add(updateAssignment.left);
+    allowedHelperUses.add(updateAssignment.right.callee);
+  }
+
+  const hasSetStateOverride = classBody.body.some(
+    (member) => getClassMemberName(member) === "setState",
+  );
+  let isClosed = true;
+  walkAst(classBody, (child) => {
+    if (!isClosed) return false;
+    if (isNodeOfType(child, "Super") || (child !== classBody && isNodeOfType(child, "ClassBody"))) {
+      isClosed = false;
+      return false;
+    }
+    if (!isNodeOfType(child, "ThisExpression")) return;
+    const member = child.parent;
+    const memberName = getDirectThisMemberName(member);
+    if (!member || !memberName || INSTANCE_REFLECTION_MEMBER_NAMES.has(memberName)) {
+      isClosed = false;
+      return false;
+    }
+    if (memberName === helperName || memberName === handleName) {
+      if (!(memberName === helperName ? allowedHelperUses : allowedHandleUses).has(member)) {
+        isClosed = false;
+      }
+      return;
+    }
+    const invocation = member.parent;
+    const isDirectCall = isNodeOfType(invocation, "CallExpression") && invocation.callee === member;
+    if (memberName === "setState" ? !isDirectCall || hasSetStateOverride : isDirectCall) {
+      isClosed = false;
+    }
+  });
+  if (!isClosed) return false;
+
+  const program = scopes.rootScope.node;
+  const renderBody = getOwnSynchronousMethod(classBody, "render")?.body;
+  const hasClosedImportUses = (declaration: EsTreeNodeOfType<"ImportDeclaration">): boolean => {
+    if (declaration.importKind === "type") return true;
+    const moduleSource = declaration.source.value;
+    const isRelative =
+      typeof moduleSource === "string" &&
+      (moduleSource.startsWith("./") || moduleSource.startsWith("../"));
+    return (
+      declaration.specifiers.length > 0 &&
+      declaration.specifiers.every((specifier) => {
+        if (specifier === reactSymbol.declarationNode) return true;
+        if (!isNodeOfType(specifier, "ImportSpecifier")) return false;
+        if (specifier.importKind === "type") return true;
+        const binding = scopes.symbolFor(specifier.local);
+        if (!isRelative || binding?.kind !== "import") return false;
+        return binding.references.every(({ identifier, flag }) => {
+          if (isTypeScriptTypePosition(identifier)) return true;
+          const call = identifier.parent;
+          if (
+            flag !== "read" ||
+            !isNodeOfType(call, "CallExpression") ||
+            call.callee !== identifier ||
+            call.optional
+          ) {
+            return false;
+          }
+          const declarator = call.parent;
+          const variable = declarator?.parent;
+          if (
+            !isNodeOfType(declarator, "VariableDeclarator") ||
+            !isNodeOfType(declarator.id, "Identifier") ||
+            declarator.init !== call ||
+            !isNodeOfType(variable, "VariableDeclaration") ||
+            variable.kind !== "const" ||
+            (variable.parent !== program && variable.parent !== renderBody)
+          ) {
+            return false;
+          }
+          const result = scopes.symbolFor(declarator.id);
+          return Boolean(
+            result?.kind === "const" &&
+            result.references.length > 0 &&
+            result.references.every(({ identifier: resultUse, flag: resultFlag }) => {
+              if (isTypeScriptTypePosition(resultUse)) return true;
+              const property = resultUse.parent;
+              const object = property?.parent;
+              if (
+                resultFlag !== "read" ||
+                !isNodeOfType(property, "Property") ||
+                (property.value !== resultUse &&
+                  (!property.shorthand ||
+                    property.key !== resultUse ||
+                    !isNodeOfType(property.value, "Identifier") ||
+                    scopes.symbolFor(property.value) !== result)) ||
+                property.kind !== "init" ||
+                property.computed ||
+                !isNodeOfType(object, "ObjectExpression")
+              ) {
+                return false;
+              }
+              const consumer = object.parent;
+              if (variable.parent === program) {
+                return (
+                  isNodeOfType(consumer, "PropertyDefinition") &&
+                  consumer.parent === classBody &&
+                  consumer.static &&
+                  getClassMemberName(consumer) === "defaultProps" &&
+                  consumer.value === object
+                );
+              }
+              const returned = consumer?.parent;
+              return (
+                isNodeOfType(consumer, "CallExpression") &&
+                !consumer.optional &&
+                isNodeOfType(consumer.callee, "MemberExpression") &&
+                !consumer.callee.computed &&
+                !consumer.callee.optional &&
+                getDirectThisMemberName(consumer.callee.object) === "props" &&
+                consumer.arguments.length === 1 &&
+                consumer.arguments[0] === object &&
+                isNodeOfType(returned, "ReturnStatement") &&
+                returned.parent === renderBody &&
+                returned.argument === consumer
+              );
+            }),
+          );
+        });
+      })
+    );
+  };
+  walkAst(program, (child) => {
+    if (!isClosed) return false;
+    if (
+      isNodeOfType(child, "ImportExpression") ||
+      isNodeOfType(child, "TSImportEqualsDeclaration") ||
+      isNodeOfType(child, "TSExportAssignment") ||
+      (isNodeOfType(child, "MemberExpression") &&
+        (child.computed ||
+          INSTANCE_REFLECTION_MEMBER_NAMES.has(getStaticPropertyName(child) ?? ""))) ||
+      (isNodeOfType(child, "Property") &&
+        isNodeOfType(child.parent, "ObjectPattern") &&
+        (child.computed ||
+          INSTANCE_REFLECTION_MEMBER_NAMES.has(getStaticPropertyKeyName(child) ?? ""))) ||
+      (isNodeOfType(child, "ImportDeclaration") && !hasClosedImportUses(child))
+    ) {
+      isClosed = false;
+      return false;
+    }
+    if (!isNodeOfType(child, "Identifier") || !scopes.isGlobalReference(child)) return;
+    if (GLOBAL_OBJECT_NAMES.has(child.name) || TIMER_PROVIDER_UNCERTAINTY_NAMES.has(child.name)) {
+      isClosed = false;
+      return false;
+    }
+    if (child.name !== "setInterval" && child.name !== "clearInterval") return;
+    const invocation = child.parent;
+    if (!isNodeOfType(invocation, "CallExpression") || invocation.callee !== child) {
+      isClosed = false;
+    }
+  });
+  return isClosed;
+};
+
 const isProvenDisposeOnUnmountCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -1900,7 +2263,9 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
         const undisposedHazard = mountHazards.find((mountHazard) => {
           if (mountHazard.isAcquiredAfterSuspension) return true;
-          if (mountHazard.releaseKeys.length === 0) return true;
+          if (mountHazard.releaseKeys.length === 0) {
+            return !isClosedReturnedIntervalHandleReleased(mountHazard.node, node, context.scopes);
+          }
           if (
             mountHazard.releaseKeys.some((releaseKey) =>
               componentWillUnmountReleaseKeys.has(releaseKey),

@@ -17,6 +17,7 @@ import {
 } from "../../utils/get-order-independent-local-function.js";
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { isAwaitingImportedHostYield } from "../../utils/is-awaiting-imported-host-yield.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isLocalPromiseCollector } from "../../utils/is-local-promise-collector.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -1345,8 +1346,16 @@ export const asyncAwaitInLoop = defineRule({
       if (hasLoopCarriedDependency(loopBody)) return;
       if (loopBodyHasAwaitDependentEarlyExit(loopBody, getLoopLabelName(loopNode))) return;
       if (isLoopInsideWorkerPoolFunction(loopNode)) return;
-      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody, true, (awaitNode) =>
-        isOrderedSharedReceiverAwait(awaitNode, loopNode, context),
+      const firstAwait = findFirstAwaitOutsideNestedFunctions(
+        loopBody,
+        true,
+        (awaitNode) =>
+          isOrderedSharedReceiverAwait(awaitNode, loopNode, context) ||
+          isAwaitingImportedHostYield({
+            awaitNode,
+            filename: context.filename,
+            scopes: context.scopes,
+          }),
       );
       if (firstAwait) {
         context.report({

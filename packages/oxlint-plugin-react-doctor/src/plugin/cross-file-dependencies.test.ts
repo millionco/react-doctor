@@ -82,6 +82,35 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("async-await-in-loop collector", () => {
+  it("records the selected timer helper and absent competing resolution paths", () => {
+    const providerPath = writeFixtureFile(
+      "scheduler/index.ts",
+      "export async function timeout(delay = 0) { await new Promise((resolve) => { setTimeout(() => resolve(), delay); }); }",
+    );
+    const sourcePath = writeFixtureFile(
+      "filter.ts",
+      'import { timeout as pause } from "./scheduler"; export async function run(rows) { for (const row of rows) { consume(row); await pause(); } }',
+    );
+    const trace = collectFor(sourcePath, ["async-await-in-loop"]);
+    expect(trace?.contentPaths.has(providerPath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("scheduler.ts"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("scheduler/index.js"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("scheduler/package.json"))).toBe(true);
+  });
+
+  it("keeps absence probes when a provider does not exist", () => {
+    const sourcePath = writeFixtureFile(
+      "filter.ts",
+      'import { timeout } from "./missing"; export async function run() { await timeout(); }',
+    );
+    const trace = collectFor(sourcePath, ["async-await-in-loop"]);
+    expect(trace?.contentPaths.size).toBe(0);
+    expect(trace?.existencePaths.has(fixturePath("missing.ts"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("missing/index.ts"))).toBe(true);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

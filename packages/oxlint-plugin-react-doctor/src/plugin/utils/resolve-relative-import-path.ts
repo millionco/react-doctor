@@ -168,6 +168,32 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
 
+export const resolveUnambiguousRelativeImportPath = (
+  filename: string,
+  source: string,
+): string | null => {
+  if (
+    (!source.startsWith("./") && !source.startsWith("../")) ||
+    /[!?#\\]/.test(source) ||
+    path.extname(source) !== ""
+  ) {
+    return null;
+  }
+  const importPath = path.resolve(path.dirname(filename), source);
+  if (importPath.split(path.sep).includes("node_modules")) return null;
+  if (getExistingFilePath(path.join(importPath, "package.json"))) return null;
+  const indexPath = path.join(importPath, "index");
+  const candidates = [
+    importPath,
+    ...getModuleFilePathCandidates(importPath),
+    indexPath,
+    ...getModuleFilePathCandidates(indexPath),
+  ].filter((candidate) => getExistingFilePath(candidate) !== null);
+  if (candidates.length !== 1) return null;
+  const resolved = resolveRelativeImportPath(filename, source);
+  return resolved === candidates[0] ? resolved : null;
+};
+
 export const resetModuleResolutionCaches = (): void => {
   filesystemEntryByPath.clear();
   packageJsonByPath.clear();

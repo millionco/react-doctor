@@ -73,4 +73,53 @@ describe("only-export-components config", () => {
     });
     expect(issues).toEqual([]);
   });
+  it.each([
+    { name: "empty options", options: {}, expected: 2 },
+    { name: "one known wrapper", options: { customHOCs: ["withScreenBoundary"] }, expected: 1 },
+    {
+      name: "explicit export names",
+      options: { allowExportNames: ["Screen", "Card"] },
+      expected: 0,
+    },
+  ])("preserves narrow exceptions for $name", async ({ name, options, expected }) => {
+    const projectDirectory = setupReactProject(tempRoot, name.replaceAll(" ", "-"), {
+      packageJsonExtras: { dependencies: REACT_NATIVE_DEPENDENCIES },
+      files: { "src/screen.tsx": HOC_WRAPPED_SCREEN },
+    });
+    expect(
+      await collectOnlyExportComponentsIssues(projectDirectory, {
+        onlyExportComponents: options,
+      }),
+    ).toHaveLength(expected);
+  });
+
+  it.each([false, true])("honors allowConstantExport=%s", async (allowConstantExport) => {
+    const projectDirectory = setupReactProject(tempRoot, `constant-${allowConstantExport}`, {
+      packageJsonExtras: { dependencies: REACT_NATIVE_DEPENDENCIES },
+      files: {
+        "src/screen.tsx":
+          'export function Screen() { return <Text>screen</Text>; } export const version = "1.0";',
+      },
+    });
+    expect(
+      await collectOnlyExportComponentsIssues(projectDirectory, {
+        onlyExportComponents: { allowConstantExport },
+      }),
+    ).toHaveLength(allowConstantExport ? 0 : 1);
+  });
+
+  it.each([false, true])("honors checkJS=%s", async (checkJS) => {
+    const projectDirectory = setupReactProject(tempRoot, `javascript-${checkJS}`, {
+      packageJsonExtras: { dependencies: REACT_NATIVE_DEPENDENCIES },
+      files: {
+        "src/screen.js":
+          'import React from "react"; export function Screen() { return <Text>screen</Text>; } export const meta = {};',
+      },
+    });
+    expect(
+      await collectOnlyExportComponentsIssues(projectDirectory, {
+        onlyExportComponents: { checkJS },
+      }),
+    ).toHaveLength(checkJS ? 1 : 0);
+  });
 });

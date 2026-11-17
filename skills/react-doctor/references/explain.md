@@ -73,6 +73,27 @@ export default {
 };
 ```
 
+## Fast Refresh exports
+
+Configure known project wrappers and intentional non-component exports without
+turning off `react-doctor/only-export-components`:
+
+```json
+{
+  "onlyExportComponents": {
+    "customHOCs": ["withErrorBoundary", "withScreenBoundary"],
+    "allowExportNames": ["meta"],
+    "allowConstantExport": true,
+    "checkJS": false
+  }
+}
+```
+
+`customHOCs` names component wrappers; `allowExportNames` permits specific named
+exports. `allowConstantExport` permits primitive constant exports, and `checkJS`
+enables checking `.js` files as well as JSX/TSX. Omitted options preserve the
+rule's existing defaults. These settings do not enable a disabled rule.
+
 ## Educating the user
 
 When explaining a rule, lead with the "Why it matters" guidance from `rules explain` and, when they want depth, the per-rule recipe at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`. Only after they understand it should you offer to disable it — many "bad" rules are catching real issues.

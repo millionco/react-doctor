@@ -283,10 +283,6 @@ const validateSeverityMap = (
   return validated;
 };
 
-// Applies a validator to one config field: undefined skips, an `undefined`
-// return strips the field, anything else replaces it. Keeps the main
-// loop free of the repeating "if (raw === undefined) continue; result =
-// validator(...); if (result === undefined) delete; else assign" dance.
 const ONLY_EXPORT_COMPONENTS_STRING_ARRAY_KEYS = ["allowExportNames", "customHOCs"] as const;
 const ONLY_EXPORT_COMPONENTS_BOOLEAN_KEYS = ["allowConstantExport", "checkJS"] as const;
 
@@ -325,6 +321,10 @@ const validateOnlyExportComponentsField = (
   return validated;
 };
 
+// Applies a validator to one config field: undefined skips, an `undefined`
+// return strips the field, anything else replaces it. Keeps the main
+// loop free of the repeating "if (raw === undefined) continue; result =
+// validator(...); if (result === undefined) delete; else assign" dance.
 const applyFieldValidator = <Key extends keyof ReactDoctorConfig>(
   config: ReactDoctorConfig,
   validated: ReactDoctorConfig,

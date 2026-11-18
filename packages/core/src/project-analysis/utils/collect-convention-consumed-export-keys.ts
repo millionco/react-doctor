@@ -65,8 +65,29 @@ const resolveLiteralPackagePath = (path: string, directory: string): string | un
   )
     return undefined;
   const resolved = resolve(directory, normalized);
-  if (toFilesystemIdentityPath(resolved) !== resolved) return undefined;
-  return resolved;
+  const canonicalPath = toFilesystemIdentityPath(resolved);
+  return relative(directory, resolved) === relative(directory, canonicalPath)
+    ? canonicalPath
+    : undefined;
+};
+
+const portablePackageFilePath = (file: string, packageDirectory: string): string | undefined => {
+  const filePath = resolve(file);
+  const lexicalPackageDirectory = findNearestPackageDirectory(filePath);
+  if (
+    !lexicalPackageDirectory ||
+    toFilesystemIdentityPath(lexicalPackageDirectory) !== packageDirectory
+  )
+    return undefined;
+
+  // Windows discovery may preserve a short or differently cased ancestor.
+  // Rebase that ancestor, while retaining the path below the package root
+  // so a symlink inside the package cannot identify a different file.
+  const packageRelativeFile = relative(lexicalPackageDirectory, filePath);
+  const canonicalPath = toFilesystemIdentityPath(filePath);
+  return relative(packageDirectory, canonicalPath) === packageRelativeFile
+    ? canonicalPath
+    : undefined;
 };
 
 const collectTypeVersionExports = (
@@ -129,7 +150,7 @@ const isExplicitlyPackedPath = (
   if (!packedPaths.some((path) => isPathInsideDirectoryOrEqual(file, path))) return false;
   // Nested ignore files can still prune descendants of an included directory.
   let current = dirname(file);
-  while (current !== directory) {
+  while (relative(directory, current) !== "") {
     if (existsSync(resolve(current, ".npmignore")) || existsSync(resolve(current, ".gitignore"))) {
       return false;
     }
@@ -278,13 +299,8 @@ const collectDeclaredTypeReExportKeys = (
     )
       continue;
     const { packageDirectory, filePath, packedPaths } = declaration;
-    const targetPath = resolve(target.fileId.path);
-    if (
-      toFilesystemIdentityPath(targetPath) !== targetPath ||
-      findNearestPackageDirectory(targetPath) !== packageDirectory ||
-      !isExplicitlyPackedPath(targetPath, packageDirectory, packedPaths)
-    )
-      continue;
+    const targetPath = portablePackageFilePath(target.fileId.path, packageDirectory);
+    if (!targetPath || !isExplicitlyPackedPath(targetPath, packageDirectory, packedPaths)) continue;
     for (const { exportedName, originalName } of edge.reExportMappings) {
       if (originalName === "*" || originalName === "default") continue;
       const matchingWrapperExports = wrapper.exports.filter(
@@ -313,7 +329,11 @@ const collectDeclaredTypeReExportKeys = (
         undefined,
         ts.ModuleKind.ESNext,
       ).resolvedModule?.resolvedFileName;
-      if (!portableTarget || resolve(portableTarget) !== targetPath) continue;
+      if (
+        !portableTarget ||
+        portablePackageFilePath(portableTarget, packageDirectory) !== targetPath
+      )
+        continue;
       const matchingExports = target.exports.filter(
         (exportInfo) => exportInfo.name === originalName,
       );
@@ -350,7 +370,7 @@ export const collectConventionConsumedExportKeys = (graph: DependencyGraph): Set
       !module.isAnalysisExcluded &&
       module.parseErrors.length === 0 &&
       typeExports.declarationPaths.has(canonicalModuleFilePath) &&
-      canonicalModuleFilePath === resolve(module.fileId.path) &&
+      portablePackageFilePath(module.fileId.path, packageDirectory) === canonicalModuleFilePath &&
       isExplicitlyPackedPath(canonicalModuleFilePath, packageDirectory, typeExports.packedPaths)
     ) {
       declarations.set(module.fileId.index, {

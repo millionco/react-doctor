@@ -2422,6 +2422,76 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(beforeAwait.diagnostics).toHaveLength(0);
   });
 
+  it.each([false, true])(
+    "keeps cyclic helper suspension queries stable (suspended: %s)",
+    (suspended) => {
+      const result = runRule(
+        classComponentMissingComponentWillUnmountTeardown,
+        `class Listener extends React.Component {
+         async componentDidMount() {
+           ${suspended ? "await prepare();" : ""}
+           this.attach();
+         }
+         attach() {
+           this.forward();
+           emitter.on("change", this.handleChange);
+           emitter.on("resize", this.handleResize);
+         }
+         forward() { this.attach(); }
+         componentWillUnmount() {
+           emitter.off("change", this.handleChange);
+           emitter.off("resize", this.handleResize);
+         }
+         render() { return null; }
+       }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(suspended ? 1 : 0);
+    },
+  );
+
+  it.each([false, true])(
+    "separates constructor and mount suspension results (mount first: %s)",
+    (mountFirst) => {
+      const constructor = `constructor(props) { super(props); this.attach(); }`;
+      const mount = `async componentDidMount() { await prepare(); this.attach(); }`;
+      const result = runRule(
+        classComponentMissingComponentWillUnmountTeardown,
+        `class Listener extends React.Component {
+         ${mountFirst ? mount : constructor}
+         ${mountFirst ? constructor : mount}
+         attach() {
+           emitter.on("change", this.handleChange);
+           emitter.on("resize", this.handleResize);
+         }
+         componentWillUnmount() {
+           emitter.off("change", this.handleChange);
+           emitter.off("resize", this.handleResize);
+         }
+         render() { return null; }
+       }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("accepts classes without helper invocations or resource acquisition", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Empty extends React.Component {
+         componentDidMount() {}
+         render() { return null; }
+       }
+       class Unused extends React.Component {
+         componentDidMount() { const unused = () => emitter.on("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("tracks exact local resources stored on the component instance", () => {
     const subscription = runRule(
       classComponentMissingComponentWillUnmountTeardown,

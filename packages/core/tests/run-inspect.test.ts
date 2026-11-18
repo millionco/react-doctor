@@ -6,7 +6,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import { afterAll, describe, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
   ChangedFileLineRanges,
   Diagnostic,
@@ -22,6 +22,8 @@ import {
   ReactDoctorError,
 } from "../src/errors.js";
 import { runInspect, type InspectInput } from "../src/run-inspect.js";
+import * as reducedMotionCheck from "../src/utils/run-reduced-motion-check.js";
+import { createDeferred } from "../src/utils/create-deferred.js";
 import {
   DeadCodeOverlap,
   DeadCodePhaseTimeoutMs,
@@ -159,6 +161,78 @@ const layersOf = (config: {
     Reporter.layerCapture,
     Layer.succeed(DeadCodeOverlap, config.deadCodeOverlap ?? "off"),
   );
+
+describe("runInspect — reduced-motion overlap", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("starts lint while reduced-motion is pending and preserves filtered diagnostic ordering", async () => {
+    const lintStarted = createDeferred<void>();
+    let didCompleteReducedMotion = false;
+    const reducedMotionDiagnostic: Diagnostic = {
+      ...supplyChainDiagnostic,
+      plugin: "react-doctor",
+      rule: "require-reduced-motion",
+      severity: "warning",
+      category: "Accessibility",
+    };
+    const reducedMotionSpy = vi
+      .spyOn(reducedMotionCheck, "runReducedMotionCheck")
+      .mockImplementation(async () => {
+        await lintStarted.promise;
+        didCompleteReducedMotion = true;
+        return [reducedMotionDiagnostic];
+      });
+    const overlappingLinter = Layer.succeed(
+      Linter,
+      Linter.of({
+        run: () =>
+          Stream.suspend(() => {
+            expect(didCompleteReducedMotion).toBe(false);
+            lintStarted.resolve();
+            return Stream.fromIterable([lintDiagnostic]);
+          }),
+      }),
+    );
+
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            linter: overlappingLinter,
+            reactDoctorConfig: { rules: { "react-doctor/require-reduced-motion": "error" } },
+          }),
+        ),
+      ),
+    );
+
+    expect(reducedMotionSpy).toHaveBeenCalledOnce();
+    expect(didCompleteReducedMotion).toBe(true);
+    expect(output.diagnostics).toEqual([
+      expect.objectContaining(lintDiagnostic),
+      expect.objectContaining({ ...reducedMotionDiagnostic, severity: "error" }),
+    ]);
+  });
+
+  it("does not run reduced-motion checks for diff scans", async () => {
+    const reducedMotionSpy = vi.spyOn(reducedMotionCheck, "runReducedMotionCheck");
+    await Effect.runPromise(
+      runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
+        Effect.provide(layersOf({})),
+      ),
+    );
+    expect(reducedMotionSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not silently discard a failed reduced-motion analysis", async () => {
+    const reducedMotionSpy = vi
+      .spyOn(reducedMotionCheck, "runReducedMotionCheck")
+      .mockRejectedValue(new Error("motion worker failed"));
+    await expect(
+      Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layersOf({})))),
+    ).rejects.toThrow("motion worker failed");
+    expect(reducedMotionSpy).toHaveBeenCalledOnce();
+  });
+});
 
 describe("runInspect — phase timeouts & overall deadline", () => {
   // A never-completing analyzer stream stands in for a wedged phase (a

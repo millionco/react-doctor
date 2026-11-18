@@ -19,7 +19,7 @@ import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
-import { checkReducedMotion } from "./check-reduced-motion.js";
+import { runReducedMotionCheck } from "./utils/run-reduced-motion-check.js";
 import { checkSecurityScanCooperative } from "./check-security-scan.js";
 import {
   DEFAULT_SHOW_WARNINGS,
@@ -125,10 +125,10 @@ const formatLintFailText = (
  *      diagnostics).
  *   2. beforeLint hook (e.g. CLI records project telemetry)
  *   3. environment checks (reduced-motion + pnpm hardening +
- *      expo/react-native), collected synchronously. The heavier
- *      content-regex security scan is forked instead (like supply-chain
- *      below) and joined before the concat, so its CPU overlaps lint
- *      rather than blocking the event loop before it.
+ *      expo/react-native). Reduced-motion analysis runs in a worker;
+ *      its fiber and the cooperative content-regex security scan are
+ *      joined before the concat, so their CPU overlaps lint rather
+ *      than blocking the event loop before it.
  *   4. The supply-chain check (Socket.dev) is forked onto a background
  *      fiber so its ~100% network-bound time overlaps the ~100%
  *      CPU/subprocess-bound lint pass below, collapsing two serial
@@ -379,7 +379,6 @@ export const runInspect = <HooksR = never>(
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
       : [
-          ...checkReducedMotion(scanDirectory),
           ...(pnpmHardeningSeverity === "warn" || pnpmHardeningSeverity === "error"
             ? checkPnpmHardening(scanDirectory)
             : []),
@@ -391,8 +390,19 @@ export const runInspect = <HooksR = never>(
           ...checkExpoProject(scanDirectory, project),
           ...checkReactNativeProject(scanDirectory, project),
         ];
-    const envCollected = yield* Stream.runCollect(
-      applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
+    const environmentFiber = yield* Effect.forkChild(
+      Effect.gen(function* () {
+        const reducedMotionDiagnostics = isDiffMode
+          ? []
+          : yield* Effect.promise((signal) =>
+              runReducedMotionCheck({ rootDirectory: scanDirectory, signal }),
+            );
+        return yield* Stream.runCollect(
+          applyPerElementPipeline(
+            Stream.fromIterable([...reducedMotionDiagnostics, ...environmentDiagnostics]),
+          ),
+        );
+      }),
     );
 
     // ── Phase: security scan (content-regex over the whole tree) ───
@@ -832,6 +842,7 @@ export const runInspect = <HooksR = never>(
     // Join the forked security scan (it overlapped lint). Its diagnostics are
     // kept regardless of lint outcome, mirroring the other environment checks.
     const securityScanCollected = yield* Fiber.join(securityScanFiber);
+    const envCollected = yield* Fiber.join(environmentFiber);
 
     yield* reporterService.finalize;
 

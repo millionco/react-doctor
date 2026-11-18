@@ -18,6 +18,7 @@ export default defineConfig({
         "project-analysis-worker": "./src/project-analysis-worker.ts",
         "oxlint-worker": "./src/oxlint-worker.ts",
         "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
+        "reduced-motion-worker": "./src/reduced-motion-worker.ts",
         schemas: "./src/schemas.ts",
         "scan-preamble": "./src/scan-preamble.ts",
         "react-compiler-detection-worker": "./src/react-compiler-detection-worker.ts",

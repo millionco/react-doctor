@@ -2674,3 +2674,36 @@ describe("fresh cancellation guard aliases", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("no-set-state-after-await-in-effect with work after the cancellation check", () => {
+  it.each([
+    "if (!cancelled && await verify()) setValue(result);",
+    "if (cancelled || await verify()) return; setValue(result);",
+    "if (!cancelled && verify()) setValue(result);",
+    "if (!cancelled && record.default) setValue(result);",
+    "const { default: nested } = { default: record }; if (!cancelled && nested.default) setValue(result);",
+  ])("retains the warning for %s", (guard) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      import { useEffect, useState } from "react";
+      export function Result({ getValue, verify }) {
+        const [value, setValue] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const update = async () => {
+            const result = await getValue();
+            const record = { get default() { verify(); return result; } };
+            ${guard}
+          };
+          void update();
+          return () => { cancelled = true; };
+        }, [getValue, verify]);
+        return <output>{value}</output>;
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

@@ -1,5 +1,8 @@
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
-import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
+import {
+  findNearestPackageDirectory,
+  readNearestPackageManifest,
+} from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
@@ -40,6 +43,7 @@ import {
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
+import { isProvenRelativeEsmNamespaceResult } from "./utils/is-proven-relative-esm-namespace-result.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
@@ -573,6 +577,31 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+// Trace every literal dynamic import so later provider and configuration
+// changes invalidate the rule's cached cancellation diagnostics.
+const collectAwaitedEffectStateWriteDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  let projectRoot: string | null | undefined;
+  walkAst(input.getProgram(), (node) => {
+    if (
+      !isNodeOfType(node, "ImportExpression") ||
+      !isNodeOfType(node.source, "Literal") ||
+      typeof node.source.value !== "string" ||
+      !node.source.value.startsWith("./")
+    )
+      return;
+    if (projectRoot === undefined)
+      projectRoot = findNearestPackageDirectory(input.absoluteFilePath);
+    if (!projectRoot) return;
+    isProvenRelativeEsmNamespaceResult({
+      fromFilename: input.absoluteFilePath,
+      source: node.source.value,
+      projectRoot,
+      framework: "nextjs",
+    });
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -597,7 +626,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
-    ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
+    ["no-set-state-after-await-in-effect", collectAwaitedEffectStateWriteDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],

@@ -41,6 +41,13 @@ const TIMER_CLEANUP_NAME_BY_REGISTRATION_NAME = new Map([
   ["setTimeout", "clearTimeout"],
 ]);
 
+const NATIVE_TIMER_PROVIDER_BY_RECEIVER = new Map([
+  ["globalThis", "web-or-node"],
+  ["window", "web"],
+  ["self", "web"],
+  ["global", "node"],
+]);
+
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
 
 interface AwaitReachabilityProof {
@@ -527,6 +534,21 @@ const getSoleCallbackExpression = (callback: EsTreeNode): EsTreeNode | null => {
   return expression ? stripParenExpression(expression) : null;
 };
 
+const nativeTimerReceiversShareProvider = (
+  scheduledReceiver: string,
+  clearedReceiver: string,
+): boolean => {
+  const scheduledProvider = NATIVE_TIMER_PROVIDER_BY_RECEIVER.get(scheduledReceiver);
+  const clearedProvider = NATIVE_TIMER_PROVIDER_BY_RECEIVER.get(clearedReceiver);
+  return (
+    scheduledProvider !== undefined &&
+    clearedProvider !== undefined &&
+    (scheduledProvider === clearedProvider ||
+      scheduledProvider === "web-or-node" ||
+      clearedProvider === "web-or-node")
+  );
+};
+
 const registrationHasInterchangeableTimerCleanup = (
   registration: EsTreeNodeOfType<"CallExpression">,
   effectCall: EsTreeNodeOfType<"CallExpression">,
@@ -596,7 +618,7 @@ const registrationHasInterchangeableTimerCleanup = (
   return Boolean(
     scheduledTimer &&
     clearedTimer &&
-    scheduledTimer.realm === clearedTimer.realm &&
+    nativeTimerReceiversShareProvider(scheduledTimer.realm, clearedTimer.realm) &&
     ((scheduledTimer.name === "setTimeout" && clearedTimer.name === "clearInterval") ||
       (scheduledTimer.name === "setInterval" && clearedTimer.name === "clearTimeout")),
   );

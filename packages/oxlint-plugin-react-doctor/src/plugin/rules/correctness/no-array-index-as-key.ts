@@ -27,6 +27,8 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
   containsStatefulDescendant,
+  hasOpaqueHtmlAttribute,
+  hasStatefulHtmlAttribute,
   PURE_SVG_PRIMITIVE_TAGS,
   STATELESS_HTML_LEAF_TAGS,
 } from "../../utils/jsx-stateless-leaf.js";
@@ -1939,6 +1941,353 @@ const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalInd
   return indexUse;
 };
 
+// Render maps assume ordinary arrays; known local custom receivers and overrides are excluded.
+const hasKnownLocalCustomMapReceiver = (
+  receiver: EsTreeNode,
+  context: RuleContext,
+  visitedSymbols: ReadonlySet<number> = new Set(),
+): boolean => {
+  const value = stripParenExpression(receiver);
+  if (isNodeOfType(value, "ObjectExpression")) return true;
+  if (isNodeOfType(value, "ConditionalExpression")) {
+    return (
+      hasKnownLocalCustomMapReceiver(value.consequent, context, visitedSymbols) ||
+      hasKnownLocalCustomMapReceiver(value.alternate, context, visitedSymbols)
+    );
+  }
+  if (isNodeOfType(value, "LogicalExpression")) {
+    return (
+      hasKnownLocalCustomMapReceiver(value.left, context, visitedSymbols) ||
+      hasKnownLocalCustomMapReceiver(value.right, context, visitedSymbols)
+    );
+  }
+  if (!isNodeOfType(value, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(value);
+  if (!symbol || visitedSymbols.has(symbol.id)) return false;
+  const nextVisited = new Set(visitedSymbols).add(symbol.id);
+  if (
+    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+    isNodeOfType(symbol.declarationNode.parent, "VariableDeclaration") &&
+    isNodeOfType(symbol.declarationNode.parent.parent, "ExportNamedDeclaration")
+  )
+    return true;
+  for (const reference of symbol.references) {
+    if (reference.flag !== "read") return true;
+    const node = reference.identifier;
+    const parent = node.parent;
+    if (
+      isNodeOfType(parent, "MemberExpression") &&
+      parent.object === node &&
+      !parent.computed &&
+      !parent.optional &&
+      getStaticPropertyName(parent) === "map"
+    ) {
+      const call = parent.parent;
+      if (isNodeOfType(call, "CallExpression") && call.callee === parent && !call.optional)
+        continue;
+      return true;
+    }
+    if (
+      isNodeOfType(parent, "VariableDeclarator") &&
+      parent.init === node &&
+      isNodeOfType(parent.id, "Identifier")
+    ) {
+      if (hasKnownLocalCustomMapReceiver(parent.id, context, nextVisited)) return true;
+      continue;
+    }
+    // Passing, exporting or storing the receiver may install an own map implementation.
+    return true;
+  }
+  return Boolean(
+    symbol.initializer && hasKnownLocalCustomMapReceiver(symbol.initializer, context, nextVisited),
+  );
+};
+
+// Follow local JSX values to an ordinary render return, rejecting stored element transports.
+const isDirectMuiSpanRenderResult = (jsxElement: EsTreeNode, context: RuleContext): boolean => {
+  let value = jsxElement;
+  const visited = new Set<EsTreeNode>();
+  while (!visited.has(value)) {
+    visited.add(value);
+    const parent = value.parent;
+    if (!parent) return false;
+    if (isNodeOfType(parent, "JSXElement") || isNodeOfType(parent, "JSXFragment")) {
+      if (
+        isNodeOfType(parent, "JSXElement") &&
+        (!isNodeOfType(parent.openingElement.name, "JSXIdentifier") ||
+          !STATELESS_HTML_LEAF_TAGS.has(parent.openingElement.name.name) ||
+          hasOpaqueHtmlAttribute(parent.openingElement) ||
+          hasStatefulHtmlAttribute(parent.openingElement))
+      )
+        return false;
+      if (!parent.children.some((child) => child === value)) return false;
+      value = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "JSXExpressionContainer")) {
+      const container = parent.parent;
+      if (
+        !container ||
+        (!isNodeOfType(container, "JSXElement") && !isNodeOfType(container, "JSXFragment")) ||
+        !container.children.some((child) => child === parent)
+      )
+        return false;
+      if (
+        isNodeOfType(container, "JSXElement") &&
+        (!isNodeOfType(container.openingElement.name, "JSXIdentifier") ||
+          !STATELESS_HTML_LEAF_TAGS.has(container.openingElement.name.name) ||
+          hasOpaqueHtmlAttribute(container.openingElement) ||
+          hasStatefulHtmlAttribute(container.openingElement))
+      )
+        return false;
+      value = container;
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "ConditionalExpression") &&
+      (parent.consequent === value || parent.alternate === value)
+    ) {
+      value = parent;
+      continue;
+    }
+    if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      (parent.left === value || parent.right === value)
+    ) {
+      value = parent;
+      continue;
+    }
+    let owner: EsTreeNode | null = null;
+    if (isNodeOfType(parent, "ReturnStatement") && parent.argument === value) {
+      owner = findEnclosingFunction(parent);
+    } else if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === value) {
+      owner = parent;
+    }
+    if (!owner) return false;
+    const invocation = owner.parent;
+    if (isNodeOfType(invocation, "CallExpression") && invocation.arguments[0] === owner) {
+      const callee = invocation.callee;
+      if (
+        invocation.optional ||
+        !isNodeOfType(callee, "MemberExpression") ||
+        callee.computed ||
+        callee.optional ||
+        !isNodeOfType(callee.property, "Identifier") ||
+        callee.property.name !== "map" ||
+        hasKnownLocalCustomMapReceiver(callee.object, context)
+      )
+        return false;
+      value = invocation;
+      continue;
+    }
+    // Known local callers can transport returned elements; do not follow their value aliases.
+    let binding: EsTreeNode | null = null;
+    let exportNode: EsTreeNode | null | undefined;
+    if (isNodeOfType(owner, "FunctionDeclaration")) {
+      binding = owner.id ?? null;
+      exportNode = owner.parent;
+    } else if (
+      isNodeOfType(invocation, "VariableDeclarator") &&
+      invocation.init === owner &&
+      isNodeOfType(invocation.id, "Identifier") &&
+      isNodeOfType(invocation.parent, "VariableDeclaration") &&
+      invocation.parent.kind === "const"
+    ) {
+      binding = invocation.id;
+      exportNode = invocation.parent.parent;
+    }
+    if (
+      !binding ||
+      !isNodeOfType(exportNode, "ExportNamedDeclaration") ||
+      !isNodeOfType(exportNode.parent, "Program")
+    )
+      return false;
+    const functionDeclaration = isNodeOfType(owner, "FunctionDeclaration") ? owner : null;
+    const outerSymbol = functionDeclaration?.id
+      ? context.scopes.scopeFor(owner).symbolsByName.get(functionDeclaration.id.name)
+      : context.scopes.symbolFor(binding);
+    if (!outerSymbol || (functionDeclaration && outerSymbol.declarationNode !== owner))
+      return false;
+    const selfName =
+      isNodeOfType(owner, "FunctionDeclaration") || isNodeOfType(owner, "FunctionExpression")
+        ? owner.id
+        : null;
+    const selfSymbol = selfName ? context.scopes.symbolFor(selfName) : null;
+    if (selfName && selfSymbol?.declarationNode !== owner) return false;
+
+    return (selfSymbol ? [outerSymbol, selfSymbol] : [outerSymbol]).every((symbol) =>
+      symbol.references.every((reference) => {
+        const node = reference.identifier;
+        const use = node.parent;
+        return (
+          reference.flag === "read" &&
+          isNodeOfType(node, "JSXIdentifier") &&
+          (isNodeOfType(use, "JSXOpeningElement") || isNodeOfType(use, "JSXClosingElement")) &&
+          use.name === node
+        );
+      }),
+    );
+  }
+  return false;
+};
+
+// Recognize immutable direct MUI span wrappers with static inline-text styling.
+const isDirectMuiStyledSpan = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+  wrapperCertificates: Map<number, boolean>,
+  factoryCertificates: Map<number, boolean>,
+): boolean => {
+  if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return false;
+  const symbol = context.scopes.symbolFor(openingElement.name);
+  if (!symbol || symbol.kind !== "const") return false;
+  const cached = wrapperCertificates.get(symbol.id);
+  if (cached !== undefined) return cached;
+  const classify = (): boolean => {
+    const declaration = symbol.declarationNode;
+    if (
+      !isNodeOfType(declaration, "VariableDeclarator") ||
+      declaration.id !== symbol.bindingIdentifier ||
+      !isNodeOfType(declaration.parent, "VariableDeclaration") ||
+      declaration.parent.kind !== "const" ||
+      declaration.parent.parent?.type === "ExportNamedDeclaration" ||
+      declaration.parent.parent?.type === "ExportDefaultDeclaration" ||
+      !declaration.init
+    )
+      return false;
+    const definition = stripParenExpression(declaration.init);
+    if (!isNodeOfType(definition, "TaggedTemplateExpression")) return false;
+    const tag = stripParenExpression(definition.tag);
+    if (
+      !isNodeOfType(tag, "CallExpression") ||
+      tag.optional ||
+      tag.arguments.length !== 1 ||
+      !isNodeOfType(tag.arguments[0], "Literal") ||
+      tag.arguments[0].value !== "span" ||
+      !isNodeOfType(tag.callee, "Identifier")
+    )
+      return false;
+    const factory = context.scopes.symbolFor(tag.callee);
+    if (!factory || factory.kind !== "import") return false;
+    const specifier = factory.declarationNode;
+    if (
+      !isNodeOfType(specifier, "ImportSpecifier") ||
+      !isNodeOfType(specifier.imported, "Identifier") ||
+      specifier.imported.name !== "styled" ||
+      !isNodeOfType(specifier.parent, "ImportDeclaration") ||
+      specifier.parent.source.value !== "@mui/material" ||
+      specifier.parent.importKind === "type" ||
+      specifier.importKind === "type"
+    )
+      return false;
+    // A factory alias, member write, call escape or export is outside this certificate.
+    let factorySafe = factoryCertificates.get(factory.id);
+    if (factorySafe === undefined) {
+      factorySafe =
+        factory.references.length > 0 &&
+        factory.references.every((reference) => {
+          const node = reference.identifier;
+          const call = node.parent;
+          return (
+            reference.flag === "read" &&
+            isNodeOfType(call, "CallExpression") &&
+            call.callee === node &&
+            !call.optional &&
+            call.arguments.length === 1 &&
+            isNodeOfType(call.arguments[0], "Literal") &&
+            call.arguments[0].value === "span" &&
+            isNodeOfType(call.parent, "TaggedTemplateExpression") &&
+            call.parent.tag === call
+          );
+        });
+      factoryCertificates.set(factory.id, factorySafe);
+    }
+    if (!factorySafe) return false;
+    const styleDeclarations = definition.quasi.quasis
+      .map((part) => part.value.cooked ?? part.value.raw)
+      .join("palette")
+      .split(";");
+    if (
+      !styleDeclarations.every((declaration) => {
+        const style = declaration.trim();
+        return (
+          style === "" ||
+          /^(?:background|background-color|color|text-decoration)\s*:[^{}]+$/.test(style)
+        );
+      })
+    )
+      return false;
+    // Restrict interpolations to destructured theme palette member reads.
+    if (
+      !definition.quasi.expressions.every((expression) => {
+        if (
+          !isNodeOfType(expression, "ArrowFunctionExpression") ||
+          expression.async ||
+          expression.params.length !== 1 ||
+          !isNodeOfType(expression.params[0], "ObjectPattern")
+        )
+          return false;
+        const properties = expression.params[0].properties;
+        if (properties.length !== 1) return false;
+        const property = properties[0];
+        if (
+          !isNodeOfType(property, "Property") ||
+          property.computed ||
+          property.method ||
+          property.kind !== "init" ||
+          !isNodeOfType(property.key, "Identifier") ||
+          property.key.name !== "theme" ||
+          !isNodeOfType(property.value, "Identifier")
+        )
+          return false;
+        const themeSymbol = context.scopes.symbolFor(property.value);
+        if (!themeSymbol) return false;
+        let value = stripParenExpression(expression.body);
+        const names: string[] = [];
+        while (isNodeOfType(value, "MemberExpression")) {
+          if (value.computed || value.optional || !isNodeOfType(value.property, "Identifier"))
+            return false;
+          names.unshift(value.property.name);
+          value = stripParenExpression(value.object);
+        }
+        return (
+          names.length >= 2 &&
+          names[0] === "palette" &&
+          isNodeOfType(value, "Identifier") &&
+          context.scopes.symbolFor(value) === themeSymbol
+        );
+      })
+    )
+      return false;
+    // Every component use must stay a key-only JSX element. Never follow value aliases.
+    if (symbol.references.length === 0) return false;
+    return symbol.references.every((reference) => {
+      const node = reference.identifier;
+      const parent = node.parent;
+      if (reference.flag !== "read" || !isNodeOfType(node, "JSXIdentifier")) return false;
+      if (!isNodeOfType(parent, "JSXClosingElement") && !isNodeOfType(parent, "JSXOpeningElement"))
+        return false;
+      const element = parent.parent;
+      if (
+        parent.name !== node ||
+        !isNodeOfType(element, "JSXElement") ||
+        !isDirectMuiSpanRenderResult(element, context)
+      )
+        return false;
+      if (isNodeOfType(parent, "JSXClosingElement")) return true;
+      return parent.attributes.every(
+        (attribute) =>
+          isNodeOfType(attribute, "JSXAttribute") &&
+          isNodeOfType(attribute.name, "JSXIdentifier") &&
+          attribute.name.name === "key",
+      );
+    });
+  };
+  const result = classify();
+  wrapperCertificates.set(symbol.id, result);
+  return result;
+};
+
 export const noArrayIndexAsKey = defineRule({
   id: "no-array-index-as-key",
   title: "Array index used as a key",
@@ -1946,6 +2295,8 @@ export const noArrayIndexAsKey = defineRule({
   recommendation:
     "Use a stable id from the item, like `key={item.id}` or `key={item.slug}`. Index keys break when the list reorders or filters.",
   create: (context: RuleContext) => {
+    const styledSpanCertificates = new Map<number, boolean>();
+    const styledFactoryCertificates = new Map<number, boolean>();
     const reportIndexKey = (node: EsTreeNode, indexName: string): void => {
       context.report({
         node,
@@ -1996,7 +2347,14 @@ export const noArrayIndexAsKey = defineRule({
         if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
           const elementName = openingElement.name as EsTreeNode;
           if (isNodeOfType(elementName, "JSXIdentifier")) {
-            if (elementName.name === "Fragment") {
+            const isStyledSpan = isDirectMuiStyledSpan(
+              openingElement,
+              context,
+              styledSpanCertificates,
+              styledFactoryCertificates,
+            );
+            const effectiveTag = isStyledSpan ? "span" : elementName.name;
+            if (effectiveTag === "Fragment") {
               if (
                 !fragmentHasStatefulChildren(
                   openingElement,
@@ -2007,12 +2365,12 @@ export const noArrayIndexAsKey = defineRule({
               ) {
                 return;
               }
-            } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
+            } else if (PURE_SVG_PRIMITIVE_TAGS.has(effectiveTag)) {
               // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
               // attributes on reorder — no observable consequence, UNLESS
               // the callback filters rows out (positions shift with data).
               if (!callbackFiltersRows(indexUse.binding.bindingFunction)) return;
-            } else if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
+            } else if (STATELESS_HTML_LEAF_TAGS.has(effectiveTag)) {
               // Stateless HTML leaf element whose subtree contains no
               // form controls, no media, no custom components, no
               // function-call children — reorder hazard doesn't apply.
@@ -2023,7 +2381,7 @@ export const noArrayIndexAsKey = defineRule({
               // renderer `children`).
               const jsxElement = openingElement.parent;
               if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
-                const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
+                const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(effectiveTag);
                 if (
                   isInlineTextRun &&
                   indexUse.binding.iteratorCall &&
@@ -2051,6 +2409,7 @@ export const noArrayIndexAsKey = defineRule({
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||
                   containsStatefulDescendant(jsxElement, {
+                    certifiedRootIntrinsicTag: isStyledSpan ? "span" : undefined,
                     memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
                     bareIdentifierNames:
                       primitiveItemNames.size > 0

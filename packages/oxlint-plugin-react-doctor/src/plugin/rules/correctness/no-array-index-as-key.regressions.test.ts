@@ -2756,3 +2756,92 @@ describe("closed stable focus data actions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("no-array-index-as-key with direct page links", () => {
+  const source = `
+    import { useMemo } from "react";
+    export const Picker = function Picker({ chosen, available, batchSize, pick, entries }) {
+      const end = useMemo(() => Math.floor((available - 1) / batchSize) + 1, [available, batchSize]);
+
+      const link = (idx) => {
+        if (idx < 1 || idx > end) return;
+        return (
+          <li key={idx} onClick={() => select(idx)}>
+            <a className="option">{idx}</a>
+          </li>
+        );
+      };
+
+      if (chosen > end) {
+        chosen = end;
+        pick(chosen);
+      }
+
+      function select(value) {
+        pick(value, batchSize);
+      }
+
+      return (
+        <nav>
+          <ul>{link(chosen - 1)}{link(chosen)}{link(chosen + 1)}</ul>
+        </nav>
+      );
+    };
+  `;
+
+  it("accepts a displayed and dispatched page as the key", () => {
+    const result = runRule(noArrayIndexAsKey, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "an actual iterator position",
+      source.replace(
+        "{link(chosen - 1)}{link(chosen)}{link(chosen + 1)}",
+        "{entries.map((entry, idx) => link(idx))}",
+      ),
+    ],
+    [
+      "an external data lookup in the label",
+      source.replace(">{idx}</a>", ">{entries[idx].label}</a>"),
+    ],
+    ["a label that shows a different value", source.replace(">{idx}</a>", ">{chosen}</a>")],
+    [
+      "a separate use of the render helper",
+      source.replace(
+        "      return (\n        <nav>",
+        "      pass(link);\n      return (\n        <nav>",
+      ),
+    ],
+    [
+      "a clamp to an array position",
+      source.replace(
+        "Math.floor((available - 1) / batchSize) + 1",
+        "entries.findIndex((entry) => entry.active)",
+      ),
+    ],
+    [
+      "a reassignment outside the clamp",
+      source.replace(
+        "        chosen = end;",
+        "        chosen = entries.findIndex((entry) => entry.active);",
+      ),
+    ],
+    [
+      "a lookup inside the dispatch",
+      source.replace("pick(value, batchSize);", "pick(value, entries[value]);"),
+    ],
+    ["a transformed selection", source.replace("select(idx)", "select(idx + 1)")],
+    ["a duplicate displacement", source.replace("{link(chosen + 1)}", "{link(chosen - 1)}")],
+    [
+      "a component that may hold row state",
+      source.replace('<a className="option">{idx}</a>', "<StatefulChoice value={idx} />"),
+    ],
+  ])("retains the warning with %s", (_label, code) => {
+    const result = runRule(noArrayIndexAsKey, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

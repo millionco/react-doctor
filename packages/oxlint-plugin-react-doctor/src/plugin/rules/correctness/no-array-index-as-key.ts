@@ -20,6 +20,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isClosedPageLinkGroup } from "../../utils/is-closed-page-link-group.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -1974,6 +1975,18 @@ export const noArrayIndexAsKey = defineRule({
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
             isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+        )
+          return;
+        if (
+          indexUse.binding.iteratorCall === null &&
+          indexUse.binding.indexParameterPosition === 0 &&
+          indexUse.binding.bindingFunction &&
+          isClosedPageLinkGroup(
+            indexUse.binding.bindingFunction,
+            indexUse.identifier,
+            node,
+            context.scopes,
+          )
         )
           return;
         const indexName = indexUse.identifier.name;

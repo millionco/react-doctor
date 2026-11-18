@@ -1,6 +1,7 @@
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -480,6 +481,88 @@ const isSplitPartDerefGuarded = (node: EsTreeNode, splitCall: EsTreeNode): boole
   });
 };
 
+const getImmediateIfTestForReturn = (node: EsTreeNode): EsTreeNode | null => {
+  let expression = findTransparentExpressionRoot(node);
+  const call = expression.parent;
+  if (isNodeOfType(call, "CallExpression") && call.callee === expression) {
+    expression = findTransparentExpressionRoot(call);
+  }
+
+  const returned = expression.parent;
+  if (!isNodeOfType(returned, "ReturnStatement") || returned.argument !== expression) return null;
+  const parent = returned.parent;
+  const branch =
+    isNodeOfType(parent, "BlockStatement") && parent.body.length === 1 ? parent : returned;
+  const condition = branch.parent;
+  return isNodeOfType(condition, "IfStatement") && condition.consequent === branch
+    ? stripParenExpression(condition.test)
+    : null;
+};
+
+// A primitive string with a nonempty prefix contains that separator at index
+// zero. Native split without a limit therefore produces at least two parts.
+const isFirstSplitPartProvenByStringPrefix = (
+  node: EsTreeNode,
+  splitCall: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(splitCall, "CallExpression") ||
+    splitCall.optional ||
+    !isNodeOfType(splitCall.callee, "MemberExpression") ||
+    splitCall.callee.optional ||
+    splitCall.arguments.length !== 1
+  ) {
+    return false;
+  }
+
+  const separator = stripParenExpression(splitCall.arguments[0]);
+  if (
+    !isNodeOfType(separator, "Literal") ||
+    typeof separator.value !== "string" ||
+    !separator.value
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(splitCall.callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(receiver);
+  if (!symbol || (symbol.kind !== "const" && symbol.kind !== "parameter")) return false;
+
+  const condition = getImmediateIfTestForReturn(node);
+  if (!isNodeOfType(condition, "LogicalExpression") || condition.operator !== "&&") return false;
+  const typeCheck = stripParenExpression(condition.left);
+  if (!isNodeOfType(typeCheck, "BinaryExpression") || typeCheck.operator !== "===") return false;
+  const left = stripParenExpression(typeCheck.left);
+  const right = stripParenExpression(typeCheck.right);
+  const typeofReceiver = isNodeOfType(left, "UnaryExpression") ? left : right;
+  const expectedType = typeofReceiver === left ? right : left;
+  if (
+    !isNodeOfType(typeofReceiver, "UnaryExpression") ||
+    typeofReceiver.operator !== "typeof" ||
+    context.scopes.symbolFor(stripParenExpression(typeofReceiver.argument)) !== symbol ||
+    !isNodeOfType(expectedType, "Literal") ||
+    expectedType.value !== "string"
+  ) {
+    return false;
+  }
+
+  const prefixCheck = stripParenExpression(condition.right);
+  if (
+    !isNodeOfType(prefixCheck, "CallExpression") ||
+    prefixCheck.optional ||
+    !isNodeOfType(prefixCheck.callee, "MemberExpression") ||
+    prefixCheck.callee.optional ||
+    getStaticPropertyName(prefixCheck.callee) !== "startsWith" ||
+    context.scopes.symbolFor(stripParenExpression(prefixCheck.callee.object)) !== symbol ||
+    prefixCheck.arguments.length !== 1
+  ) {
+    return false;
+  }
+  const prefix = stripParenExpression(prefixCheck.arguments[0]);
+  return isNodeOfType(prefix, "Literal") && prefix.value === separator.value;
+};
+
 // Producers with a statically known shape: `toISOString()` always contains
 // `T`, `.`, `:` and `-` at fixed positions, and an http(s) document's
 // `location.pathname` always starts with `/` (so `split('/')[1]` exists).
@@ -727,7 +810,10 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
           if (isKnownFormatSplitPart(base, partIndex, context)) return;
           if (isSplitPartDerefGuarded(node, base)) return;
           if (isInsideFilteredIterationCallback(node, base)) return;
-          if (matchesReadonlyConstSplitPart(base, partIndex, context)) {
+          if (
+            matchesReadonlyConstSplitPart(base, partIndex, context) ||
+            (partIndex === 1 && isFirstSplitPartProvenByStringPrefix(node, base, context))
+          ) {
             stringSplitPrototypeExposed ??= hasStringSplitPrototypeExposure(context.scopes);
             if (!stringSplitPrototypeExposed) return;
           }

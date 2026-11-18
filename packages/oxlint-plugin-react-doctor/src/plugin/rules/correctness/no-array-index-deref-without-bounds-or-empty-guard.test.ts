@@ -44,6 +44,89 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes a primitive string prefix that proves split index one in an immediate return", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function readQuery(input) {
+        const value = input;
+        if (typeof value === "string" && value.startsWith("?")) {
+          return value.split("?")[1].trim();
+        }
+        return "";
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes the same prefix proof with reversed typeof operands and an unbraced return", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function readQuery(value) {
+        if ("string" === typeof value && value.startsWith("?"))
+          return value.split("?")[1].trim();
+        return "";
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ['typeof value === "string" && value.startsWith("?")', 'value.split("?")[2].trim()'],
+    ['typeof value === "string" && value.startsWith("#")', 'value.split("?")[1].trim()'],
+    ['typeof value === "string" && value.startsWith("")', 'value.split("")[1].trim()'],
+    ['typeof value === "string" && value.startsWith("?")', 'value.split("?", 1)[1].trim()'],
+    ['typeof value === "string" || value.startsWith("?")', 'value.split("?")[1].trim()'],
+    ['typeof other === "string" && value.startsWith("?")', 'value.split("?")[1].trim()'],
+    ['typeof value === "string" && other.startsWith("?")', 'value.split("?")[1].trim()'],
+    ['value.startsWith("?")', 'value.split("?")[1].trim()'],
+    ['typeof value === "string" && value.startsWith("?", offset)', 'value.split("?")[1].trim()'],
+  ] as const)("reports a split with incomplete prefix proof (%s)", (guard, dereference) => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function readQuery(value, other, offset) {
+        if (${guard}) { return ${dereference}; }
+        return "";
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a split after the guarded receiver can change", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function readQuery(value) {
+        if (typeof value === "string" && value.startsWith("?")) {
+          value = "";
+          return value.split("?")[1].trim();
+        }
+        return "";
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "String.prototype.startsWith = () => true;",
+    "Object.defineProperty(String.prototype, Symbol.split, { value: () => [] });",
+  ])("reports a split when native string behavior is exposed (%s)", (prototypeExposure) => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `${prototypeExposure}
+      function readQuery(value) {
+        if (typeof value === "string" && value.startsWith("?")) {
+          return value.split("?")[1].trim();
+        }
+        return "";
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an arithmetic index into a parameter array (caller invariants dominate on real code)", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

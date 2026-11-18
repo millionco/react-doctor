@@ -5,7 +5,11 @@ import {
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
-import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
+import { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
+import {
+  resolveModuleFileFromAbsolutePath,
+  resolveUniqueDirectModuleFile,
+} from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
   // Directory that bare `baseUrl` imports and `paths` targets resolve
@@ -317,6 +321,27 @@ const findNearestTsconfig = (fromDirectory: string): ResolvedTsconfig | null => 
   return null;
 };
 
+const findPackageTsconfig = (filename: string): ResolvedTsconfig | null => {
+  const packageDirectory = findNearestPackageDirectory(filename);
+  if (!packageDirectory) return null;
+  let directory = path.dirname(filename);
+  while (directory !== packageDirectory) {
+    for (const configName of TSCONFIG_FILE_NAMES) {
+      const configPath = path.join(directory, configName);
+      recordContentProbe(configPath);
+      if (fs.existsSync(configPath)) return null;
+    }
+    directory = path.dirname(directory);
+  }
+
+  for (const configName of TSCONFIG_FILE_NAMES) {
+    const configPath = path.join(packageDirectory, configName);
+    recordContentProbe(configPath);
+    if (fs.existsSync(configPath)) return loadTsconfigCached(configPath).config;
+  }
+  return null;
+};
+
 const matchPathPattern = (source: string, pattern: string): string | null => {
   const starIndex = pattern.indexOf("*");
   if (starIndex === -1) return source === pattern ? "" : null;
@@ -336,8 +361,14 @@ const matchPathPattern = (source: string, pattern: string): string | null => {
 // through the nearest tsconfig/jsconfig `paths` + `baseUrl` to a
 // concrete file on disk, or null when no alias matches. Relative
 // imports are NOT handled here — callers resolve those first.
-export const resolveTsconfigAliasPath = (fromFilename: string, source: string): string | null => {
-  const config = findNearestTsconfig(path.dirname(fromFilename));
+export const resolveTsconfigAliasPath = (
+  fromFilename: string,
+  source: string,
+  shouldRequireUniqueDirectFile = false,
+): string | null => {
+  const config = shouldRequireUniqueDirectFile
+    ? findPackageTsconfig(fromFilename)
+    : findNearestTsconfig(path.dirname(fromFilename));
   if (!config) return null;
 
   let bestPattern: string | null = null;
@@ -346,6 +377,7 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
   for (const pattern of config.paths.keys()) {
     const capture = matchPathPattern(source, pattern);
     if (capture === null) continue;
+    if (shouldRequireUniqueDirectFile && bestPattern !== null) return null;
     const starIndex = pattern.indexOf("*");
     const prefixLength = starIndex === -1 ? pattern.length : starIndex;
     if (prefixLength > bestPrefixLength) {
@@ -356,7 +388,16 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
   }
 
   if (bestPattern) {
-    for (const target of config.paths.get(bestPattern) ?? []) {
+    const targets = config.paths.get(bestPattern) ?? [];
+    if (shouldRequireUniqueDirectFile) {
+      const [target] = targets;
+      return targets.length === 1 && target !== undefined
+        ? resolveUniqueDirectModuleFile(
+            path.resolve(config.baseAbsolutePath, target.replaceAll("*", bestCapture)),
+          )
+        : null;
+    }
+    for (const target of targets) {
       // A tsconfig `paths` target contains at most one `*`; replaceAll
       // keeps the substitution complete (and silences scanners that flag
       // single-occurrence replace as incomplete encoding).
@@ -370,7 +411,7 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 
   // `baseUrl`-relative resolution for bare non-aliased imports
   // (`import "components/Search"` with `baseUrl: "src"`).
-  if (config.hasExplicitBaseUrl) {
+  if (!shouldRequireUniqueDirectFile && config.hasExplicitBaseUrl) {
     return resolveModuleFileFromAbsolutePath(path.resolve(config.baseAbsolutePath, source));
   }
   return null;

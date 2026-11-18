@@ -19,7 +19,7 @@ import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-re
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
+import { readRenderBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -50,7 +50,7 @@ const isInsideAvailabilityGuard = (
       isNodeOfType(parentNode, "LogicalExpression") &&
       (parentNode.operator === "&&" || parentNode.operator === "||") &&
       parentNode.right === currentNode &&
-      readBrowserGlobalAvailability(
+      readRenderBrowserGlobalAvailability(
         parentNode.left,
         browserGlobalName,
         context,
@@ -62,11 +62,15 @@ const isInsideAvailabilityGuard = (
     if (isNodeOfType(parentNode, "ConditionalExpression")) {
       if (
         (parentNode.consequent === currentNode &&
-          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, true) ===
+          readRenderBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, true) ===
             true) ||
         (parentNode.alternate === currentNode &&
-          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, false) ===
-            true)
+          readRenderBrowserGlobalAvailability(
+            parentNode.test,
+            browserGlobalName,
+            context,
+            false,
+          ) === true)
       ) {
         return true;
       }
@@ -74,11 +78,15 @@ const isInsideAvailabilityGuard = (
     if (isNodeOfType(parentNode, "IfStatement")) {
       if (
         (parentNode.consequent === currentNode &&
-          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, true) ===
+          readRenderBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, true) ===
             true) ||
         (parentNode.alternate === currentNode &&
-          readBrowserGlobalAvailability(parentNode.test, browserGlobalName, context, false) ===
-            true)
+          readRenderBrowserGlobalAvailability(
+            parentNode.test,
+            browserGlobalName,
+            context,
+            false,
+          ) === true)
       ) {
         return true;
       }
@@ -115,14 +123,14 @@ const isAfterAvailabilityEarlyExit = (
         if (statement === currentNode) break;
         if (!isNodeOfType(statement, "IfStatement")) continue;
         if (
-          readBrowserGlobalAvailability(statement.test, browserGlobalName, context, false) ===
+          readRenderBrowserGlobalAvailability(statement.test, browserGlobalName, context, false) ===
             true &&
           statementAlwaysExits(statement.consequent)
         ) {
           return true;
         }
         if (
-          readBrowserGlobalAvailability(statement.test, browserGlobalName, context, true) ===
+          readRenderBrowserGlobalAvailability(statement.test, browserGlobalName, context, true) ===
             true &&
           statement.alternate &&
           statementAlwaysExits(statement.alternate)
@@ -257,14 +265,14 @@ const moduleTerminatesDuringServerEvaluation = (
   program.body.some((statement) => {
     if (!isNodeOfType(statement, "IfStatement")) return false;
     if (
-      readBrowserGlobalAvailability(statement.test, "window", context, true) === false &&
+      readRenderBrowserGlobalAvailability(statement.test, "window", context, true) === false &&
       statementAlwaysExits(statement.consequent)
     ) {
       return true;
     }
     return Boolean(
       statement.alternate &&
-      readBrowserGlobalAvailability(statement.test, "window", context, false) === false &&
+      readRenderBrowserGlobalAvailability(statement.test, "window", context, false) === false &&
       statementAlwaysExits(statement.alternate),
     );
   });

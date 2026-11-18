@@ -593,6 +593,33 @@ describe("forwarded Hook dependency collectors", () => {
 });
 
 describe("browser render guard collector", () => {
+  it("records absent competing files for a direct imported predicate", () => {
+    writeFixtureFile("package.json", "{}");
+    const nextConfigPath = writeFixtureFile("next.config.js", "module.exports = {};");
+    writeFixtureFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }),
+    );
+    const guardPath = writeFixtureFile(
+      "src/guard.ts",
+      'export const isBrowser = () => typeof window !== "undefined";',
+    );
+    const componentPath = writeFixtureFile(
+      "src/Panel.tsx",
+      `import { isBrowser } from "@/guard";
+export const Panel = () => <section>{isBrowser() && document.title}</section>;
+`,
+    );
+
+    const trace = collectFor(componentPath, ["no-unguarded-browser-global-in-render-or-hook-init"]);
+    expect(trace?.contentPaths.has(guardPath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("src/guard.js"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("src/guard.tsx"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/tsconfig.json"))).toBe(true);
+    expect(trace?.contentPaths.has(nextConfigPath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("next.config.ts"))).toBe(true);
+  });
+
   it("records package, alias, re-export, and imported Hook content on repeat collections", () => {
     writeFixtureFile(
       "package.json",

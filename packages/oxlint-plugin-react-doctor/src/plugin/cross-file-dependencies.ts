@@ -41,7 +41,7 @@ import {
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
-import { resolveModulePath } from "./utils/resolve-module-path.js";
+import { resolveModulePath, resolveUniqueDirectModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
@@ -535,6 +535,11 @@ const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (
 
 const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
+  const sources = new Set(flattenImportEntries(input.staticImports).map((entry) => entry.source));
+  for (const source of sources) {
+    const importedFile = resolveUniqueDirectModulePath(input.absoluteFilePath, source);
+    if (importedFile) parseSourceFile(importedFile);
+  }
   collectFunctionExportDependencies(
     input,
     Number.POSITIVE_INFINITY,

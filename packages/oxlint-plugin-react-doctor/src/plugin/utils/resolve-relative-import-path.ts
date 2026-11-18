@@ -165,6 +165,19 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
   return resolveModuleFilePath(path.join(importPath, "index"));
 };
 
+export const resolveUniqueDirectModuleFile = (importPath: string): string | null => {
+  const candidates = new Set([importPath, ...getModuleFilePathCandidates(importPath)]);
+  let resolvedFile: string | null = null;
+  for (const candidate of candidates) {
+    const entry = classifyFilesystemEntry(candidate);
+    if (entry.isDirectory) return null;
+    if (!entry.isFile) continue;
+    if (resolvedFile !== null) return null;
+    resolvedFile = candidate;
+  }
+  return resolvedFile;
+};
+
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
 

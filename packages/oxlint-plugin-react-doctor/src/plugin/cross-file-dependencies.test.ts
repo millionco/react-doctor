@@ -8,6 +8,8 @@ import {
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
+import { runRule } from "../test-utils/run-rule.js";
+import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import {
   CROSS_FILE_BARREL_FOLLOW_DEPTH,
   DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
@@ -941,4 +943,55 @@ it("records the API Platform provider manifest", () => {
   );
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
+});
+
+describe("no-set-state-after-await-in-effect namespace guard dependencies", () => {
+  it("tracks the namespace, config, and missing shadow candidates", () => {
+    const packagePath = writeFixtureFile("package.json", '{"dependencies":{"next":"15.4.0"}}');
+    const configPath = writeFixtureFile("next.config.ts", "export default {};");
+    const providerPath = writeFixtureFile("src/source.tsx", "export default 42;");
+    const text = `
+      import { useEffect, useState } from "react";
+      export function Result({ identity }: { identity: string }) {
+        const [value, setValue] = useState(0);
+        useEffect(() => {
+          let cancelled = false;
+          const refresh = async () => {
+            const loaded = await import("./source");
+            if (!cancelled && loaded.default) setValue(loaded.default);
+          };
+          void refresh();
+          return () => { cancelled = true; };
+        }, [identity]);
+        return <output>{value}</output>;
+      }
+    `;
+    const filePath = writeFixtureFile("src/Result.tsx", text);
+    const ruleIds = ["no-set-state-after-await-in-effect"];
+    for (const trace of [collectFor(filePath, ruleIds), collectFor(filePath, ruleIds)]) {
+      expect(trace?.contentPaths.has(packagePath)).toBe(true);
+      expect(trace?.contentPaths.has(configPath)).toBe(true);
+      expect(trace?.contentPaths.has(providerPath)).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("src/source.js"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("src/.babelrc"))).toBe(true);
+    }
+
+    const run = () =>
+      runRule(noSetStateAfterAwaitInEffect, text, {
+        filename: filePath,
+        settings: { "react-doctor": { framework: "nextjs" } },
+      }).diagnostics;
+    expect(run()).toHaveLength(0);
+
+    writeFixtureFile("src/source.tsx", "export default 42; export function then() {}");
+    expect(run()).toHaveLength(1);
+    writeFixtureFile("src/source.tsx", "export default 42;");
+
+    const alternatePath = writeFixtureFile("src/source.js", "export default 43;");
+    expect(run()).toHaveLength(1);
+    fs.unlinkSync(alternatePath);
+
+    writeFixtureFile("src/.babelrc", '{"plugins": []}');
+    expect(run()).toHaveLength(1);
+  });
 });

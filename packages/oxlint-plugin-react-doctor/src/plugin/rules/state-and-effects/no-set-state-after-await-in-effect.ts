@@ -22,6 +22,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isPureLocalImportDefaultRead } from "../../utils/is-pure-local-import-default-read.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
@@ -402,8 +403,9 @@ const collectCleanupFunctionsAfterInvocations = (
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
     if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const reachableReturns = new Set(returnsAfterInvocation);
     const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      returnsAfterInvocation.includes(returnStatement),
+      reachableReturns.has(returnStatement),
     );
     const cleanupReturnStatements = new Set(
       cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
@@ -653,6 +655,7 @@ const isSideEffectFreeGuardExpression = (
     return true;
   }
   if (isNodeOfType(candidate, "MemberExpression")) {
+    if (isPureLocalImportDefaultRead(candidate, context)) return true;
     return (
       getStaticPropertyName(candidate) === "current" &&
       isNodeOfType(stripParenExpression(candidate.object), "Identifier") &&

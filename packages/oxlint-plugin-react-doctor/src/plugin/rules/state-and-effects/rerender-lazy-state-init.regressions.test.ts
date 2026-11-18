@@ -39,6 +39,79 @@ describe("rerender-lazy-state-init — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    [
+      'import { createContext, useContext as readContext, useState } from "react"; const primary = createContext("theme");',
+      "readContext(primary)",
+    ],
+    ['import { useMemo as readMemo, useState } from "react";', "readMemo(() => 7, [])"],
+  ])("keeps named React Hook aliases in render: %s", (preamble, initializer) => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `${preamble}
+      function Panel() {
+        const [value] = useState(${initializer});
+        return <span>{value}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "ordinary local function",
+      'import { useState } from "react"; function readContext() { return buildLargeTable(); }',
+      "readContext(primary)",
+    ],
+    [
+      "foreign named import",
+      'import { useState } from "react"; import { useContext as readContext } from "./provider";',
+      "readContext(primary)",
+    ],
+    [
+      "type-only declaration",
+      'import { useState } from "react"; import type { useContext as readContext } from "react";',
+      "readContext(primary)",
+    ],
+    [
+      "type-only specifier",
+      'import { type useContext as readContext, useState } from "react";',
+      "readContext(primary)",
+    ],
+    [
+      "ordinary non-Hook React import",
+      'import { createContext as readContext, useState } from "react";',
+      "readContext(primary)",
+    ],
+    [
+      "optional invocation",
+      'import { useContext as readContext, useState } from "react";',
+      "readContext?.(primary)",
+    ],
+    [
+      "computed namespace access",
+      'import React, { useState } from "react";',
+      'React["useContext"](primary)',
+    ],
+    [
+      "replacement on the React namespace",
+      'import React, { useContext as readContext, useState } from "react"; React.useContext = buildLargeTable;',
+      "readContext(primary)",
+    ],
+  ])("preserves the warning for %s", (_name, preamble, initializer) => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `${preamble}
+      function Panel() {
+        const [value] = useState(${initializer});
+        return <span>{value}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags an expensive non-hook initializer call", () => {
     const result = runRule(
       rerenderLazyStateInit,

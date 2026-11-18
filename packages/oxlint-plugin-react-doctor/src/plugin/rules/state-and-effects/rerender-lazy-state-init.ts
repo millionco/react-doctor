@@ -1,9 +1,14 @@
 import { isCheapPrimitiveValue } from "../../utils/is-cheap-primitive-value.js";
-import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
+import { BUILTIN_HOOK_NAMES, TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
+import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
+import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -122,6 +127,31 @@ export const rerenderLazyStateInit = defineRule({
       // Skip hook-shaped callees (identifier or member form), matching the
       // sibling `rerender-lazy-ref-init`.
       if (isReactHookName(calleeName)) return;
+      if (calleeIsIdentifier && !initializer.optional) {
+        const symbol = context.scopes.symbolFor(callee);
+        if (
+          symbol &&
+          isNodeOfType(symbol.declarationNode, "ImportSpecifier") &&
+          getValueImportSource(symbol) === "react" &&
+          isSymbolReadOnly(symbol)
+        ) {
+          const hookName = getImportedName(symbol.declarationNode);
+          if (
+            hookName &&
+            BUILTIN_HOOK_NAMES.has(hookName) &&
+            !context.scopes.rootScope.symbols.some(
+              (candidate) =>
+                isReactNamespaceImport(candidate.bindingIdentifier, context.scopes) &&
+                hasPossibleStaticPropertyMutationOrEscape(
+                  candidate.bindingIdentifier,
+                  hookName,
+                  context.scopes,
+                ),
+            )
+          )
+            return;
+        }
+      }
 
       const callDescription = `${calleeName}()`;
       context.report({

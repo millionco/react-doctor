@@ -638,3 +638,116 @@ describe("lazy ref initialization through a local assignment", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("no-ref-current-in-render — browser-guarded detached DOM initialization", () => {
+  const detachedDivSource = `
+  import { useRef } from "react";
+  export function Panel({ tag, onReady }: { tag: string; onReady: () => void }) {
+    const host = useRef<HTMLDivElement | null>(null);
+    if (host.current === null && typeof document !== "undefined") {
+      host.current = document.createElement("div");
+    }
+    return <section />;
+  }
+  `;
+
+  it("accepts the detached div in the guarded initialization branch", () => {
+    const result = run(detachedDivSource);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports the unrelated callback ref write", () => {
+    const result = run(
+      detachedDivSource.replace(
+        "return <section />;",
+        "const callback = useRef(onReady); callback.current = onReady; return <section />;",
+      ),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a different conjunct",
+      detachedDivSource.replace('typeof document !== "undefined"', "tag !== ''"),
+    ],
+    ["a disjunction", detachedDivSource.replace(" && ", " || ")],
+    [
+      "a prop-dependent tag",
+      detachedDivSource.replace('createElement("div")', "createElement(tag)"),
+    ],
+    [
+      "a custom element",
+      detachedDivSource.replace('createElement("div")', 'createElement("custom-control")'),
+    ],
+    [
+      "custom element options",
+      detachedDivSource.replace(
+        'createElement("div")',
+        'createElement("div", { is: "custom-control" })',
+      ),
+    ],
+    [
+      "a later reset",
+      detachedDivSource.replace("return <section />;", "host.current = null; return <section />;"),
+    ],
+    [
+      "a modified document method",
+      "document.createElement = replaceFactory;\n" + detachedDivSource,
+    ],
+    [
+      "a modified document prototype",
+      "Document.prototype.createElement = replaceFactory;\n" + detachedDivSource,
+    ],
+    [
+      "a change through the created node's owner document",
+      'const owner = document.createElement("div").ownerDocument; owner.createElement = replaceFactory;\n' +
+        detachedDivSource,
+    ],
+    [
+      "a method written through a destructured owner document",
+      "const { ownerDocument } = host; ownerDocument.createElement = replaceFactory;\n" +
+        detachedDivSource,
+    ],
+    [
+      "a mutation API applied to an unresolved receiver",
+      'const { ownerDocument } = host; Object.defineProperty(ownerDocument, "createElement", { value: replaceFactory });\n' +
+        detachedDivSource,
+    ],
+    [
+      "a method changed through another frame reference",
+      "if (window.top === window) window.top.document.createElement = replaceFactory;\n" +
+        detachedDivSource,
+    ],
+    [
+      "a captured ref value",
+      `import { useRef } from "react";
+      function useChild() {
+        const ref = useRef(null);
+        const captured = ref.current;
+        return function Child() {
+          if (captured === null && typeof document !== "undefined") ref.current = document.createElement("div");
+          return <section />;
+        };
+      }`,
+    ],
+    [
+      "a reset in the other render branch",
+      `import { useRef } from "react";
+      export function Panel({ enabled }) {
+        const ref = useRef(null);
+        if (enabled) {
+          if (ref.current === null && typeof document !== "undefined") ref.current = document.createElement("div");
+          return <section />;
+        }
+        return <button onClick={() => { ref.current = null; }}>Reset</button>;
+      }`,
+    ],
+  ])("reports the ref write with %s", (_reason, code) => {
+    const result = run(code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});

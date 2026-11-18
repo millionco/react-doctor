@@ -1771,6 +1771,195 @@ describe("no-create-object-url-without-revoke", () => {
   });
 });
 
+describe("cleanup in a finally block", () => {
+  it.each(["", "if (!blob) return false;"])(
+    "accepts an immediate finalizer across returns and possible throws with prefix %j",
+    (prefix) => {
+      const result = runRule(
+        noCreateObjectUrlWithoutRevoke,
+        `const inspectPreview = (blob, anchor, skip, inspect) => {
+           ${prefix}
+           const url = URL.createObjectURL(blob);
+           try {
+             anchor.href = url;
+             if (skip) return false;
+             return inspect(anchor.href);
+           } finally {
+             URL.revokeObjectURL(url);
+           }
+         };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["an early guard after allocation", "const url = URL.createObjectURL(blob); if (skip) return;"],
+    ["a later initializer", "const url = URL.createObjectURL(blob), extra = mightThrow();"],
+    ["an intervening statement", "const url = URL.createObjectURL(blob); mightThrow();"],
+  ])("retains the warning when %s can bypass the try", (_description, allocation) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor, skip) => {
+         ${allocation}
+         try {
+           anchor.href = url;
+           return true;
+         } finally {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["an unrelated guard", "if (skip) return; URL.revokeObjectURL(url);"],
+    ["a different URL", "URL.revokeObjectURL(otherUrl);"],
+    ["a shadowing URL binding", "URL.revokeObjectURL(url); const url = otherUrl;"],
+    ["a potentially throwing second argument", "URL.revokeObjectURL(url, mightThrow());"],
+  ])("retains the warning for cleanup involving %s", (_description, finalizer) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor, skip, otherUrl) => {
+         const url = URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           return true;
+         } finally {
+           ${finalizer}
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the warning for a reassigned allocation binding", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor, otherUrl) => {
+         let url = URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           url = otherUrl;
+           return true;
+         } finally {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the warning when a parameter shadows the native URL namespace", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor, URL) => {
+         const url = globalThis.URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           return true;
+         } finally {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["function*", "yield url;"],
+    ["async function", "await pending;"],
+  ])("retains the warning across suspension in a %s", (functionKind, suspension) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `${functionKind} inspectPreview(blob, anchor, pending) {
+         const url = URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           ${suspension}
+           return true;
+         } finally {
+           URL.revokeObjectURL(url);
+         }
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["an evaluated script", "eval(source);"],
+    ["destructuring a replacement", "[URL.revokeObjectURL] = [substitute];"],
+    ["assigning a replacement in a loop", "for (URL.revokeObjectURL of [substitute]) {}"],
+    [
+      "storing the namespace in an object",
+      "const providers = { URL }; providers.URL.revokeObjectURL = substitute;",
+    ],
+    [
+      "storing the global object",
+      "const providers = { root: globalThis }; providers.root.URL.revokeObjectURL = substitute;",
+    ],
+  ])("retains the warning for %s before cleanup", (_description, statement) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor, source, substitute) => {
+         const url = URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           ${statement}
+           return true;
+         } finally {
+           URL.revokeObjectURL(url);
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the warning when the native namespace alias is initialized too late", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor) => {
+         const url = URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           return true;
+         } finally {
+           URL.revokeObjectURL(url);
+           const URL = globalThis.URL;
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the warning when cleanup runs only in catch", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const inspectPreview = (blob, anchor) => {
+         const url = URL.createObjectURL(blob);
+         try {
+           anchor.href = url;
+           return true;
+         } catch {
+           URL.revokeObjectURL(url);
+           return false;
+         }
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("cleanup after an allocation guard", () => {
   it.each([
     "return () => { if (url) URL.revokeObjectURL(url); };",

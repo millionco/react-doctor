@@ -19,6 +19,37 @@ describe("no-decorative-pulse", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    '<span {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+    '<section id="progress"><span {...{ "aria-busy": true, title: "Index" }} className="animate-pulse">Indexing project</span></section>',
+    '<span aria-busy={false} {...{ "aria-busy": "true", title: "Index" }} className="animate-pulse">Indexing project</span>',
+  ])("allows static busy status copied by an authoritative DOM spread", (element) => {
+    const result = runRule(noDecorativePulse, `const Progress = () => ${element};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    '<span {...{ "aria-busy": false }} className="animate-pulse">Indexing project</span>',
+    '<span {...{ "aria-busy": true }} aria-busy={false} className="animate-pulse">Indexing project</span>',
+    '<span {...{ "aria-busy": true }} {...other} className="animate-pulse">Indexing project</span>',
+    '<span {...{ "aria-busy": true, [key]: false }} className="animate-pulse">Indexing project</span>',
+    '<span {...{ "aria-busy": true }} {...{ "ARIA-BUSY": "false" }} className="animate-pulse">Indexing project</span>',
+    '<span {...{ get title() { this["aria-busy"] = false; return "Index"; }, "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+    '<Progress {...{ "aria-busy": true }} className="animate-pulse">Indexing project</Progress>',
+    '<span aria-busy={false} ARIA-BUSY="false" {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+    '<span {...other} {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+    '<span {...{ [key]: false }} {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+    '<span {...{ get title() { return "Index"; } }} {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+    '<svg><span {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span></svg>',
+    '<Progress><span {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span></Progress>',
+    '<span is="custom-progress" {...{ "aria-busy": true }} className="animate-pulse">Indexing project</span>',
+  ])("reports stable copy when spread busy status is unproved", (element) => {
+    const result = runRule(noDecorativePulse, `const Panel = ({ other, key }) => ${element};`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows an empty status dot", () => {
     const result = runRule(
       noDecorativePulse,

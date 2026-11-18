@@ -45,7 +45,13 @@ describe("rerender-lazy-state-init — regressions", () => {
       "readContext(primary)",
     ],
     ['import { useMemo as readMemo, useState } from "react";', "readMemo(() => 7, [])"],
-  ])("keeps named React Hook aliases in render: %s", (preamble, initializer) => {
+    ['import { useContext as readContext, useState } from "react";', "readContext?.(primary)"],
+    ['import React, { useState } from "react";', 'React["useContext"](primary)'],
+    [
+      'import * as ReactRuntime from "react"; import { useState } from "react";',
+      'ReactRuntime["useContext"](primary)',
+    ],
+  ])("keeps proven React Hooks in render: %s", (preamble, initializer) => {
     const result = runRule(
       rerenderLazyStateInit,
       `${preamble}
@@ -85,19 +91,64 @@ describe("rerender-lazy-state-init — regressions", () => {
       "readContext(primary)",
     ],
     [
-      "optional invocation",
-      'import { useContext as readContext, useState } from "react";',
-      "readContext?.(primary)",
-    ],
-    [
-      "computed namespace access",
-      'import React, { useState } from "react";',
-      'React["useContext"](primary)',
-    ],
-    [
       "replacement on the React namespace",
       'import React, { useContext as readContext, useState } from "react"; React.useContext = buildLargeTable;',
       "readContext(primary)",
+    ],
+    [
+      "optional-local-call",
+      'import { useState } from "react"; declare const readContext: (() => unknown) | undefined;',
+      "readContext?.()",
+    ],
+    [
+      "optional-foreign-alias",
+      'import { useState } from "react"; import { useContext as readContext } from "./provider";',
+      "readContext?.(Primary)",
+    ],
+    [
+      "optional-type-only-alias",
+      'import { type useContext as readContext, useState } from "react";',
+      "readContext?.(Primary)",
+    ],
+    [
+      "computed-dynamic-key",
+      'import React, { useState } from "react"; declare const hookKey: string;',
+      "React[hookKey](Primary)",
+    ],
+    [
+      "computed-foreign-default",
+      'import { useState } from "react"; import React from "./provider";',
+      'React["useContext"](Primary)',
+    ],
+    [
+      "computed-type-only-default",
+      'import { useState } from "react"; import type React from "react";',
+      'React["useContext"](Primary)',
+    ],
+    [
+      "computed-replaced-provider",
+      'import React, { useState } from "react"; React.useContext = buildLargeTable;',
+      'React["useContext"](Primary)',
+    ],
+    [
+      "computed-escaped-provider",
+      'import React, { useState } from "react"; registerMutableProvider(React);',
+      'React["useContext"](Primary)',
+    ],
+    [
+      "computed-second-provider",
+      'import React, { useState } from "react"; import * as Alternate from "react"; Alternate.default.useContext = buildLargeTable;',
+      'React["useContext"](Primary)',
+    ],
+    [
+      "computed-optional-invocation",
+      'import React, { useState } from "react";',
+      'React["useContext"]?.(Primary)',
+    ],
+    [
+      "computed-create-require-provider",
+      'import React, { useState } from "react"; const loadReact = require("node:module").createRequire(import.meta.url); loadReact("react").useContext = buildLargeTable;',
+      'React["useContext"](Primary)',
     ],
   ])("preserves the warning for %s", (_name, preamble, initializer) => {
     const result = runRule(
@@ -106,6 +157,32 @@ describe("rerender-lazy-state-init — regressions", () => {
       function Panel() {
         const [value] = useState(${initializer});
         return <span>{value}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "optional-shadowed-alias",
+      'import { useContext as readContext, useState } from "react";',
+      "readContext?: (context: unknown) => unknown",
+      "readContext?.(Primary)",
+    ],
+    [
+      "computed-shadowed-default",
+      'import React, { useState } from "react";',
+      "React: { useContext: (context: unknown) => unknown }",
+      'React["useContext"](Primary)',
+    ],
+  ])("preserves the warning for %s", (_name, preamble, parameter, initializer) => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `${preamble}
+      function Panel(${parameter}) {
+        const [value] = useState(${initializer});
+        return <span>{String(value)}</span>;
       }`,
     );
     expect(result.parseErrors).toEqual([]);

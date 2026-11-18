@@ -3,12 +3,17 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { getImportBindingForName } from "./find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
+import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isTestLibraryImportSource } from "./is-test-library-import-source.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
+import { resolveImportedApiReference } from "./resolve-imported-api-reference.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { walkAst } from "./walk-ast.js";
 
 const TEST_CALLBACK_EXPORT_NAMES: ReadonlySet<string> = new Set(["it", "test"]);
 const TEST_CALLBACK_MEMBER_NAMES: ReadonlySet<string> = new Set(["concurrent", "only", "skip"]);
@@ -194,4 +199,112 @@ export const isLocalTestScaffoldJsx = (
   const enclosingFunction = findEnclosingFunction(node);
   if (!enclosingFunction || !isDirectTestCallback(enclosingFunction, context)) return false;
   return hasImportedProductComponentAttributeAncestor(node, enclosingFunction, context);
+};
+
+const getJestRegistration = (
+  callback: EsTreeNode,
+  name: string,
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  const call = callback.parent;
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.arguments[1] !== callback) {
+    return null;
+  }
+  const [title] = call.arguments;
+  return isNodeOfType(title, "Literal") &&
+    typeof title.value === "string" &&
+    isNodeOfType(call.callee, "Identifier") &&
+    call.callee.name === name &&
+    isProvenUnmodifiedGlobalNamespaceReference(call.callee, name, context.scopes, undefined, true)
+    ? call
+    : null;
+};
+
+const isRenderedInJestCallback = (reference: EsTreeNode, context: RuleContext): boolean => {
+  const opening = reference.parent;
+  if (
+    !isNodeOfType(opening, "JSXOpeningElement") ||
+    opening.name !== reference ||
+    !opening.selfClosing ||
+    !isNodeOfType(opening.parent, "JSXElement")
+  ) {
+    return false;
+  }
+  const element = opening.parent;
+  const renderCall = element.parent;
+  if (
+    !isNodeOfType(renderCall, "CallExpression") ||
+    renderCall.optional ||
+    renderCall.arguments[0] !== element ||
+    !isNodeOfType(renderCall.callee, "Identifier") ||
+    context.scopes.symbolFor(renderCall.callee)?.kind !== "import"
+  ) {
+    return false;
+  }
+  const imported = resolveImportedApiReference(renderCall.callee, context.scopes);
+  if (imported?.source !== "@testing-library/react" || imported.importedName !== "render") {
+    return false;
+  }
+  const testCallback = findEnclosingFunction(renderCall);
+  const testRegistration = testCallback && getJestRegistration(testCallback, "test", context);
+  const suiteCallback = testRegistration && findEnclosingFunction(testRegistration);
+  const suiteRegistration =
+    suiteCallback && getJestRegistration(suiteCallback, "describe", context);
+  const suiteStatement = suiteRegistration?.parent;
+  return (
+    isNodeOfType(suiteStatement, "ExpressionStatement") &&
+    isNodeOfType(suiteStatement.parent, "Program")
+  );
+};
+
+const evalUsageByProgram = new WeakMap<EsTreeNode, boolean>();
+
+export const isLocalJestRenderComponent = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+): boolean => {
+  const filename = context.filename?.replaceAll("\\", "/");
+  if (!filename || !/(?:^|\/)unittest\/.+-spec\.tsx?$/.test(filename)) return false;
+  const owner = findEnclosingFunction(node);
+  if (!isNodeOfType(owner, "ArrowFunctionExpression")) return false;
+  const declarator = owner.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    !isNodeOfType(declarator.parent, "VariableDeclaration") ||
+    !isNodeOfType(declarator.parent.parent, "Program") ||
+    declarator.parent.parent.sourceType !== "module"
+  ) {
+    return false;
+  }
+  const symbol = context.scopes.symbolFor(declarator.id);
+  const program = declarator.parent.parent;
+  if (
+    !symbol ||
+    getDirectConstInitializer(symbol) !== owner ||
+    symbol.references.length === 0 ||
+    !hasCompleteSymbolReferences(symbol, program, context.scopes) ||
+    !symbol.references.every(
+      (reference) =>
+        reference.flag === "read" && isRenderedInJestCallback(reference.identifier, context),
+    )
+  ) {
+    return false;
+  }
+  const cachedEval = evalUsageByProgram.get(program);
+  if (cachedEval !== undefined) return !cachedEval;
+  let hasEval = false;
+  walkAst(program, (candidate) => {
+    if (hasEval) return false;
+    if (
+      isNodeOfType(candidate, "Identifier") &&
+      candidate.name === "eval" &&
+      context.scopes.isGlobalReference(candidate)
+    ) {
+      hasEval = true;
+      return false;
+    }
+  });
+  evalUsageByProgram.set(program, hasEval);
+  return !hasEval;
 };

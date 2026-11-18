@@ -1,4 +1,9 @@
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
+import { areNodesInMutuallyExclusiveBranches } from "../../utils/are-nodes-in-mutually-exclusive-branches.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isProvenGlobalObjectReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
@@ -5727,6 +5732,324 @@ const isTimerCallbackForSameHandle = (
   });
 };
 
+const hasUsingDeclaration = (statements: ReadonlyArray<EsTreeNode>): boolean =>
+  statements.some(
+    (statement) =>
+      isNodeOfType(statement, "VariableDeclaration") &&
+      (statement.kind === "using" || statement.kind === "await using"),
+  );
+
+const isTerminalSetupInvocation = (invocation: EsTreeNode, setupTail: EsTreeNode): boolean => {
+  let current = invocation.parent;
+  if (!isNodeOfType(current, "ExpressionStatement") || current.expression !== invocation) {
+    return false;
+  }
+  while (current !== setupTail) {
+    const parent: EsTreeNode | null | undefined = current.parent;
+    if (
+      !(
+        (isNodeOfType(parent, "BlockStatement") &&
+          parent.body.at(-1) === current &&
+          !hasUsingDeclaration(parent.body)) ||
+        (isNodeOfType(parent, "IfStatement") &&
+          (parent.consequent === current || parent.alternate === current)) ||
+        (isNodeOfType(parent, "TryStatement") && !parent.finalizer) ||
+        (isNodeOfType(parent, "CatchClause") && parent.body === current)
+      )
+    ) {
+      return false;
+    }
+    current = parent;
+  }
+  return true;
+};
+
+const isTryInvocationBeforeCatch = (firstCall: EsTreeNode, catchCall: EsTreeNode): boolean => {
+  const block = firstCall.parent?.parent;
+  const tryStatement = block?.parent;
+  return (
+    isNodeOfType(tryStatement, "TryStatement") &&
+    tryStatement.block === block &&
+    tryStatement.handler !== null &&
+    tryStatement.handler !== undefined &&
+    isAstDescendant(catchCall, tryStatement.handler)
+  );
+};
+
+const hasOnlyNativeTimeoutValues = (symbol: SymbolDescriptor, context: RuleContext): boolean => {
+  const initializer = symbol.initializer;
+  if (initializer && (!isNodeOfType(initializer, "Literal") || initializer.value !== null)) {
+    return false;
+  }
+  return symbol.references.every((reference) => {
+    const target = findTransparentExpressionRoot(reference.identifier);
+    const consumer = target.parent;
+    if (!isWithinAssignmentTarget(reference.identifier)) {
+      return (
+        (isNodeOfType(consumer, "IfStatement") && consumer.test === target) ||
+        (isNodeOfType(consumer, "CallExpression") &&
+          consumer.arguments.length === 1 &&
+          consumer.arguments[0] === target &&
+          isNodeOfType(consumer.callee, "Identifier") &&
+          isProvenUnmodifiedGlobalNamespaceReference(
+            consumer.callee,
+            "clearTimeout",
+            context.scopes,
+            undefined,
+            true,
+          ))
+      );
+    }
+    const assignment = consumer;
+    if (
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      assignment.left !== target
+    ) {
+      return false;
+    }
+    const value = stripParenExpression(assignment.right);
+    if (isNodeOfType(value, "Literal")) return value.value === null;
+    return (
+      isNodeOfType(value, "CallExpression") &&
+      isNodeOfType(value.callee, "Identifier") &&
+      isProvenUnmodifiedGlobalNamespaceReference(
+        value.callee,
+        "setTimeout",
+        context.scopes,
+        undefined,
+        true,
+      )
+    );
+  });
+};
+
+const hasDirectNativeTimeoutCleanup = (
+  cleanup: EsTreeNode,
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    cleanup.params.length !== 0 ||
+    !isNodeOfType(cleanup.body, "BlockStatement")
+  )
+    return false;
+  let releasesUsage = false;
+  for (const statement of cleanup.body.body) {
+    let release = statement;
+    let guard: EsTreeNode | undefined;
+    if (isNodeOfType(statement, "IfStatement")) {
+      if (statement.alternate || !isNodeOfType(statement.test, "Identifier")) return false;
+      guard = statement.test;
+      release = statement.consequent;
+      if (isNodeOfType(release, "BlockStatement")) {
+        const onlyStatement = release.body[0];
+        if (!onlyStatement || release.body.length !== 1) return false;
+        release = onlyStatement;
+      }
+    }
+    if (!isNodeOfType(release, "ExpressionStatement")) return false;
+    const call = release.expression;
+    if (
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      !isNodeOfType(call.callee, "Identifier") ||
+      !isProvenUnmodifiedGlobalNamespaceReference(
+        call.callee,
+        "clearTimeout",
+        context.scopes,
+        undefined,
+        true,
+      ) ||
+      call.arguments.length !== 1 ||
+      !isNodeOfType(call.arguments[0], "Identifier")
+    ) {
+      return false;
+    }
+    const storage = resolveNestedTimerStorageSymbol(call.arguments[0], callback, context);
+    if (
+      !storage ||
+      (guard && context.scopes.symbolFor(guard) !== storage) ||
+      !hasOnlyNativeTimeoutValues(storage, context)
+    ) {
+      return false;
+    }
+    if (doesReleaseCallMatchUsage(call, usage, context)) releasesUsage = true;
+  }
+  return releasesUsage;
+};
+
+const hasDynamicTimerProviderAccess = (context: RuleContext): boolean => {
+  let unsafe = false;
+  walkAst(context.scopes.rootScope.node, (node: EsTreeNode) => {
+    if (unsafe) return false;
+    if (isNodeOfType(node, "WithStatement")) unsafe = true;
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = stripParenExpression(node.callee);
+      if (isNodeOfType(callee, "Identifier") && callee.name === "eval") unsafe = true;
+    }
+    if (isNodeOfType(node, "Identifier")) {
+      if (
+        (node.name === "setTimeout" || node.name === "clearTimeout") &&
+        context.scopes.isGlobalReference(node) &&
+        isWithinAssignmentTarget(node)
+      ) {
+        unsafe = true;
+      }
+      return;
+    }
+    if (
+      isNodeOfType(node, "MemberExpression") &&
+      isProvenGlobalObjectReference(node.object, context.scopes)
+    ) {
+      const name = getResolvedStaticPropertyName(node, context.scopes);
+      if (
+        (name === null || name === "setTimeout" || name === "clearTimeout") &&
+        isWithinAssignmentTarget(node)
+      ) {
+        unsafe = true;
+      }
+    }
+  });
+  return unsafe;
+};
+
+const hasExclusiveEffectTimerHelperInvocations = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  usageFunction: EsTreeNode,
+  invocations: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isFunctionLike(callback) ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    !isFunctionLike(usageFunction) ||
+    !isNodeOfType(usageFunction.body, "BlockStatement") ||
+    usageFunction.body.body.length !== 1 ||
+    usageFunction.params.length !== 1 ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    !isNodeOfType(usage.node.callee, "Identifier") ||
+    usage.node.callee.name !== "setTimeout" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      usage.node.callee,
+      "setTimeout",
+      context.scopes,
+      undefined,
+      true,
+    ) ||
+    usage.node.arguments.length !== 2
+  ) {
+    return false;
+  }
+  const setupTail = callback.body.body.at(-2);
+  const cleanupReturn = callback.body.body.at(-1);
+  if (
+    !setupTail ||
+    hasUsingDeclaration(callback.body.body) ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+    !cleanupReturn.argument ||
+    !isFunctionLike(cleanupReturn.argument)
+  ) {
+    return false;
+  }
+  if (!hasDirectNativeTimeoutCleanup(cleanupReturn.argument, callback, usage, context))
+    return false;
+
+  const [callbackArgument, delay] = usage.node.arguments;
+  const parameter = usageFunction.params[0];
+  if (
+    !callbackArgument ||
+    !isFunctionLike(callbackArgument) ||
+    !isNodeOfType(delay, "Identifier") ||
+    !isNodeOfType(parameter, "Identifier") ||
+    context.scopes.symbolFor(delay)?.bindingIdentifier !== parameter
+  ) {
+    return false;
+  }
+  const assignment = usage.node.parent;
+  const statement = usageFunction.body.body[0];
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.operator !== "=" ||
+    assignment.right !== usage.node ||
+    !isNodeOfType(assignment.left, "Identifier") ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    statement.expression !== assignment
+  ) {
+    return false;
+  }
+
+  const storage = resolveNestedTimerStorageSymbol(assignment.left, callback, context);
+  if (!storage || !isNodeOfType(storage.declarationNode, "VariableDeclarator")) return false;
+  const declaration = storage.declarationNode.parent;
+  const initializer = storage.declarationNode.init;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.parent !== callback.body ||
+    (initializer !== null &&
+      initializer !== undefined &&
+      (!isNodeOfType(initializer, "Literal") || initializer.value !== null))
+  ) {
+    return false;
+  }
+  const storageReadyAt = getNodeEndIndex(declaration);
+  if (storageReadyAt < 0) return false;
+
+  if (hasDynamicTimerProviderAccess(context)) return false;
+
+  const validInvocations = invocations.every((invocation) => {
+    if (
+      !isNodeOfType(invocation, "CallExpression") ||
+      invocation.optional ||
+      invocation.arguments.length !== 1
+    ) {
+      return false;
+    }
+    if (
+      getNodeStartIndex(invocation) < storageReadyAt ||
+      !isTerminalSetupInvocation(invocation, setupTail)
+    ) {
+      return false;
+    }
+    const argument = invocation.arguments[0];
+    if (!argument || !isAstNode(argument)) return false;
+    const delayExpression = stripParenExpression(argument);
+    const symbol = isNodeOfType(delayExpression, "Identifier")
+      ? context.scopes.symbolFor(delayExpression)
+      : null;
+    const value = symbol ? getDirectConstInitializer(symbol) : delayExpression;
+    if (
+      !isNodeOfType(value, "Literal") ||
+      typeof value.value !== "number" ||
+      !Number.isFinite(value.value)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+  if (!validInvocations) return false;
+
+  // Once the native timer has been allocated, only the initialized local
+  // binding write and return from the helper remain. A terminal try call can reach its catch
+  // only before allocation, so the catch can safely schedule the same handle.
+  return invocations.every((invocation, index) =>
+    invocations
+      .slice(index + 1)
+      .every(
+        (other) =>
+          areNodesInMutuallyExclusiveBranches(invocation, other) ||
+          isTryInvocationBeforeCatch(invocation, other) ||
+          isTryInvocationBeforeCatch(other, invocation),
+      ),
+  );
+};
+
 const hasOnlyOwnedTimerHelperInvocations = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -5749,7 +6072,20 @@ const hasOnlyOwnedTimerHelperInvocations = (
     ownerInvocations.push(invocationCall);
     invocationsByOwner.set(invocationOwner, ownerInvocations);
   }
-  if (directEffectInvocationCount > 1) return false;
+  if (directEffectInvocationCount > 1) {
+    const directInvocations = invocationsByOwner.get(callback);
+    return (
+      invocationsByOwner.size === 1 &&
+      directInvocations !== undefined &&
+      hasExclusiveEffectTimerHelperInvocations(
+        callback,
+        usage,
+        usageFunction,
+        directInvocations,
+        context,
+      )
+    );
+  }
   return [...invocationsByOwner.entries()].every(([invocationOwner, invocations]) =>
     invocations.every((invocation, invocationIndex) =>
       invocations

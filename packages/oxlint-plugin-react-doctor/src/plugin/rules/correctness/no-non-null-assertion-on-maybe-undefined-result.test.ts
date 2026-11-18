@@ -28,6 +28,38 @@ describe("no-non-null-assertion-on-maybe-undefined-result", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    'const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'const label = "pre_name_end".match(/^pre_(\\w+)_end$/)![0];',
+    'const label = "pre-nav-end".match(/^pre-(nav)-end$/)![1];',
+  ])("allows a literal match with a guaranteed required capture", (source) => {
+    const result = runRule(noNonNullAssertionOnMaybeUndefinedResult, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    'const label = "other-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'const label = "context-".match(/^context-([\\w-]+)$/)![1];',
+    'const label = "context-a/b".match(/^context-([\\w-]+)$/)![1];',
+    'const label = "context-a-b".match(/^context-(\\w+)$/)![1];',
+    'const label = "context-a-b".match(/^context-([\\w-]+)-end$/)![1];',
+    'const label = "context-a-b".match(/^context-([\\w-]+)$/g)![1];',
+    'const label = "context-a-b".match(/^context-([\\w-]+)$/)![2];',
+    "const label = input.match(/^context-([\\w-]+)$/)![1];",
+    'String.prototype.match = () => null; const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'RegExp.prototype[Symbol.match] = () => null; const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'const label = "context-a-b\\n".match(/^context-([\\w-]+)$/)![1];',
+    'declare const RegExp: any; RegExp.prototype.exec = () => null; const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'import { stringPrototype } from "./intrinsics"; stringPrototype.match = () => null; const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'const intrinsic = getImportedProvider(); delete intrinsic.exec; const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+    'process.getBuiltinModule("node:vm"); const label = "context-a-b".match(/^context-([\\w-]+)$/)![1];',
+  ])("reports a match whose capture is outside the literal proof", (source) => {
+    const result = runRule(noNonNullAssertionOnMaybeUndefinedResult, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags map.get(dynamicKey)! when the map is a local bare new Map() never populated in scope", () => {
     const result = runRule(
       noNonNullAssertionOnMaybeUndefinedResult,

@@ -69,6 +69,27 @@ ${refDeclaration}`,
       ),
     ],
     [
+      "a destructuring assignment to the slot",
+      nativeImage.replace(
+        invocationEnd,
+        "  })();\n  [imageRef.current] = [fallback];\n  return image;",
+      ),
+    ],
+    [
+      "an iteration that writes the slot",
+      nativeImage.replace(
+        invocationEnd,
+        "  })();\n  for (imageRef.current of values) {}\n  return image;",
+      ),
+    ],
+    [
+      "a property write through the slot",
+      nativeImage.replace(
+        invocationEnd,
+        "  })();\n  if (imageRef.current) imageRef.current.src = src;\n  return image;",
+      ),
+    ],
+    [
       "a duplicate writer in the guard",
       nativeImage.replace(assignment, `${assignment}\n      imageRef.current = fallback;`),
     ],

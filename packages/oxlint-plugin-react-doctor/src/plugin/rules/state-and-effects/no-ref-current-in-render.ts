@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
@@ -14,16 +15,14 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticKeyName } from "../../utils/get-static-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
 import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
 import { hasVisibleBindingNamed } from "../../utils/has-visible-binding-named.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
-import { isProvenGlobalObjectReference } from "../../utils/is-proven-global-namespace-reference.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
@@ -410,6 +409,23 @@ const expressionContainsRefCurrent = (
   return didFindRefCurrent;
 };
 
+const getWriteTarget = (node: EsTreeNode): EsTreeNode | null => {
+  if (
+    isNodeOfType(node, "AssignmentExpression") ||
+    isNodeOfType(node, "ForInStatement") ||
+    isNodeOfType(node, "ForOfStatement")
+  ) {
+    return node.left;
+  }
+  if (
+    isNodeOfType(node, "UpdateExpression") ||
+    (isNodeOfType(node, "UnaryExpression") && node.operator === "delete")
+  ) {
+    return node.argument;
+  }
+  return null;
+};
+
 const isEmptySentinel = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const expression = stripParenExpression(node);
   return (
@@ -520,7 +536,6 @@ const hasNoCoExecutableCompetingWrite = (
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
-  requiresExclusiveWriter = false,
 ): boolean => {
   const writeConstraints = getBranchConstraints(write.node, renderOwner);
   const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
@@ -532,17 +547,7 @@ const hasNoCoExecutableCompetingWrite = (
     if (hasCompetingWrite) return false;
     if (child === write.node) return;
     const competingWrite = getRefCurrentWrite(child, scopes);
-    let writtenExpression: EsTreeNode | null = null;
-    if (isNodeOfType(child, "AssignmentExpression")) {
-      writtenExpression = child.left;
-    } else if (
-      isNodeOfType(child, "UpdateExpression") ||
-      (isNodeOfType(child, "UnaryExpression") && child.operator === "delete")
-    ) {
-      writtenExpression = child.argument;
-    } else if (isNodeOfType(child, "ForInStatement") || isNodeOfType(child, "ForOfStatement")) {
-      writtenExpression = child.left;
-    }
+    const writtenExpression = getWriteTarget(child);
     const deferredExecutionBoundary = findDeferredExecutionBoundary(child);
     const assignedValue = isNodeOfType(child, "AssignmentExpression")
       ? child.operator === "="
@@ -561,13 +566,12 @@ const hasNoCoExecutableCompetingWrite = (
       !isNodeOfType(deferredWriteValue, "CallExpression") &&
       isProvablyTruthyInitializationValue(deferredWriteValue, scopes);
     if (
-      (!requiresExclusiveWriter && isDeferredTruthyWrite) ||
+      isDeferredTruthyWrite ||
       !(
         competingWrite?.refSymbol.id === refSymbol.id ||
         (writtenExpression && expressionContainsRefCurrent(writtenExpression, refSymbol, scopes))
       ) ||
-      (!requiresExclusiveWriter &&
-        !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner)))
+      !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner))
     ) {
       return;
     }
@@ -633,6 +637,9 @@ const isPredictableGuardedInitialization = (
   refDoesNotEscape(renderOwner, refSymbol, scopes);
 
 const ALTERNATE_IMAGE_PROVIDERS: ReadonlySet<string> = new Set([
+  "globalThis",
+  "global",
+  "self",
   "document",
   "parent",
   "top",
@@ -722,11 +729,7 @@ const hasClosedNativeImageProvider = (constructor: EsTreeNode, scopes: ScopeAnal
     if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
     if (node.name === "window") {
       hasUnprovedUse = !isOrdinaryWindowUse(node, constructor);
-    } else if (
-      isProvenGlobalObjectReference(node, scopes) ||
-      ALTERNATE_IMAGE_PROVIDERS.has(node.name) ||
-      /^on[a-z]/.test(node.name)
-    ) {
+    } else if (ALTERNATE_IMAGE_PROVIDERS.has(node.name) || /^on[a-z]/.test(node.name)) {
       hasUnprovedUse = true;
     }
   });
@@ -834,6 +837,23 @@ const isInertEarlyAbort = (
   );
 };
 
+const hasExclusiveImageRefWriter = (
+  write: RefCurrentWrite,
+  renderOwner: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let hasOtherWriter = false;
+  walkAst(renderOwner, (node) => {
+    if (hasOtherWriter) return false;
+    if (node === write.node) return;
+    const target = getWriteTarget(node);
+    hasOtherWriter =
+      getRefCurrentWrite(node, scopes)?.refSymbol.id === write.refSymbol.id ||
+      (target !== null && expressionContainsRefCurrent(target, write.refSymbol, scopes));
+  });
+  return !hasOtherWriter;
+};
+
 const isGuardedNativeImageIife = (
   write: RefCurrentWrite,
   renderOwner: EsTreeNode,
@@ -925,7 +945,7 @@ const isGuardedNativeImageIife = (
   return (
     hasClosedNativeImageRefType(refSymbol, renderOwner, scopes) &&
     hasClosedNativeImageProvider(constructor, scopes) &&
-    hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes, true) &&
+    hasExclusiveImageRefWriter(write, renderOwner, scopes) &&
     refDoesNotEscape(renderOwner, refSymbol, scopes)
   );
 };

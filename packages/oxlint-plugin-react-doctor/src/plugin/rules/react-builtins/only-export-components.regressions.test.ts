@@ -7,6 +7,52 @@ const settingsForFramework = (
 ) => ({ "react-doctor": { framework } });
 
 describe("react-builtins/only-export-components — regressions", () => {
+  describe("default function overloads", () => {
+    const overloadedComponent = `
+      export default function Panel(props: { label: string }): React.JSX.Element;
+      export default function Panel(props: { label: number }): React.JSX.Element;
+      export default function Panel({ label }: { label: string | number }) {
+        return <section>{label}</section>;
+      }
+    `;
+
+    it("checks only the named runtime implementation in curated mode", () => {
+      const result = runRule(onlyExportComponents, overloadedComponent, {
+        filename: "src/Panel.tsx",
+        settings: settingsForFramework("vite"),
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still reports a mixed runtime export", () => {
+      const result = runRule(
+        onlyExportComponents,
+        `${overloadedComponent}
+export function formatLabel() { return "label"; }`,
+        {
+          filename: "src/Panel.tsx",
+          settings: settingsForFramework("vite"),
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("exports non-components");
+    });
+
+    it("keeps the upstream overload diagnostics", () => {
+      const result = runRule(onlyExportComponents, overloadedComponent, {
+        filename: "src/Panel.tsx",
+        settings: { "react-doctor": { portedRuleMode: "upstream" } },
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(2);
+      expect(result.diagnostics.every((diagnostic) => diagnostic.message.includes("unnamed"))).toBe(
+        true,
+      );
+    });
+  });
+
   it("allows exported custom hooks (#1265)", () => {
     const hookExportFile = `
       import { useMemo } from 'react';

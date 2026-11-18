@@ -10,10 +10,12 @@ import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-s
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
@@ -123,6 +125,174 @@ const isIteratorCallUnconditional = (iteratorCall: EsTreeNode): boolean => {
   return ancestor === ownerFunction;
 };
 
+interface CapturedObserverIteration {
+  propertyName: string;
+  call: EsTreeNodeOfType<"CallExpression">;
+}
+
+const readCapturedObserverIteration = (
+  callback: EsTreeNode,
+  context: RuleContext,
+): CapturedObserverIteration | null => {
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 1
+  )
+    return null;
+  const parameter = callback.params[0];
+  if (!isNodeOfType(parameter, "ObjectPattern") || parameter.properties.length !== 1) return null;
+  const property = parameter.properties[0];
+  if (
+    !isNodeOfType(property, "Property") ||
+    property.kind !== "init" ||
+    property.method ||
+    !isNodeOfType(property.value, "Identifier")
+  )
+    return null;
+  const propertyName = getStaticPropertyKeyName(property);
+  if (!propertyName || propertyName === "__proto__") return null;
+
+  const body = callback.body;
+  if (!isNodeOfType(body, "BlockStatement") || body.body.length !== 1) return null;
+  const guard = body.body[0];
+  if (
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !isNodeOfType(guard.test, "Identifier")
+  )
+    return null;
+  const branch = guard.consequent;
+  const statement =
+    isNodeOfType(branch, "BlockStatement") && branch.body.length === 1 ? branch.body[0] : branch;
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+  const call = statement.expression;
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.arguments.length !== 1)
+    return null;
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.optional) return null;
+  const method = getStaticPropertyName(callee);
+  if (method !== "observe" && method !== "unobserve") return null;
+  const target = call.arguments[0];
+  if (!isNodeOfType(target, "Identifier")) return null;
+  const binding = context.scopes.symbolFor(property.value);
+  if (
+    !binding ||
+    context.scopes.symbolFor(guard.test) !== binding ||
+    context.scopes.symbolFor(target) !== binding ||
+    binding.references.some(({ flag }) => flag !== "read")
+  )
+    return null;
+  return { propertyName, call };
+};
+
+const matchCapturedObserverIteration = (
+  collection: EsTreeNodeOfType<"Identifier">,
+  methodCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): string | null => {
+  const symbol = context.scopes.symbolFor(collection);
+  if (!symbol || symbol.references.length !== 2) return null;
+  const initializer = getDirectConstInitializer(symbol);
+  if (!isNodeOfType(initializer, "ArrayExpression") || initializer.elements.length === 0)
+    return null;
+  const setup = findEnclosingFunction(symbol.declarationNode);
+  const hookCall = setup?.parent;
+  if (
+    !isFunctionLike(setup) ||
+    !isNodeOfType(setup.body, "BlockStatement") ||
+    !isNodeOfType(hookCall, "CallExpression") ||
+    hookCall.arguments[0] !== setup ||
+    !isProvenEffectHookCall(hookCall, context.scopes)
+  )
+    return null;
+
+  let setupIteration: CapturedObserverIteration | null = null;
+  let setupIterationCall: EsTreeNodeOfType<"CallExpression"> | null = null;
+  let cleanupIteration: CapturedObserverIteration | null = null;
+  let cleanupReturn: EsTreeNodeOfType<"ReturnStatement"> | null = null;
+  for (const { flag, identifier } of symbol.references) {
+    const member = identifier.parent;
+    if (
+      flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== identifier ||
+      member.computed ||
+      member.optional ||
+      getStaticPropertyName(member) !== "forEach"
+    )
+      return null;
+    const iteration = member.parent;
+    if (
+      !isNodeOfType(iteration, "CallExpression") ||
+      iteration.callee !== member ||
+      iteration.optional ||
+      iteration.arguments.length !== 1 ||
+      !isIteratorCallUnconditional(iteration)
+    )
+      return null;
+    const callback = iteration.arguments[0];
+    if (!callback) return null;
+    const projection = readCapturedObserverIteration(callback, context);
+    if (!projection) return null;
+
+    const owner = findEnclosingFunction(iteration);
+    if (owner === setup) {
+      setupIteration = projection;
+      setupIterationCall = iteration;
+    } else {
+      if (!isNodeOfType(owner, "ArrowFunctionExpression") || owner.async) return null;
+      const returned: EsTreeNode | null | undefined = owner.parent;
+      if (
+        !isNodeOfType(returned, "ReturnStatement") ||
+        returned.argument !== owner ||
+        returned.parent !== setup.body ||
+        setup.body.body.at(-1) !== returned
+      )
+        return null;
+      const body = owner.body;
+      const statement =
+        isNodeOfType(body, "BlockStatement") && body.body.length === 1 ? body.body[0] : null;
+      if (
+        body !== iteration &&
+        (!isNodeOfType(statement, "ExpressionStatement") || statement.expression !== iteration)
+      )
+        return null;
+      cleanupIteration = projection;
+      cleanupReturn = returned;
+    }
+  }
+  if (
+    !setupIteration ||
+    !setupIterationCall ||
+    !cleanupIteration ||
+    !cleanupReturn ||
+    setupIteration.propertyName !== cleanupIteration.propertyName ||
+    (setupIteration.call !== methodCall && cleanupIteration.call !== methodCall) ||
+    !doNodesCoverEveryPathAfterNode(setupIterationCall, [cleanupReturn], context)
+  )
+    return null;
+  const { propertyName } = setupIteration;
+
+  // Inline records cannot be mutated through the two destructured callbacks.
+  if (
+    !initializer.elements.every((element) => {
+      if (!isNodeOfType(element, "ObjectExpression")) return false;
+      let matchingProperties = 0;
+      for (const property of element.properties) {
+        if (!isNodeOfType(property, "Property") || property.kind !== "init" || property.method)
+          return false;
+        const key = getStaticPropertyKeyName(property);
+        if (key === null || key === "__proto__") return false;
+        if (key === propertyName) matchingProperties += 1;
+      }
+      return matchingProperties === 1;
+    })
+  )
+    return null;
+  return propertyName;
+};
+
 const serializeForEachTarget = (
   methodCall: EsTreeNodeOfType<"CallExpression">,
   targetArgument: EsTreeNode,
@@ -155,6 +325,9 @@ const serializeForEachTarget = (
     scopes: context.scopes,
   });
   if (!collectionKey) return null;
+
+  const capturedProperty = matchCapturedObserverIteration(stableCollection, methodCall, context);
+  if (capturedProperty) return `${collectionKey}:captured:${JSON.stringify(capturedProperty)}`;
 
   const visitedSymbolIds = new Set<number>();
   const serializeExpression = (rawExpression: EsTreeNode): string | null => {

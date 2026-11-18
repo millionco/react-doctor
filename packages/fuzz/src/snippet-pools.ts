@@ -318,6 +318,7 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { styled as createFuzzMuiTextLeaf } from "@mui/material"; const FuzzMuiTextLeaf = createFuzzMuiTextLeaf("span")\`color: navy;\`; export const FuzzMuiTextRuns = ({ items }) => <span>{items.map((item, index) => <FuzzMuiTextLeaf key={index}>{item.value}</FuzzMuiTextLeaf>)}</span>; export const FuzzMuiInputRuns = ({ items }) => <span>{items.map((item, index) => <input key={index} defaultValue={item.value} />)}</span>;`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

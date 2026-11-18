@@ -173,9 +173,26 @@ export const hasStatefulHtmlAttribute = (openingElement: EsTreeNode): boolean =>
   });
 };
 
+export const hasOpaqueHtmlAttribute = (openingElement: EsTreeNode): boolean => {
+  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return true;
+  return openingElement.attributes.some((attribute) => {
+    if (!isNodeOfType(attribute, "JSXAttribute") || !isNodeOfType(attribute.name, "JSXIdentifier"))
+      return true;
+    const attributeName = attribute.name.name.toLowerCase();
+    return (
+      attributeName === "ref" ||
+      attributeName === "is" ||
+      attributeName.startsWith("on") ||
+      attributeName === "dangerouslysetinnerhtml"
+    );
+  });
+};
+
 const STATEFUL_DESCENDANT_SCAN_BUDGET = 200;
 
 interface RowContentScanOptions {
+  // A caller-proven span host applies only to this scan root, never descendants.
+  certifiedRootIntrinsicTag?: "span";
   // Member reads rooted at these names (`{token.text}` where `token` is
   // the iteration item) are row content that travels with the row.
   memberRootNames?: ReadonlySet<string>;
@@ -217,8 +234,40 @@ export const containsStatefulDescendant = (
     if (isNodeOfType(node, "JSXElement")) {
       const opening = (node as { openingElement: EsTreeNode }).openingElement;
       const name = (opening as { name?: EsTreeNode }).name;
+      // A proven span root does not establish an unknown descendant host or prop.
+      if (options.certifiedRootIntrinsicTag === "span") {
+        if (
+          !name ||
+          !isNodeOfType(name, "JSXIdentifier") ||
+          !isNodeOfType(opening, "JSXOpeningElement") ||
+          opening.attributes.length > budget ||
+          hasOpaqueHtmlAttribute(opening)
+        )
+          return true;
+        for (const attribute of opening.attributes) {
+          if (
+            !isNodeOfType(attribute, "JSXAttribute") ||
+            !isNodeOfType(attribute.name, "JSXIdentifier")
+          )
+            return true;
+          const attributeName = attribute.name.name.toLowerCase();
+          if (attributeName === "children" && attribute.value) {
+            const value = isNodeOfType(attribute.value, "JSXExpressionContainer")
+              ? attribute.value.expression
+              : attribute.value;
+            stack.push(value);
+          }
+        }
+      }
       if (name && isNodeOfType(name, "JSXIdentifier")) {
-        const tagName = name.name;
+        const tagName =
+          node === jsxElement && options.certifiedRootIntrinsicTag === "span" ? "span" : name.name;
+        if (
+          options.certifiedRootIntrinsicTag === "span" &&
+          !STATELESS_HTML_LEAF_TAGS.has(tagName) &&
+          !PURE_SVG_PRIMITIVE_TAGS.has(tagName)
+        )
+          return true;
         const firstChar = tagName.charCodeAt(0);
         const isUppercase = firstChar >= 65 && firstChar <= 90;
         // PascalCase custom component — unknown state, treat as stateful.
@@ -264,6 +313,42 @@ export const containsStatefulDescendant = (
     if (isNodeOfType(node, "LogicalExpression")) {
       stack.push(node.left as EsTreeNode, node.right as EsTreeNode);
       continue;
+    }
+    if (options.certifiedRootIntrinsicTag === "span") {
+      if (isNodeOfType(node, "ArrayExpression")) {
+        if (node.elements.length > budget) return true;
+        for (const element of node.elements) {
+          if (!element) continue;
+          if (isNodeOfType(element, "SpreadElement")) return true;
+          stack.push(element);
+        }
+        continue;
+      }
+      // Array entries use the same row-content policy as direct JSX expressions.
+      if (isNodeOfType(node, "MemberExpression")) {
+        if (options.allowAnyMemberRead === true) continue;
+        const rootName = rootIdentifierNameOf(node);
+        if (rootName !== null && memberRootNames.has(rootName)) continue;
+        return true;
+      }
+      if (isNodeOfType(node, "Identifier")) {
+        if (bareIdentifierNames.has(node.name)) continue;
+        return true;
+      }
+      if (isNodeOfType(node, "CallExpression")) {
+        const callee = node.callee as EsTreeNode;
+        if (isNodeOfType(callee, "Identifier") && callCalleeRootNames.has(callee.name)) continue;
+        return true;
+      }
+      if (
+        !isNodeOfType(node, "JSXText") &&
+        !isNodeOfType(node, "JSXEmptyExpression") &&
+        !isNodeOfType(node, "Literal") &&
+        !isNodeOfType(node, "TemplateLiteral") &&
+        !isNodeOfType(node, "BinaryExpression") &&
+        !isNodeOfType(node, "UnaryExpression")
+      )
+        return true;
     }
     // JSXText / Literal — pure content, never stateful.
   }

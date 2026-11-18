@@ -21,6 +21,20 @@ interface TokenFixture {
   readonly quiet: boolean;
 }
 
+const TOKEN_LINE_SOURCE = `export const TokenLine = ({ text }: ViewProps) => {
+  const separator = /([,;])/g;
+  const content = text?.split(separator).map((part, index) => {
+    if (index % 2 === 1) return <span key={index}>{part}</span>;
+    return part;
+  });
+  return <p>{content}</p>;
+};`;
+
+const TWO_LOCAL_EDGES = `interface TokenData { text: string }
+interface MiddleProps extends TokenData { label?: string }
+interface ViewProps extends MiddleProps {}
+`;
+
 const fixtures: TokenFixture[] = [
   {
     name: "same-file-plain-inherited-string",
@@ -528,6 +542,119 @@ const fixtures: TokenFixture[] = [
     certificate: false,
     quiet: false,
   },
+  {
+    name: "two plain same-file inheritance edges",
+    code: TWO_LOCAL_EDGES + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: true,
+    quiet: true,
+  },
+  {
+    name: "two local inheritance edges with a stateful child",
+    code:
+      TWO_LOCAL_EDGES +
+      TOKEN_LINE_SOURCE.replace("{part}</span>", "<input defaultValue={part}/></span>"),
+    providers: {},
+    certificate: true,
+    quiet: false,
+  },
+  {
+    name: "third local inheritance edge",
+    code:
+      TWO_LOCAL_EDGES.replace(
+        "interface MiddleProps extends TokenData",
+        "interface ExtraProps extends TokenData {}\ninterface MiddleProps extends ExtraProps",
+      ) + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "unresolved terminal interface",
+    code: TWO_LOCAL_EDGES.replace("extends TokenData", "extends MissingData") + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "imported terminal interface",
+    code:
+      'import type { TokenData } from "./token-data";\n' +
+      TWO_LOCAL_EDGES.replace("interface TokenData { text: string }\n", "") +
+      TOKEN_LINE_SOURCE,
+    providers: { "src/token-data.ts": "export interface TokenData { text: string }\n" },
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "multiple intermediate bases",
+    code:
+      TWO_LOCAL_EDGES.replace(
+        "interface MiddleProps extends TokenData",
+        "interface OtherProps {}\ninterface MiddleProps extends TokenData, OtherProps",
+      ) + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "generic intermediate heritage",
+    code:
+      TWO_LOCAL_EDGES.replace(
+        "interface MiddleProps extends",
+        "interface MiddleProps<T> extends",
+      ).replace("extends MiddleProps {}", "extends MiddleProps<string> {}") + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "intermediate overrides the selected property",
+    code:
+      TWO_LOCAL_EDGES.replace("label?: string", "text: { split(pattern: RegExp): unknown[] }") +
+      TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "optional terminal property",
+    code: TWO_LOCAL_EDGES.replace("text: string", "text?: string") + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "nonstring terminal property",
+    code: TWO_LOCAL_EDGES.replace("text: string", "text: number") + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "merged terminal declaration",
+    code: TWO_LOCAL_EDGES + "interface TokenData { extra: string }\n" + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "shadowed terminal name",
+    code:
+      TWO_LOCAL_EDGES +
+      "function scope() { interface TokenData { text: number } }\n" +
+      TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
+  {
+    name: "visible split replacement",
+    code: TWO_LOCAL_EDGES + "String.prototype.split = () => [];\n" + TOKEN_LINE_SOURCE,
+    providers: {},
+    certificate: false,
+    quiet: false,
+  },
 ];
 
 const certificateRule = defineRule({
@@ -584,6 +711,19 @@ describe("inherited string split tokens", () => {
       );
     });
   }
+
+  it("resolves the two local interfaces without provider probes", () => {
+    const fixture = fixtures.find(
+      (entry) => entry.name === "two plain same-file inheritance edges",
+    );
+    if (!fixture) throw new Error("Missing two-edge same-file fixture");
+    const filename = prepare(fixture);
+    const trace = collectCrossFileProbes(() =>
+      runRule(certificateRule, fixture.code, { filename }),
+    );
+    expect(trace.contentPaths.size).toBe(0);
+    expect(trace.existencePaths.size).toBe(0);
+  });
 
   it("keeps the old verdict when provider analysis throws", () => {
     const fixture = fixtures[1];

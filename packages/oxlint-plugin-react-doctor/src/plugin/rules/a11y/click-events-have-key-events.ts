@@ -16,6 +16,7 @@ import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
+import { isLocalJestRenderComponent } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -307,6 +308,7 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (!onClick && !spreadOnClickExpression) {
           return;
         }
+        if (shouldUseCuratedBehavior && isLocalJestRenderComponent(node, context)) return;
         if (onClick && isPureEventBlockerHandler(onClick)) return;
         if (onClick && isFocusForwardingOrBlockingHandler(onClick, context.scopes)) return;
         if (

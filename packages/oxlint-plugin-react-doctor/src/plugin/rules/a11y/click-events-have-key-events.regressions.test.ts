@@ -706,3 +706,62 @@ describe("delegated keyboard event blockers", () => {
     expect(result.diagnostics).toHaveLength(expectedCount);
   });
 });
+
+describe("a11y/click-events-have-key-events — local Jest scaffold components", () => {
+  const filename = "unittest/plots/options-spec.tsx";
+  const source = `
+    import { render } from "@testing-library/react";
+    const Fixture = () => <div onClick={() => updateChoice()}>Select</div>;
+    describe("choices", () => {
+      test("updates a choice", () => { render(<Fixture />); });
+    });
+  `;
+
+  it.each([source, source + "\nexport type FixtureType = typeof Fixture;"])(
+    "skips a component used only as a Jest fixture",
+    (code) => {
+      const result = runRule(clickEventsHaveKeyEvents, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("retains upstream diagnostics", () => {
+    const result = runRule(clickEventsHaveKeyEvents, source, {
+      filename,
+      settings: { "react-doctor": { portedRuleMode: "upstream" } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains the diagnostic under a product path", () => {
+    const result = runRule(clickEventsHaveKeyEvents, source, { filename: "src/options-spec.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["a runtime export", source + "\nexport { Fixture };"],
+    ["an extra use outside the test", source + "\nconst preview = <Fixture />;"],
+    ["a replaced test global", "globalThis.test = registerProduct;\n" + source],
+    ["a replaced suite global", "globalThis.describe = configureProduct;\n" + source],
+    ["a foreign renderer", source.replace("@testing-library/react", "app-renderer")],
+    [
+      "a shadowed renderer",
+      source.replace("render(<Fixture />);", "const render = openPreview; render(<Fixture />);"),
+    ],
+    ["dynamic access", source + '\neval("openPreview(Fixture)");'],
+    [
+      "a named function expression that escapes through its own name",
+      source.replace(
+        "const Fixture = () => <div onClick={() => updateChoice()}>Select</div>;",
+        "const Fixture = function Inner() { globalThis.Product = Inner; return <div onClick={() => updateChoice()}>Select</div>; };",
+      ),
+    ],
+  ])("retains the diagnostic with %s", (_label, code) => {
+    const result = runRule(clickEventsHaveKeyEvents, code, { filename });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

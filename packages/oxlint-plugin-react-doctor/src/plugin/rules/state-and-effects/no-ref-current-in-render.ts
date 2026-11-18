@@ -10,10 +10,12 @@ import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-co
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import {
@@ -509,6 +511,7 @@ const hasNoCoExecutableCompetingWrite = (
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  requiresExclusiveWriter: boolean,
 ): boolean => {
   const writeConstraints = getBranchConstraints(write.node, renderOwner);
   const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
@@ -549,12 +552,13 @@ const hasNoCoExecutableCompetingWrite = (
       !isNodeOfType(deferredWriteValue, "CallExpression") &&
       isProvablyTruthyInitializationValue(deferredWriteValue, scopes);
     if (
-      isDeferredTruthyWrite ||
+      (!requiresExclusiveWriter && isDeferredTruthyWrite) ||
       !(
         competingWrite?.refSymbol.id === refSymbol.id ||
         (writtenExpression && expressionContainsRefCurrent(writtenExpression, refSymbol, scopes))
       ) ||
-      !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner))
+      (!requiresExclusiveWriter &&
+        !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner)))
     ) {
       return;
     }
@@ -596,6 +600,158 @@ const hasNoPriorCoExecutableWrite = (
   return !hasCoExecutableWrite;
 };
 
+const isStrictRefNullCheck = (
+  expression: EsTreeNode,
+  refSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const test = stripParenExpression(expression);
+  if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return false;
+  const left = stripParenExpression(test.left);
+  const right = stripParenExpression(test.right);
+  return (
+    (isNodeOfType(left, "Literal") &&
+      left.value === null &&
+      isSameRefCurrentMember(right, refSymbol, scopes)) ||
+    (isNodeOfType(right, "Literal") &&
+      right.value === null &&
+      isSameRefCurrentMember(left, refSymbol, scopes))
+  );
+};
+
+const isNativeDocumentTypeofGuard = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const test = stripParenExpression(expression);
+  if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "!==") return false;
+  const isDocumentTypeof = (node: EsTreeNode): boolean => {
+    const candidate = stripParenExpression(node);
+    if (!isNodeOfType(candidate, "UnaryExpression") || candidate.operator !== "typeof") {
+      return false;
+    }
+    const receiver = stripParenExpression(candidate.argument);
+    return (
+      isNodeOfType(receiver, "Identifier") &&
+      receiver.name === "document" &&
+      scopes.isGlobalReference(receiver)
+    );
+  };
+  const left = stripParenExpression(test.left);
+  const right = stripParenExpression(test.right);
+  return (
+    (isNodeOfType(left, "Literal") && left.value === "undefined" && isDocumentTypeof(right)) ||
+    (isNodeOfType(right, "Literal") && right.value === "undefined" && isDocumentTypeof(left))
+  );
+};
+
+const alternativeDocumentProviders = [
+  "Document",
+  "HTMLDocument",
+  "top",
+  "parent",
+  "frames",
+  "opener",
+];
+
+const hasUnprovedDocumentReference = (scopes: ScopeAnalysis, factoryCall: EsTreeNode): boolean => {
+  const program = scopes.rootScope.node;
+  if (!isNodeOfType(program, "Program") || program.sourceType !== "module") return true;
+  const mutations = getSymbolMutationInspector(scopes);
+  let hasUnprovedReference = false;
+  walkAst(program, (node) => {
+    if (hasUnprovedReference) return false;
+    const candidate = isNodeOfType(node, "MemberExpression")
+      ? node
+      : isNodeOfType(node, "CallExpression")
+        ? node.arguments[0]
+        : null;
+    const mutatedProperties = candidate ? mutations.getMutationPropertyNames(candidate) : undefined;
+    if (
+      mutatedProperties === null ||
+      mutatedProperties?.has("createElement") ||
+      mutatedProperties?.has("__proto__")
+    ) {
+      hasUnprovedReference = true;
+      return false;
+    }
+    if (!isNodeOfType(node, "Identifier") && !isNodeOfType(node, "MemberExpression")) return;
+    if (
+      (isNodeOfType(node, "MemberExpression") && getStaticPropertyName(node) === "ownerDocument") ||
+      alternativeDocumentProviders.some((name) =>
+        isProvenGlobalNamespaceReference(node, name, scopes),
+      )
+    ) {
+      hasUnprovedReference = true;
+      return false;
+    }
+    if (!isProvenGlobalNamespaceReference(node, "document", scopes)) return;
+    const expression = findTransparentExpressionRoot(node);
+    const consumer = expression.parent;
+    if (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "typeof") return;
+    if (
+      isNodeOfType(consumer, "MemberExpression") &&
+      consumer.object === expression &&
+      !consumer.computed &&
+      getStaticPropertyName(consumer) === "createElement" &&
+      consumer.parent === factoryCall
+    ) {
+      return;
+    }
+    hasUnprovedReference = true;
+    return false;
+  });
+  return hasUnprovedReference;
+};
+
+const isBrowserGuardedDetachedDiv = (
+  test: EsTreeNode,
+  write: RefCurrentWrite,
+  refSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(test, "LogicalExpression") || test.operator !== "&&" || !write.value) {
+    return false;
+  }
+  if (
+    !(
+      isStrictRefNullCheck(test.left, refSymbol, scopes) &&
+      isNativeDocumentTypeofGuard(test.right, scopes)
+    ) &&
+    !(
+      isStrictRefNullCheck(test.right, refSymbol, scopes) &&
+      isNativeDocumentTypeofGuard(test.left, scopes)
+    )
+  ) {
+    return false;
+  }
+  const call = stripParenExpression(write.value);
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.arguments.length !== 1) {
+    return false;
+  }
+  const [argument] = call.arguments;
+  const callee = stripParenExpression(call.callee);
+  if (
+    !isNodeOfType(argument, "Literal") ||
+    argument.value !== "div" ||
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.optional ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== "createElement" ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    callee.object.name !== "document"
+  ) {
+    return false;
+  }
+  return (
+    isProvenUnmodifiedGlobalNamespaceReference(
+      callee.object,
+      "document",
+      scopes,
+      "createElement",
+      true,
+    ) && !hasUnprovedDocumentReference(scopes, call)
+  );
+};
+
 const isPredictableGuardedInitialization = (
   write: RefCurrentWrite,
   guardedBranch: EsTreeNode,
@@ -603,20 +759,28 @@ const isPredictableGuardedInitialization = (
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
+  isProvenDetachedElementConstruction = false,
 ): boolean =>
   write.value !== null &&
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
-  isPredictableInitializationValue(
-    write.value,
-    refSymbol,
-    renderOwner,
-    scopes,
-    requiresClosedTruthyDomain,
-  ) &&
+  (isProvenDetachedElementConstruction ||
+    isPredictableInitializationValue(
+      write.value,
+      refSymbol,
+      renderOwner,
+      scopes,
+      requiresClosedTruthyDomain,
+    )) &&
   !hasRepeatedExecutionAncestor(write.node, guardedBranch) &&
   (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
   hasNoPriorCoExecutableWrite(write, renderOwner, refSymbol, scopes) &&
-  hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes) &&
+  hasNoCoExecutableCompetingWrite(
+    write,
+    renderOwner,
+    refSymbol,
+    scopes,
+    isProvenDetachedElementConstruction,
+  ) &&
   refDoesNotEscape(renderOwner, refSymbol, scopes);
 
 const isDocumentedLazyInitialization = (
@@ -641,6 +805,24 @@ const isDocumentedLazyInitialization = (
   let ancestor = descendant.parent;
   while (ancestor) {
     const test = isNodeOfType(ancestor, "IfStatement") ? stripParenExpression(ancestor.test) : null;
+    if (
+      isNodeOfType(ancestor, "IfStatement") &&
+      ancestor.consequent === descendant &&
+      test &&
+      findRenderPhaseComponentOrHook(refSymbol.declarationNode, scopes) === renderOwner &&
+      isBrowserGuardedDetachedDiv(test, write, refSymbol, scopes) &&
+      isPredictableGuardedInitialization(
+        write,
+        ancestor.consequent,
+        renderOwner,
+        refSymbol,
+        scopes,
+        false,
+        true,
+      )
+    ) {
+      return true;
+    }
     if (
       isNodeOfType(ancestor, "IfStatement") &&
       test &&

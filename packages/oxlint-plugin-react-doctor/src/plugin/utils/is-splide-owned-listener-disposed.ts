@@ -245,11 +245,50 @@ export const isSplideOwnedListenerDisposed = (
   const acquisitionStatementIndex = lifecycleStatements.findIndex(
     (statement) => statement === acquisitionStatement,
   );
+  let additionalRegistration: EsTreeNodeOfType<"CallExpression"> | null = null;
   if (
     lifecycleStatements[acquisitionStatementIndex + 1] !== invocationStatement ||
     lifecycleStatements[acquisitionStatementIndex + 2] !== mountStatement
-  )
-    return false;
+  ) {
+    const firstRegistrationStatement = lifecycleStatements[acquisitionStatementIndex + 1];
+    const secondRegistrationStatement = lifecycleStatements[acquisitionStatementIndex + 2];
+    if (
+      usesHelper ||
+      lifecycleStatements[acquisitionStatementIndex + 3] !== mountStatement ||
+      (firstRegistrationStatement !== invocationStatement &&
+        secondRegistrationStatement !== invocationStatement)
+    )
+      return false;
+    for (const statement of [firstRegistrationStatement, secondRegistrationStatement]) {
+      if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+      const listener = statement.expression;
+      if (
+        !isNodeOfType(listener, "CallExpression") ||
+        listener.optional ||
+        !isNodeOfType(listener.callee, "MemberExpression") ||
+        listener.callee.optional ||
+        listener.callee.computed ||
+        !isOwnerField(listener.callee.object) ||
+        getStaticPropertyName(listener.callee) !== "on" ||
+        listener.arguments.length !== 2
+      )
+        return false;
+      const [event, callback] = listener.arguments;
+      if (
+        !isNodeOfType(event, "Literal") ||
+        typeof event.value !== "string" ||
+        event.value.length === 0 ||
+        !isFunctionLike(callback) ||
+        callback.async ||
+        callback.generator ||
+        callback.params.length !== 0 ||
+        !isNodeOfType(callback.body, "BlockStatement") ||
+        callback.body.body.length !== 0
+      )
+        return false;
+      if (listener !== registration) additionalRegistration = listener;
+    }
+  }
   let acquisitionBranch: EsTreeNode = acquisitionStatement.parent;
   while (acquisitionBranch !== mountMember.value.body) {
     const parentBranch: EsTreeNode | null | undefined = acquisitionBranch.parent;
@@ -467,7 +506,7 @@ export const isSplideOwnedListenerDisposed = (
           if (["go", "refresh"].includes(method ?? "") && isOwnerField(candidate)) return;
           if (
             method === "on" &&
-            call === registration &&
+            (call === registration || call === additionalRegistration) &&
             !call.optional &&
             !parent.optional &&
             isNodeOfType(call.parent, "ExpressionStatement") &&

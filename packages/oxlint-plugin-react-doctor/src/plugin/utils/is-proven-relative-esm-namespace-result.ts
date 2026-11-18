@@ -199,19 +199,23 @@ const hasVisibleRuntimeHazard = (program: EsTreeNode): boolean => {
 };
 
 export const isProvenRelativeEsmNamespaceResult = ({
-  fromFilename,
+  fromFilename: inputFilename,
   source,
-  projectRoot,
+  projectRoot: inputProjectRoot,
   framework,
 }: RelativeEsmNamespaceProofInput): boolean => {
   if (
     framework !== "nextjs" ||
-    !path.isAbsolute(projectRoot) ||
-    !path.isAbsolute(fromFilename) ||
+    !path.isAbsolute(inputProjectRoot) ||
+    !path.isAbsolute(inputFilename) ||
     !source.startsWith("./") ||
     path.extname(source) !== ""
   )
     return false;
+  // The caller can supply slash-normalized paths while the resolver returns
+  // native paths. Keep ancestor comparisons on the same path representation.
+  const projectRoot = path.resolve(inputProjectRoot);
+  const fromFilename = path.resolve(inputFilename);
   const relativeFromRoot = path.relative(projectRoot, fromFilename);
   if (
     relativeFromRoot.startsWith("..") ||

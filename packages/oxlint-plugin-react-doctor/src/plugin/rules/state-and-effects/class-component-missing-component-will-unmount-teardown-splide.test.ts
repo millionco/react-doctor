@@ -21,6 +21,11 @@ export class GalleryView extends React.Component {
   render() { return null; }
 }`;
 
+const TWO_REGISTRATIONS = INSTANCE.replace(
+  "    this.deck.mount();",
+  '    this.deck.on("move", () => {});\n    this.deck.mount();',
+);
+
 const IMPORTED_ITERATION = `import React from "react";
 import { Splide as Deck } from "@splidejs/splide";
 import { subscriptions } from "./event-list";
@@ -59,6 +64,7 @@ const OPTIONS = {
 
 const QUIET_CASES = [
   { name: "owned completed instance with guarded destroy", code: INSTANCE },
+  { name: "two adjacent literal listeners on the same owner", code: TWO_REGISTRATIONS },
   {
     name: "erased intrinsic bindings and ordinary Object keys remain inert",
     code: `interface Object { text?: string; } interface Array { text?: string; } interface Reflect { text?: string; } const keys = Object.keys({value: 1});\n${INSTANCE}`,
@@ -240,13 +246,6 @@ const WARNING_CASES = [
     code: IMPORTED_ITERATION.replace(
       "owner.on(eventName, (...values) => callback(owner, ...values));",
       'owner.on(eventName, (...values) => callback(owner, ...values)); setTimeout(() => owner.on("later", () => {}), 0);',
-    ),
-  },
-  {
-    name: "second owner on AST remains unsupported",
-    code: INSTANCE.replace(
-      "    this.deck.mount();",
-      '    this.deck.on("move", () => {}); this.deck.mount();',
     ),
   },
   {
@@ -443,6 +442,74 @@ describe.each([
     const result = runRule(rule, code, OPTIONS);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "a second instance",
+      code: TWO_REGISTRATIONS.replace(
+        '    this.deck.on("move", () => {});',
+        '    this.other.on("move", () => {});',
+      ).replace(
+        '    this.deck = new Deck("#gallery");',
+        '    this.other = new Deck("#other"); this.deck = new Deck("#gallery");',
+      ),
+    },
+    {
+      name: "a foreign receiver",
+      code: TWO_REGISTRATIONS.replace(
+        '    this.deck.on("move", () => {});',
+        '    this.notifications.on("move", () => {});',
+      ),
+    },
+    {
+      name: "a statement between the registrations",
+      code: TWO_REGISTRATIONS.replace(
+        '    this.deck.on("move", () => {});',
+        '    runUnknownStep(); this.deck.on("move", () => {});',
+      ),
+    },
+    {
+      name: "a synchronous callback that clears the owner",
+      code: TWO_REGISTRATIONS.replace(
+        '    this.deck.on("ready", () => {});',
+        '    this.deck.on("ready", () => { this.deck = undefined; });',
+      ),
+    },
+    {
+      name: "an owner escaping through a callback",
+      code: TWO_REGISTRATIONS.replace(
+        '    this.deck.on("move", () => {});',
+        '    this.deck.on("move", () => forward(this.deck));',
+      ),
+    },
+    {
+      name: "a third registration",
+      code: TWO_REGISTRATIONS.replace(
+        "    this.deck.mount();",
+        '    this.deck.on("moved", () => {}); this.deck.mount();',
+      ),
+    },
+  ])("keeps the first registration warning for $name", ({ code }) => {
+    const result = runRule(rule, code, OPTIONS);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.line).toBe(
+      code.split("\n").findIndex((line) => line.includes('this.deck.on("ready"')) + 1,
+    );
+  });
+
+  it("keeps a later unrelated listener hazard after two owned registrations", () => {
+    const code = TWO_REGISTRATIONS.replace(
+      "    this.deck.mount();",
+      '    this.deck.mount();\n    this.notifications.on("change", () => {});',
+    );
+    const result = runRule(rule, code, OPTIONS);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.line).toBe(
+      code.split("\n").findIndex((line) => line.includes("this.notifications.on")) + 1,
+    );
   });
 
   it("keeps a later unrelated listener hazard", () => {

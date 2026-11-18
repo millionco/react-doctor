@@ -10,8 +10,11 @@ import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveZustandStoreFactoryCall } from "../../utils/resolve-zustand-api.js";
+import { singleExpressionPredicateBody } from "../../utils/single-expression-predicate-body.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -417,6 +420,148 @@ const createCacheUpdateDetector = (scopes: ScopeAnalysis): CacheUpdateDetector =
   };
 };
 
+interface AdjacentConstInitializer {
+  readonly expression: EsTreeNode;
+  readonly declaration: EsTreeNodeOfType<"VariableDeclaration">;
+}
+
+const getAdjacentSingleReadConst = (
+  reference: EsTreeNode,
+  followingStatement: EsTreeNodeOfType<"ReturnStatement" | "VariableDeclaration">,
+  scopes: ScopeAnalysis,
+): AdjacentConstInitializer | null => {
+  const symbol = resolveConstIdentifierAlias(reference, scopes);
+  const declaration = symbol?.declarationNode.parent;
+  const block = followingStatement.parent;
+  if (
+    symbol?.kind !== "const" ||
+    !symbol.initializer ||
+    symbol.references.length !== 1 ||
+    symbol.references[0].identifier !== reference ||
+    symbol.references[0].flag !== "read" ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(block, "BlockStatement") ||
+    declaration.parent !== block ||
+    block.body[block.body.findIndex((statement) => statement === followingStatement) - 1] !==
+      declaration
+  ) {
+    return null;
+  }
+  return { expression: stripParenExpression(symbol.initializer), declaration };
+};
+
+const isTanStackReactQueryImport = (
+  identifier: EsTreeNode,
+  exportedName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const specifier = scopes.symbolFor(identifier)?.declarationNode;
+  return (
+    isNodeOfType(specifier, "ImportSpecifier") &&
+    specifier.importKind !== "type" &&
+    isNodeOfType(specifier.imported, "Identifier") &&
+    specifier.imported.name === exportedName &&
+    isNodeOfType(specifier.parent, "ImportDeclaration") &&
+    specifier.parent.importKind !== "type" &&
+    specifier.parent.source.value === "@tanstack/react-query"
+  );
+};
+
+// The spread copies a closed local callback before any following option.
+// Accept only an actual QueryClient call, without scanning arbitrary bodies
+// hidden behind options bindings or exempting a callback that can be replaced.
+const hasOwnedSpreadInvalidation = (
+  mutation: EsTreeNodeOfType<"CallExpression">,
+  options: EsTreeNodeOfType<"ObjectExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const returned = mutation.parent;
+  const [spread, ...followingProperties] = options.properties;
+  if (
+    !isNodeOfType(returned, "ReturnStatement") ||
+    mutation.optional ||
+    mutation.arguments.length !== 1 ||
+    !isTanStackReactQueryImport(mutation.callee, "useMutation", scopes) ||
+    !isNodeOfType(spread, "SpreadElement")
+  ) {
+    return false;
+  }
+  for (const property of followingProperties) {
+    if (!isNodeOfType(property, "Property") || property.kind !== "init") return false;
+    const name = getStaticPropertyKeyName(property, { allowComputedString: true });
+    if (name === null || name === "onSuccess" || name === "__proto__") return false;
+    const value = stripParenExpression(property.value);
+    if (
+      !isNodeOfType(value, "Identifier") &&
+      !isNodeOfType(value, "Literal") &&
+      !isNodeOfType(value, "ArrowFunctionExpression") &&
+      !isNodeOfType(value, "FunctionExpression")
+    ) {
+      return false;
+    }
+  }
+
+  const lifecycle = getAdjacentSingleReadConst(
+    stripParenExpression(spread.argument),
+    returned,
+    scopes,
+  );
+  if (!lifecycle || !isNodeOfType(lifecycle.expression, "ObjectExpression")) return false;
+  if (lifecycle.expression.properties.length !== 1) return false;
+  const onSuccess = getStaticObjectPropertyValue(lifecycle.expression, "onSuccess");
+  if (!isNodeOfType(onSuccess, "ArrowFunctionExpression") || onSuccess.params.length !== 0) {
+    return false;
+  }
+  const callbackBody = onSuccess.body;
+  const expressionStatement =
+    isNodeOfType(callbackBody, "BlockStatement") && callbackBody.body.length === 1
+      ? callbackBody.body[0]
+      : null;
+  const expression = isNodeOfType(expressionStatement, "ExpressionStatement")
+    ? stripParenExpression(expressionStatement.expression)
+    : singleExpressionPredicateBody(onSuccess);
+  const invalidation = isNodeOfType(expression, "AwaitExpression")
+    ? stripParenExpression(expression.argument)
+    : expression;
+  if (
+    !isNodeOfType(invalidation, "CallExpression") ||
+    invalidation.optional ||
+    !isNodeOfType(invalidation.callee, "MemberExpression") ||
+    invalidation.callee.optional ||
+    getStaticPropertyKeyName(invalidation.callee, { allowComputedString: true }) !==
+      "invalidateQueries" ||
+    invalidation.arguments.length !== 1
+  ) {
+    return false;
+  }
+  const filters = stripParenExpression(invalidation.arguments[0]);
+  if (!isNodeOfType(filters, "ObjectExpression") || filters.properties.length !== 1) return false;
+  const queryKey = getStaticObjectPropertyValue(filters, "queryKey");
+  if (
+    !isNodeOfType(queryKey, "ArrayExpression") ||
+    !queryKey.elements.length ||
+    !queryKey.elements.every(
+      (element) => isNodeOfType(element, "Literal") && typeof element.value === "string",
+    )
+  ) {
+    return false;
+  }
+
+  const client = getAdjacentSingleReadConst(
+    stripParenExpression(invalidation.callee.object),
+    lifecycle.declaration,
+    scopes,
+  )?.expression;
+  return (
+    isNodeOfType(client, "CallExpression") &&
+    !client.optional &&
+    client.arguments.length === 0 &&
+    isTanStackReactQueryImport(client.callee, QUERY_CLIENT_HOOK_NAME, scopes)
+  );
+};
+
 export const queryMutationMissingInvalidation = defineRule({
   id: "query-mutation-missing-invalidation",
   title: "Mutation without cache invalidation",
@@ -480,6 +625,8 @@ export const queryMutationMissingInvalidation = defineRule({
         ) {
           return;
         }
+
+        if (hasOwnedSpreadInvalidation(node, optionsArgument, context.scopes)) return;
 
         const detector = createCacheUpdateDetector(context.scopes);
         if (!detector.hasCacheUpdateWithin(optionsArgument)) {

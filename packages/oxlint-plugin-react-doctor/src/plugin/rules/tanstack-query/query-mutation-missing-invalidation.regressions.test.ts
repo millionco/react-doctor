@@ -89,6 +89,123 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
     expect(diagnostics).toHaveLength(0);
   });
 
+  const lifecycleSource = (
+    client = "useQueryClient()",
+    success = '() => queryClient.invalidateQueries({ queryKey: ["items"] })',
+    options = "...lifecycle, mutationFn: saveItems",
+    extra = "",
+    parameters = "",
+  ): string => `
+    import { useMutation, useQueryClient } from "@tanstack/react-query";
+    import { saveItems } from "./items";
+    export function useItemsMutation(${parameters}) {
+      const queryClient = ${client};
+      const lifecycle = { onSuccess: ${success} };
+      ${extra}
+      return useMutation({ ${options} });
+    }
+  `;
+
+  it("recognizes a single awaited invalidation in the local options callback", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      lifecycleSource(
+        undefined,
+        'async () => { await queryClient.invalidateQueries({ queryKey: ["items"] }); }',
+      ),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("continues to warn on a conditional local invalidation", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      lifecycleSource(
+        undefined,
+        'async () => { if (ready) await queryClient.invalidateQueries({ queryKey: ["items"] }); }',
+      ),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes the effective invalidation callback of a closed local options spread", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      lifecycleSource(undefined, undefined, "...lifecycle, mutationFn: saveItems, retry: false"),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "a later callback override",
+      lifecycleSource(
+        undefined,
+        undefined,
+        "...lifecycle, mutationFn: saveItems, onSuccess: () => {}",
+      ),
+    ],
+    [
+      "an unknown later spread",
+      lifecycleSource(
+        undefined,
+        undefined,
+        "...lifecycle, ...options, mutationFn: saveItems",
+        "",
+        "options",
+      ),
+    ],
+    [
+      "a computed override",
+      lifecycleSource(
+        undefined,
+        undefined,
+        "...lifecycle, mutationFn: saveItems, [key]: () => {}",
+        "",
+        "key",
+      ),
+    ],
+    [
+      "a mutation of the lifecycle object",
+      lifecycleSource(undefined, undefined, undefined, "lifecycle.onSuccess = () => {};"),
+    ],
+    [
+      "an escaped lifecycle object",
+      lifecycleSource(undefined, undefined, undefined, "store(lifecycle);"),
+    ],
+    ["an unrelated method receiver", lifecycleSource("getClient()")],
+    [
+      "a shadowed query hook",
+      lifecycleSource(undefined, undefined, undefined, "", "useQueryClient"),
+    ],
+    [
+      "a non-invalidation callback",
+      lifecycleSource(undefined, '() => queryClient.getQueryData(["items"])'),
+    ],
+    [
+      "a deferred invalidation",
+      lifecycleSource(
+        undefined,
+        '() => () => queryClient.invalidateQueries({ queryKey: ["items"] })',
+      ),
+    ],
+    [
+      "a filter without a proven query key",
+      lifecycleSource(undefined, "() => queryClient.invalidateQueries({ predicate })"),
+    ],
+    [
+      "an opaque caller options spread",
+      lifecycleSource(undefined, undefined, "...options, mutationFn: saveItems", "", "options"),
+    ],
+  ] as const)("continues to flag %s", (_name, source) => {
+    const result = runRule(queryMutationMissingInvalidation, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a useMutation imported from a non-TanStack library", () => {
     const { diagnostics } = runRule(
       queryMutationMissingInvalidation,

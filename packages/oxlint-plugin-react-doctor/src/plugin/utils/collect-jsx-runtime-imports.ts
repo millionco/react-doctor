@@ -4,6 +4,7 @@ import { isTypeOnlyImport } from "./is-type-only-import.js";
 
 export interface JsxRuntimeImports {
   hasReactRuntime: boolean;
+  hasPreactRuntime: boolean;
   hasSolidRuntime: boolean;
 }
 
@@ -16,16 +17,18 @@ export const collectJsxRuntimeImports = (
   program: EsTreeNodeOfType<"Program">,
 ): JsxRuntimeImports => {
   let hasReactRuntime = false;
+  let hasPreactRuntime = false;
   let hasSolidRuntime = false;
   for (const statement of program.body) {
     if (!isNodeOfType(statement, "ImportDeclaration")) continue;
     if (isTypeOnlyImport(statement)) continue;
     const source = statement.source.value;
     if (typeof source !== "string") continue;
+    if (matchesPackage(source, "preact")) hasPreactRuntime = true;
     if (matchesPackage(source, "solid-js")) hasSolidRuntime = true;
     if (REACT_RUNTIME_PACKAGE_PREFIXES.some((packageName) => matchesPackage(source, packageName))) {
       hasReactRuntime = true;
     }
   }
-  return { hasReactRuntime, hasSolidRuntime };
+  return { hasReactRuntime, hasPreactRuntime, hasSolidRuntime };
 };

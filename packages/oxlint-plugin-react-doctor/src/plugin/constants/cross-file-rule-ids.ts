@@ -56,6 +56,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-hydration-branch-on-browser-global",
   "no-img-without-dimensions",
   "no-indeterminate-attribute",
+  "no-unknown-property",
   "no-loading-flag-reset-outside-finally",
   "no-locale-format-in-render",
   "no-match-media-in-state-initializer",

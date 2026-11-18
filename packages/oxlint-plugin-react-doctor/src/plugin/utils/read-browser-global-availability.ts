@@ -1,10 +1,28 @@
-import type { SymbolDescriptor } from "../semantic/scope-analysis.js";
+import * as path from "node:path";
+import {
+  analyzeScopes,
+  type ScopeAnalysis,
+  type SymbolDescriptor,
+} from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
+import { findExportedValue } from "./find-exported-value.js";
 import { getSingleReturnExpression } from "./get-single-return-expression.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { parseSourceFile } from "./parse-source-file.js";
+import { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
+import { resolveUniqueDirectModulePath } from "./resolve-module-path.js";
+import { resolveImportedApiReference } from "./resolve-imported-api-reference.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+
+interface BrowserGuardContext {
+  readonly scopes: ScopeAnalysis;
+  readonly importFilename?: string;
+  readonly importRootDirectory?: string;
+}
 
 const BROWSER_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "window",
@@ -17,7 +35,7 @@ const BROWSER_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 
 const getTypeofBrowserGlobalName = (
   expression: EsTreeNode,
-  context: RuleContext,
+  scopes: ScopeAnalysis,
 ): string | null => {
   const unwrappedExpression = stripParenExpression(expression);
   if (
@@ -28,7 +46,7 @@ const getTypeofBrowserGlobalName = (
   }
   const argument = stripParenExpression(unwrappedExpression.argument);
   if (isNodeOfType(argument, "Identifier")) {
-    return BROWSER_GLOBAL_NAMES.has(argument.name) && context.scopes.isGlobalReference(argument)
+    return BROWSER_GLOBAL_NAMES.has(argument.name) && scopes.isGlobalReference(argument)
       ? argument.name
       : null;
   }
@@ -37,7 +55,7 @@ const getTypeofBrowserGlobalName = (
     argument.computed ||
     !isNodeOfType(argument.object, "Identifier") ||
     argument.object.name !== "globalThis" ||
-    !context.scopes.isGlobalReference(argument.object) ||
+    !scopes.isGlobalReference(argument.object) ||
     !isNodeOfType(argument.property, "Identifier") ||
     !BROWSER_GLOBAL_NAMES.has(argument.property.name)
   ) {
@@ -61,10 +79,106 @@ const mergeAvailability = (
 const hasSymbolWrite = (symbol: SymbolDescriptor): boolean =>
   symbol.references.some((reference) => reference.flag !== "read");
 
+const readBrowserGlobalComparison = (
+  comparison: EsTreeNodeOfType<"BinaryExpression">,
+  browserGlobalName: string,
+  scopes: ScopeAnalysis,
+  predicateResult: boolean,
+): boolean | null => {
+  const leftTypeofName = getTypeofBrowserGlobalName(comparison.left, scopes);
+  const rightTypeofName = getTypeofBrowserGlobalName(comparison.right, scopes);
+  const leftComparedType =
+    isNodeOfType(comparison.left, "Literal") && typeof comparison.left.value === "string"
+      ? comparison.left.value
+      : null;
+  const rightComparedType =
+    isNodeOfType(comparison.right, "Literal") && typeof comparison.right.value === "string"
+      ? comparison.right.value
+      : null;
+  const guardName =
+    leftTypeofName && rightComparedType
+      ? leftTypeofName
+      : rightTypeofName && leftComparedType
+        ? rightTypeofName
+        : null;
+  const comparedType =
+    leftTypeofName && rightComparedType
+      ? rightComparedType
+      : rightTypeofName && leftComparedType
+        ? leftComparedType
+        : null;
+  if (!guardName || !browserGuardCoversGlobal(guardName, browserGlobalName)) return null;
+  if (!comparedType) return null;
+  const isEquality = comparison.operator === "===" || comparison.operator === "==";
+  const isInequality = comparison.operator === "!==" || comparison.operator === "!=";
+  if (!isEquality && !isInequality) return null;
+  const browserType = guardName === "matchMedia" ? "function" : "object";
+  const browserResult = isEquality ? browserType === comparedType : browserType !== comparedType;
+  const serverResult = isEquality ? comparedType === "undefined" : comparedType !== "undefined";
+  if (browserResult === serverResult) return null;
+  return predicateResult === browserResult;
+};
+
+const importedGuardScopes = new WeakMap<EsTreeNode, ScopeAnalysis>();
+
+const readImportedBrowserGlobalAvailability = (
+  callee: EsTreeNodeOfType<"Identifier">,
+  browserGlobalName: string,
+  context: BrowserGuardContext,
+  predicateResult: boolean,
+): boolean | null => {
+  if (!context.importFilename) return null;
+  const imported = resolveImportedApiReference(callee, context.scopes);
+  if (!imported?.importedName) return null;
+  if (
+    !context.importRootDirectory ||
+    path.resolve(context.importRootDirectory) !==
+      findNearestPackageDirectory(path.resolve(context.importFilename))
+  ) {
+    return null;
+  }
+  const importedFile = resolveUniqueDirectModulePath(context.importFilename, imported.source);
+  if (!importedFile) return null;
+  const program = parseSourceFile(importedFile);
+  if (!program) return null;
+  const functionNode = findExportedValue(program, imported.importedName);
+  if (
+    !isFunctionLike(functionNode) ||
+    functionNode.async ||
+    functionNode.generator ||
+    functionNode.params.length > 0
+  ) {
+    return null;
+  }
+  const declarator = functionNode.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    declarator.id.name !== imported.importedName ||
+    !isNodeOfType(declarator.parent, "VariableDeclaration") ||
+    declarator.parent.kind !== "const" ||
+    !isNodeOfType(declarator.parent.parent, "ExportNamedDeclaration")
+  ) {
+    return null;
+  }
+  const returned = getSingleReturnExpression(functionNode);
+  const comparison = returned && stripParenExpression(returned);
+  if (!isNodeOfType(comparison, "BinaryExpression")) return null;
+
+  let scopes = importedGuardScopes.get(program);
+  if (!scopes) {
+    scopes = analyzeScopes(program);
+    importedGuardScopes.set(program, scopes);
+  }
+  const symbol = scopes.symbolFor(declarator.id);
+  if (!symbol || hasSymbolWrite(symbol)) return null;
+  return readBrowserGlobalComparison(comparison, browserGlobalName, scopes, predicateResult);
+};
+
 const readBrowserGlobalAvailabilityInternal = (
   expression: EsTreeNode,
   browserGlobalName: string,
-  context: RuleContext,
+  context: BrowserGuardContext,
   predicateResult: boolean,
   visitedSymbolIds: ReadonlySet<number>,
 ): boolean | null => {
@@ -146,6 +260,14 @@ const readBrowserGlobalAvailabilityInternal = (
     }
     const symbol = context.scopes.symbolFor(callee);
     if (!symbol || visitedSymbolIds.has(symbol.id) || hasSymbolWrite(symbol)) return null;
+    if (symbol.kind === "import") {
+      return readImportedBrowserGlobalAvailability(
+        callee,
+        browserGlobalName,
+        context,
+        predicateResult,
+      );
+    }
     const functionNode =
       symbol.kind === "function"
         ? symbol.declarationNode
@@ -172,42 +294,12 @@ const readBrowserGlobalAvailabilityInternal = (
     );
   }
   if (!isNodeOfType(unwrappedExpression, "BinaryExpression")) return null;
-  const leftTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.left, context);
-  const rightTypeofName = getTypeofBrowserGlobalName(unwrappedExpression.right, context);
-  const leftComparedType =
-    isNodeOfType(unwrappedExpression.left, "Literal") &&
-    typeof unwrappedExpression.left.value === "string"
-      ? unwrappedExpression.left.value
-      : null;
-  const rightComparedType =
-    isNodeOfType(unwrappedExpression.right, "Literal") &&
-    typeof unwrappedExpression.right.value === "string"
-      ? unwrappedExpression.right.value
-      : null;
-  const guardName =
-    leftTypeofName && rightComparedType
-      ? leftTypeofName
-      : rightTypeofName && leftComparedType
-        ? rightTypeofName
-        : null;
-  const comparedType =
-    leftTypeofName && rightComparedType
-      ? rightComparedType
-      : rightTypeofName && leftComparedType
-        ? leftComparedType
-        : null;
-  if (!guardName || !browserGuardCoversGlobal(guardName, browserGlobalName)) return null;
-  if (!comparedType) return null;
-  const isEquality =
-    unwrappedExpression.operator === "===" || unwrappedExpression.operator === "==";
-  const isInequality =
-    unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!=";
-  if (!isEquality && !isInequality) return null;
-  const browserType = guardName === "matchMedia" ? "function" : "object";
-  const browserResult = isEquality ? browserType === comparedType : browserType !== comparedType;
-  const serverResult = isEquality ? comparedType === "undefined" : comparedType !== "undefined";
-  if (browserResult === serverResult) return null;
-  return predicateResult === browserResult;
+  return readBrowserGlobalComparison(
+    unwrappedExpression,
+    browserGlobalName,
+    context.scopes,
+    predicateResult,
+  );
 };
 
 export const readBrowserGlobalAvailability = (
@@ -219,7 +311,28 @@ export const readBrowserGlobalAvailability = (
   readBrowserGlobalAvailabilityInternal(
     expression,
     browserGlobalName,
-    context,
+    { scopes: context.scopes },
+    predicateResult,
+    new Set(),
+  );
+
+export const readRenderBrowserGlobalAvailability = (
+  expression: EsTreeNode,
+  browserGlobalName: string,
+  context: RuleContext,
+  predicateResult: boolean,
+): boolean | null =>
+  readBrowserGlobalAvailabilityInternal(
+    expression,
+    browserGlobalName,
+    {
+      scopes: context.scopes,
+      importFilename: context.filename,
+      importRootDirectory:
+        getReactDoctorStringSetting(context.settings, "framework") === "nextjs"
+          ? (getReactDoctorStringSetting(context.settings, "rootDirectory") ?? undefined)
+          : undefined,
+    },
     predicateResult,
     new Set(),
   );

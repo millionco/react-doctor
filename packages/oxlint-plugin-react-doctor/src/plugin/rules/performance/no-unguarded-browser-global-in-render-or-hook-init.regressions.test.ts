@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
+import { resetModuleResolutionCaches } from "../../utils/resolve-relative-import-path.js";
 import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noUnguardedBrowserGlobalInRenderOrHookInit } from "./no-unguarded-browser-global-in-render-or-hook-init.js";
 
@@ -632,5 +633,138 @@ describe("helpers defined inside an effect", () => {
       };
     `).diagnostics,
     ).toHaveLength(1);
+  });
+});
+
+describe("no-unguarded-browser-global-in-render-or-hook-init — imported browser guards", () => {
+  let projectDirectory: string;
+
+  beforeEach(() => {
+    projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-browser-predicate-"));
+    fs.mkdirSync(path.join(projectDirectory, "src", "utils"), { recursive: true });
+    fs.writeFileSync(path.join(projectDirectory, "package.json"), "{}");
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.js"),
+      "const config = { reactStrictMode: false, basePath: process.env.NEXT_PUBLIC_BASE_PATH }; module.exports = config;",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }),
+    );
+    resetModuleResolutionCaches();
+    resetTsconfigAliasCaches();
+  });
+
+  afterEach(() => {
+    fs.rmSync(projectDirectory, { recursive: true, force: true });
+  });
+
+  const writeGuard = (filename: string, content: string): void => {
+    fs.writeFileSync(path.join(projectDirectory, "src", "utils", filename), content);
+  };
+
+  const directBrowserGuard = 'export const isBrowser = () => typeof window !== "undefined";';
+  const renderWithGuard = (
+    importSource: string,
+    expression = "inBrowser() && document.title",
+    framework = "nextjs",
+  ) =>
+    runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `
+        import { isBrowser as inBrowser } from "${importSource}";
+        export const Panel = () => <section>{${expression}}</section>;
+      `,
+      {
+        filename: path.join(projectDirectory, "src", "Panel.tsx"),
+        settings: { "react-doctor": { rootDirectory: projectDirectory, framework } },
+      },
+    );
+
+  it.each(["./utils/guard", "@/utils/guard"])(
+    "accepts a proven direct browser predicate from %s",
+    (importSource) => {
+      writeGuard("guard.ts", directBrowserGuard);
+      const result = renderWithGuard(importSource);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it("retains imports without a verified Next resolver", () => {
+    writeGuard("guard.ts", directBrowserGuard);
+    const expression = "inBrowser() && document.title";
+    const alias = renderWithGuard("@/utils/guard", expression, "remix");
+    const relative = renderWithGuard("./utils/guard", expression, "remix");
+    expect(alias.parseErrors).toEqual([]);
+    expect(relative.parseErrors).toEqual([]);
+    expect(alias.diagnostics).toHaveLength(1);
+    expect(relative.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    'module.exports = { typescript: { tsconfigPath: "tsconfig.runtime.json" } };',
+    "module.exports = { webpack(config) { return config; } };",
+    'module.exports = require("./wrapper")({});',
+  ])("retains a browser read when Next config resolution is unproved: %s", (config) => {
+    writeGuard("guard.ts", directBrowserGuard);
+    fs.writeFileSync(path.join(projectDirectory, "next.config.js"), config);
+    for (const importSource of ["@/utils/guard", "./utils/guard"]) {
+      const result = renderWithGuard(importSource);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("reports again after a competing runtime source appears", () => {
+    writeGuard("guard.ts", directBrowserGuard);
+    expect(renderWithGuard("@/utils/guard").diagnostics).toHaveLength(0);
+
+    writeGuard("guard.js", "export const isBrowser = () => true;");
+    resetModuleResolutionCaches();
+    const result = renderWithGuard("@/utils/guard");
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([false, true])(
+    "retains a competing nested config (package boundary: %s)",
+    (hasManifest) => {
+      writeGuard("guard.ts", "export const isBrowser = () => true;");
+      writeGuard("local-guard.ts", directBrowserGuard);
+      fs.writeFileSync(
+        path.join(projectDirectory, "src", "tsconfig.json"),
+        JSON.stringify({
+          compilerOptions: { paths: { "@/utils/guard": ["./utils/local-guard.ts"] } },
+        }),
+      );
+      if (hasManifest) {
+        fs.writeFileSync(path.join(projectDirectory, "src", "package.json"), '{"type":"module"}');
+      }
+      resetTsconfigAliasCaches();
+      const result = renderWithGuard("@/utils/guard");
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    'export let isBrowser = () => typeof window !== "undefined";',
+    'const window = {}; export const isBrowser = () => typeof window !== "undefined";',
+    'export const isBrowser = async () => typeof window !== "undefined";',
+    'export const isBrowser = () => typeof window === "undefined";',
+    'export const isBrowser = () => typeof window !== "undefined" || true;',
+  ])("retains the diagnostic for an unproved imported guard: %s", (guard) => {
+    writeGuard("guard.ts", guard);
+    const result = renderWithGuard("@/utils/guard");
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports when an imported predicate takes its server branch", () => {
+    writeGuard("guard.ts", directBrowserGuard);
+    const result = renderWithGuard("@/utils/guard", "inBrowser() || document.title");
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

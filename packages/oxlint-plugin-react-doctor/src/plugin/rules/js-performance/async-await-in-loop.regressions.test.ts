@@ -932,4 +932,259 @@ describe("async-await-in-loop — promise consumers and advice", () => {
     );
     expect(asyncAwaitInLoop.recommendation).toContain("transaction ordering");
   });
+
+  it.each([
+    [
+      "caught-pure-reduce",
+      0,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 4 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "caught-pure-reduce-right",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduceRight<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 2 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "alias-outside-this-proof",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const pending = previous;
+      const total = await pending;
+      return total * 10 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "discarded-prior-value",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "reverse-dependencies",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return digit * 10 + total;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "nonliteral-factor",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * factor + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "non-ordering-factor",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 1 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "opaque-return",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return read(total * 10 + digit);
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "independent-item-await",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      const loaded = await read(digit);
+      return total * 10 + loaded;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "unobserved-reduce-result",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    void [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 10 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "unhandled-returned-rejection",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 10 + digit;
+    }, 0);
+  } catch (error) {
+    throw error;
+  }
+};
+    `,
+    ],
+    [
+      "nonliteral-receiver",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await input.reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 10 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "missing-explicit-seed",
+      1,
+      `
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce(async (previous, digit) => {
+      const total = await previous;
+      return total * 10 + digit;
+    });
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "exposed-array-prototype",
+      1,
+      `
+Array.prototype.reduce = replacement;
+export const collect = async (input: number[], read: (digit: number) => Promise<number>, factor: number) => {
+  try {
+    return await [1, 2, 3].reduce<number | Promise<number>>(async (previous, digit) => {
+      const total = await previous;
+      return total * 10 + digit;
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+    `,
+    ],
+    [
+      "unobserved-map-still-warns",
+      1,
+      `
+export const collect = (read: (digit: number) => Promise<number>) => [1, 2].map(async (digit) => await read(digit));
+    `,
+    ],
+    [
+      "ignored-foreach-still-warns",
+      1,
+      `
+export const collect = (read: (digit: number) => Promise<number>) => [1, 2].forEach(async (digit) => await read(digit));
+    `,
+    ],
+    [
+      "observed-map-still-quiet",
+      0,
+      `
+export const collect = async (read: (digit: number) => Promise<number>) => await Promise.all([1, 2].map(async (digit) => await read(digit)));
+    `,
+    ],
+  ] as const)("checks observed reducer contracts: %s", (_name, expected, code) => {
+    const result = runRule(asyncAwaitInLoop, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
 });

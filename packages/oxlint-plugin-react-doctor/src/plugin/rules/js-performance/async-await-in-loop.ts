@@ -15,6 +15,7 @@ import {
   getOrderIndependentLocalFunction,
   resolveStaticLocalCallFunction,
 } from "../../utils/get-order-independent-local-function.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -25,6 +26,7 @@ import { isTestLibraryImportSource } from "../../utils/is-test-library-import-so
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { someAst } from "../../utils/some-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -1313,6 +1315,165 @@ const isLoopInsideWorkerPoolFunction = (loopNode: EsTreeNode): boolean => {
   );
 };
 
+const ARRAY_PROTOTYPE_EXPOSURE_GLOBALS = new Set([
+  "Array",
+  "Function",
+  "Object",
+  "Reflect",
+  "eval",
+  "global",
+  "globalThis",
+  "self",
+  "window",
+]);
+const ARRAY_PROTOTYPE_EXPOSURE_PROPERTIES = new Set([
+  "Array",
+  "__proto__",
+  "constructor",
+  "getPrototypeOf",
+  "prototype",
+  "setPrototypeOf",
+]);
+const arrayPrototypeExposureByScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasArrayPrototypeExposure = (scopes: ScopeAnalysis): boolean => {
+  const cached = arrayPrototypeExposureByScope.get(scopes);
+  if (cached !== undefined) return cached;
+  const exposed = someAst(scopes.rootScope.node, (node) => {
+    if (isNodeOfType(node, "Identifier")) {
+      return ARRAY_PROTOTYPE_EXPOSURE_GLOBALS.has(node.name) && scopes.isGlobalReference(node);
+    }
+    if (
+      isNodeOfType(node, "MemberExpression") ||
+      (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern"))
+    ) {
+      const property = getStaticPropertyKeyName(node, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
+      return property === null || ARRAY_PROTOTYPE_EXPOSURE_PROPERTIES.has(property);
+    }
+    return isNodeOfType(node, "WithStatement");
+  });
+  arrayPrototypeExposureByScope.set(scopes, exposed);
+  return exposed;
+};
+
+const isFiniteNumberLiteral = (node: EsTreeNode | null | undefined): boolean =>
+  isNodeOfType(node, "Literal") && typeof node.value === "number" && Number.isFinite(node.value);
+
+const isAwaitedInReturningTryWithFallback = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const root = findTransparentExpressionRoot(call);
+  const consumer = root.parent;
+  if (!isNodeOfType(consumer, "AwaitExpression") || consumer.argument !== root) return false;
+
+  const awaitedRoot = findTransparentExpressionRoot(consumer);
+  const returning = awaitedRoot.parent;
+  if (!isNodeOfType(returning, "ReturnStatement") || returning.argument !== awaitedRoot)
+    return false;
+  const tryBlock = returning.parent;
+  if (!isNodeOfType(tryBlock, "BlockStatement") || tryBlock.body.length !== 1) return false;
+  const enclosingTry = tryBlock.parent;
+  if (
+    !isNodeOfType(enclosingTry, "TryStatement") ||
+    enclosingTry.block !== tryBlock ||
+    !enclosingTry.handler ||
+    enclosingTry.handler.param ||
+    enclosingTry.finalizer
+  ) {
+    return false;
+  }
+
+  const owner = findEnclosingFunction(enclosingTry);
+  if (!isFunctionLike(owner) || !owner.async || owner.generator) return false;
+  const catchBody = enclosingTry.handler.body.body;
+  const fallback = catchBody[0];
+  return (
+    catchBody.length === 1 &&
+    isNodeOfType(fallback, "ReturnStatement") &&
+    isFiniteNumberLiteral(fallback.argument)
+  );
+};
+
+const isObservedPureAsyncNumericFold = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  callback: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    call.optional ||
+    !isNodeOfType(call.callee, "MemberExpression") ||
+    call.callee.computed ||
+    call.callee.optional ||
+    call.arguments.length !== 2 ||
+    !isFiniteNumberLiteral(call.arguments[1]) ||
+    callback.generator ||
+    callback.params.length !== 2 ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    callback.body.body.length !== 2
+  ) {
+    return false;
+  }
+
+  const receiver = stripParenExpression(call.callee.object);
+  const [previous, item] = callback.params;
+  const [resolution, returning] = callback.body.body;
+  if (
+    !isNodeOfType(receiver, "ArrayExpression") ||
+    receiver.elements.length === 0 ||
+    !receiver.elements.every(isFiniteNumberLiteral) ||
+    !isNodeOfType(previous, "Identifier") ||
+    !isNodeOfType(item, "Identifier") ||
+    !isNodeOfType(resolution, "VariableDeclaration") ||
+    resolution.kind !== "const" ||
+    resolution.declarations.length !== 1 ||
+    !isNodeOfType(returning, "ReturnStatement") ||
+    !returning.argument
+  ) {
+    return false;
+  }
+
+  const settledDeclaration = resolution.declarations[0];
+  if (!settledDeclaration?.init || !isNodeOfType(settledDeclaration.id, "Identifier")) {
+    return false;
+  }
+  const awaited = stripParenExpression(settledDeclaration.init);
+  const sum = stripParenExpression(returning.argument);
+  if (
+    !isNodeOfType(awaited, "AwaitExpression") ||
+    !isNodeOfType(sum, "BinaryExpression") ||
+    sum.operator !== "+"
+  ) {
+    return false;
+  }
+
+  const scaled = stripParenExpression(sum.left);
+  if (!isNodeOfType(scaled, "BinaryExpression") || scaled.operator !== "*") return false;
+  const factor = stripParenExpression(scaled.right);
+  if (
+    !isNodeOfType(factor, "Literal") ||
+    typeof factor.value !== "number" ||
+    !Number.isInteger(factor.value) ||
+    factor.value < 2
+  ) {
+    return false;
+  }
+
+  const previousSymbol = scopes.symbolFor(previous);
+  const settledSymbol = scopes.symbolFor(settledDeclaration.id);
+  const itemSymbol = scopes.symbolFor(item);
+  return Boolean(
+    previousSymbol &&
+    settledSymbol &&
+    itemSymbol &&
+    scopes.symbolFor(stripParenExpression(awaited.argument)) === previousSymbol &&
+    scopes.symbolFor(stripParenExpression(scaled.left)) === settledSymbol &&
+    scopes.symbolFor(stripParenExpression(sum.right)) === itemSymbol &&
+    isAwaitedInReturningTryWithFallback(call) &&
+    !hasArrayPrototypeExposure(scopes),
+  );
+};
+
 export const asyncAwaitInLoop = defineRule({
   id: "async-await-in-loop",
   title: "await inside a loop",
@@ -1398,6 +1559,13 @@ export const asyncAwaitInLoop = defineRule({
           return;
         }
         const firstAwait = findFirstAwaitOutsideNestedFunctions(body);
+        if (
+          firstAwait &&
+          methodName === "reduce" &&
+          isObservedPureAsyncNumericFold(node, callback, context.scopes)
+        ) {
+          return;
+        }
         if (firstAwait) {
           const message =
             methodName === "forEach"

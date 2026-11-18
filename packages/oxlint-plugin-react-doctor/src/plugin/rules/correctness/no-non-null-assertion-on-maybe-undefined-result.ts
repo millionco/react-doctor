@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
@@ -14,8 +15,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isObjectOfMemberAccess } from "../../utils/is-object-of-member-access.js";
 import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { singleExpressionPredicateBody } from "../../utils/single-expression-predicate-body.js";
+import { someAst } from "../../utils/some-ast.js";
 import {
   stripParenExpression,
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -474,6 +477,113 @@ const getAssertedResultAccess = (
   return parent && isNodeOfType(parent, "MemberExpression") && parent.object === assertion
     ? parent
     : null;
+};
+
+const ANCHORED_REQUIRED_ASCII_CAPTURE =
+  /^\^([A-Za-z0-9_-]*)\((\\w\+|\[\\w-\]\+|[A-Za-z0-9_-]+)\)([A-Za-z0-9_-]*)\$$/;
+const NON_ASCII_WORD_CHARACTER = /[^A-Za-z0-9_]/;
+const NON_ASCII_WORD_OR_HYPHEN_CHARACTER = /[^A-Za-z0-9_-]/;
+const MATCH_PROTOTYPE_GLOBALS = new Set([
+  "Function",
+  "Object",
+  "Reflect",
+  "RegExp",
+  "String",
+  "eval",
+  "global",
+  "globalThis",
+  "process",
+  "require",
+  "self",
+  "window",
+]);
+const MATCH_PROTOTYPE_PROPERTIES = new Set([
+  ...MATCH_PROTOTYPE_GLOBALS,
+  "__proto__",
+  "constructor",
+  "getPrototypeOf",
+  "prototype",
+  "setPrototypeOf",
+]);
+
+const hasMatchPrototypeExposure = (context: RuleContext): boolean =>
+  someAst(context.scopes.rootScope.node, (candidate) => {
+    if (isNodeOfType(candidate, "Identifier")) {
+      return (
+        MATCH_PROTOTYPE_GLOBALS.has(candidate.name) &&
+        context.scopes.referenceFor(candidate) !== null
+      );
+    }
+    if (
+      isNodeOfType(candidate, "MemberExpression") ||
+      (isNodeOfType(candidate, "Property") && isNodeOfType(candidate.parent, "ObjectPattern"))
+    ) {
+      const property = getStaticPropertyKeyName(candidate, {
+        allowComputedString: true,
+        stringifyNonStringLiterals: true,
+      });
+      return (
+        property === null ||
+        MATCH_PROTOTYPE_PROPERTIES.has(property) ||
+        ((property === "match" || property === "exec") && isWithinAssignmentTarget(candidate))
+      );
+    }
+    return isNodeOfType(candidate, "WithStatement");
+  });
+
+const isProvenLiteralMatchCapture = (
+  assertion: EsTreeNode,
+  call: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (
+    call.optional ||
+    call.arguments.length !== 1 ||
+    !isNodeOfType(call.callee, "MemberExpression") ||
+    call.callee.optional
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(call.callee.object);
+  const pattern = stripParenExpression(call.arguments[0]);
+  if (
+    !isNodeOfType(receiver, "Literal") ||
+    typeof receiver.value !== "string" ||
+    !isNodeOfType(pattern, "Literal") ||
+    !("regex" in pattern) ||
+    !pattern.regex ||
+    pattern.regex.flags !== ""
+  ) {
+    return false;
+  }
+
+  const resultAccess = getAssertedResultAccess(assertion);
+  if (
+    !resultAccess?.computed ||
+    !isNodeOfType(resultAccess.property, "Literal") ||
+    (resultAccess.property.value !== 0 && resultAccess.property.value !== 1)
+  ) {
+    return false;
+  }
+
+  // Recognize the grammar and compare the text directly. Never execute an
+  // application-provided regular expression during linting.
+  const components = ANCHORED_REQUIRED_ASCII_CAPTURE.exec(pattern.regex.pattern);
+  if (!components) return false;
+  const [, prefix, capturePattern, suffix] = components;
+  const text = receiver.value;
+  if (
+    text.length <= prefix.length + suffix.length ||
+    !text.startsWith(prefix) ||
+    !text.endsWith(suffix)
+  ) {
+    return false;
+  }
+  const capture = text.slice(prefix.length, text.length - suffix.length);
+  return capturePattern === "\\w+"
+    ? !NON_ASCII_WORD_CHARACTER.test(capture)
+    : capturePattern === "[\\w-]+"
+      ? !NON_ASCII_WORD_OR_HYPHEN_CHARACTER.test(capture)
+      : capture === capturePattern;
 };
 
 const isDirectCharacterMatchStatement = (assertion: EsTreeNode): boolean => {
@@ -1848,6 +1958,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
     "Drop the `!` on `.find`/`.match`/`.get` results and handle the miss (optional chaining, a guard, or a fallback). These built-ins return `undefined`/`null` when nothing matches, so the assertion just moves the crash one line later.",
   create: (context: RuleContext) => {
     const skipTestlikeFile = isTestlikeFilename(context.filename);
+    let matchPrototypeExposure: boolean | undefined;
     return {
       TSNonNullExpression(node: EsTreeNodeOfType<"TSNonNullExpression">) {
         if (skipTestlikeFile) return;
@@ -1884,6 +1995,10 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           if (predicate && isEnsureThenFind(node as EsTreeNode, findReceiver, predicate)) return;
         }
         if (methodName === "match") {
+          if (isProvenLiteralMatchCapture(node, inner)) {
+            matchPrototypeExposure ??= hasMatchPrototypeExposure(context);
+            if (!matchPrototypeExposure) return;
+          }
           const matchReceiver = callee.object as EsTreeNode;
           const pattern = args[0] ? stripParenExpression(args[0]) : null;
           if (

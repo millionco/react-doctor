@@ -5,16 +5,27 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getStaticKeyName } from "../../utils/get-static-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
+import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
+import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
+import { hasVisibleBindingNamed } from "../../utils/has-visible-binding-named.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isProvenGlobalObjectReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import {
   resolveReactRefObjectSymbol,
@@ -509,6 +520,7 @@ const hasNoCoExecutableCompetingWrite = (
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  requiresExclusiveWriter = false,
 ): boolean => {
   const writeConstraints = getBranchConstraints(write.node, renderOwner);
   const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
@@ -549,12 +561,13 @@ const hasNoCoExecutableCompetingWrite = (
       !isNodeOfType(deferredWriteValue, "CallExpression") &&
       isProvablyTruthyInitializationValue(deferredWriteValue, scopes);
     if (
-      isDeferredTruthyWrite ||
+      (!requiresExclusiveWriter && isDeferredTruthyWrite) ||
       !(
         competingWrite?.refSymbol.id === refSymbol.id ||
         (writtenExpression && expressionContainsRefCurrent(writtenExpression, refSymbol, scopes))
       ) ||
-      !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner))
+      (!requiresExclusiveWriter &&
+        !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner)))
     ) {
       return;
     }
@@ -619,6 +632,304 @@ const isPredictableGuardedInitialization = (
   hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes) &&
   refDoesNotEscape(renderOwner, refSymbol, scopes);
 
+const ALTERNATE_IMAGE_PROVIDERS: ReadonlySet<string> = new Set([
+  "document",
+  "parent",
+  "top",
+  "frames",
+  "opener",
+  "Window",
+  "Image",
+  "HTMLImageElement",
+  "eval",
+  "Function",
+  "execScript",
+  "addEventListener",
+  "removeEventListener",
+  "event",
+  "setTimeout",
+  "setInterval",
+]);
+
+const isOrdinaryWindowUse = (windowReference: EsTreeNode, constructor: EsTreeNode): boolean => {
+  const use = windowReference.parent;
+  if (use === constructor) return true;
+  if (isNodeOfType(use, "UnaryExpression") && use.operator === "typeof") return true;
+  if (
+    !isNodeOfType(use, "MemberExpression") ||
+    use.object !== windowReference ||
+    use.computed ||
+    use.optional
+  ) {
+    return false;
+  }
+  const call = use.parent;
+  if (!isNodeOfType(call, "CallExpression") || call.callee !== use || call.optional) return false;
+  const name = getStaticPropertyName(use);
+  return (
+    name === "clearTimeout" ||
+    (name === "setTimeout" && isNodeOfType(call.arguments[0], "ArrowFunctionExpression"))
+  );
+};
+
+const hasReactRefOverride = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "Identifier") && !isNodeOfType(node, "MemberExpression")) return false;
+  const receiver = isNodeOfType(node, "MemberExpression") ? node.object : node;
+  const symbol = resolveConstIdentifierAlias(receiver, scopes);
+  if (
+    !symbol ||
+    getValueImportSource(symbol) !== "react" ||
+    (!isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier") &&
+      !isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier"))
+  ) {
+    return false;
+  }
+  if (isNodeOfType(node, "MemberExpression")) {
+    const property = getStaticPropertyName(node);
+    return (property === "useRef" || property === null) && isWithinAssignmentTarget(node);
+  }
+  const properties = getSymbolMutationInspector(scopes).getMutationPropertyNames(node);
+  return properties === null || properties?.has("useRef") === true;
+};
+
+const hasClosedNativeImageProvider = (constructor: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const program = scopes.rootScope.node;
+  if (
+    !isNodeOfType(program, "Program") ||
+    program.sourceType !== "module" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(constructor, "Image", scopes, undefined, true)
+  ) {
+    return false;
+  }
+
+  // Follow the rule's ordinary browser-global contract only where the file
+  // neither changes nor exposes another route to the Image constructor.
+  let hasUnprovedUse = false;
+  walkAst(program, (node) => {
+    if (hasUnprovedUse) return false;
+    if (
+      (node.type as string) === "TSGlobalDeclaration" ||
+      isNodeOfType(node, "ThisExpression") ||
+      hasReactRefOverride(node, scopes) ||
+      (isNodeOfType(node, "TSModuleDeclaration") && getStaticKeyName(node.id) === "global") ||
+      (isNodeOfType(node, "JSXOpeningElement") &&
+        isNodeOfType(node.name, "JSXIdentifier") &&
+        node.name.name === "script")
+    ) {
+      hasUnprovedUse = true;
+      return false;
+    }
+    if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
+    if (node.name === "window") {
+      hasUnprovedUse = !isOrdinaryWindowUse(node, constructor);
+    } else if (
+      isProvenGlobalObjectReference(node, scopes) ||
+      ALTERNATE_IMAGE_PROVIDERS.has(node.name) ||
+      /^on[a-z]/.test(node.name)
+    ) {
+      hasUnprovedUse = true;
+    }
+  });
+  return !hasUnprovedUse;
+};
+
+const hasClosedNativeImageRefType = (
+  refSymbol: SymbolDescriptor,
+  renderOwner: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const initializer = getDirectConstInitializer(refSymbol);
+  if (
+    !isNodeOfType(initializer, "CallExpression") ||
+    initializer.optional ||
+    findEnclosingFunction(initializer) !== renderOwner ||
+    !isReactApiCall(initializer, "useRef", scopes) ||
+    initializer.arguments.length !== 1 ||
+    !isNodeOfType(initializer.arguments[0], "Literal") ||
+    initializer.arguments[0].value !== null
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(initializer.callee);
+  const provider = isNodeOfType(callee, "MemberExpression") ? callee.object : callee;
+  if (!isNodeOfType(provider, "Identifier")) return false;
+  const importSymbol = scopes.symbolFor(provider);
+  if (!importSymbol || getValueImportSource(importSymbol) !== "react") return false;
+  if (isNodeOfType(callee, "MemberExpression")) {
+    if (
+      callee.computed ||
+      callee.optional ||
+      !isNodeOfType(importSymbol.declarationNode, "ImportNamespaceSpecifier")
+    ) {
+      return false;
+    }
+  } else if (
+    !isNodeOfType(importSymbol.declarationNode, "ImportSpecifier") ||
+    getImportedName(importSymbol.declarationNode) !== "useRef"
+  ) {
+    return false;
+  }
+
+  const types = initializer.typeArguments?.params;
+  const type = types?.[0];
+  if (types?.length !== 1 || !isNodeOfType(type, "TSUnionType") || type.types.length !== 2) {
+    return false;
+  }
+  const imageType = type.types.find((member) => isNodeOfType(member, "TSTypeReference"));
+  return (
+    isNodeOfType(imageType, "TSTypeReference") &&
+    isNodeOfType(imageType.typeName, "Identifier") &&
+    imageType.typeName.name === "HTMLImageElement" &&
+    !imageType.typeArguments &&
+    !hasVisibleBindingNamed(imageType, "HTMLImageElement", scopes) &&
+    !hasEnclosingTypeParameterNamed(imageType, "HTMLImageElement") &&
+    type.types.some((member) => isNodeOfType(member, "TSNullKeyword"))
+  );
+};
+
+const isDirectImageNullGuard = (
+  node: EsTreeNode,
+  refSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const test = stripParenExpression(node);
+  if (isNodeOfType(test, "UnaryExpression") && test.operator === "!") {
+    return isSameRefCurrentMember(stripParenExpression(test.argument), refSymbol, scopes);
+  }
+  if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return false;
+  const left = stripParenExpression(test.left);
+  const right = stripParenExpression(test.right);
+  return (
+    (isNodeOfType(left, "Literal") &&
+      left.value === null &&
+      isSameRefCurrentMember(right, refSymbol, scopes)) ||
+    (isNodeOfType(right, "Literal") &&
+      right.value === null &&
+      isSameRefCurrentMember(left, refSymbol, scopes))
+  );
+};
+
+const isInertEarlyAbort = (
+  node: EsTreeNode,
+  renderOwner: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(node, "IfStatement") ||
+    node.alternate ||
+    !isNodeOfType(node.test, "UnaryExpression") ||
+    node.test.operator !== "!" ||
+    !isNodeOfType(node.test.argument, "Identifier") ||
+    !isNodeOfType(node.consequent, "ReturnStatement") ||
+    !isNodeOfType(node.consequent.argument, "Literal") ||
+    node.consequent.argument.value !== null
+  ) {
+    return false;
+  }
+  const symbol = scopes.symbolFor(node.test.argument);
+  return (
+    symbol?.scope.node === renderOwner &&
+    (symbol.kind === "const" || symbol.kind === "parameter") &&
+    symbol.references.every((reference) => reference.flag === "read")
+  );
+};
+
+const isGuardedNativeImageIife = (
+  write: RefCurrentWrite,
+  renderOwner: EsTreeNode,
+  refSymbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    write.operator !== "=" ||
+    !write.value ||
+    !isNodeOfType(write.node, "AssignmentExpression") ||
+    !isSameRefCurrentMember(write.node.left, refSymbol, scopes)
+  ) {
+    return false;
+  }
+  const factory = stripParenExpression(write.value);
+  if (!isNodeOfType(factory, "NewExpression") || factory.arguments.length !== 0) return false;
+  const constructor = factory.callee;
+  if (
+    !isNodeOfType(constructor, "MemberExpression") ||
+    constructor.computed ||
+    constructor.optional ||
+    getStaticPropertyName(constructor) !== "Image" ||
+    !isNodeOfType(constructor.object, "Identifier") ||
+    constructor.object.name !== "window" ||
+    !scopes.isGlobalReference(constructor.object)
+  ) {
+    return false;
+  }
+
+  const callback = findEnclosingFunction(write.node);
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 0 ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    !isFunctionLike(renderOwner)
+  ) {
+    return false;
+  }
+  const callee = findTransparentExpressionRoot(callback);
+  const call = callee.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.callee !== callee ||
+    call.arguments.length !== 0
+  ) {
+    return false;
+  }
+  const declaration = call.parent;
+  const declarationStatement = declaration?.parent;
+  // A direct const initialization in the render body has one call site and
+  // cannot repeat through a surrounding loop, callback, or other wrapper.
+  if (
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.init !== call ||
+    !isNodeOfType(declaration.id, "Identifier") ||
+    !isNodeOfType(declarationStatement, "VariableDeclaration") ||
+    declarationStatement.kind !== "const" ||
+    declarationStatement.parent !== renderOwner.body
+  ) {
+    return false;
+  }
+
+  const body = callback.body.body;
+  if (
+    body.length < 2 ||
+    body.length > 3 ||
+    (body.length === 3 && !isInertEarlyAbort(body[0], renderOwner, scopes))
+  ) {
+    return false;
+  }
+  const guard = body[body.length - 2];
+  const result = body[body.length - 1];
+  if (
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !isNodeOfType(guard.consequent, "BlockStatement") ||
+    guard.consequent.body.length !== 1 ||
+    !isNodeOfType(guard.consequent.body[0], "ExpressionStatement") ||
+    guard.consequent.body[0].expression !== write.node ||
+    !isDirectImageNullGuard(guard.test, refSymbol, scopes) ||
+    !isNodeOfType(result, "ReturnStatement") ||
+    !result.argument ||
+    !isSameRefCurrentMember(stripParenExpression(result.argument), refSymbol, scopes)
+  ) {
+    return false;
+  }
+  return (
+    hasClosedNativeImageRefType(refSymbol, renderOwner, scopes) &&
+    hasClosedNativeImageProvider(constructor, scopes) &&
+    hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes, true) &&
+    refDoesNotEscape(renderOwner, refSymbol, scopes)
+  );
+};
+
 const isDocumentedLazyInitialization = (
   write: RefCurrentWrite,
   refSymbol: SymbolDescriptor,
@@ -637,6 +948,7 @@ const isDocumentedLazyInitialization = (
     );
   }
   if (write.operator !== "=") return false;
+  if (isGuardedNativeImageIife(write, renderOwner, refSymbol, scopes)) return true;
   let descendant: EsTreeNode = write.node;
   let ancestor = descendant.parent;
   while (ancestor) {

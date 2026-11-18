@@ -388,3 +388,44 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("architecture/prefer-module-scope-static-value — React Hook initializers", () => {
+  it.each([
+    ['import { useRef } from "react";', "useRef(null)"],
+    ['import { useRef as hold } from "react";', "hold(null)"],
+    ['import * as React from "react";', "React.useRef(null)"],
+    ['import { useState } from "react";', "useState(0)"],
+  ])("keeps imported Hooks in render", (setup, expression) => {
+    const result = run(
+      `${setup} function Row() { const value = { nested: [${expression}] }; return <Child data={value} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("retains the warning for a Hook name shadowed by an outer parameter", () => {
+    const result = run(
+      `import { useRef } from "react";
+      const makeRow = (useRef) => function Row() {
+        const value = { slot: useRef(null) };
+        return <Child data={value} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ['import { useRef } from "./local.js";', "useRef(null)"],
+    ['import { type useRef } from "react";', "useRef(null)"],
+    ['import type * as React from "react";', "React.useRef(null)"],
+    ['import { useRef } from "react"; const fake = { useRef: () => 0 };', "fake.useRef(null)"],
+    ['import { memo } from "react";', "memo(Child)"],
+  ])("retains the warning without a runtime Hook call", (setup, expression) => {
+    const result = run(
+      `${setup} function Row() { const value = { nested: [${expression}] }; return <Child data={value} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

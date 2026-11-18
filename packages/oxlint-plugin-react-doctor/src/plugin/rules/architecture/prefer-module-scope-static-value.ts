@@ -1,4 +1,5 @@
 import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
+import { BUILTIN_HOOK_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -7,6 +8,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isProvenNodeCryptoNamespaceReference } from "../../utils/is-proven-node-crypto-namespace-reference.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import {
   stripParenExpression,
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -248,12 +250,20 @@ const isImpureBareCallee = (
   return resolvedSymbol.kind === "import";
 };
 
-const isImpureCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isRenderBoundCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (isNodeOfType(node, "NewExpression")) {
     return isNodeOfType(node.callee, "Identifier") && node.callee.name === "Date";
   }
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = node.callee;
+  const importedApi = resolveImportedApiReference(callee, scopes);
+  if (
+    importedApi?.importedName &&
+    REACT_RUNTIME_MODULE_SOURCES.has(importedApi.source) &&
+    BUILTIN_HOOK_NAMES.has(importedApi.importedName)
+  ) {
+    return true;
+  }
   if (isNodeOfType(callee, "Identifier")) return isImpureBareCallee(callee, scopes);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
@@ -269,20 +279,19 @@ const isImpureCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   return false;
 };
 
-// True when the initializer contains a call to a known-impure global.
-// Such values legitimately differ per render, so hoisting them would
-// freeze the value and change behavior — the rule must abstain.
-const containsImpureExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  let foundImpure = false;
+// A Hook must run during render. Known impure calls also need to stay
+// in render so their results are computed there, even with constant arguments.
+const containsRenderBoundExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let foundRenderBoundCall = false;
   walkAst(expression, (node) => {
-    if (foundImpure) return false;
-    if (isImpureCall(node, scopes)) {
-      foundImpure = true;
+    if (foundRenderBoundCall) return false;
+    if (isRenderBoundCall(node, scopes)) {
+      foundRenderBoundCall = true;
       return false;
     }
     return undefined;
   });
-  return foundImpure;
+  return foundRenderBoundCall;
 };
 
 // Detects array / object literals defined inside a component or hook
@@ -339,10 +348,7 @@ export const preferModuleScopeStaticValue = defineRule({
       if (hasComponentLocalReferences(initializer, component.bodyScope, context.scopes)) {
         return;
       }
-      // Impure initializers (`Date.now()`, `Math.random()`, …) are meant
-      // to recompute each render; hoisting would freeze them to a single
-      // module-load value and change observable behavior.
-      if (containsImpureExpression(initializer, context.scopes)) return;
+      if (containsRenderBoundExpression(initializer, context.scopes)) return;
       // A binding consumed ONLY as the receiver of scalar lookups
       // (`KEYS.includes(k)`) never escapes as a value — identity can't
       // break memoized children, so the hoist advice is pure noise.

@@ -117,13 +117,17 @@ const isNullFilteringPredicateBody = (body: EsTreeNode): boolean => {
   return false;
 };
 
-// `.filter((x): x is T => …)` — TypeScript type predicate. The arrow
-// has an explicit `is T` return annotation on its body, which only
-// makes sense when chained with .map() to operate on the narrowed
-// type. We detect by checking for a `returnType` field whose name
-// contains "TSTypePredicate" — robust against AST shape variance.
-const isTypePredicateArrow = (filterArgument: EsTreeNode | null | undefined): boolean => {
-  if (!filterArgument) return false;
+// An explicit filter type predicate preserves narrowing for later steps in the chain.
+const hasInlineTypePredicate = (filterArgument: EsTreeNode | null | undefined): boolean => {
+  if (isNodeOfType(filterArgument, "FunctionExpression")) {
+    const annotation = filterArgument.returnType?.typeAnnotation;
+    return (
+      !filterArgument.async &&
+      !filterArgument.generator &&
+      isNodeOfType(annotation, "TSTypePredicate") &&
+      !annotation.asserts
+    );
+  }
   if (!isNodeOfType(filterArgument, "ArrowFunctionExpression")) return false;
   const returnType = (filterArgument as { returnType?: unknown }).returnType;
   if (!returnType || typeof returnType !== "object") return false;
@@ -377,16 +381,16 @@ export const jsCombineIterations = defineRule({
         if (innerMethod === "map" && outerMethod === "filter") {
           const filterArgument = node.arguments?.[0];
           if (isNullFilteringPredicate(filterArgument as EsTreeNode | null | undefined)) return;
-          // `.map(transform).filter((x): x is T => …)` — TS type predicate
+          // `.map(transform).filter(isMatch)` — inline TS type predicate
           // narrows the result element type; rewriting to `.reduce()`
           // loses the narrowing (same rationale as the `.filter().map()`
           // branch below).
-          if (isTypePredicateArrow(filterArgument as EsTreeNode | null | undefined)) return;
+          if (hasInlineTypePredicate(filterArgument as EsTreeNode | null | undefined)) return;
         }
         if (innerMethod === "filter" && outerMethod === "map") {
           const filterArgument = (innerCall as EsTreeNodeOfType<"CallExpression">).arguments?.[0];
           if (isNullFilteringPredicate(filterArgument as EsTreeNode | null | undefined)) return;
-          if (isTypePredicateArrow(filterArgument as EsTreeNode | null | undefined)) return;
+          if (hasInlineTypePredicate(filterArgument as EsTreeNode | null | undefined)) return;
         }
 
         if (isReceiverChainIteratorRooted(innerCall.callee.object, getGeneratorNamesInFile()))

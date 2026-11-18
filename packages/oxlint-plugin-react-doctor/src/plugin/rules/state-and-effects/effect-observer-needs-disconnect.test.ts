@@ -278,6 +278,80 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("matches destructured reads of DOM nodes captured during setup", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `
+      import { useEffect } from "react";
+      useEffect(() => {
+        const observer = new IntersectionObserver(() => {});
+        const rows = [{ node: document.getElementById("heading") }];
+        rows.forEach(({ node }) => { if (node) observer.observe(node); });
+        return () => {
+          rows.forEach(({ node: target }) => { if (target) observer.unobserve(target); });
+        };
+      }, []);
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps warnings for destructured targets that are replaced, looked up again or read from a different field", () => {
+    const sources = [
+      `import { useEffect } from "react"; useEffect(() => {
+        const observer = new IntersectionObserver(() => {});
+        const rows = [{ node: originalNode }];
+        rows.forEach(({ node }) => { if (node) observer.observe(node); });
+        rows[0].node = replacementNode;
+        return () => rows.forEach(({ node }) => { if (node) observer.unobserve(node); });
+      }, []);`,
+      `import { useEffect } from "react"; useEffect(() => {
+        const observer = new IntersectionObserver(() => {});
+        const rows = [{ id: "heading" }];
+        rows.forEach(({ id }) => {
+          const node = document.getElementById(id);
+          if (node) observer.observe(node);
+        });
+        return () => rows.forEach(({ id }) => {
+          const node = document.getElementById(id);
+          if (node) observer.unobserve(node);
+        });
+      }, []);`,
+      `import { useEffect } from "react"; useEffect(() => {
+        const observer = new IntersectionObserver(() => {});
+        const rows = [{ node: firstNode, alternate: secondNode }];
+        rows.forEach(({ node }) => { if (node) observer.observe(node); });
+        return () => rows.forEach(({ alternate }) => {
+          if (alternate) observer.unobserve(alternate);
+        });
+      }, []);`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectObserverNeedsDisconnect, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("keeps the warning when setup can return without its captured-node cleanup", () => {
+    for (const returnGuard of ["if (enabled) ", "if (!enabled) return; "]) {
+      const result = runRule(
+        effectObserverNeedsDisconnect,
+        `import { useEffect } from "react"; useEffect(() => {
+          const observer = new IntersectionObserver(() => {});
+          const rows = [{ node: document.getElementById("heading") }];
+          rows.forEach(({ node }) => { if (node) observer.observe(node); });
+          ${returnGuard}return () => {
+            rows.forEach(({ node }) => { if (node) observer.unobserve(node); });
+          };
+        }, [enabled]);`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("still flags a forEach cleanup that derives a different target", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,

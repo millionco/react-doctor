@@ -1262,6 +1262,27 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     ["window.setTimeout", "window.clearInterval(this.timer);"],
     ["self.setInterval", "self.clearTimeout(this.timer);"],
     ["globalThis.setTimeout", "clearInterval(this.timer);"],
+    ["setInterval", "window.clearTimeout(this.timer);"],
+    ["setTimeout", "self.clearInterval(this.timer);"],
+    ["window.setTimeout", "globalThis.clearInterval(this.timer);"],
+    ["globalThis.setInterval", "window.clearTimeout(this.timer);"],
+    ["window.setInterval", 'self["clearTimeout"](this.timer);'],
+    ["self.setTimeout", "window.clearInterval(this.timer);"],
+    ["self.setInterval", "clearTimeout(this.timer);"],
+    ["globalThis.setInterval", "global.clearTimeout(this.timer);"],
+    ["globalThis.setTimeout", "global.clearInterval(this.timer);"],
+    [
+      "(window as Window).setInterval",
+      "(globalThis as typeof globalThis).clearTimeout(this.timer);",
+    ],
+    ["global.setInterval", "globalThis.clearTimeout(this.timer);"],
+    ["global.setTimeout", "globalThis.clearInterval(this.timer);"],
+    ["global.setInterval", "clearTimeout(this.timer);"],
+    ["setTimeout", "global.clearInterval(this.timer);"],
+    [
+      "globalThis.setInterval",
+      "if (this.props.fast) window.clearTimeout(this.timer); else self.clearTimeout(this.timer);",
+    ],
     [
       "setInterval",
       "if (this.props.fast) clearInterval(this.timer); else clearTimeout(this.timer);",
@@ -1286,7 +1307,12 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
   it.each([
     ["", "clearTimeout(this.otherTimer);"],
     ["", "this.scheduler.clearTimeout(this.timer);"],
-    ["", "window.clearTimeout(this.timer);"],
+    ["", "window.clearTimeout(this.otherTimer);"],
+    ["", "if (this.props.fast) window.clearTimeout(this.timer);"],
+    ["", "this.timer = this.otherTimer; window.clearTimeout(this.timer);"],
+    ["", "const owner = this; owner.timer = 0; window.clearTimeout(this.timer);"],
+    ["self.clearTimeout = replacement;", "window.clearTimeout(this.timer);"],
+    ["const owner = self; configure(owner);", "window.clearTimeout(this.timer);"],
     ["", "const clearTimeout = () => {}; clearTimeout(this.timer);"],
     ["", "const window = this.scheduler; window.clearTimeout(this.timer);"],
     ["", "if (this.props.fast) clearTimeout(this.timer);"],
@@ -1472,7 +1498,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not use a different global timer namespace for cross-method cleanup", () => {
+  it("accepts native window acquisition cleared through globalThis", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `
@@ -1484,6 +1510,30 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         render() { return null; }
       }
       `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["window.setInterval", "global.clearTimeout(this.timer);"],
+    ["self.setTimeout", "global.clearInterval(this.timer);"],
+    ["global.setInterval", "window.clearTimeout(this.timer);"],
+    ["global.setTimeout", "self.clearInterval(this.timer);"],
+    [
+      "globalThis.setInterval",
+      "if (this.props.fast) window.clearTimeout(this.timer); else global.clearTimeout(this.timer);",
+    ],
+  ])("keeps the timer warning without one provider on every path: %s %s", (schedule, cleanup) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component {
+        componentDidMount() {
+          this.timer = ${schedule}(() => this.setState({ tick: true }), 100);
+        }
+        componentWillUnmount() { ${cleanup} }
+        render() { return null; }
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

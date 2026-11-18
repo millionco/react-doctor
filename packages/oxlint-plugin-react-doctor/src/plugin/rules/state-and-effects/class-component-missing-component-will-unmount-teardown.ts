@@ -45,6 +45,12 @@ const MESSAGE =
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
+const NATIVE_TIMER_PROVIDERS_BY_RECEIVER: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
+  ["globalThis", ["web", "node"]],
+  ["window", ["web"]],
+  ["self", ["web"]],
+  ["global", ["node"]],
+]);
 const STABLE_GLOBAL_MEMBER_NAMES = new Set(["body", "documentElement", "visualViewport"]);
 const MOUNT_LOCAL_RESOURCE_FACTORY_NAMES = new Set(["initPlaces", "places"]);
 const COMPONENT_MUTATION_METHOD_NAMES = new Set(["forceUpdate", "setState"]);
@@ -315,7 +321,9 @@ const timerHandleReleaseKeys = (
 
   const timer = getClosedGlobalTimerCall(call, scopes);
   if (timer?.name === timerCalleeName) {
-    releaseKeys.push(`timer:timeout-or-interval:${timer.realm}:${handleKey}`);
+    for (const provider of NATIVE_TIMER_PROVIDERS_BY_RECEIVER.get(timer.realm) ?? []) {
+      releaseKeys.push(`timer:timeout-or-interval:${provider}:${handleKey}`);
+    }
   }
   return releaseKeys;
 };

@@ -2756,3 +2756,55 @@ describe("closed stable focus data actions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("no-array-index-as-key with fixed private array slots", () => {
+  const imports = 'import { Card, north, south } from "./cards.js";';
+  const items = "const items = [north, south, north];";
+  const render = `
+    export const Shelf = () => (
+      <Frame>
+        {items.map((item, index) => <div key={index}><Card value={item} /></div>)}
+      </Frame>
+    );
+  `;
+
+  it.each([items, 'const items = ["north", "south", "north"];'])(
+    "accepts fixed slots rendered directly from their values",
+    (declaration) => {
+      const result = runRule(noArrayIndexAsKey, [imports, declaration, render].join("\n"));
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each([
+    [
+      "indexed data outside the array",
+      items,
+      render.replace("value={item}", "value={rows[index]}"),
+    ],
+    [
+      "a callback that receives the array",
+      items,
+      render.replace("(item, index)", "(item, index, all)"),
+    ],
+    ["a mutable slot", items + " items[0] = south;", render],
+    ["a second reference", items + " const active = items; active.reverse();", render],
+    ["a separate named export", items + " export { items };", render],
+    ["an exported declaration", "export " + items, render],
+    ["an overridden map method", items + " items.map = custom;", render],
+    ["a modified Array prototype", "Array.prototype.map = custom; " + items, render],
+    [
+      "a modified Array prototype through reflection",
+      "Object.getPrototypeOf([]).map = custom; " + items,
+      render,
+    ],
+    ["an originally unknown number of slots", "const items = [north, ...more];", render],
+    ["a separate sibling list", items, render.replace("</Frame>", "{otherRows}</Frame>")],
+    ["an array that escapes through eval", items + ' eval("items.reverse()");', render],
+  ])("retains the warning with %s", (_label, declaration, renderCode) => {
+    const result = runRule(noArrayIndexAsKey, [imports, declaration, renderCode].join("\n"));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

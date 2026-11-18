@@ -1,5 +1,6 @@
 import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
@@ -1939,6 +1940,131 @@ const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalInd
   return indexUse;
 };
 
+// A single direct map read keeps the original slots private. An expression-body
+// callback then lets us verify that each result renders only its own slot.
+const hasStablePrivateArraySlots = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+  use: PositionalIndexUse,
+  context: RuleContext,
+): boolean => {
+  const call = use.binding.iteratorCall;
+  const callee = call?.callee;
+  const children = call?.parent;
+  const container = children?.parent;
+  if (
+    !isNodeOfType(children, "JSXExpressionContainer") ||
+    children.expression !== call ||
+    (!isNodeOfType(container, "JSXElement") && !isNodeOfType(container, "JSXFragment")) ||
+    !container.children.every(
+      (child) =>
+        child === children || (isNodeOfType(child, "JSXText") && child.value.trim() === ""),
+    ) ||
+    !call ||
+    call.optional ||
+    call.arguments.length !== 1 ||
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.optional ||
+    callee.computed ||
+    getStaticPropertyName(callee) !== "map" ||
+    !isNodeOfType(callee.object, "Identifier")
+  )
+    return false;
+
+  const callback = call.arguments[0];
+  const opening = attribute.parent;
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 2 ||
+    !isNodeOfType(callback.params[0], "Identifier") ||
+    !isNodeOfType(callback.params[1], "Identifier") ||
+    !isNodeOfType(opening, "JSXOpeningElement") ||
+    !isNodeOfType(opening.parent, "JSXElement") ||
+    stripParenExpression(callback.body) !== opening.parent ||
+    !isNodeOfType(attribute.value, "JSXExpressionContainer") ||
+    stripParenExpression(attribute.value.expression) !== use.identifier
+  )
+    return false;
+
+  const scopes = context.scopes;
+  const receiver = scopes.symbolFor(callee.object);
+  const initializer = receiver?.initializer && stripParenExpression(receiver.initializer);
+  const program = scopes.rootScope.node;
+  if (
+    receiver?.kind !== "const" ||
+    receiver.scope !== scopes.rootScope ||
+    !isNodeOfType(receiver.declarationNode, "VariableDeclarator") ||
+    receiver.declarationNode.parent?.parent !== program ||
+    !isNodeOfType(program, "Program") ||
+    program.sourceType !== "module" ||
+    !isNodeOfType(initializer, "ArrayExpression") ||
+    !isSpreadFreeArrayLiteral(initializer) ||
+    !initializer.elements.every(
+      (element) =>
+        isNodeOfType(element, "Literal") ||
+        (isNodeOfType(element, "Identifier") && scopes.symbolFor(element)?.kind === "import"),
+    ) ||
+    receiver.references.length !== 1 ||
+    receiver.references[0]?.identifier !== callee.object ||
+    !hasCompleteSymbolReferences(receiver, program, scopes) ||
+    hasOpaqueArrayAccess(program)
+  )
+    return false;
+
+  const item = scopes.symbolFor(callback.params[0]);
+  if (!item) return false;
+  let hasDynamicContent = false;
+  walkAst(opening.parent, (node) => {
+    if (hasDynamicContent) return false;
+    if (isNodeOfType(node, "JSXOpeningElement")) {
+      const name = node.name;
+      hasDynamicContent =
+        !isNodeOfType(name, "JSXIdentifier") ||
+        (!/^[a-z]/.test(name.name) && scopes.symbolFor(name)?.kind !== "import");
+    } else if (isNodeOfType(node, "JSXExpressionContainer") && node !== attribute.value) {
+      const expression = stripParenExpression(node.expression);
+      hasDynamicContent =
+        !isNodeOfType(expression, "Literal") &&
+        !isNodeOfType(expression, "JSXEmptyExpression") &&
+        (!isNodeOfType(expression, "Identifier") || scopes.symbolFor(expression) !== item);
+    } else if (isNodeOfType(node, "JSXSpreadAttribute") || isNodeOfType(node, "JSXSpreadChild")) {
+      hasDynamicContent = true;
+    }
+  });
+  return !hasDynamicContent;
+};
+
+const opaqueArrayAccessByProgram = new WeakMap<EsTreeNode, boolean>();
+const ARRAY_INTRINSIC_NAMES = new Set([
+  "Array",
+  "Object",
+  "Reflect",
+  "Symbol",
+  "Function",
+  "eval",
+  "window",
+  "self",
+  "globalThis",
+  "global",
+]);
+const PROTOTYPE_PROPERTIES = new Set(["Array", "constructor", "prototype", "__proto__"]);
+
+const hasOpaqueArrayAccess = (program: EsTreeNode): boolean => {
+  const cached = opaqueArrayAccessByProgram.get(program);
+  if (cached !== undefined) return cached;
+  let found = false;
+  walkAst(program, (node) => {
+    if (found) return false;
+    found =
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") && ARRAY_INTRINSIC_NAMES.has(node.name)) ||
+      (isNodeOfType(node, "MemberExpression") &&
+        (node.computed || PROTOTYPE_PROPERTIES.has(getStaticPropertyName(node) ?? "")));
+  });
+  opaqueArrayAccessByProgram.set(program, found);
+  return found;
+};
+
 export const noArrayIndexAsKey = defineRule({
   id: "no-array-index-as-key",
   title: "Array index used as a key",
@@ -1970,6 +2096,7 @@ export const noArrayIndexAsKey = defineRule({
 
         const indexUse = getReportableIndexUse(node.value.expression, node);
         if (!indexUse) return;
+        if (hasStablePrivateArraySlots(node, indexUse, context)) return;
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||

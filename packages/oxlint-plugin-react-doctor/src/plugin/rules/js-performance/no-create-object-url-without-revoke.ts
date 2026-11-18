@@ -17,7 +17,10 @@ import { isAstNode } from "../../utils/is-ast-node.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import {
+  isProvenGlobalNamespaceReference,
+  isProvenGlobalObjectReference,
+} from "../../utils/is-proven-global-namespace-reference.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -34,12 +37,19 @@ const isUrlMethodCall = (
   node: EsTreeNodeOfType<"CallExpression">,
   methodName: string,
   scopes: ScopeAnalysis,
+  considerNamespaceEscapes = false,
 ): boolean => {
   const callee = stripParenExpression(node.callee);
   return (
     isNodeOfType(callee, "MemberExpression") &&
     getStaticPropertyName(callee) === methodName &&
-    isProvenUnmodifiedGlobalNamespaceReference(callee.object, "URL", scopes, methodName)
+    isProvenUnmodifiedGlobalNamespaceReference(
+      callee.object,
+      "URL",
+      scopes,
+      methodName,
+      considerNamespaceEscapes,
+    )
   );
 };
 
@@ -292,9 +302,15 @@ const isRevokeOfProducedBinding = (
   call: EsTreeNodeOfType<"CallExpression">,
   binding: EsTreeNode,
   scopes: ScopeAnalysis,
+  considerNamespaceEscapes = false,
 ): boolean => {
   const revokedUrl = call.arguments[0];
-  if (!isUrlMethodCall(call, "revokeObjectURL", scopes) || !isAstNode(revokedUrl)) return false;
+  if (
+    !isUrlMethodCall(call, "revokeObjectURL", scopes, considerNamespaceEscapes) ||
+    !isAstNode(revokedUrl)
+  ) {
+    return false;
+  }
   const revokedCandidate = stripParenExpression(revokedUrl);
   const bindingCandidate = stripParenExpression(binding);
   if (revokedCandidate === bindingCandidate) return true;
@@ -1018,6 +1034,118 @@ const isGuaranteedScheduledRevoke = (
   );
 };
 
+const finalizerHazardsByScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasFinalizerNamespaceHazard = (scopes: ScopeAnalysis): boolean => {
+  const cachedHazard = finalizerHazardsByScope.get(scopes);
+  if (cachedHazard !== undefined) return cachedHazard;
+
+  let hasHazard = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasHazard) return false;
+    if (isNodeOfType(node, "WithStatement")) {
+      hasHazard = true;
+      return false;
+    }
+    if (!isNodeOfType(node, "Identifier") && !isNodeOfType(node, "MemberExpression")) return;
+    if (
+      isNodeOfType(node, "Identifier") &&
+      (node.name === "eval" || node.name === "Function") &&
+      scopes.isGlobalReference(node)
+    ) {
+      hasHazard = true;
+      return false;
+    }
+
+    const expression = findTransparentExpressionRoot(node);
+    const member = expression.parent;
+    const memberName =
+      isNodeOfType(member, "MemberExpression") && member.object === expression
+        ? getStaticPropertyName(member)
+        : null;
+    if (isProvenGlobalObjectReference(node, scopes)) {
+      hasHazard =
+        memberName === null ||
+        memberName === "global" ||
+        memberName === "globalThis" ||
+        memberName === "self" ||
+        memberName === "window" ||
+        memberName === "eval" ||
+        memberName === "Function";
+      return;
+    }
+    if (!isProvenGlobalNamespaceReference(node, "URL", scopes)) return;
+
+    if (isNodeOfType(member, "NewExpression") && member.callee === expression) return;
+
+    if (member && (memberName === "createObjectURL" || memberName === "revokeObjectURL")) {
+      const method = findTransparentExpressionRoot(member);
+      const call = method.parent;
+      if (isNodeOfType(call, "CallExpression") && call.callee === method) return;
+    }
+    hasHazard = true;
+  });
+  finalizerHazardsByScope.set(scopes, hasHazard);
+  return hasHazard;
+};
+
+const isRevokedInImmediatelyFollowingFinally = (
+  createCall: EsTreeNodeOfType<"CallExpression">,
+  binding: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const owner = findEnclosingFunction(createCall);
+  if (!isFunctionLike(owner) || owner.async || owner.generator) return false;
+
+  const declarator = binding.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.id !== binding ||
+    !declarator.init ||
+    stripParenExpression(declarator.init) !== createCall
+  ) {
+    return false;
+  }
+
+  const declaration = declarator.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1
+  ) {
+    return false;
+  }
+
+  const block = declaration.parent;
+  if (!isNodeOfType(block, "BlockStatement")) return false;
+  const declarationIndex = block.body.findIndex((statement) => statement === declaration);
+  if (declarationIndex < 0) return false;
+  const followingStatement = block.body[declarationIndex + 1];
+  if (!isNodeOfType(followingStatement, "TryStatement")) return false;
+
+  const firstFinalizerStatement = followingStatement.finalizer?.body[0];
+  if (!isNodeOfType(firstFinalizerStatement, "ExpressionStatement")) return false;
+  const revokeCall = firstFinalizerStatement.expression;
+  if (
+    !isNodeOfType(revokeCall, "CallExpression") ||
+    revokeCall.optional ||
+    revokeCall.arguments.length !== 1
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(revokeCall.callee);
+  const receiver = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object)
+    : null;
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "URL" &&
+    scopes.isGlobalReference(receiver) &&
+    isRevokeOfProducedBinding(revokeCall, binding, scopes, true) &&
+    !hasFinalizerNamespaceHazard(scopes)
+  );
+};
+
 const boundCreationIsDisposed = (
   createCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -1026,6 +1154,9 @@ const boundCreationIsDisposed = (
   if (!resultExpression) return false;
   const resultSymbol = context.scopes.symbolFor(resultExpression);
   if (!resultSymbol) return false;
+  if (isRevokedInImmediatelyFollowingFinally(createCall, resultExpression, context.scopes)) {
+    return true;
+  }
   const executionBoundary = context.cfg.enclosingFunction(createCall);
   const valueBindings: ProducedValueBinding[] = [];
   collectProvenValueBindings(resultExpression, createCall.range[1], context.scopes, valueBindings);

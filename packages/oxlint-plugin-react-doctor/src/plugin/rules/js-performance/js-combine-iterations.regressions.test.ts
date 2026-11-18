@@ -23,6 +23,53 @@ describe("js-performance/js-combine-iterations — regressions", () => {
     expectFail(`const r = items.map(x => x.id).filter(x => x > 0);`);
   });
 
+  it("preserves narrowing when an inline function filters before a map", () => {
+    expectPass(`
+      type Row = { amount: number };
+      export const amounts = (items: readonly (Row | null)[]) =>
+        items
+          .filter(function isRow(item): item is Row {
+            return item !== null && item.amount > 0;
+          })
+          .map((item) => item.amount);
+    `);
+  });
+
+  it("preserves narrowing when an inline function filters after a map", () => {
+    expectPass(`
+      export const positive = (values: readonly number[]) =>
+        values
+          .map((value): number | null => value > 0 ? value : null)
+          .filter(function isPositive(value): value is number {
+            return value !== null && value > 0;
+          });
+    `);
+  });
+
+  it("still flags an inline function with a boolean return type", () => {
+    expectFail(`
+      type Row = { amount: number };
+      export const amounts = (items: readonly (Row | null)[]) =>
+        items
+          .filter(function isRow(item): boolean {
+            return item !== null && item.amount > 0;
+          })
+          .map((item) => item?.amount ?? 0);
+    `);
+  });
+
+  it("still flags a filter callback with an assertion return type", () => {
+    expectFail(`
+      type Row = { amount: number };
+      export const amounts = (items: readonly (Row | null)[]) =>
+        items
+          .filter(function assertRow(item): asserts item is Row {
+            if (item === null) throw Error("Row required");
+          })
+          .map((item) => item?.amount ?? 0);
+    `);
+  });
+
   it("does not flag filter(Boolean).map() identity narrowing", () => {
     expectPass(`const r = items.filter(Boolean).map(x => x.id);`);
   });

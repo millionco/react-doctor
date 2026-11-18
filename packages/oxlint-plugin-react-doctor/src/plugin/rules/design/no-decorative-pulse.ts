@@ -1,9 +1,11 @@
+import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
 import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -11,6 +13,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseTailwindClassNameToken } from "../../utils/parse-tailwind-class-name-token.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
+import { resolveStaticJsxAttribute } from "../../utils/resolve-static-jsx-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
@@ -171,6 +174,59 @@ const getAncestorOpeningElements = (
   return openingElements;
 };
 
+const isPlainHtmlAttributeName = (name: string): boolean => {
+  const lowerName = name.toLowerCase();
+  return (
+    lowerName !== "is" &&
+    lowerName !== "__proto__" &&
+    !lowerName.startsWith("xmlns") &&
+    (lowerName !== "aria-busy" || name === lowerName)
+  );
+};
+
+const isPlainHtmlOpeningElement = (element: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  if (
+    !isNodeOfType(element.name, "JSXIdentifier") ||
+    element.name.name === "svg" ||
+    element.name.name === "math" ||
+    !HTML_TAGS.has(element.name.name)
+  ) {
+    return false;
+  }
+
+  // An earlier alias for aria-busy can win after an exact-key write because
+  // replacing an object key does not move its iteration position.
+  return element.attributes.every((attribute) => {
+    if (isNodeOfType(attribute, "JSXAttribute")) {
+      return (
+        isNodeOfType(attribute.name, "JSXIdentifier") &&
+        isPlainHtmlAttributeName(attribute.name.name)
+      );
+    }
+    if (
+      !isNodeOfType(attribute, "JSXSpreadAttribute") ||
+      !isNodeOfType(attribute.argument, "ObjectExpression")
+    ) {
+      return false;
+    }
+    return attribute.argument.properties.every((property) => {
+      // A getter can alter a later key before JSX copies the spread.
+      if (!isNodeOfType(property, "Property") || property.kind !== "init") return false;
+      const name = getStaticPropertyKeyName(property, { allowComputedString: true });
+      return name !== null && isPlainHtmlAttributeName(name);
+    });
+  });
+};
+
+const hasLiteralSpreadBusyStatus = (element: EsTreeNodeOfType<"JSXElement">): boolean => {
+  const { expression } = resolveStaticJsxAttribute(element.openingElement.attributes, "aria-busy");
+  return (
+    isNodeOfType(expression, "Literal") &&
+    (expression.value === true || expression.value === "true") &&
+    getAncestorOpeningElements(element).every(isPlainHtmlOpeningElement)
+  );
+};
+
 const hasUnresolvedOrEnabledAttribute = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   attributeName: string,
@@ -300,7 +356,7 @@ export const noDecorativePulse = defineRule({
       }
       const text = getStaticJsxText(node).replace(/\s+/g, " ").trim();
       if (!text || BUSY_TEXT_PATTERN.test(text)) return;
-      if (isBusyStatus(openingElement)) return;
+      if (isBusyStatus(openingElement) || hasLiteralSpreadBusyStatus(node)) return;
       context.report({
         node: openingElement,
         message:

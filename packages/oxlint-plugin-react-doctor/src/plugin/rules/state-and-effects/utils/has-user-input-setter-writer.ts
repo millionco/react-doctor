@@ -13,6 +13,7 @@ import { isEventHandlerName } from "./event-handler-reference.js";
 import { getCallExpr } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { isGenuineReactHookDeclarator } from "./effect/react.js";
+import { isRegisteredIntersectionObserverWriter } from "./is-registered-intersection-observer-writer.js";
 import { isSetterWiredToJsxHandler } from "./is-controlled-prop-mirror.js";
 
 const isEventHandlerPropertyKey = (property: EsTreeNode): boolean =>
@@ -270,7 +271,11 @@ export const hasUserInputSetterWriter = (
     if (reference.init) continue;
     const identifier = reference.identifier as unknown as EsTreeNode;
     if (isAstDescendant(identifier, effectNode)) continue;
-    if (isIndependentWriterIdentifier(componentFunction, identifier, includeDeferredWriters)) {
+    if (
+      isIndependentWriterIdentifier(componentFunction, identifier, includeDeferredWriters) ||
+      (includeDeferredWriters &&
+        isRegisteredIntersectionObserverWriter(identifier, componentFunction, context))
+    ) {
       return true;
     }
     if (!isNodeReachableWithinFunction(identifier, context)) continue;

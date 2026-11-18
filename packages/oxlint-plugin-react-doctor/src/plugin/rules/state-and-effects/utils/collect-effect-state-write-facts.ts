@@ -13,6 +13,7 @@ import { hasPossibleStaticPropertyWriteBefore } from "../../../utils/has-static-
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isEarlyExitIfStatement } from "../../../utils/is-early-exit-if-statement.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
+import { isRetainedEffectInput } from "./is-retained-effect-input.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
@@ -2613,7 +2614,8 @@ const computeEffectStateWriteFacts = (
       isRenderKnownCopy:
         fact.isRenderKnownCopy &&
         !cleanupManagedStateDeclarators.has(fact.stateDeclarator) &&
-        !resetsSourceState,
+        !resetsSourceState &&
+        !isRetainedEffectInput(effectNode, fact.callExpression, context),
     };
   });
   return collectedFacts;

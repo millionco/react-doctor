@@ -56,6 +56,155 @@ const getUnusedExportNames = async (rootDirectory: string): Promise<string[]> =>
 };
 
 describe("runtime-owned project analysis contracts", () => {
+  const createVersionedTypesProject = (
+    fields: Readonly<Record<string, unknown>>,
+    declaration = 'export type { PublicMedia as Media } from "../src/media.js";',
+  ): string =>
+    createProject(
+      {
+        "src/index.ts": 'import { pickedRuntime } from "./media.js"; console.log(pickedRuntime);',
+        "src/media.ts": `export const pickedRuntime = 1;
+        export const UnusedRuntime = 2;
+        export type PublicMedia = { id: string };
+        export type PrivateMedia = { stale: true };`,
+        "src/orphan.ts": "export const orphan = 3;",
+        "types/media.d.ts": declaration,
+        "types/shadow.d.ts": "export type Shadow = number;",
+      },
+      {},
+      { name: "example-media", version: "1.0.0", files: ["src", "types"], ...fields },
+    );
+
+  const versionedMedia = { "*": { media: ["types/media.d.ts"] } };
+
+  it("recognizes only the named type re-exported by an exact typesVersions declaration", async () => {
+    const rootDirectory = createVersionedTypesProject({
+      typesVersions: versionedMedia,
+      publishConfig: { access: "public" },
+    });
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.analysisErrors).toEqual([]);
+    expect(result.unusedExports.map((finding) => finding.name).sort()).toEqual([
+      "PrivateMedia",
+      "UnusedRuntime",
+    ]);
+    expect(
+      result.unusedFiles.map((finding) => toPosixPath(path.relative(rootDirectory, finding.path))),
+    ).toEqual(["src/orphan.ts"]);
+  });
+
+  it.each([
+    [
+      "declaration excluded from packed files",
+      { files: ["src"], typesVersions: versionedMedia },
+      undefined,
+    ],
+    [
+      "implementation excluded from packed files",
+      { files: ["src/index.ts", "types"], typesVersions: versionedMedia },
+      undefined,
+    ],
+    ["private package", { private: true, typesVersions: versionedMedia }, undefined],
+    [
+      "nonliteral packed list",
+      { files: ["src", "types", "!types/media.d.ts"], typesVersions: versionedMedia },
+      undefined,
+    ],
+    [
+      "duplicate public name",
+      { typesVersions: versionedMedia },
+      'export type { PublicMedia as Media, PrivateMedia as Media } from "../src/media.js";',
+    ],
+    [
+      "published exports override",
+      { typesVersions: versionedMedia, publishConfig: { exports: { ".": "./src/index.ts" } } },
+      undefined,
+    ],
+    [
+      "published versions override",
+      { typesVersions: versionedMedia, publishConfig: { typesVersions: { "*": {} } } },
+      undefined,
+    ],
+    [
+      "published subdirectory",
+      { typesVersions: versionedMedia, publishConfig: { directory: "dist" } },
+      undefined,
+    ],
+    ["missing mapping", {}, undefined],
+    [
+      "encapsulated subpath",
+      { exports: { ".": "./src/index.ts" }, typesVersions: versionedMedia },
+      undefined,
+    ],
+    [
+      "earlier compiler range",
+      { typesVersions: { ">=5": { media: ["types/shadow.d.ts"] }, ...versionedMedia } },
+      undefined,
+    ],
+    ["wildcard mapping", { typesVersions: { "*": { "*": ["types/*.d.ts"] } } }, undefined],
+    [
+      "missing declaration",
+      { typesVersions: { "*": { media: ["types/absent.d.ts"] } } },
+      undefined,
+    ],
+    [
+      "fallback targets",
+      { typesVersions: { "*": { media: ["types/absent.d.ts", "types/media.d.ts"] } } },
+      undefined,
+    ],
+    [
+      "value re-export",
+      { typesVersions: versionedMedia },
+      'export { PublicMedia } from "../src/media.js";',
+    ],
+    [
+      "wildcard re-export",
+      { typesVersions: versionedMedia },
+      'export type * from "../src/media.js";',
+    ],
+  ] as const)("keeps candidate warnings with %s", async (_name, fields, declaration) => {
+    const rootDirectory = createVersionedTypesProject(fields, declaration);
+    expect((await getUnusedExportNames(rootDirectory)).sort()).toEqual([
+      "PrivateMedia",
+      "PublicMedia",
+      "UnusedRuntime",
+    ]);
+  });
+
+  it("retains a declaration that depends on the producer's local TypeScript paths", async () => {
+    const rootDirectory = createVersionedTypesProject(
+      { typesVersions: versionedMedia },
+      'export type { PublicMedia } from "@internal/media";',
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { paths: { "@internal/media": ["./src/media.ts"] } },
+      }),
+    );
+    const result = await analyzeProject({
+      rootDirectory,
+      entryPatterns: ["src/index.ts"],
+      tsConfigPath: path.join(rootDirectory, "tsconfig.json"),
+    });
+    expect(result.unusedExports.map((finding) => finding.name).sort()).toEqual([
+      "PrivateMedia",
+      "PublicMedia",
+      "UnusedRuntime",
+    ]);
+  });
+
+  it("retains a type if a nested npm ignore can exclude its declaration", async () => {
+    const rootDirectory = createVersionedTypesProject({ typesVersions: versionedMedia });
+    fs.writeFileSync(path.join(rootDirectory, "types", ".npmignore"), "media.d.ts\n");
+    expect((await getUnusedExportNames(rootDirectory)).sort()).toEqual([
+      "PrivateMedia",
+      "PublicMedia",
+      "UnusedRuntime",
+    ]);
+  });
+
   it("keeps skipped dependency metadata on the worker wire only", async () => {
     const rootDirectory = createProject(
       { "src/index.ts": `import "used-package";` },

@@ -21,6 +21,19 @@ interface StringTokenProgramFacts {
   readonly stableIntrinsics: boolean;
 }
 
+const UNSTABLE_STRING_TOKEN_PATTERN_KEYS = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "eval",
+  "Function",
+  "String",
+  "RegExp",
+  "Symbol",
+  "Object",
+  "Reflect",
+]);
+
 const stringTokenProgramFacts = new WeakMap<EsTreeNode, StringTokenProgramFacts>();
 
 const isStringTokenNonReferenceName = (node: EsTreeNode): boolean => {
@@ -97,19 +110,7 @@ const getStringTokenProgramFacts = (program: EsTreeNode): StringTokenProgramFact
           !isNodeOfType(property, "Property") ||
           property.computed ||
           !isNodeOfType(property.key, "Identifier") ||
-          (isNodeOfType(property.key, "Identifier") &&
-            [
-              "constructor",
-              "prototype",
-              "__proto__",
-              "eval",
-              "Function",
-              "String",
-              "RegExp",
-              "Symbol",
-              "Object",
-              "Reflect",
-            ].includes(property.key.name)),
+          UNSTABLE_STRING_TOKEN_PATTERN_KEYS.has(property.key.name),
       )
     )
       stableIntrinsics = false;
@@ -256,6 +257,31 @@ const declaresRequiredStringTokenProperty = (
   );
 };
 
+const getPlainStringTokenBase = (
+  declaration: EsTreeNodeOfType<"TSInterfaceDeclaration">,
+  propertyName: string,
+) => {
+  if (
+    declaration.extends.length !== 1 ||
+    !hasPlainStringTokenMembers(declaration) ||
+    declaration.body.body.some(
+      (member) =>
+        isNodeOfType(member, "TSPropertySignature") &&
+        isNodeOfType(member.key, "Identifier") &&
+        member.key.name === propertyName,
+    )
+  )
+    return null;
+  const reference = declaration.extends[0];
+  if (
+    !isNodeOfType(reference.expression, "Identifier") ||
+    reference.typeArguments ||
+    hasEnclosingTypeParameterNamed(reference, reference.expression.name)
+  )
+    return null;
+  return { reference, name: reference.expression.name };
+};
+
 const inheritsRequiredStringTokenProperty = (
   annotation: EsTreeNode,
   propertyName: string,
@@ -268,28 +294,26 @@ const inheritsRequiredStringTokenProperty = (
   )
     return false;
   const child = findUniqueStringTokenInterface(annotation, annotation.typeName.name);
-  if (
-    !child ||
-    child.extends.length !== 1 ||
-    !hasPlainStringTokenMembers(child) ||
-    child.body.body.some(
-      (member) =>
-        isNodeOfType(member, "TSPropertySignature") &&
-        isNodeOfType(member.key, "Identifier") &&
-        member.key.name === propertyName,
-    )
-  )
-    return false;
-  const base = child.extends[0];
-  if (
-    !isNodeOfType(base.expression, "Identifier") ||
-    base.typeArguments ||
-    hasEnclosingTypeParameterNamed(base, base.expression.name)
-  )
-    return false;
-  const baseName = base.expression.name;
-  const local = findUniqueStringTokenInterface(base, baseName);
-  if (local) return declaresRequiredStringTokenProperty(local, propertyName);
+  if (!child) return false;
+  const base = getPlainStringTokenBase(child, propertyName);
+  if (!base) return false;
+  const baseName = base.name;
+  const local = findUniqueStringTokenInterface(base.reference, baseName);
+  if (local) {
+    if (declaresRequiredStringTokenProperty(local, propertyName)) return true;
+    const terminalBase = getPlainStringTokenBase(local, propertyName);
+    if (!terminalBase) return false;
+    const terminal = findUniqueStringTokenInterface(terminalBase.reference, terminalBase.name);
+    if (!terminal || !declaresRequiredStringTokenProperty(terminal, propertyName)) return false;
+    const program = findProgramRoot(child);
+    if (!isNodeOfType(program, "Program")) return false;
+    const inheritanceNames = new Set([child.id.name, baseName, terminalBase.name]);
+    return !program.body.some(
+      (statement) =>
+        isNodeOfType(statement, "ImportDeclaration") &&
+        statement.specifiers.some((specifier) => inheritanceNames.has(specifier.local.name)),
+    );
+  }
   const program = findProgramRoot(child);
   if (!program || !isNodeOfType(program, "Program")) return false;
   let localCollision = false;

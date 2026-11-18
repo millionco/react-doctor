@@ -113,6 +113,145 @@ describe("js-async-reduce-without-awaited-acc", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    [
+      "leading-const-alias",
+      0,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = previous;
+    const values = await pending;
+    values.push(await read(item));
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "wrapped-const-alias",
+      0,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = (previous as Promise<number[]>);
+    const values = (await (pending as Promise<number[]>));
+    values.push(await read(item));
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "direct-await",
+      0,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const values = await previous;
+    values.push(await read(item));
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "reassigned-alias",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    let pending = previous;
+    pending = Promise.resolve<number[]>([]);
+    const values = await pending;
+    values.push(await read(item));
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "other-promise",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = Promise.resolve<number[]>([]);
+    const values = await pending;
+    values.push(await read(item));
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "shadowed-alias",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = previous;
+    {
+      const pending = Promise.resolve<number[]>([]);
+      const values = await pending;
+      values.push(await read(item));
+      return values;
+    }
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "conditionally-awaited-alias",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = previous;
+    const values = enabled ? await pending : [];
+    values.push(await read(item));
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "alias-only-awaited-by-nested-callback",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = previous;
+    const settle = async () => await pending;
+    void settle();
+    return [await read(item)];
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "original-promise-still-used-after-await",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = previous;
+    const values = await pending;
+    Object.assign(previous, { newValue: await read(item) });
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+    [
+      "extra-declarator-before-await",
+      1,
+      `
+export const collect = (items: string[], read: (item: string) => Promise<number>, enabled: boolean) =>
+  items.reduce(async (previous, item) => {
+    const pending = previous, values = [await read(item)];
+    const settled = await pending;
+    return values;
+  }, Promise.resolve<number[]>([]));
+    `,
+    ],
+  ] as const)("handles %s", (_name, expectedCount, code) => {
+    const result = runRule(jsAsyncReduceWithoutAwaitedAcc, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+
   it("does NOT flag when accumulator is awaited even if the alias is reassigned", () => {
     const code = `
       items.reduce(async (acc, item) => {

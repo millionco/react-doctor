@@ -1,5 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { containsDirectAwait } from "../../utils/contains-direct-await.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -31,13 +33,16 @@ const isAsyncFunctionLike = (
   return node.async === true;
 };
 
-type FirstParameterShape = { kind: "identifier"; name: string } | { kind: "destructured" } | null;
+type FirstParameterShape =
+  | { kind: "identifier"; binding: EsTreeNodeOfType<"Identifier"> }
+  | { kind: "destructured" }
+  | null;
 
 const classifyFirstParameter = (fn: FunctionExpressionLike): FirstParameterShape => {
   const parameters = fn.params ?? [];
   if (parameters.length === 0) return null;
   const first = parameters[0];
-  if (isNodeOfType(first, "Identifier")) return { kind: "identifier", name: first.name };
+  if (isNodeOfType(first, "Identifier")) return { kind: "identifier", binding: first };
   // Destructured accumulator — `async ([sum, count], item) => ...` or
   // `async ({ items }, item) => ...`. Destructuring runs *against the
   // previous reducer's return*, which is a Promise on iterations 2+.
@@ -50,7 +55,7 @@ const classifyFirstParameter = (fn: FunctionExpressionLike): FirstParameterShape
   // AssignmentPattern (`async (acc = init, item) => ...`) — unwrap.
   if (isNodeOfType(first, "AssignmentPattern")) {
     if (isNodeOfType(first.left, "Identifier")) {
-      return { kind: "identifier", name: first.left.name };
+      return { kind: "identifier", binding: first.left };
     }
     if (isNodeOfType(first.left, "ArrayPattern") || isNodeOfType(first.left, "ObjectPattern")) {
       return { kind: "destructured" };
@@ -102,6 +107,45 @@ const bodyAwaitsAccumulator = (fn: FunctionExpressionLike, accumulatorName: stri
   return awaitsAccumulator;
 };
 
+const bodyAwaitsLeadingAccumulatorAlias = (
+  reducer: FunctionExpressionLike,
+  accumulator: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(reducer.body, "BlockStatement")) return false;
+  const [aliasStatement, resolutionStatement] = reducer.body.body;
+  if (
+    !isNodeOfType(aliasStatement, "VariableDeclaration") ||
+    aliasStatement.declarations.length !== 1 ||
+    !isNodeOfType(resolutionStatement, "VariableDeclaration") ||
+    resolutionStatement.declarations.length !== 1
+  ) {
+    return false;
+  }
+
+  const resultDeclaration = resolutionStatement.declarations[0];
+  if (!resultDeclaration?.init || !isNodeOfType(resultDeclaration.id, "Identifier")) return false;
+  const awaitedExpression = stripParenExpression(resultDeclaration.init);
+  if (!isNodeOfType(awaitedExpression, "AwaitExpression")) return false;
+  const awaitedAlias = stripParenExpression(awaitedExpression.argument);
+  if (!isNodeOfType(awaitedAlias, "Identifier")) return false;
+
+  const aliasSymbol = scopes.symbolFor(awaitedAlias);
+  const accumulatorSymbol = scopes.symbolFor(accumulator);
+  if (!aliasSymbol || !accumulatorSymbol || aliasSymbol.declarationNode.parent !== aliasStatement) {
+    return false;
+  }
+
+  const initializer = getDirectConstInitializer(aliasSymbol);
+  const aliasedValue = initializer ? stripParenExpression(initializer) : null;
+  return (
+    isNodeOfType(aliasedValue, "Identifier") &&
+    scopes.symbolFor(aliasedValue) === accumulatorSymbol &&
+    accumulatorSymbol.references.every((reference) => reference.identifier === aliasedValue) &&
+    aliasSymbol.references.every((reference) => reference.identifier === awaitedAlias)
+  );
+};
+
 export const jsAsyncReduceWithoutAwaitedAcc = defineRule({
   id: "js-async-reduce-without-awaited-acc",
   title: "Async reduce drops its accumulator",
@@ -134,7 +178,9 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule({
         return;
       }
 
-      if (bodyAwaitsAccumulator(reducer, firstParameter.name)) return;
+      const accumulator = firstParameter.binding;
+      if (bodyAwaitsAccumulator(reducer, accumulator.name)) return;
+      if (bodyAwaitsLeadingAccumulatorAlias(reducer, accumulator, context.scopes)) return;
 
       // Pick a "previous" param name that won't shadow the user's
       // accumulator. If they already named it `previous` (or `prev`),
@@ -142,11 +188,11 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule({
       // remains syntactically valid.
       const previousParamCandidates = ["previous", "prev", "priorResult"];
       const previousParamName =
-        previousParamCandidates.find((candidate) => candidate !== firstParameter.name) ??
-        `${firstParameter.name}Prev`;
+        previousParamCandidates.find((candidate) => candidate !== accumulator.name) ??
+        `${accumulator.name}Prev`;
       context.report({
         node: reducer,
-        message: `This async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}", so each run gets a Promise instead of the real value & the work is lost. Reassign it at the top (\`${firstParameter.name} = await ${firstParameter.name};\`), or rewrite as \`async (${previousParamName}, item) => { const ${firstParameter.name} = await ${previousParamName}; ...; return ${firstParameter.name}; }\`, & seed with \`Promise.resolve(...)\``,
+        message: `This async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${accumulator.name}", so each run gets a Promise instead of the real value & the work is lost. Reassign it at the top (\`${accumulator.name} = await ${accumulator.name};\`), or rewrite as \`async (${previousParamName}, item) => { const ${accumulator.name} = await ${previousParamName}; ...; return ${accumulator.name}; }\`, & seed with \`Promise.resolve(...)\``,
       });
     },
   }),

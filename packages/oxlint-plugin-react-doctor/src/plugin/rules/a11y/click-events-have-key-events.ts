@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { hasConditionalNativeClickAlternative } from "./has-conditional-native-click-alternative.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
@@ -329,6 +330,12 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (hasCompositeItemRole(node)) return;
         if (isHoverSelectionListItem(tag, node)) return;
         if (onClick && isBackdropDismissHandler(onClick)) return;
+        if (
+          shouldUseCuratedBehavior &&
+          hasConditionalNativeClickAlternative(node, context.scopes)
+        ) {
+          return;
+        }
         if (
           hasKeyboardActivatableDescendant(
             node.parent,

@@ -217,6 +217,57 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    'const text = "a?b"; text.split("?")[1].trim();',
+    'const text = "a?"; text.split("?")[1].trim();',
+    'function read() { const text = "a?b"; return text.split("?")[1].trim(); }',
+  ])("does not flag a proven direct const string split: %s", (source) => {
+    const result = runRule(noArrayIndexDerefWithoutBoundsOrEmptyGuard, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["missing delimiter", 'const text = "ab"; text.split("?")[1].trim();'],
+    ["too high index", 'const text = "a?b"; text.split("?")[2].trim();'],
+    ["fractional index", 'const text = "a?b"; text.split("?")[1.5].trim();'],
+    ["split limit", 'const text = "a?b"; text.split("?", 1)[1].trim();'],
+    ["regex separator", 'const text = "a?b"; text.split(/!/)[1].trim();'],
+    ["dynamic separator", 'const text = "a?b"; text.split(separator)[1].trim();'],
+    ["mutable binding", 'let text = "a?b"; text = "ab"; text.split("?")[1].trim();'],
+    [
+      "shadowing parameter",
+      'const text = "a?b"; function read(text) { return text.split("?")[1].trim(); }',
+    ],
+    ["destructured default", 'const { text = "a?b" } = payload; text.split("?")[1].trim();'],
+    ["unresolved input", 'const text = source(); text.split("?")[1].trim();'],
+    ["use before declaration", 'text.split("?")[1].trim(); const text = "a?b";'],
+    [
+      "different execution scope",
+      'function read() { return text.split("?")[1].trim(); } read(); const text = "a?b";',
+    ],
+  ])("keeps the constant string split warning for %s", (_description, source) => {
+    const result = runRule(noArrayIndexDerefWithoutBoundsOrEmptyGuard, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "String.prototype.split = () => [];",
+    'Object.defineProperty(String.prototype, "split", { value: () => [] });',
+    "const prototype = globalThis.String.prototype; prototype.split = () => [];",
+    'const { constructor } = "a"; constructor.prototype.split = () => [];',
+    'const prototype = Reflect.get("a".constructor, "prototype"); prototype.split = () => [];',
+    "unknownReceiver[unknownKey] = replacement;",
+  ])("keeps the split warning when the prototype may be exposed: %s", (setup) => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `${setup} const text = "a?b"; text.split("?")[1].trim();`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag the ternary double-match idiom (test repeats the same match call)", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

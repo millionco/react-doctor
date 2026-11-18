@@ -4,17 +4,20 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAlwaysMatchingRegexPattern } from "../../utils/is-always-matching-regex-pattern.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { singleExpressionPredicateBody } from "../../utils/single-expression-predicate-body.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { hasStringSplitPrototypeExposure } from "./utils/has-string-split-prototype-exposure.js";
 
 const REGEX_RESULT_METHOD_NAMES = new Set(["exec", "match"]);
 const TOUCH_LIST_PROPERTY_NAMES = new Set(["changedTouches", "touches", "targetTouches"]);
@@ -342,6 +345,42 @@ const isStaticallyPresentSplitPart = (splitCall: EsTreeNode, partIndex: number):
   return receiver.value.split(delimiter.value).length > partIndex;
 };
 
+const matchesReadonlyConstSplitPart = (
+  splitCall: EsTreeNode,
+  partIndex: number,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(splitCall, "CallExpression") ||
+    splitCall.optional ||
+    splitCall.arguments.length !== 1 ||
+    !isNodeOfType(splitCall.callee, "MemberExpression") ||
+    splitCall.callee.optional ||
+    !Number.isInteger(partIndex)
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(splitCall.callee.object);
+  const delimiter = splitCall.arguments[0];
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    !isNodeOfType(delimiter, "Literal") ||
+    typeof delimiter.value !== "string"
+  ) {
+    return false;
+  }
+  const symbol = context.scopes.symbolFor(receiver);
+  const initializer = symbol ? getDirectConstInitializer(symbol) : null;
+  if (!initializer) return false;
+  const value = stripParenExpression(initializer);
+  return (
+    isNodeOfType(value, "Literal") &&
+    typeof value.value === "string" &&
+    value.value.split(delimiter.value).length > partIndex &&
+    nodeDominatesNode(initializer, receiver, context)
+  );
+};
+
 // A dominating condition that guarantees the delimiter exists before the
 // split is read: `receiver.includes(delimiter)` on the same receiver and
 // delimiter, a regex precondition via `.test(...)` over the same receiver
@@ -647,6 +686,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
     const filename = context.filename ?? "";
     if (isNonSourceFilename(filename)) return EMPTY_RULE_VISITORS;
 
+    let stringSplitPrototypeExposed: boolean | undefined;
     return {
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         // The deref boundary itself is optional-chained — already null-safe.
@@ -687,6 +727,10 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
           if (isKnownFormatSplitPart(base, partIndex, context)) return;
           if (isSplitPartDerefGuarded(node, base)) return;
           if (isInsideFilteredIterationCallback(node, base)) return;
+          if (matchesReadonlyConstSplitPart(base, partIndex, context)) {
+            stringSplitPrototypeExposed ??= hasStringSplitPrototypeExposure(context.scopes);
+            if (!stringSplitPrototypeExposed) return;
+          }
           context.report({ node, message: MESSAGE });
           return;
         }

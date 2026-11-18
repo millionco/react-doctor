@@ -975,8 +975,10 @@ export const onlyExportComponents = defineRule({
             continue;
           }
           if (isNodeOfType(child, "ExportDefaultDeclaration")) {
-            hasAnyExports = true;
             const declaration = child.declaration as EsTreeNode;
+            if (shouldUseCuratedBehavior && isNodeOfType(declaration, "TSDeclareFunction"))
+              continue;
+            hasAnyExports = true;
             const stripped = skipTsExpression(declaration);
             if (
               isNodeOfType(stripped, "FunctionDeclaration") ||

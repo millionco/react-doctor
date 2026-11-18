@@ -75,12 +75,12 @@ const stripJsonComments = (text: string): string => {
   return output.replace(/,(\s*[}\]])/g, "$1");
 };
 
-const parseTsconfigFile = (
+export const readTsconfigFile = (
   configFilePath: string,
-  probedPaths: string[],
+  probedPaths?: string[],
 ): Record<string, unknown> | null => {
   recordContentProbe(configFilePath);
-  probedPaths.push(configFilePath);
+  probedPaths?.push(configFilePath);
   let sourceText: string;
   try {
     sourceText = fs.readFileSync(configFilePath, "utf8");
@@ -127,7 +127,7 @@ const readResolvedTsconfig = (
   extendsDepth: number,
   probedPaths: string[],
 ): ResolvedTsconfig | null => {
-  const parsed = parseTsconfigFile(configFilePath, probedPaths);
+  const parsed = readTsconfigFile(configFilePath, probedPaths);
   if (!parsed) return null;
 
   const configDirectory = path.dirname(configFilePath);

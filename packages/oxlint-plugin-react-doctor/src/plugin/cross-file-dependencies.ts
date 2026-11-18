@@ -31,6 +31,8 @@ import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
+import { collectJsxRuntimeImports } from "./utils/collect-jsx-runtime-imports.js";
+import { hasPreactJsxConfig } from "./utils/preact-jsx-config.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { parseCrossFileSource, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
@@ -593,6 +595,20 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
+    [
+      "no-unknown-property",
+      (input) => {
+        if (!input.sourceText.includes("class")) return;
+        const program = input.getProgram();
+        // The collector over-approximates the pragma and capability checks.
+        if (
+          isNodeOfType(program, "Program") &&
+          collectJsxRuntimeImports(program).hasPreactRuntime
+        ) {
+          hasPreactJsxConfig(input.absoluteFilePath);
+        }
+      },
+    ],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],

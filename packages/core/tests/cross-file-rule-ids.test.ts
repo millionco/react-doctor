@@ -195,6 +195,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-side-effect-in-state-updater-function",
       "no-unguarded-browser-global-at-module-scope",
       "no-unguarded-browser-global-in-render-or-hook-init",
+      "no-unknown-property",
       "only-export-components",
       "prefer-dynamic-import",
       "react-router-csp-nonce-consistency",

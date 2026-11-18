@@ -8,6 +8,7 @@ import {
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../constants/dom-property-tags.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { SVG_TAGS } from "../../constants/svg-tags.js";
+import { allowsPreactJsxClass } from "../../utils/preact-jsx-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -96,7 +97,12 @@ export const noUnknownProperty = defineRule({
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreSet = new Set(ignore);
+    let program: EsTreeNodeOfType<"Program"> | undefined;
+    let allowsClass: boolean | undefined;
     return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        program = node;
+      },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const elementType = resolveJsxElementType(node);
@@ -131,6 +137,10 @@ export const noUnknownProperty = defineRule({
           const actualName = getJsxAttributeName(attribute.name);
           if (!actualName) continue;
           if (ignoreSet.has(actualName)) continue;
+          if (actualName === "class" && isValidHtmlTag && program) {
+            allowsClass ??= allowsPreactJsxClass(context, program);
+            if (allowsClass) continue;
+          }
           if (
             shouldUseCuratedBehavior &&
             node.name.name === "line" &&

@@ -2,7 +2,9 @@ import { isCheapPrimitiveValue } from "../../utils/is-cheap-primitive-value.js";
 import { BUILTIN_HOOK_NAMES, TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
@@ -13,6 +15,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 // Zero-argument native Date getters (`now.getMonth()`, `Date.now()`) cost
 // nanoseconds — lazy-wrapping them is pure noise, and the rule's purpose is
@@ -78,6 +81,76 @@ const findEagerInitializerCall = (
   return null;
 };
 
+const ALTERNATE_REACT_PROVIDER_GLOBALS: ReadonlySet<string> = new Set([
+  "require",
+  "module",
+  "process",
+  "React",
+  "eval",
+  "Function",
+  "global",
+  "globalThis",
+  "self",
+  "window",
+]);
+
+const hasAlternativeReactProvider = (program: EsTreeNode, context: RuleContext): boolean => {
+  let hasAlternative = false;
+  walkAst(program, (node) => {
+    if (hasAlternative) return false;
+    if (isNodeOfType(node, "Identifier")) {
+      hasAlternative =
+        ALTERNATE_REACT_PROVIDER_GLOBALS.has(node.name) && context.scopes.isGlobalReference(node);
+    } else if (isNodeOfType(node, "ImportDeclaration")) {
+      hasAlternative = node.source.value === "module" || node.source.value === "node:module";
+    } else if (
+      isNodeOfType(node, "ImportExpression") ||
+      isNodeOfType(node, "TSExternalModuleReference")
+    ) {
+      const source = isNodeOfType(node, "ImportExpression") ? node.source : node.expression;
+      hasAlternative = !isNodeOfType(source, "Literal") || source.value === "react";
+    }
+  });
+  return hasAlternative;
+};
+
+const closedUseContextProviderByProgram = new WeakMap<EsTreeNode, boolean>();
+
+const hasClosedUseContextProvider = (context: RuleContext): boolean => {
+  const { node: program, symbols } = context.scopes.rootScope;
+  const cached = closedUseContextProviderByProgram.get(program);
+  if (cached !== undefined) return cached;
+  const hasOpenNamespace = symbols.some((symbol) => {
+    if (getValueImportSource(symbol) !== "react") return false;
+    if (
+      isNodeOfType(symbol.declarationNode, "ImportSpecifier") &&
+      getImportedName(symbol.declarationNode) === "module.exports"
+    ) {
+      return true;
+    }
+    return (
+      isReactNamespaceImport(symbol.bindingIdentifier, context.scopes) &&
+      (!isSymbolReadOnly(symbol) ||
+        hasPossibleStaticPropertyMutationOrEscape(
+          symbol.bindingIdentifier,
+          "useContext",
+          context.scopes,
+        ) ||
+        symbol.references.some(({ identifier }) => {
+          // A dynamic read or .default can expose a second handle to the CJS React object.
+          const reference = findTransparentExpressionRoot(identifier);
+          const member = reference.parent;
+          if (!isNodeOfType(member, "MemberExpression") || member.object !== reference) return true;
+          const propertyName = getStaticPropertyName(member);
+          return propertyName === null || propertyName === "default";
+        }))
+    );
+  });
+  const isClosed = !hasOpenNamespace && !hasAlternativeReactProvider(program, context);
+  closedUseContextProviderByProgram.set(program, isClosed);
+  return isClosed;
+};
+
 export const rerenderLazyStateInit = defineRule({
   diffScope: "function",
   id: "rerender-lazy-state-init",
@@ -127,7 +200,7 @@ export const rerenderLazyStateInit = defineRule({
       // Skip hook-shaped callees (identifier or member form), matching the
       // sibling `rerender-lazy-ref-init`.
       if (isReactHookName(calleeName)) return;
-      if (calleeIsIdentifier && !initializer.optional) {
+      if (calleeIsIdentifier) {
         const symbol = context.scopes.symbolFor(callee);
         if (
           symbol &&
@@ -139,6 +212,8 @@ export const rerenderLazyStateInit = defineRule({
           if (
             hookName &&
             BUILTIN_HOOK_NAMES.has(hookName) &&
+            (!initializer.optional ||
+              (hookName === "useContext" && hasClosedUseContextProvider(context))) &&
             !context.scopes.rootScope.symbols.some(
               (candidate) =>
                 isReactNamespaceImport(candidate.bindingIdentifier, context.scopes) &&
@@ -150,6 +225,27 @@ export const rerenderLazyStateInit = defineRule({
             )
           )
             return;
+        }
+      }
+
+      if (
+        !initializer.optional &&
+        isNodeOfType(callee, "MemberExpression") &&
+        callee.computed &&
+        !callee.optional &&
+        isNodeOfType(callee.property, "Literal") &&
+        callee.property.value === "useContext" &&
+        isNodeOfType(callee.object, "Identifier")
+      ) {
+        const symbol = context.scopes.symbolFor(callee.object);
+        if (
+          symbol &&
+          (isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
+            isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier")) &&
+          getValueImportSource(symbol) === "react" &&
+          hasClosedUseContextProvider(context)
+        ) {
+          return;
         }
       }
 

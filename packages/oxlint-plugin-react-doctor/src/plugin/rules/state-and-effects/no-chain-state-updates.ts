@@ -17,6 +17,7 @@ import {
   getRef,
   getUpstreamRefs,
 } from "./utils/effect/ast.js";
+import { isMeasuredMemoizedSetterPayload } from "./utils/is-measured-memoized-setter-payload.js";
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
@@ -238,6 +239,27 @@ export const noChainStateUpdates = defineRule({
         if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
         const isSelfTargeting =
           setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);
+        // A fresh payload can feed back through an object dependency.
+        // State dependency analysis can miss rest and default bindings.
+        const stateValue =
+          isNodeOfType(setterDeclarator, "VariableDeclarator") &&
+          isNodeOfType(setterDeclarator.id, "ArrayPattern")
+            ? setterDeclarator.id.elements[0]
+            : null;
+        const canPublishFreshMeasurements = isNodeOfType(stateValue, "ObjectPattern")
+          ? stateValue.properties.every(
+              (property) =>
+                isNodeOfType(property, "Property") &&
+                !property.computed &&
+                isNodeOfType(property.value, "Identifier"),
+            )
+          : !isSelfTargeting;
+        if (
+          canPublishFreshMeasurements &&
+          isMeasuredMemoizedSetterPayload(callExpr, effectFn, context.scopes)
+        ) {
+          continue;
+        }
         const setterArguments = isNodeOfType(callExpr, "CallExpression")
           ? ((callExpr.arguments ?? []) as EsTreeNode[])
           : [];

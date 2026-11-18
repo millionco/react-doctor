@@ -91,6 +91,57 @@ describe("a11y/img-redundant-alt regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  const curatedSettings = { "react-doctor": { portedRuleMode: "curated" } };
+
+  it.each([
+    '`Photo${"synthesis"} in a leaf`',
+    "`Photo\\\nsynthesis in a leaf`",
+    "`Photo\\u0073ynthesis in a leaf`",
+    "`Photo${`synthesis`} in a leaf`",
+  ])("checks word boundaries in complete cooked template alt text", (alt) => {
+    const source = `const Preview = () => <img src="/leaf.png" alt={${alt}} />;`;
+    const curated = runRule(imgRedundantAlt, source, { settings: curatedSettings });
+    const upstream = runRule(imgRedundantAlt, source, {
+      settings: { "react-doctor": { portedRuleMode: "upstream" } },
+    });
+    expect(curated.parseErrors).toEqual([]);
+    expect(curated.diagnostics).toHaveLength(0);
+    expect(upstream.parseErrors).toEqual([]);
+    expect(upstream.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    '`Photo${""} of a leaf`',
+    "`Photo\\u0020of a leaf`",
+    '`Photo${" of a leaf"}`',
+    "`Photo${name}`",
+    '`Photo${"synthesis"} ${name}`',
+  ])(
+    "keeps raw template findings when rendered text still has a redundant word or is unknown",
+    (alt) => {
+      const result = runRule(
+        imgRedundantAlt,
+        `const Preview = ({ name }) => <img src="/leaf.png" alt={${alt}} />;`,
+        { settings: curatedSettings },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("leaves missing and empty alt values quiet", () => {
+    const result = runRule(
+      imgRedundantAlt,
+      `const Preview = () => <>
+        <img src="/leaf.png" />
+        <img src="/leaf.png" alt={\`\`} />
+      </>;`,
+      { settings: curatedSettings },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag redundant words joined by hyphens or underscores", () => {
     const result = runRule(
       imgRedundantAlt,

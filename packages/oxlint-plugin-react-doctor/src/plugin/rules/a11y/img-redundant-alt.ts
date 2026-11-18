@@ -3,10 +3,12 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MESSAGE =
@@ -62,9 +64,24 @@ const containsRedundantWord = (altText: string, words: ReadonlyArray<string>): b
   return false;
 };
 
+const getClosedTemplateText = (template: EsTreeNodeOfType<"TemplateLiteral">): string | null => {
+  let text = "";
+  for (const [index, quasi] of template.quasis.entries()) {
+    const cooked = quasi.value.cooked;
+    if (typeof cooked !== "string") return null;
+    text += cooked;
+    if (index === template.expressions.length) break;
+    const interpolation = getStaticStringExpression(template.expressions[index]);
+    if (interpolation === null) return null;
+    text += interpolation;
+  }
+  return text;
+};
+
 const altValueRedundant = (
   attribute: EsTreeNodeOfType<"JSXAttribute">,
   words: ReadonlyArray<string>,
+  useCuratedPort: boolean,
 ): boolean => {
   const value = attribute.value as EsTreeNode | null;
   if (!value) return false;
@@ -77,8 +94,13 @@ const altValueRedundant = (
       return containsRedundantWord(expression.value, words);
     }
     if (isNodeOfType(expression, "TemplateLiteral")) {
-      // Each quasi piece is checked independently — matches OXC.
-      return expression.quasis.some((quasi) => containsRedundantWord(quasi.value.raw, words));
+      // Keep the raw-quasi result for strict parity and unresolved templates.
+      const hasRawMatch = expression.quasis.some((quasi) =>
+        containsRedundantWord(quasi.value.raw, words),
+      );
+      if (!hasRawMatch || !useCuratedPort) return hasRawMatch;
+      const completeText = getClosedTemplateText(expression);
+      return completeText === null || containsRedundantWord(completeText, words);
     }
   }
   return false;
@@ -95,6 +117,7 @@ export const imgRedundantAlt = defineRule({
   create: (context): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return EMPTY_RULE_VISITORS;
     const settings = resolveSettings(context.settings);
+    const useCuratedPort = shouldUseCuratedPortBehavior(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const tag = getElementType(node, context.settings);
@@ -103,7 +126,7 @@ export const imgRedundantAlt = defineRule({
         if (isGeneratedImageRenderContext(context, node)) return;
         const altAttribute = hasJsxPropIgnoreCase(node.attributes, "alt");
         if (!altAttribute) return;
-        if (altValueRedundant(altAttribute, settings.words)) {
+        if (altValueRedundant(altAttribute, settings.words, useCuratedPort)) {
           context.report({ node: altAttribute, message: MESSAGE });
         }
       },

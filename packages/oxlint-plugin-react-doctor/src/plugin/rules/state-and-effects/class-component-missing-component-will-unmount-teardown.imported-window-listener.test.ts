@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { collectCrossFileDependencyProbes } from "../../cross-file-dependencies.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { resetFilesystemCaches } from "../../utils/reset-filesystem-caches.js";
 import { classComponentMissingComponentWillUnmountTeardown } from "./class-component-missing-component-will-unmount-teardown.js";
 
@@ -100,9 +99,9 @@ describe("imported window listener teardown", () => {
 
   it("records content and the competing paths that can change resolution", () => {
     const input = { absoluteFilePath: filename, sourceText: SOURCE, ruleIds: [RULE_ID] };
-    const provider = normalizeFilename(path.join(directory, "receiver-window.ts"));
-    const competing = normalizeFilename(path.join(directory, "receiver-window.js"));
-    const pathWithoutExtension = normalizeFilename(path.join(directory, "receiver-window"));
+    const provider = path.join(directory, "receiver-window.ts");
+    const competing = path.join(directory, "receiver-window.js");
+    const pathWithoutExtension = path.join(directory, "receiver-window");
     const trace = collectCrossFileDependencyProbes(input);
     expect(trace?.contentPaths.has(provider)).toBe(true);
     expect(trace?.existencePaths.has(competing)).toBe(true);

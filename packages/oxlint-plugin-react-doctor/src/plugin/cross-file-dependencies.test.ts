@@ -82,6 +82,38 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-array-index-as-key collector", () => {
+  it("records config inheritance and missing React alias entry candidates for an aliased memo import", () => {
+    const configPath = writeFixtureFile(
+      "tsconfig.json",
+      JSON.stringify({ extends: "./config/base" }),
+    );
+    const baseConfigPath = writeFixtureFile(
+      "config/base.json",
+      JSON.stringify({ compilerOptions: { paths: { react: ["./react-shim"] } } }),
+    );
+    const manifestPath = writeFixtureFile(
+      "config/react-shim/package.json",
+      JSON.stringify({ main: "./entry" }),
+    );
+    const componentPath = writeFixtureFile(
+      "src/App.tsx",
+      'import { memo as wrap } from "react";\nexport default wrap(() => <ul />);\n',
+    );
+
+    const trace = collectFor(componentPath, ["no-array-index-as-key"]);
+
+    expect(trace?.contentPaths.has(fixturePath("src/tsconfig.json"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/jsconfig.json"))).toBe(true);
+    expect(trace?.contentPaths.has(configPath)).toBe(true);
+    expect(trace?.contentPaths.has(baseConfigPath)).toBe(true);
+    expect(trace?.contentPaths.has(manifestPath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("config/react-shim/entry.ts"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("config/react-shim/index.ts"))).toBe(true);
+    expect(collectFor(componentPath, ["no-array-index-as-key"])).toEqual(trace);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

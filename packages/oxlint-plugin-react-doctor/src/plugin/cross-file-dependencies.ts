@@ -528,6 +528,21 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+// The fixed ordinal renderer exception can resolve only the bare React
+// specifier, and only for a direct named memo import. Skip the in-file
+// renderer shape checks so the collector covers every possible resolution.
+const collectNoArrayIndexAsKeyDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  const hasReactMemoImport = staticImports.some(
+    ({ moduleRequest, entries }) =>
+      moduleRequest.value === "react" &&
+      entries.some(({ importName }) => importName.name === "memo"),
+  );
+  if (hasReactMemoImport) resolveModulePath(absoluteFilePath, "react");
+};
+
 const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
   collectBrowserGuardDependencies(input);
@@ -589,6 +604,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
+    ["no-array-index-as-key", collectNoArrayIndexAsKeyDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],

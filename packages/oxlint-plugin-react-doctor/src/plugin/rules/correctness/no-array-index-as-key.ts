@@ -3,6 +3,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
+import { isFixedArrayFromOrdinalKey } from "../../utils/is-fixed-array-from-ordinal-key.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -1973,7 +1974,13 @@ export const noArrayIndexAsKey = defineRule({
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
-            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context) ||
+            isFixedArrayFromOrdinalKey(
+              indexUse.binding.iteratorCall,
+              node,
+              context.scopes,
+              context.filename,
+            ))
         )
           return;
         const indexName = indexUse.identifier.name;

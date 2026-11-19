@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isClosedHookRefWriterParameter } from "../../utils/is-closed-hook-ref-writer-parameter.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
@@ -610,7 +611,13 @@ export const noPassLiveStateToParent = defineRule({
         const handsSetterNamedCallbackData = propCallbackRefs.some(
           isSetterNamedCallbackReceivingData,
         );
-        if (stateArgRefs.length === 0 && !handsSetterNamedCallbackData) continue;
+        if (
+          stateArgRefs.length === 0 &&
+          (!handsSetterNamedCallbackData ||
+            isClosedHookRefWriterParameter(callExpr.callee, context.scopes))
+        ) {
+          continue;
+        }
 
         context.report({
           node: callExpr,

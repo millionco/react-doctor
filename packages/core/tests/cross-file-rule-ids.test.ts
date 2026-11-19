@@ -143,6 +143,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
   it("contains the verified set and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "anchor-target-exists",
+      "class-component-missing-component-will-unmount-teardown",
       "client-passive-event-listeners",
       "effect-listener-cleanup-reference-mismatch",
       "effect-needs-cleanup",

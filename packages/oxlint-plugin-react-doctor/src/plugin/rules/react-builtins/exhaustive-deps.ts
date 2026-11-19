@@ -57,6 +57,7 @@ import {
   buildUnnecessaryDepMessage,
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
+import { resolveDebouncedDependencyCallback } from "./exhaustive-deps-debounced-callback.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
@@ -2159,7 +2160,13 @@ If the missing value is recreated every render, move it inside the hook or stabi
         const depsArgumentRaw = node.arguments[depsArgumentIndex];
         const callbackExpression = unwrapExpression(callbackArgument as EsTreeNode);
         const forcedCaptureKeys = new Set<string>();
-        if (
+        const debouncedCallback =
+          shouldUseCuratedBehavior && hookName === "useCallback"
+            ? resolveDebouncedDependencyCallback(node, callbackExpression, context)
+            : null;
+        if (debouncedCallback) {
+          callbackToAnalyze = debouncedCallback;
+        } else if (
           isNodeOfType(callbackExpression, "ArrowFunctionExpression") ||
           isNodeOfType(callbackExpression, "FunctionExpression")
         ) {

@@ -45,6 +45,10 @@ import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
+import {
+  hasCanonicalLodashDebounceProvider,
+  LODASH_DEBOUNCE_SUBPATH,
+} from "./rules/react-builtins/exhaustive-deps-debounce-provider.js";
 
 /**
  * Per-rule cross-file dependency collectors — the foundation of the sidecar
@@ -382,6 +386,15 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
   collectImportedValueDependencies(input);
   resolvePackageVersion(input.absoluteFilePath, "@xstate/react");
+  if (
+    input.staticImports.some(
+      (entry) =>
+        entry.moduleRequest.value === LODASH_DEBOUNCE_SUBPATH &&
+        entry.entries.some(({ importName }) => importName.kind === "Default"),
+    )
+  ) {
+    hasCanonicalLodashDebounceProvider(input.absoluteFilePath);
+  }
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({

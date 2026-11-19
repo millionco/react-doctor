@@ -1,3 +1,4 @@
+import { hasMatchingCachedBroadcastChannelReceivers } from "./utils/has-matching-cached-broadcast-channel-receivers.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -4764,6 +4765,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4773,7 +4775,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4822,6 +4824,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4837,7 +4840,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -8600,6 +8603,61 @@ const hasSafeForEachProjectionCleanup = (
   );
 };
 
+const hasGuaranteedCachedChannelListenerCleanup = (
+  registration: EsTreeNodeOfType<"CallExpression">,
+  release: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (!hasMatchingCachedBroadcastChannelReceivers(registration, release, context.scopes)) {
+    return false;
+  }
+  const setup = findEnclosingFunction(registration);
+  const cleanup = findEnclosingFunction(release);
+  if (
+    !isFunctionLike(setup) ||
+    !isNodeOfType(setup.body, "BlockStatement") ||
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    cleanup.params.length !== 0
+  ) {
+    return false;
+  }
+  const registrationExpression = findTransparentExpressionRoot(registration);
+  const registrationStatement = registrationExpression.parent;
+  const cleanupExpression = findTransparentExpressionRoot(cleanup);
+  const cleanupReturn = cleanupExpression.parent;
+  if (
+    !isNodeOfType(registrationStatement, "ExpressionStatement") ||
+    registrationStatement.expression !== registrationExpression ||
+    registrationStatement.parent !== setup.body ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+    cleanupReturn.argument !== cleanupExpression
+  ) {
+    return false;
+  }
+  // Pair only a direct registration followed by its cleanup return in the same setup.
+  const registrationIndex = setup.body.body.findIndex(
+    (statement) => statement === registrationStatement,
+  );
+  if (
+    registrationIndex === -1 ||
+    setup.body.body[registrationIndex + 1] !== cleanupReturn ||
+    !isReturnedEffectCleanupFunction(cleanup, context)
+  ) {
+    return false;
+  }
+  const releaseExpression = findTransparentExpressionRoot(release);
+  if (cleanup.body === releaseExpression) return true;
+  if (!isNodeOfType(cleanup.body, "BlockStatement") || cleanup.body.body.length !== 1) {
+    return false;
+  }
+  const [statement] = cleanup.body.body;
+  return (
+    isNodeOfType(statement, "ExpressionStatement") && statement.expression === releaseExpression
+  );
+};
+
 const doesReleaseCallMatchUsage = (
   node: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -8868,7 +8926,11 @@ const doesReleaseCallMatchUsage = (
     registrationReceiverCollectionKey === releaseReceiverCollectionKeyForPair;
   if (
     !hasMatchingIteratorReceivers &&
-    (usage.receiverKey === null || releaseReceiverKey !== usage.receiverKey)
+    (usage.receiverKey === null || releaseReceiverKey !== usage.receiverKey) &&
+    !(
+      isNodeOfType(usage.node, "CallExpression") &&
+      hasGuaranteedCachedChannelListenerCleanup(usage.node, callNode, context)
+    )
   ) {
     return false;
   }
@@ -9921,6 +9983,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       return callback && isFunctionLike(callback) ? [callback] : [];
     }),
   );
+  const effectCallSet = new Set(effectCalls);
   return retainedSymbol.references.every((reference) => {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const callNode = referenceRoot.parent;
@@ -9942,7 +10005,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

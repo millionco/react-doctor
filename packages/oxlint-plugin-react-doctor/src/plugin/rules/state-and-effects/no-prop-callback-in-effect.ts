@@ -28,6 +28,7 @@ import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isReducerState, isState, isStateSetterCall } from "./utils/effect/react.js";
 import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
+import { isEmblaApiHandlePublication } from "./utils/is-embla-api-handle-publication.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
 // The ref-latch shape: the effect reads a `<ref>.current` in an
@@ -292,9 +293,10 @@ export const noPropCallbackInEffect = defineRule({
         const reactStateDeps = dependencyElements.filter((element) =>
           isReactStateDependency(analysis, element, propStackTracker.isPropName),
         );
+        const reactStateDependencySet = new Set(reactStateDeps);
         const customHookStateDeps = dependencyElements.filter(
           (element) =>
-            !reactStateDeps.includes(element) &&
+            !reactStateDependencySet.has(element) &&
             isCustomHookStateDependency(
               analysis,
               element,
@@ -392,6 +394,15 @@ export const noPropCallbackInEffect = defineRule({
           if (child.arguments.length === 0) return;
           const calleeName = getPropCallbackName(child);
           if (!calleeName) return;
+          if (
+            isEmblaApiHandlePublication({
+              effect: node,
+              publication: child,
+              scopes: context.scopes,
+              isPropName: propStackTracker.isPropName,
+            })
+          )
+            return;
           if (analysis) {
             const doesUseStateDependency = doesCallUseStateDependency(
               analysis,

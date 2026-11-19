@@ -26,6 +26,8 @@ import {
   WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT,
 } from "../../constants/react.js";
 import { INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS } from "../../constants/thresholds.js";
+import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
+import { declaresDependency } from "../../utils/classify-package-platform.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
 import { canExecuteBeforeAsyncSuspension } from "../../utils/can-execute-before-async-suspension.js";
@@ -44,6 +46,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -52,6 +55,8 @@ import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { getValueImportSource } from "../../utils/get-value-import-declaration.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getNodeEndIndex } from "../../utils/get-node-end-index.js";
@@ -65,6 +70,8 @@ import { getProvenDomEventTargetPrototypeOwnerNames } from "../../utils/is-prove
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { parsePackageVersion } from "../../utils/parse-package-version.js";
+import { readNearestPackageManifest } from "../../utils/read-nearest-package-manifest.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "../../utils/resolve-cross-file-function-export.js";
@@ -4764,6 +4771,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4773,7 +4781,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4822,6 +4830,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4837,7 +4846,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -7374,6 +7383,161 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
+const ALTERNATE_REACT_NATIVE_RUNTIME_PACKAGES = [
+  "react-native-web",
+  "react-native-windows",
+  "react-native-macos",
+  "@callstack/react-native-visionos",
+];
+
+const hasStockNativeBackHandlerPackage = (context: RuleContext): boolean => {
+  if (!context.filename || classifyReactNativeFileTarget(context) !== "react-native") return false;
+  const manifest = readNearestPackageManifest(context.filename);
+  const declaredVersion = manifest?.dependencies?.["react-native"];
+  if (typeof declaredVersion !== "string") return false;
+  const version = parsePackageVersion(declaredVersion.trim());
+  return Boolean(
+    manifest &&
+    version &&
+    version.major === 0 &&
+    version.minor >= 65 &&
+    !version.isPrerelease &&
+    !ALTERNATE_REACT_NATIVE_RUNTIME_PACKAGES.some((name) => declaresDependency(manifest, name)),
+  );
+};
+
+const hasExclusiveBackHandlerImport = (
+  provider: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  const program = context.scopes.rootScope.node;
+  let hasAlternativeProviderAccess = false;
+  walkAst(program, (node) => {
+    if (hasAlternativeProviderAccess) return false;
+    if (isNodeOfType(node, "ImportDeclaration") && typeof node.source.value === "string") {
+      if (node.source.value.startsWith("react-native/Libraries/Utilities/BackHandler")) {
+        hasAlternativeProviderAccess = true;
+      } else if (node.source.value === "react-native") {
+        hasAlternativeProviderAccess = node.specifiers.some(
+          (specifier) =>
+            specifier !== provider.declarationNode &&
+            (!isNodeOfType(specifier, "ImportSpecifier") ||
+              getImportedName(specifier) === "BackHandler"),
+        );
+      }
+    }
+    if (isNodeOfType(node, "ImportExpression") || isNodeOfType(node, "TSImportEqualsDeclaration")) {
+      hasAlternativeProviderAccess = true;
+    }
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = getCalleeName(node);
+      if (callee === "eval" || callee === "require") hasAlternativeProviderAccess = true;
+    }
+  });
+  return !hasAlternativeProviderAccess;
+};
+
+const doesDirectBackHandlerRemoveReleaseUsage = (
+  cleanupReturn: EsTreeNodeOfType<"ReturnStatement">,
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "addEventListener" ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    usage.node.optional ||
+    usage.node.arguments.length !== 2 ||
+    !isFunctionLike(callback) ||
+    cleanupReturn.parent !== callback.body
+  ) {
+    return false;
+  }
+  const callbackRoot = findTransparentExpressionRoot(callback);
+  const effectCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(effectCall, "CallExpression") ||
+    effectCall.arguments[0] !== callbackRoot ||
+    !isReactApiCall(effectCall, "useEffect", context.scopes, { resolveNamedAliases: true })
+  ) {
+    return false;
+  }
+
+  const registration = findTransparentExpressionRoot(usage.node);
+  const declarator = registration.parent;
+  const declaration = declarator?.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.parent !== callback.body ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    callback.body.body.at(-2) !== declaration ||
+    callback.body.body.at(-1) !== cleanupReturn
+  ) {
+    return false;
+  }
+
+  const returnedMember = cleanupReturn.argument
+    ? stripParenExpression(cleanupReturn.argument)
+    : null;
+  if (
+    !isNodeOfType(returnedMember, "MemberExpression") ||
+    returnedMember.optional ||
+    returnedMember.computed ||
+    !isNodeOfType(returnedMember.property, "Identifier") ||
+    returnedMember.property.name !== "remove" ||
+    !isNodeOfType(returnedMember.object, "Identifier")
+  ) {
+    return false;
+  }
+  const handle = context.scopes.symbolFor(returnedMember.object);
+  const program = context.scopes.rootScope.node;
+  if (
+    !handle ||
+    handle.declarationNode !== declarator ||
+    getDirectConstInitializer(handle) !== registration ||
+    handle.references.length !== 1 ||
+    handle.references[0]?.identifier !== returnedMember.object ||
+    !hasCompleteSymbolReferences(handle, program, context.scopes)
+  ) {
+    return false;
+  }
+
+  const callee = stripParenExpression(usage.node.callee);
+  const event = stripParenExpression(usage.node.arguments[0]);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.optional ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== "addEventListener" ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    !isNodeOfType(event, "Literal") ||
+    event.value !== "hardwareBackPress"
+  ) {
+    return false;
+  }
+  const receiver = context.scopes.symbolFor(callee.object);
+  if (
+    !receiver ||
+    !isNodeOfType(receiver.declarationNode, "ImportSpecifier") ||
+    receiver.references.length !== 1 ||
+    receiver.references[0]?.identifier !== callee.object ||
+    getValueImportSource(receiver) !== "react-native" ||
+    getImportedName(receiver.declarationNode) !== "BackHandler" ||
+    !hasCompleteSymbolReferences(receiver, program, context.scopes)
+  ) {
+    return false;
+  }
+
+  // Stock BackHandler returns a remover that captures its listener by closure.
+  return (
+    hasStockNativeBackHandlerPackage(context) && hasExclusiveBackHandlerImport(receiver, context)
+  );
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -7455,7 +7619,10 @@ const effectHasCleanupForUsage = (
     }
     const returnedValue = child.argument ? stripParenExpression(child.argument) : null;
     if (!returnedValue) return;
-    if (doesBoundCleanupReleaseUsage(returnedValue, usage, context)) {
+    if (
+      doesBoundCleanupReleaseUsage(returnedValue, usage, context) ||
+      doesDirectBackHandlerRemoveReleaseUsage(child, callback, usage, context)
+    ) {
       matchingCleanupReturns.push(child);
       return;
     }
@@ -9915,6 +10082,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9942,7 +10110,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

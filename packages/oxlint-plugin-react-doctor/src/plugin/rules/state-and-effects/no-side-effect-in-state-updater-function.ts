@@ -36,6 +36,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isCopyOnWriteContainer } from "../../utils/is-copy-on-write-container.js";
@@ -45,6 +46,8 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { parseSourceFile } from "../../utils/parse-source-file.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -1197,6 +1200,211 @@ const identifierIsAssignedOnlyFreshContainers = (
   return hasPriorFreshAssignment;
 };
 
+const identifierIsPrivateLazyMap = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const scopes = context.scopes;
+  const symbol = scopes.symbolFor(identifier);
+  const initializer = symbol?.initializer && stripParenExpression(symbol.initializer);
+  if (
+    symbol?.kind !== "let" ||
+    !isNodeOfType(initializer, "Literal") ||
+    initializer.value !== null ||
+    !identifierIsDeclaredInCurrentExecution(identifier, context)
+  )
+    return false;
+
+  const writes = symbol.references.filter(({ flag }) => flag !== "read");
+  if (writes.length !== 1) return false;
+  const target = findTransparentExpressionRoot(writes[0].identifier);
+  const assignment = target.parent;
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.left !== target ||
+    assignment.operator !== "="
+  )
+    return false;
+  const fallback = stripParenExpression(assignment.right);
+  if (
+    !isNodeOfType(fallback, "LogicalExpression") ||
+    fallback.operator !== "||" ||
+    scopes.symbolFor(stripParenExpression(fallback.left)) !== symbol
+  )
+    return false;
+  const allocation = stripParenExpression(fallback.right);
+  if (!isNodeOfType(allocation, "NewExpression") || allocation.arguments.length !== 1) return false;
+  const argument = allocation.arguments[0];
+  if (!argument) return false;
+  const previous = stripParenExpression(argument);
+  if (!isNodeOfType(previous, "Identifier")) return false;
+  const previousState = scopes.symbolFor(previous);
+  if (
+    previousState?.kind !== "parameter" ||
+    previousState.references.some(({ flag }) => flag !== "read") ||
+    findDeferredExecutionBoundary(previousState.bindingIdentifier) !==
+      findDeferredExecutionBoundary(identifier)
+  )
+    return false;
+  const constructor = stripParenExpression(allocation.callee);
+  if (
+    !isNodeOfType(constructor, "Identifier") ||
+    constructor.name !== "Map" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(constructor, "Map", scopes, undefined, true)
+  )
+    return false;
+
+  const receiver = findTransparentExpressionRoot(identifier);
+  const member = receiver.parent;
+  const call = member?.parent;
+  const mutation = call?.parent;
+  const write = assignment.parent;
+  const block = write?.parent;
+  if (
+    !isNodeOfType(member, "MemberExpression") ||
+    member.object !== receiver ||
+    member.computed ||
+    member.optional ||
+    getStaticPropertyName(member) !== "set" ||
+    !isNodeOfType(call, "CallExpression") ||
+    call.callee !== member ||
+    call.optional ||
+    !isNodeOfType(mutation, "ExpressionStatement") ||
+    !isNodeOfType(write, "ExpressionStatement") ||
+    write.expression !== assignment ||
+    !isNodeOfType(block, "BlockStatement") ||
+    mutation.parent !== block ||
+    block.body[block.body.findIndex((statement) => statement === write) + 1] !== mutation
+  )
+    return false;
+
+  // The binding may only be reused, mutated by the paired set, or returned
+  // as the new state. Opaque aliases could change Map's methods or share it
+  // with a different updater execution.
+  if (
+    !symbol.references.every((reference) => {
+      const node = findTransparentExpressionRoot(reference.identifier);
+      if (node === target || node === receiver || node === stripParenExpression(fallback.left))
+        return true;
+      if (reference.flag !== "read") return false;
+      const consumer = node.parent;
+      return (
+        ((isNodeOfType(consumer, "ReturnStatement") && consumer.argument === node) ||
+          (isNodeOfType(consumer, "LogicalExpression") &&
+            consumer.operator === "||" &&
+            consumer.left === node &&
+            scopes.symbolFor(stripParenExpression(consumer.right)) === previousState &&
+            isNodeOfType(consumer.parent, "ReturnStatement") &&
+            consumer.parent.argument === consumer)) &&
+        findDeferredExecutionBoundary(node) === findDeferredExecutionBoundary(identifier)
+      );
+    }) ||
+    !hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes)
+  )
+    return false;
+
+  // A read from the original map is fine; another mutation, escape, or
+  // result derived from a new owner must keep the updater's warning.
+  if (
+    !previousState.references.every((reference) => {
+      const node = findTransparentExpressionRoot(reference.identifier);
+      if (node === argument) return true;
+      const parent = node.parent;
+      if (
+        isNodeOfType(parent, "LogicalExpression") &&
+        parent.operator === "||" &&
+        parent.right === node &&
+        scopes.symbolFor(stripParenExpression(parent.left)) === symbol &&
+        isNodeOfType(parent.parent, "ReturnStatement") &&
+        parent.parent.argument === parent
+      )
+        return true;
+      return (
+        isNodeOfType(parent, "MemberExpression") &&
+        parent.object === node &&
+        getStaticPropertyName(parent) === "has" &&
+        isNodeOfType(parent.parent, "CallExpression") &&
+        parent.parent.callee === parent
+      );
+    })
+  )
+    return false;
+
+  let unsupportedAccess = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (unsupportedAccess) return false;
+    const name = isNodeOfType(node, "Identifier")
+      ? node.name
+      : isNodeOfType(node, "Literal") && typeof node.value === "string"
+        ? node.value
+        : null;
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      isNodeOfType(node, "ThisExpression") ||
+      (name !== null &&
+        [
+          "eval",
+          "Function",
+          "getPrototypeOf",
+          "setPrototypeOf",
+          "__proto__",
+          "constructor",
+        ].includes(name))
+    ) {
+      unsupportedAccess = true;
+      return false;
+    }
+    if (
+      isNodeOfType(node, "Identifier") &&
+      [
+        "globalThis",
+        "global",
+        "self",
+        "window",
+        "document",
+        "frames",
+        "opener",
+        "top",
+        "parent",
+      ].includes(node.name)
+    ) {
+      const host = findTransparentExpressionRoot(node);
+      const access = host.parent;
+      if (
+        !isNodeOfType(access, "MemberExpression") ||
+        stripParenExpression(access.object) !== node ||
+        getStaticPropertyName(access) !== "Map" ||
+        !isProvenGlobalNamespaceReference(access, "Map", scopes)
+      ) {
+        unsupportedAccess = true;
+        return false;
+      }
+    }
+    const isMapMember =
+      isNodeOfType(node, "MemberExpression") && getStaticPropertyName(node) === "Map";
+    const isMapIdentifier = isNodeOfType(node, "Identifier") && node.name === "Map";
+    if (!isMapMember && !isMapIdentifier && name !== "Map") return;
+    if (
+      name === "Map" &&
+      isNodeOfType(node.parent, "MemberExpression") &&
+      node.parent.property === node &&
+      getStaticPropertyName(node.parent) === "Map"
+    )
+      return;
+    const expression = findTransparentExpressionRoot(node);
+    const construction = expression.parent;
+    if (
+      !isProvenGlobalNamespaceReference(node, "Map", scopes) ||
+      !isNodeOfType(construction, "NewExpression") ||
+      construction.callee !== expression
+    ) {
+      unsupportedAccess = true;
+      return false;
+    }
+  });
+  return !unsupportedAccess;
+};
+
 const expressionIsFreshContainer = (expression: EsTreeNode, context: RuleContext): boolean => {
   const candidate = stripParenExpression(expression);
   if (expressionIsDirectFreshContainer(candidate, context)) return true;
@@ -1546,6 +1754,7 @@ const receiverIsUpdaterLocal = (
     return true;
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   if (identifierIsAssignedOnlyFreshContainers(baseIdentifier, context)) return true;
+  if (identifierIsPrivateLazyMap(baseIdentifier, context)) return true;
   if (isCopyOnWriteContainer(baseIdentifier, context.scopes)) return true;
   if (!initializer) return false;
   if (expressionIsFreshContainer(initializer, context)) return true;

@@ -45,6 +45,7 @@ import { subtreeCanThrowSynchronously } from "../../utils/subtree-can-throw-sync
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
+import { isMatchingSpinnerParameterReset } from "./utils/is-matching-spinner-parameter-reset.js";
 
 const MESSAGE =
   "This resets a loading/busy flag only on the success path: if the awaited call rejects the reset never runs and the flag stays stuck truthy (a spinner that never stops, a button disabled forever). Move the reset into a `finally` block, or mirror it on every catch, so it clears on rejection too.";
@@ -3044,6 +3045,17 @@ const isFinalizerResetProvablyGuarded = (
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
 ): boolean => {
+  if (
+    truthySets.length === 1 &&
+    isMatchingSpinnerParameterReset(
+      truthySets[0].node,
+      resetNode,
+      protectingTry,
+      functionNode,
+      context.scopes,
+    )
+  )
+    return true;
   const guards = collectFinalizerGuardExpressions(resetNode, protectingTry, context);
   return Boolean(
     guards &&

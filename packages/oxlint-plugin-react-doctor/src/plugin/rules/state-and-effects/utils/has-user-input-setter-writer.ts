@@ -12,7 +12,8 @@ import type { RuleContext } from "../../../utils/rule-context.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 import { getCallExpr } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
-import { isGenuineReactHookDeclarator } from "./effect/react.js";
+import { getUseStateDecl, isGenuineReactHookDeclarator } from "./effect/react.js";
+import { hasLocalButtonSetterRelay } from "./has-local-button-setter-relay.js";
 import { isSetterWiredToJsxHandler } from "./is-controlled-prop-mirror.js";
 
 const isEventHandlerPropertyKey = (property: EsTreeNode): boolean =>
@@ -274,6 +275,16 @@ export const hasUserInputSetterWriter = (
       return true;
     }
     if (!isNodeReachableWithinFunction(identifier, context)) continue;
+    if (
+      hasLocalButtonSetterRelay(
+        identifier,
+        componentFunction,
+        getUseStateDecl(analysis, reference),
+        context,
+      )
+    ) {
+      return true;
+    }
     const writerFunction = findEnclosingFunction(identifier);
     if (!writerFunction || writerFunction === componentFunction) continue;
     const writerVariable = getImmutableFunctionVariable(

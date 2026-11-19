@@ -17,6 +17,11 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
@@ -2658,6 +2663,7 @@ const collectCleanupBackedLifecycleAssignments = (
   effectCallback: EsTreeNode,
   guardKey: string,
   context: RuleContext,
+  initiallyActive = true,
 ): ReadonlySet<EsTreeNode> | null => {
   const acceptedAssignments = new Set<EsTreeNode>();
   for (const cleanupFunction of collectReturnedCleanupFunctions(effectCallback, context.scopes)) {
@@ -2669,7 +2675,7 @@ const collectCleanupBackedLifecycleAssignments = (
         !isNodeOfType(cleanupNode, "AssignmentExpression") ||
         cleanupNode.operator !== "=" ||
         !isNodeOfType(assignedValue, "Literal") ||
-        assignedValue.value !== false ||
+        assignedValue.value !== !initiallyActive ||
         serializeReferenceKey({ node: cleanupNode.left, scopes: context.scopes }) !== guardKey ||
         !isUnconditionallyExecutedWithinFunction(cleanupNode, cleanupFunction, context)
       ) {
@@ -2687,7 +2693,7 @@ const collectCleanupBackedLifecycleAssignments = (
       isNodeOfType(effectNode, "AssignmentExpression") &&
       effectNode.operator === "=" &&
       isNodeOfType(assignedValue, "Literal") &&
-      assignedValue.value === true &&
+      assignedValue.value === initiallyActive &&
       serializeReferenceKey({ node: effectNode.left, scopes: context.scopes }) === guardKey &&
       isUnconditionallyExecutedWithinFunction(effectNode, effectCallback, context)
     ) {
@@ -2752,6 +2758,256 @@ const isCleanupBackedLifecycleGuard = (
     acceptedAssignments.size > 0 &&
     !hasLifecycleGuardWriteOutsideCleanup(ownerFunction, guardKey, acceptedAssignments, context),
   );
+};
+
+const isNamedReactRequestHook = (
+  call: EsTreeNode,
+  name: "useEffect" | "useState",
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    !isNodeOfType(call.callee, "Identifier")
+  )
+    return false;
+  const specifier = scopes.symbolFor(call.callee)?.declarationNode;
+  const declaration = specifier?.parent;
+  return (
+    isNodeOfType(specifier, "ImportSpecifier") &&
+    specifier.importKind !== "type" &&
+    isNodeOfType(declaration, "ImportDeclaration") &&
+    declaration.importKind !== "type" &&
+    declaration.source.value === "react" &&
+    getImportedName(specifier) === name
+  );
+};
+
+const hasClosedEffectRequest = (
+  effect: EsTreeNode,
+  request: EsTreeNode,
+  reset: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  awaitSite: AwaitSite,
+  context: RuleContext,
+): boolean => {
+  const scopes = context.scopes;
+  const effectRoot = findTransparentExpressionRoot(effect);
+  const effectCall = effectRoot.parent;
+  if (
+    !isNodeOfType(effectCall, "CallExpression") ||
+    !isNamedReactRequestHook(effectCall, "useEffect", scopes) ||
+    effectCall.arguments.length !== 2 ||
+    effectCall.arguments[0] !== effectRoot ||
+    !isNodeOfType(effectCall.arguments[1], "ArrayExpression") ||
+    effectCall.arguments[1].elements.length !== 0 ||
+    !isNodeOfType(effect, "ArrowFunctionExpression") ||
+    effect.async ||
+    effect.params.length !== 0 ||
+    !isNodeOfType(effect.body, "BlockStatement") ||
+    !isNodeOfType(request, "ArrowFunctionExpression") ||
+    !request.async ||
+    request.params.length !== 0 ||
+    !isNodeOfType(request.body, "BlockStatement")
+  )
+    return false;
+
+  const [initial, declaration, invocation, returned] = effect.body.body;
+  if (
+    effect.body.body.length !== 4 ||
+    !isNodeOfType(initial, "VariableDeclaration") ||
+    initial.kind !== "let" ||
+    initial.declarations.length !== 1 ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(invocation, "ExpressionStatement") ||
+    !isNodeOfType(returned, "ReturnStatement") ||
+    !isNodeOfType(returned.argument, "ArrowFunctionExpression") ||
+    returned.argument.async ||
+    returned.argument.params.length !== 0
+  )
+    return false;
+  const cleanupBody = returned.argument.body;
+  const cleanupExpression = isNodeOfType(cleanupBody, "BlockStatement")
+    ? cleanupBody.body.length === 1 &&
+      isNodeOfType(cleanupBody.body[0], "ExpressionStatement") &&
+      cleanupBody.body[0].expression
+    : cleanupBody;
+  if (!cleanupExpression || !isNodeOfType(cleanupExpression, "AssignmentExpression")) return false;
+  const requestDeclaration = declaration.declarations[0];
+  const namedRequest =
+    requestDeclaration && isNodeOfType(requestDeclaration.id, "Identifier")
+      ? scopes.symbolFor(requestDeclaration.id)
+      : null;
+  const launchExpression = stripParenExpression(invocation.expression);
+  const launch =
+    isNodeOfType(launchExpression, "UnaryExpression") && launchExpression.operator === "void"
+      ? stripParenExpression(launchExpression.argument)
+      : launchExpression;
+  if (
+    !namedRequest ||
+    namedRequest.initializer !== request ||
+    namedRequest.references.length !== 1 ||
+    !hasCompleteSymbolReferences(namedRequest, scopes.rootScope.node, scopes) ||
+    !isNodeOfType(launch, "CallExpression") ||
+    launch.optional ||
+    launch.arguments.length !== 0 ||
+    launch.callee !== namedRequest.references[0].identifier
+  )
+    return false;
+
+  const [start, protectedRequest] = request.body.body;
+  if (
+    request.body.body.length !== 2 ||
+    !isNodeOfType(start, "ExpressionStatement") ||
+    truthySets.length !== 1 ||
+    start.expression !== truthySets[0].node ||
+    !isNodeOfType(start.expression, "CallExpression") ||
+    start.expression.optional ||
+    start.expression.arguments.length !== 1 ||
+    !isNodeOfType(start.expression.callee, "Identifier") ||
+    !isNodeOfType(reset, "CallExpression") ||
+    reset.optional ||
+    reset.arguments.length !== 1 ||
+    !isNodeOfType(reset.callee, "Identifier") ||
+    !isNodeOfType(protectedRequest, "TryStatement") ||
+    !isAwaitInsideProtectedTry(awaitSite.node, protectedRequest) ||
+    !isNodeOfType(protectedRequest.finalizer, "BlockStatement") ||
+    protectedRequest.finalizer.body.length !== 1
+  )
+    return false;
+  const finalizerGuard = protectedRequest.finalizer.body[0];
+  if (!isNodeOfType(finalizerGuard, "IfStatement") || finalizerGuard.alternate) return false;
+  const resetStatement = isNodeOfType(finalizerGuard.consequent, "BlockStatement")
+    ? finalizerGuard.consequent.body.length === 1 && finalizerGuard.consequent.body[0]
+    : finalizerGuard.consequent;
+  if (
+    !resetStatement ||
+    !isNodeOfType(resetStatement, "ExpressionStatement") ||
+    resetStatement.expression !== reset
+  )
+    return false;
+  const resetCallee = reset.callee;
+  const startCallee = start.expression.callee;
+  const setter = scopes.symbolFor(resetCallee);
+  const stateInit =
+    setter && isNodeOfType(setter.declarationNode, "VariableDeclarator")
+      ? setter.declarationNode.init
+      : null;
+  return Boolean(
+    setter &&
+    setter.kind === "const" &&
+    setter === scopes.symbolFor(startCallee) &&
+    setter.references.length === 2 &&
+    setter.references.every(
+      ({ identifier, flag }) =>
+        flag === "read" && (identifier === startCallee || identifier === resetCallee),
+    ) &&
+    hasCompleteSymbolReferences(setter, scopes.rootScope.node, scopes) &&
+    stateInit &&
+    isNamedReactRequestHook(stateInit, "useState", scopes),
+  );
+};
+
+const isLocalNegatedCleanupBackedLifecycleGuard = (
+  guard: EsTreeNode,
+  reset: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  awaitSite: AwaitSite,
+  context: RuleContext,
+): boolean => {
+  const reference = stripParenExpression(guard);
+  if (!isNodeOfType(reference, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(reference);
+  const literal = symbol?.initializer && stripParenExpression(symbol.initializer);
+  if (
+    symbol?.kind !== "let" ||
+    !isNodeOfType(literal, "Literal") ||
+    literal.value !== false ||
+    !hasCompleteSymbolReferences(symbol, context.scopes.rootScope.node, context.scopes)
+  )
+    return false;
+  const effect = findEnclosingFunction(functionNode);
+  if (
+    !effect ||
+    context.scopes.ownScopeFor(effect) !== symbol.scope ||
+    !hasClosedEffectRequest(effect, functionNode, reset, truthySets, awaitSite, context)
+  )
+    return false;
+  const guardKey = serializeReferenceKey({ node: reference, scopes: context.scopes });
+  if (!guardKey) return false;
+  const assignments = collectCleanupBackedLifecycleAssignments(effect, guardKey, context, false);
+  if (
+    assignments?.size !== 1 ||
+    hasLifecycleGuardWriteOutsideCleanup(effect, guardKey, assignments, context)
+  )
+    return false;
+  const [assignment] = assignments;
+  const writes = symbol.references.filter(
+    ({ identifier, flag }) => flag !== "read" || isWithinAssignmentTarget(identifier),
+  );
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    writes.length !== 1 ||
+    writes[0].identifier !== stripParenExpression(assignment.left)
+  )
+    return false;
+
+  const program = context.scopes.rootScope.node;
+  if (!isNodeOfType(program, "Program")) return false;
+  const reactExportObjects = new Map<string, EsTreeNode>();
+  for (const statement of program.body) {
+    if (
+      !isNodeOfType(statement, "ImportDeclaration") ||
+      statement.source.value !== "react" ||
+      statement.importKind === "type"
+    )
+      continue;
+    for (const specifier of statement.specifiers) {
+      if (isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type") continue;
+      if (!isNodeOfType(specifier, "ImportSpecifier") || getImportedName(specifier) === "default")
+        reactExportObjects.set(specifier.local.name, specifier.local);
+    }
+  }
+  // CommonJS interop can expose the React export object behind named imports.
+  let hasDynamicScopeOrProvider = false;
+  walkAst(program, (node) => {
+    if (hasDynamicScopeOrProvider) return false;
+    if (isNodeOfType(node, "Identifier") || isNodeOfType(node, "JSXIdentifier")) {
+      const binding = reactExportObjects.get(node.name);
+      if (binding && node !== binding && !isTypeScriptTypePosition(node)) {
+        hasDynamicScopeOrProvider = true;
+        return false;
+      }
+    }
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      isNodeOfType(node, "ImportExpression") ||
+      isNodeOfType(node, "TSImportEqualsDeclaration") ||
+      (isNodeOfType(node, "ImportDeclaration") &&
+        node.importKind !== "type" &&
+        (node.source.value === "node:module" || node.source.value === "module")) ||
+      (isNodeOfType(node, "Identifier") &&
+        (node.name === "require" || node.name === "module") &&
+        context.scopes.referenceFor(node))
+    ) {
+      hasDynamicScopeOrProvider = true;
+      return false;
+    }
+    if (isNodeOfType(node, "MemberExpression")) {
+      const property = getStaticPropertyName(node);
+      if (property === "require" || property === "createRequire" || property === "getBuiltinModule")
+        hasDynamicScopeOrProvider = true;
+    }
+    if (isNodeOfType(node, "CallExpression") && !node.optional) {
+      const callee = stripParenExpression(node.callee);
+      if (isNodeOfType(callee, "Identifier") && callee.name === "eval")
+        hasDynamicScopeOrProvider = true;
+    }
+  });
+  return !hasDynamicScopeOrProvider;
 };
 
 interface FinalizerGuardExpressions {
@@ -3024,6 +3280,14 @@ const isNegativeFinalizerGuard = (
     );
   }
   return (
+    isLocalNegatedCleanupBackedLifecycleGuard(
+      stripped,
+      resetNode,
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      context,
+    ) ||
     isClaimedOwnershipComparison(
       stripped,
       "lost",
@@ -3032,7 +3296,8 @@ const isNegativeFinalizerGuard = (
       firstRiskyAwait,
       resetNode,
       context,
-    ) || isStableAsyncOwnershipGuard(stripped, "lost", functionNode, context)
+    ) ||
+    isStableAsyncOwnershipGuard(stripped, "lost", functionNode, context)
   );
 };
 

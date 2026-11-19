@@ -59,6 +59,7 @@ import {
 } from "./exhaustive-deps-messages.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
+import { isStableInlineRefCurrentCapture } from "./exhaustive-deps-inline-ref-current.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
   getFunctionValueNode,
@@ -479,6 +480,10 @@ const collectCaptureDepKeys = (
     }
     const depKey = computeDepKey(reference);
     if (!depKey) continue;
+    if (isStableInlineRefCurrentCapture(reference, symbol, callback, scopes, filename)) {
+      stableCapturedNames.add(depKey);
+      continue;
+    }
     if (
       depKey === symbol.name &&
       isBooleanGuardReference(reference.identifier) &&

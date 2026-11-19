@@ -289,7 +289,41 @@ export const collectNativeClassCallbackRefReceivers = (
     !/^[a-z]+$/.test(rootElement.openingElement.name.name)
   )
     return emptyReceivers;
-  const opening = rootElement.openingElement;
+  // A nested receiver is supported only at the first fixed native child slot.
+  // All other reconciliation shapes keep the existing uncertainty result.
+  let receiverElement = rootElement;
+  let isFixedFirstChild = false;
+  const rootHasRef = rootElement.openingElement.attributes.some(
+    (attribute) =>
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      attribute.name.name === "ref",
+  );
+  if (!rootHasRef) {
+    if (
+      rootElement.openingElement.attributes.some(
+        (attribute) =>
+          !isNodeOfType(attribute, "JSXAttribute") ||
+          !isNodeOfType(attribute.name, "JSXIdentifier") ||
+          attribute.name.name.startsWith("on") ||
+          ["ref", "key", "is", "children", "dangerouslySetInnerHTML"].includes(attribute.name.name),
+      )
+    )
+      return emptyReceivers;
+    const first = rootElement.children.find(
+      (child) => !isNodeOfType(child, "JSXText") || child.value.trim().length > 0,
+    );
+    if (
+      rootElement.openingElement.name.name !== "div" ||
+      !isNodeOfType(first, "JSXElement") ||
+      !isNodeOfType(first.openingElement.name, "JSXIdentifier") ||
+      first.openingElement.name.name !== "div"
+    )
+      return emptyReceivers;
+    receiverElement = first;
+    isFixedFirstChild = true;
+  }
+  const opening = receiverElement.openingElement;
   const refAttributes = opening.attributes.filter(
     (attribute) =>
       isNodeOfType(attribute, "JSXAttribute") &&
@@ -304,25 +338,28 @@ export const collectNativeClassCallbackRefReceivers = (
   )
     return emptyReceivers;
   const callbackReference = stripParenExpression(refAttribute.value.expression);
+  const callbackName =
+    isNodeOfType(callbackReference, "MemberExpression") &&
+    isNodeOfType(stripParenExpression(callbackReference.object), "ThisExpression")
+      ? getStaticPropertyName(callbackReference)
+      : null;
+  const callbackMember = callbackName
+    ? members.find((member) => getStaticPropertyKeyName(member) === callbackName)
+    : null;
+  const callback = isFixedFirstChild
+    ? isNodeOfType(callbackReference, "ArrowFunctionExpression")
+      ? callbackReference
+      : null
+    : isNodeOfType(callbackMember, "PropertyDefinition") && !callbackMember.static
+      ? callbackMember.value
+      : null;
   if (
-    !isNodeOfType(callbackReference, "MemberExpression") ||
-    !isNodeOfType(stripParenExpression(callbackReference.object), "ThisExpression")
+    (!callbackName && !isFixedFirstChild) ||
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 1
   )
     return emptyReceivers;
-  const callbackName = getStaticPropertyName(callbackReference);
-  const callbackMember = members.find(
-    (member) => getStaticPropertyKeyName(member) === callbackName,
-  );
-  if (
-    !callbackName ||
-    !isNodeOfType(callbackMember, "PropertyDefinition") ||
-    callbackMember.static ||
-    !isNodeOfType(callbackMember.value, "ArrowFunctionExpression") ||
-    callbackMember.value.async ||
-    callbackMember.value.params.length !== 1
-  )
-    return emptyReceivers;
-  const callback = callbackMember.value;
   const parameter = callback.params[0];
   if (
     !isNodeOfType(parameter, "Identifier") ||
@@ -396,15 +433,76 @@ export const collectNativeClassCallbackRefReceivers = (
     return emptyReceivers;
   const handlerName = getStaticPropertyName(handlerReference);
   const handlerMember = members.find((member) => getStaticPropertyKeyName(member) === handlerName);
+  let boundConstructorKey: EsTreeNode | null = null;
+  let boundHandlerAssignment: EsTreeNode | null = null;
+  let boundHandlerSource: EsTreeNode | null = null;
+  let boundHandlerThis: EsTreeNode | null = null;
+  const hasArrowHandler =
+    isNodeOfType(handlerMember, "PropertyDefinition") &&
+    !handlerMember.static &&
+    isNodeOfType(handlerMember.value, "ArrowFunctionExpression");
   if (
-    !handlerName ||
-    !isNodeOfType(handlerMember, "PropertyDefinition") ||
-    handlerMember.static ||
-    !isNodeOfType(handlerMember.value, "ArrowFunctionExpression")
-  )
+    !hasArrowHandler &&
+    isFixedFirstChild &&
+    handlerName &&
+    isNodeOfType(handlerMember, "MethodDefinition") &&
+    handlerMember.kind === "method" &&
+    !handlerMember.static &&
+    !handlerMember.value.async &&
+    !handlerMember.value.generator
+  ) {
+    const constructor = members.find(
+      (member) => isNodeOfType(member, "MethodDefinition") && member.kind === "constructor",
+    );
+    if (!isNodeOfType(constructor, "MethodDefinition") || !constructor.value.body)
+      return emptyReceivers;
+    const body = constructor.value.body.body;
+    const first = body[0];
+    const last = body[1];
+    const binding = isNodeOfType(last, "ExpressionStatement")
+      ? stripParenExpression(last.expression)
+      : null;
+    if (
+      body.length !== 2 ||
+      !isNodeOfType(first, "ExpressionStatement") ||
+      !isNodeOfType(first.expression, "CallExpression") ||
+      !isNodeOfType(first.expression.callee, "Super") ||
+      !isNodeOfType(binding, "AssignmentExpression") ||
+      binding.operator !== "=" ||
+      !isDirectThisMember(binding.left, handlerName)
+    )
+      return emptyReceivers;
+    const bind = stripParenExpression(binding.right);
+    const callee = isNodeOfType(bind, "CallExpression") ? stripParenExpression(bind.callee) : null;
+    if (
+      !isNodeOfType(bind, "CallExpression") ||
+      bind.optional ||
+      bind.arguments.length !== 1 ||
+      !isNodeOfType(bind.arguments[0], "ThisExpression") ||
+      !isNodeOfType(callee, "MemberExpression") ||
+      callee.computed ||
+      callee.optional ||
+      getStaticPropertyName(callee) !== "bind" ||
+      !isDirectThisMember(stripParenExpression(callee.object), handlerName)
+    )
+      return emptyReceivers;
+    boundConstructorKey = constructor.key;
+    boundHandlerAssignment = binding.left;
+    boundHandlerSource = stripParenExpression(callee.object);
+    boundHandlerThis = bind.arguments[0];
+  }
+  if (!handlerName || (isFixedFirstChild ? !boundHandlerAssignment : !hasArrowHandler))
     return emptyReceivers;
   const restReferences = new Set<EsTreeNode>();
   for (const attribute of opening.attributes) {
+    if (
+      isFixedFirstChild &&
+      (!isNodeOfType(attribute, "JSXAttribute") ||
+        !isNodeOfType(attribute.name, "JSXIdentifier") ||
+        attribute.name.name.startsWith("on") ||
+        ["children", "dangerouslySetInnerHTML"].includes(attribute.name.name))
+    )
+      return emptyReceivers;
     if (isNodeOfType(attribute, "JSXAttribute")) {
       if (
         !isNodeOfType(attribute.name, "JSXIdentifier") ||
@@ -670,6 +768,7 @@ export const collectNativeClassCallbackRefReceivers = (
       }
       if (
         DYNAMIC_REF_CAPABILITIES.has(node.name) &&
+        node !== boundConstructorKey &&
         context.scopes.symbolFor(node)?.bindingIdentifier !== node
       ) {
         closed = false;
@@ -711,7 +810,7 @@ export const collectNativeClassCallbackRefReceivers = (
         return;
       }
     }
-    if (isNodeOfType(node, "ThisExpression")) {
+    if (isNodeOfType(node, "ThisExpression") && node !== boundHandlerThis) {
       const root = findTransparentExpressionRoot(node);
       if (
         !isNodeOfType(root.parent, "MemberExpression") ||
@@ -823,14 +922,60 @@ export const collectNativeClassCallbackRefReceivers = (
             "jsxDEV",
             "React",
           ].includes(name ?? "")) &&
-        node !== assignment.left)
+        node !== assignment.left &&
+        node !== boundHandlerAssignment)
     ) {
       closed = false;
       return;
     }
-    if (isDirectThisMember(node, callbackName) && node !== callbackReference) {
+    if (callbackName && isDirectThisMember(node, callbackName) && node !== callbackReference) {
       closed = false;
       return;
+    }
+    if (
+      boundHandlerAssignment &&
+      isDirectThisMember(node, handlerName) &&
+      node !== boundHandlerAssignment &&
+      node !== boundHandlerSource
+    ) {
+      const parent = findTransparentExpressionRoot(node).parent;
+      const callee = isNodeOfType(parent, "CallExpression")
+        ? stripParenExpression(parent.callee)
+        : null;
+      const receiver = isNodeOfType(callee, "MemberExpression")
+        ? stripParenExpression(callee.object)
+        : null;
+      const event =
+        isNodeOfType(parent, "CallExpression") && parent.arguments[0]
+          ? stripParenExpression(parent.arguments[0])
+          : null;
+      const capture =
+        isNodeOfType(parent, "CallExpression") && parent.arguments[2]
+          ? stripParenExpression(parent.arguments[2])
+          : null;
+      if (
+        !isNodeOfType(parent, "CallExpression") ||
+        parent.optional ||
+        parent.arguments.length < 2 ||
+        parent.arguments.length > 3 ||
+        parent.arguments[1] !== node ||
+        !isNodeOfType(callee, "MemberExpression") ||
+        callee.optional ||
+        callee.computed ||
+        !["addEventListener", "removeEventListener"].includes(
+          getStaticPropertyName(callee) ?? "",
+        ) ||
+        !receiver ||
+        !isDirectThisMember(receiver, fieldName) ||
+        findEnclosingClass(node) !== classNode ||
+        !isNodeOfType(event, "Literal") ||
+        typeof event.value !== "string" ||
+        (capture !== null &&
+          (!isNodeOfType(capture, "Literal") || typeof capture.value !== "boolean"))
+      ) {
+        closed = false;
+        return;
+      }
     }
     if (isDirectThisMember(node, "props")) {
       const root = findTransparentExpressionRoot(node);
@@ -853,6 +998,7 @@ export const collectNativeClassCallbackRefReceivers = (
     const parent = root.parent;
     if (
       !(isNodeOfType(parent, "MemberExpression") && parent.object === root) &&
+      !(isFixedFirstChild && isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") &&
       !(
         isNodeOfType(parent, "BinaryExpression") &&
         ["===", "!==", "==", "!="].includes(parent.operator)

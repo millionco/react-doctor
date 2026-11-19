@@ -21,6 +21,9 @@ import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-de
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticKeyName } from "../../utils/get-static-key-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { getSymbolTypeAnnotation } from "../../utils/get-symbol-type-annotation.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
@@ -432,6 +435,117 @@ const resolveCalledArgumentPropertyKeys = (
   return keys;
 };
 
+const findProjectedBooleanMemoTest = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  callback: EsTreeNode,
+  deps: EsTreeNodeOfType<"ArrayExpression">,
+  scopes: ScopeAnalysis,
+): EsTreeNode | undefined => {
+  const [dependency] = deps.elements;
+  if (
+    call.arguments.length !== 2 ||
+    deps.elements.length !== 1 ||
+    !dependency ||
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 0
+  )
+    return undefined;
+
+  const callee = unwrapExpression(call.callee);
+  const imported = isNodeOfType(callee, "Identifier") ? scopes.symbolFor(callee) : null;
+  const importDeclaration = imported && getImportDeclarationForSymbol(imported);
+  if (
+    !imported ||
+    !importDeclaration ||
+    importDeclaration.source.value !== "react" ||
+    importDeclaration.importKind === "type" ||
+    !isNodeOfType(imported.declarationNode, "ImportSpecifier") ||
+    imported.declarationNode.importKind === "type" ||
+    getImportedName(imported.declarationNode) !== "useMemo"
+  )
+    return undefined;
+
+  const projection = unwrapExpression(dependency);
+  const body = unwrapExpression(callback.body);
+  if (
+    !isNodeOfType(projection, "ConditionalExpression") ||
+    !isNodeOfType(body, "ConditionalExpression")
+  )
+    return undefined;
+  const consequent = unwrapExpression(projection.consequent);
+  const alternate = unwrapExpression(projection.alternate);
+  const test = unwrapExpression(body.test);
+  if (
+    !isNodeOfType(consequent, "Literal") ||
+    consequent.value !== true ||
+    !isNodeOfType(alternate, "Literal") ||
+    alternate.value !== false ||
+    !isNodeOfType(test, "Identifier") ||
+    !isSameSymbol(test, projection.test, scopes)
+  )
+    return undefined;
+
+  // A default or namespace import can expose the writable React export object
+  // in CommonJS interop builds, even when the call uses a named import.
+  const program = scopes.rootScope.node;
+  if (
+    !isNodeOfType(program, "Program") ||
+    program.body.some(
+      (statement) =>
+        isNodeOfType(statement, "ImportDeclaration") &&
+        statement.source.value === "react" &&
+        statement.importKind !== "type" &&
+        statement.specifiers.some(
+          (specifier) =>
+            !isNodeOfType(specifier, "ImportSpecifier") ||
+            (specifier.importKind !== "type" && getImportedName(specifier) === "default"),
+        ),
+    )
+  )
+    return undefined;
+
+  const symbol = scopes.symbolFor(test);
+  if (
+    !symbol ||
+    (symbol.kind !== "const" &&
+      !(symbol.kind === "parameter" && isNodeOfType(symbol.declarationNode, "ObjectPattern"))) ||
+    symbol.references.some((reference) => reference.flag !== "read") ||
+    !hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes)
+  )
+    return undefined;
+
+  // Destructured parameters do not alias arguments. Dynamic lexical access
+  // can still read the original value, and CommonJS loaders can expose the
+  // React export object behind a compiled named import.
+  let usesDynamicAccess = false;
+  walkAst(program, (node) => {
+    if (usesDynamicAccess) return false;
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      isNodeOfType(node, "ImportExpression") ||
+      isNodeOfType(node, "TSImportEqualsDeclaration") ||
+      (isNodeOfType(node, "ImportDeclaration") &&
+        node.importKind !== "type" &&
+        (node.source.value === "node:module" || node.source.value === "module")) ||
+      (isNodeOfType(node, "Identifier") &&
+        (node.name === "require" || node.name === "module") &&
+        scopes.referenceFor(node))
+    )
+      usesDynamicAccess = true;
+    if (isNodeOfType(node, "MemberExpression")) {
+      const property = getStaticPropertyName(node);
+      if (property === "require" || property === "createRequire" || property === "getBuiltinModule")
+        usesDynamicAccess = true;
+    }
+    if (isNodeOfType(node, "CallExpression") && !node.optional) {
+      const callee = unwrapExpression(node.callee);
+      if (isNodeOfType(callee, "Identifier") && callee.name === "eval") usesDynamicAccess = true;
+    }
+  });
+  return usesDynamicAccess ? undefined : test;
+};
+
 const collectCaptureDepKeys = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -439,6 +553,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  projectedBooleanMemoTest?: EsTreeNode,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -449,6 +564,7 @@ const collectCaptureDepKeys = (
     ? scopes.ownScopeFor(componentOrHookFunction)
     : null;
   for (const reference of closureCaptures(callback, scopes)) {
+    if (reference.identifier === projectedBooleanMemoTest) continue;
     const symbol = reference.resolvedSymbol;
     if (!symbol) continue;
     if (isRecursiveInitializerCapture(symbol, callback)) continue;
@@ -2434,6 +2550,9 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          hookName === "useMemo"
+            ? findProjectedBooleanMemoTest(node, callbackExpression, depsArgument, context.scopes)
+            : undefined,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

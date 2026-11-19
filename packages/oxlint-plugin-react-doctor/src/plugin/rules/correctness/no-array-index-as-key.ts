@@ -4,6 +4,7 @@ import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-read
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
+import { isStableRepeatedTextTupleMap } from "../../utils/is-stable-repeated-text-tuple-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
@@ -1973,7 +1974,12 @@ export const noArrayIndexAsKey = defineRule({
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
-            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context) ||
+            isStableRepeatedTextTupleMap(
+              indexUse.binding.iteratorCall,
+              context.scopes,
+              () => context.getSourceText?.() ?? context.sourceCode?.getText?.(),
+            ))
         )
           return;
         const indexName = indexUse.identifier.name;

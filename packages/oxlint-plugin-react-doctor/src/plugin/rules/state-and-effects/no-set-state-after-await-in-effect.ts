@@ -21,6 +21,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
+import { isSideEffectFreeRecordGuard } from "../../utils/is-side-effect-free-record-guard.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
@@ -402,8 +403,9 @@ const collectCleanupFunctionsAfterInvocations = (
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
     if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const reachableReturnStatements = new Set(returnsAfterInvocation);
     const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      returnsAfterInvocation.includes(returnStatement),
+      reachableReturnStatements.has(returnStatement),
     );
     const cleanupReturnStatements = new Set(
       cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
@@ -652,6 +654,13 @@ const isSideEffectFreeGuardExpression = (
   if (isNodeOfType(candidate, "Identifier") || isNodeOfType(candidate, "Literal")) {
     return true;
   }
+  if (
+    (isNodeOfType(candidate, "CallExpression") || isNodeOfType(candidate, "LogicalExpression")) &&
+    isSideEffectFreeRecordGuard(candidate, context, (prefix) =>
+      isSideEffectFreeGuardExpression(prefix, context, visitedPredicates),
+    )
+  )
+    return true;
   if (isNodeOfType(candidate, "MemberExpression")) {
     return (
       getStaticPropertyName(candidate) === "current" &&

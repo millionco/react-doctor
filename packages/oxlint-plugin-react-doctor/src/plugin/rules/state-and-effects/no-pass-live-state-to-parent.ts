@@ -18,6 +18,13 @@ import type { Reference } from "eslint-scope";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getNativeTimerCalleeName } from "../../utils/get-native-timer-callee-name.js";
+import { TIMER_CALLEE_NAMES_REQUIRING_CLEANUP } from "../../constants/dom.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
+import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import {
@@ -55,6 +62,74 @@ const hasMutableBindingWrite = (reference: Reference): boolean =>
       (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
     ),
   );
+
+const hasDynamicTimerScope = new WeakMap<RuleContext["scopes"], boolean>();
+
+const allowsNativeTimerProof = (scopes: RuleContext["scopes"]): boolean => {
+  const cached = hasDynamicTimerScope.get(scopes);
+  if (cached !== undefined) return !cached;
+  const mutations = getSymbolMutationInspector(scopes);
+  let dynamic = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (dynamic) return false;
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") && node.name === "eval" && scopes.isGlobalReference(node))
+    ) {
+      dynamic = true;
+      return false;
+    }
+    if (isNodeOfType(node, "MemberExpression") && isWithinAssignmentTarget(node)) {
+      const property = getResolvedStaticPropertyName(node, scopes, {
+        allowConstTemplateLiteral: true,
+      });
+      if (property === null || TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(property)) {
+        dynamic = true;
+        return false;
+      }
+    }
+    if (isNodeOfType(node, "CallExpression") && node.arguments[0]) {
+      const properties = mutations.getMutationPropertyNames(node.arguments[0]);
+      if (
+        properties === null ||
+        (properties &&
+          [...properties].some((property) => TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(property)))
+      ) {
+        dynamic = true;
+        return false;
+      }
+    }
+  });
+  hasDynamicTimerScope.set(scopes, dynamic);
+  return !dynamic;
+};
+
+const isInsideNativeTimerCallback = (
+  reference: Reference,
+  scopes: RuleContext["scopes"],
+): boolean => {
+  const callback = findEnclosingFunction(reference.identifier as unknown as EsTreeNode);
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !isNodeOfType(callback, "FunctionExpression")
+  ) {
+    return false;
+  }
+  const callbackExpression = findTransparentExpressionRoot(callback);
+  const call = callbackExpression.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.arguments[0] !== callbackExpression
+  )
+    return false;
+  const nativeTimer = getNativeTimerCalleeName(call.callee, scopes);
+  return (
+    nativeTimer !== null &&
+    isProvenUnmodifiedGlobalNamespaceReference(call.callee, nativeTimer, scopes, undefined, true) &&
+    allowsNativeTimerProof(scopes)
+  );
+};
 
 const getCallCalleeName = (callExpr: EsTreeNode): string | null => {
   if (!isNodeOfType(callExpr, "CallExpression")) return null;
@@ -248,18 +323,36 @@ const collectUpstreamStateRefs = (
 // without passing it anywhere at runtime) and unrelated local setter calls
 // in the same helper. Function-valued arguments are callbacks the callee
 // may run later, not data handed to it.
+const isReadInCallbackDependencies = (
+  reference: Reference,
+  scopes: RuleContext["scopes"],
+): boolean => {
+  const expression = findTransparentExpressionRoot(reference.identifier as unknown as EsTreeNode);
+  const array = expression.parent;
+  const call = array?.parent;
+  return (
+    isNodeOfType(array, "ArrayExpression") &&
+    isNodeOfType(call, "CallExpression") &&
+    call.arguments[1] === array &&
+    isReactHookCall(call, "useCallback", scopes)
+  );
+};
+
 const collectPropCallbackBoundStateRefs = (
   analysis: ProgramAnalysis,
   ref: Reference,
   isPropCallbackRef: (innerRef: Reference) => boolean,
   scopes: RuleContext["scopes"],
+  canTraverse: (reference: Reference) => boolean,
 ): Reference[] => {
   const stateRefs: Reference[] = [];
-  for (const upRef of getUpstreamRefs(analysis, ref)) {
+  const canReachStateArgument = (reference: Reference): boolean =>
+    canTraverse(reference) && !isReadInCallbackDependencies(reference, scopes);
+  for (const upRef of getUpstreamRefs(analysis, ref, canReachStateArgument)) {
     const callExpr = getCallExpr(upRef);
     if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
     const reachesPropCallback =
-      getEventualCallRefsTo(analysis, upRef, isPropCallbackRef).length > 0;
+      getEventualCallRefsTo(analysis, upRef, isPropCallbackRef, canTraverse).length > 0;
     if (!reachesPropCallback) continue;
     for (const argument of callExpr.arguments ?? []) {
       if (isFunctionLike(argument as EsTreeNode)) continue;
@@ -293,6 +386,7 @@ const getTransparentWrapperPropReference = (
   reference: Reference,
   context: RuleContext,
   discardedHelperFunction: EsTreeNode | null,
+  canTraverse: (reference: Reference) => boolean,
 ): Reference | null => {
   for (const definition of reference.resolved?.defs ?? []) {
     const declarator = definition.node as unknown as EsTreeNode;
@@ -310,7 +404,7 @@ const getTransparentWrapperPropReference = (
       context.scopes,
     );
     if (!callbackArgument) continue;
-    const callbackReferences = getDownstreamRefs(analysis, callbackArgument);
+    const callbackReferences = getDownstreamRefs(analysis, callbackArgument).filter(canTraverse);
     const callbackReference = callbackReferences.find((candidateReference) =>
       isParentNotificationCallbackRef(
         analysis,
@@ -451,6 +545,23 @@ const getDirectLocalEffectHelper = (
   return ancestor === effectFunction ? helperFunction : null;
 };
 
+const hasSynchronousParentCallbackArgument = (
+  analysis: ProgramAnalysis,
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean =>
+  call.arguments.some((argument) => {
+    const expression = stripParenExpression(argument);
+    return (
+      !isFunctionLike(expression) &&
+      getDownstreamRefs(analysis, expression).some(
+        (reference) =>
+          isSynchronous(reference.identifier as unknown as EsTreeNode, expression) &&
+          isParentNotificationCallbackRef(analysis, reference, context, null),
+      )
+    );
+  });
+
 export const noPassLiveStateToParent = defineRule({
   id: "no-pass-live-state-to-parent",
   title: "Live state pushed to parent via effect",
@@ -474,16 +585,24 @@ export const noPassLiveStateToParent = defineRule({
           ? effectFn.body
           : null;
 
+      const canTraverseOutsideTimer = (reference: Reference): boolean =>
+        !isInsideNativeTimerCallback(reference, context.scopes);
       for (const ref of effectFnRefs) {
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        const hasSynchronousArgument = hasSynchronousParentCallbackArgument(
+          analysis,
+          callExpr,
+          context,
+        );
+        const canTraverse = hasSynchronousArgument ? () => true : canTraverseOutsideTimer;
         const directLocalEffectHelper = getDirectLocalEffectHelper(callExpr, effectFn, context);
         const discardedDirectLocalEffectHelper =
           directLocalEffectHelper && !isCallResultCapturedToLocal(callExpr)
             ? directLocalEffectHelper
             : null;
         const callGraphReferences = directLocalEffectHelper
-          ? [ref, ...getDownstreamRefs(analysis, directLocalEffectHelper)]
+          ? [ref, ...getDownstreamRefs(analysis, directLocalEffectHelper).filter(canTraverse)]
           : [ref];
         const resolvedCallbackPropNames = getParentCallbackPropNames({
           analysis,
@@ -523,13 +642,17 @@ export const noPassLiveStateToParent = defineRule({
         // and a fetch-named callback pulls data in rather than mirroring
         // state up.
         const propCallbackRefs = callGraphReferences.flatMap((callGraphReference) =>
-          getEventualCallRefsTo(analysis, callGraphReference, (innerRef) =>
-            isParentNotificationCallbackRef(
-              analysis,
-              innerRef,
-              context,
-              discardedDirectLocalEffectHelper,
-            ),
+          getEventualCallRefsTo(
+            analysis,
+            callGraphReference,
+            (innerRef) =>
+              isParentNotificationCallbackRef(
+                analysis,
+                innerRef,
+                context,
+                discardedDirectLocalEffectHelper,
+              ),
+            canTraverse,
           ),
         );
         const transparentPropReference =
@@ -539,6 +662,7 @@ export const noPassLiveStateToParent = defineRule({
                 ref,
                 context,
                 discardedDirectLocalEffectHelper,
+                canTraverse,
               )
             : null;
         if (
@@ -605,6 +729,7 @@ export const noPassLiveStateToParent = defineRule({
                       discardedDirectLocalEffectHelper,
                     ),
                   context.scopes,
+                  canTraverse,
                 ),
               );
         const handsSetterNamedCallbackData = propCallbackRefs.some(

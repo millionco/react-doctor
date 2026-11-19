@@ -1,5 +1,10 @@
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { isBooleanResultExpression } from "../../utils/is-boolean-result-expression.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { someAst } from "../../utils/some-ast.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -62,6 +67,79 @@ const isNumericName = (name: string): boolean => {
   return false;
 };
 
+const isStringReturnValue = (value: EsTreeNode | null): boolean =>
+  isNodeOfType(value, "TemplateLiteral") ||
+  (isNodeOfType(value, "Literal") && typeof value.value === "string");
+
+const isClosedLocalStringCall = (initializer: EsTreeNode | null, context: RuleContext): boolean => {
+  if (
+    !isNodeOfType(initializer, "CallExpression") ||
+    initializer.optional ||
+    initializer.typeArguments ||
+    !isNodeOfType(initializer.callee, "Identifier")
+  ) {
+    return false;
+  }
+  const { scopes } = context;
+  const binding = scopes.symbolFor(initializer.callee);
+  const formatter = binding?.declarationNode;
+  if (
+    !binding ||
+    !isNodeOfType(formatter, "FunctionDeclaration") ||
+    formatter.async ||
+    formatter.generator ||
+    formatter.typeParameters ||
+    !isNodeOfType(formatter.parent, "Program") ||
+    formatter.parent.sourceType !== "module" ||
+    binding.scope.symbols.some((other) => other !== binding && other.name === binding.name)
+  ) {
+    return false;
+  }
+  const program = formatter.parent;
+  const innerBinding = scopes.ownScopeFor(formatter)?.symbolsByName.get(binding.name);
+  if (
+    !innerBinding ||
+    innerBinding.declarationNode !== formatter ||
+    ![binding, innerBinding].every(
+      (symbol) =>
+        hasCompleteSymbolReferences(symbol, program, scopes) &&
+        symbol.references.every(
+          ({ flag, identifier }) =>
+            flag === "read" &&
+            isNodeOfType(identifier.parent, "CallExpression") &&
+            identifier.parent.callee === identifier &&
+            !identifier.parent.optional,
+        ),
+    )
+  ) {
+    return false;
+  }
+
+  // Direct eval can rebind a module-local function without an AST reference.
+  if (
+    someAst(program, (node) => {
+      if (!isNodeOfType(node, "CallExpression")) return false;
+      const callee = stripParenExpression(node.callee);
+      return isNodeOfType(callee, "Identifier") && callee.name === "eval";
+    })
+  ) {
+    return false;
+  }
+
+  const returns = collectFunctionReturnStatements(formatter).map(({ argument }) => argument);
+  return (
+    returns.some(isStringReturnValue) &&
+    returns.every(
+      (argument) =>
+        !argument ||
+        isStringReturnValue(argument) ||
+        (isNodeOfType(argument, "Identifier") &&
+          argument.name === "undefined" &&
+          scopes.isGlobalReference(argument)),
+    )
+  );
+};
+
 export const renderingConditionalRender = defineRule({
   id: "rendering-conditional-render",
   title: "Number before && renders stray 0",
@@ -87,7 +165,13 @@ export const renderingConditionalRender = defineRule({
       const isNumericIdentifier = isNodeOfType(left, "Identifier") && isNumericName(left.name);
       if (isNumericIdentifier) {
         const symbol = context.scopes.symbolFor(left);
-        if (symbol && isBooleanResultExpression(getDirectConstInitializer(symbol))) return;
+        const initializer = symbol ? getDirectConstInitializer(symbol) : null;
+        if (
+          isBooleanResultExpression(initializer) ||
+          isClosedLocalStringCall(initializer, context)
+        ) {
+          return;
+        }
       }
 
       if (isLengthMemberAccess || isNumericIdentifier) {

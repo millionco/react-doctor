@@ -19,6 +19,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getAssignedExpressionForWrite } from "../../utils/get-assigned-expression-for-write.js";
 import { getStaticKeyName } from "../../utils/get-static-key-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getSymbolTypeAnnotation } from "../../utils/get-symbol-type-annotation.js";
@@ -1868,7 +1869,15 @@ const findRefCurrentInCleanup = (
   const visitCleanup = (node: EsTreeNode): void => {
     if (found) return;
     if (isNodeOfType(node, "MemberExpression")) {
-      const candidateName = getRefCurrentNameFromMemberExpression(node);
+      // The receiver can still read a ref when the terminal `.current` is write-only.
+      const isPlainCurrentWrite =
+        !node.computed &&
+        isNodeOfType(node.property, "Identifier") &&
+        node.property.name === "current" &&
+        getAssignedExpressionForWrite(node) !== null;
+      const candidateName = isPlainCurrentWrite
+        ? null
+        : getRefCurrentNameFromMemberExpression(node);
       if (candidateName) {
         const rootIdentifier = getMemberRootIdentifier(node);
         const symbol = rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;

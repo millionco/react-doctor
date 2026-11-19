@@ -140,3 +140,6 @@ export const isProvenUnmodifiedGlobalNamespaceReference = (
     ? isProvenGlobalObjectReference(expression, scopes)
     : isProvenGlobalNamespaceReference(expression, namespaceName, scopes)) &&
   !namespaceHasMemberMutation(namespaceName, scopes, memberName, considerEscapes);
+
+export const isGlobalNamespaceUnmodified = (name: string, scopes: ScopeAnalysis): boolean =>
+  !namespaceHasMemberMutation(name, scopes, undefined, true);

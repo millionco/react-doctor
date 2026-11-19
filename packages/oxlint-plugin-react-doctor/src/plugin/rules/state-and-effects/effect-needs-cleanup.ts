@@ -4764,6 +4764,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4773,7 +4774,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4822,6 +4823,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4837,7 +4839,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -9915,6 +9917,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9942,7 +9945,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };
@@ -10635,9 +10638,32 @@ const hasGuaranteedRefOwnedUnmountCleanup = (
   return false;
 };
 
+const isUseSyncExternalStoreShimCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (call.optional || !isNodeOfType(callee, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(callee);
+  if (
+    !symbol ||
+    symbol.kind !== "import" ||
+    !isNodeOfType(symbol.declarationNode, "ImportSpecifier") ||
+    !isSymbolReadOnly(symbol)
+  ) {
+    return false;
+  }
+  const imported = resolveImportedApiReference(callee, context.scopes);
+  return (
+    imported?.source === "use-sync-external-store/shim" &&
+    imported.importedName === "useSyncExternalStore"
+  );
+};
+
 const isUseSyncExternalStoreSubscribeFunction = (
   functionNode: EsTreeNode,
   context: RuleContext,
+  includeShim = false,
 ): boolean => {
   const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
   if (!bindingIdentifier) return false;
@@ -10660,7 +10686,10 @@ const isUseSyncExternalStoreSubscribeFunction = (
         isNodeOfType(referenceParent, "CallExpression") &&
         referenceParent.arguments?.[0] === referenceRoot
       ) {
-        return isReactApiCall(referenceParent, "useSyncExternalStore", context.scopes);
+        return (
+          isReactApiCall(referenceParent, "useSyncExternalStore", context.scopes) ||
+          (includeShim && isUseSyncExternalStoreShimCall(referenceParent, context))
+        );
       }
       const aliasDeclaration = referenceParent?.parent;
       return Boolean(
@@ -10960,6 +10989,90 @@ const doesResourceResultEscape = (
   return false;
 };
 
+// Restrict the new shim route to an allocation immediately followed by its
+// returned disposer. Both the release call and its owned handle are direct.
+const hasDirectExternalStoreShimDisposer = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "subscribe" ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    usage.node.optional ||
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const { body: statements } = callback.body;
+  const declaration = statements.at(-2);
+  const returned = statements.at(-1);
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(returned, "ReturnStatement") ||
+    !returned.argument
+  ) {
+    return false;
+  }
+  const declarator = declaration.declarations[0];
+  if (
+    !declarator ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    !declarator.init ||
+    stripParenExpression(declarator.init) !== usage.node
+  ) {
+    return false;
+  }
+  const cleanup = stripParenExpression(returned.argument);
+  if (
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    cleanup.params.length !== 0
+  ) {
+    return false;
+  }
+  let releaseExpression: EsTreeNode = cleanup.body;
+  if (isNodeOfType(releaseExpression, "BlockStatement")) {
+    const [statement] = releaseExpression.body;
+    if (releaseExpression.body.length !== 1 || !isNodeOfType(statement, "ExpressionStatement")) {
+      return false;
+    }
+    releaseExpression = statement.expression;
+  }
+  const release = stripParenExpression(releaseExpression);
+  if (
+    !isNodeOfType(release, "CallExpression") ||
+    release.optional ||
+    release.arguments.length !== 0
+  )
+    return false;
+  const method = stripParenExpression(release.callee);
+  if (
+    !isNodeOfType(method, "MemberExpression") ||
+    method.optional ||
+    method.computed ||
+    !isNodeOfType(method.property, "Identifier") ||
+    method.property.name !== "unsubscribe" ||
+    !isNodeOfType(method.object, "Identifier")
+  ) {
+    return false;
+  }
+  const handle = context.scopes.symbolFor(declarator.id);
+  return (
+    handle !== null &&
+    context.scopes.symbolFor(method.object) === handle &&
+    hasCompleteSymbolReferences(handle, context.scopes.rootScope.node, context.scopes) &&
+    handle.references.every(({ identifier }) => identifier === method.object)
+  );
+};
+
 const findRetainedFunctionLeak = (
   retainedFunction: EsTreeNode,
   context: RuleContext,
@@ -10982,9 +11095,19 @@ const findRetainedFunctionLeak = (
     retainedFunction,
     context,
   );
+  const hasShimStoreOwner =
+    !isExternalStoreSubscribeFunction &&
+    isUseSyncExternalStoreSubscribeFunction(retainedFunction, context, true);
   const hasReleaseForUsage = (usage: SubscribeLikeUsage): boolean => {
     if (isExternalStoreSubscribeFunction) {
       return effectHasCleanupForUsage(retainedFunction, usage, context);
+    }
+    if (
+      hasShimStoreOwner &&
+      hasDirectExternalStoreShimDisposer(retainedFunction, usage, context) &&
+      effectHasCleanupForUsage(retainedFunction, usage, context)
+    ) {
+      return true;
     }
     if (usage.kind !== "timer") {
       const isReactRef = isFunctionUsedAsReactRef(retainedFunction, context);

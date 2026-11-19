@@ -10,6 +10,7 @@ import { getCallbackStatements } from "../../../utils/get-callback-statements.js
 import { functionReturnsMatchingExpression } from "../../../utils/function-returns-matching-expression.js";
 import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../../utils/has-static-property-write-before.js";
+import { isRetainedOptionalStringProp } from "./is-retained-optional-string-prop.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isEarlyExitIfStatement } from "../../../utils/is-early-exit-if-statement.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
@@ -2548,7 +2549,8 @@ const computeEffectStateWriteFacts = (
         !valueEvidence.hasUnknownSource &&
         !valueEvidence.hasDeferredIntroducedValue &&
         !valueEvidence.readsExternalValue &&
-        !hasIndependentWriter;
+        !hasIndependentWriter &&
+        !isRetainedOptionalStringProp(effectNode, callExpression, context);
       facts.push({
         callExpression,
         writeSite: getFrameStateWriteSite(analysis, frame, callExpression),

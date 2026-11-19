@@ -1,6 +1,7 @@
 import { DEFAULT_SHOW_WARNINGS, type ReactDoctorConfig } from "@react-doctor/core";
 import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "../../inspect-options.js";
 import { isCiOrCodingAgentEnvironment } from "./is-ci-environment.js";
+import { isEnvFlagEnabled } from "./is-env-flag-enabled.js";
 import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";
 
@@ -19,6 +20,7 @@ export const resolveInspectOptions = (
 ): ResolvedInspectOptions => {
   const includedTags = inputOptions.includedTags ?? new Set<string>();
   const hasIncludedTags = includedTags.size > 0;
+  const isNoTelemetryEnvSet = isEnvFlagEnabled(process.env.REACT_DOCTOR_NO_TELEMETRY);
   return {
     lint: inputOptions.lint ?? userConfig?.lint ?? true,
     deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
@@ -26,7 +28,7 @@ export const resolveInspectOptions = (
     verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
     outputDirectory: inputOptions.outputDirectory || null,
     scoreOnly: inputOptions.scoreOnly ?? false,
-    noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
+    noScore: inputOptions.noScore ?? userConfig?.noScore ?? isNoTelemetryEnvSet,
     isCi: inputOptions.isCi ?? false,
     isCiOrCodingAgentEnvironment: isCiOrCodingAgentEnvironment(),
     isNonInteractiveEnvironment: isNonInteractiveEnvironment(),

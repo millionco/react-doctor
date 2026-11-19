@@ -34,13 +34,13 @@ const isInsideCallbackArgumentOf = (identifier: EsTreeNode, initializer: EsTreeN
   ) {
     return false;
   }
-  const callbackArguments = (initializer.arguments ?? []).filter((argument) =>
-    isFunctionLike(argument as EsTreeNode),
+  const callbackArguments = new Set<EsTreeNode>(
+    (initializer.arguments ?? []).filter((argument) => isFunctionLike(argument)),
   );
-  if (callbackArguments.length === 0) return false;
+  if (callbackArguments.size === 0) return false;
   let node: EsTreeNode | null | undefined = identifier;
   while (node && node !== initializer) {
-    if ((callbackArguments as ReadonlyArray<unknown>).includes(node)) return true;
+    if (callbackArguments.has(node)) return true;
     node = (node as unknown as { parent?: EsTreeNode | null }).parent;
   }
   return false;
@@ -105,7 +105,19 @@ const descend = (
 // and read-only for every caller, so the def-chain ascent runs once per ref.
 const upstreamRefsCache = new WeakMap<ProgramAnalysis, WeakMap<Reference, Reference[]>>();
 
-export const getUpstreamRefs = (analysis: ProgramAnalysis, ref: Reference): Reference[] => {
+export const getUpstreamRefs = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  canTraverse?: (ref: Reference) => boolean,
+): Reference[] => {
+  if (canTraverse) {
+    const matching: Reference[] = [];
+    ascend(analysis, ref, (upRef) => {
+      if (!canTraverse(upRef)) return false;
+      matching.push(upRef);
+    });
+    return matching;
+  }
   let upstreamByRef = upstreamRefsCache.get(analysis);
   if (!upstreamByRef) {
     upstreamByRef = new WeakMap();
@@ -302,9 +314,11 @@ export const getEventualCallRefsTo = (
   analysis: ProgramAnalysis,
   ref: Reference,
   predicate: (ref: Reference) => boolean,
+  canTraverse?: (ref: Reference) => boolean,
 ): Reference[] => {
   const callExprRefs: Reference[] = [];
   ascend(analysis, ref, (upRef) => {
+    if (canTraverse && !canTraverse(upRef)) return false;
     if (getCallExpr(upRef)) {
       callExprRefs.push(upRef);
     } else {

@@ -36,4 +36,5 @@ export interface BaseRuleContext {
 export interface RuleContext extends Omit<BaseRuleContext, "getFilename"> {
   readonly scopes: ScopeAnalysis;
   readonly cfg: ControlFlowAnalysis;
+  readonly getSourceText?: () => string | undefined;
 }

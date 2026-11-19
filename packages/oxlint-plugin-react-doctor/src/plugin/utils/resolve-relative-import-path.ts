@@ -168,6 +168,22 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
 
+export const resolveUniqueRelativeFileImportPath = (
+  filename: string,
+  source: string,
+): string | null => {
+  const modulePath = path.resolve(path.dirname(filename), source);
+  if (getExistingDirectoryPath(modulePath)) return null;
+
+  let resolved: string | null = null;
+  for (const candidate of new Set([modulePath, ...getModuleFilePathCandidates(modulePath)])) {
+    if (!getExistingFilePath(candidate)) continue;
+    if (resolved !== null) return null;
+    resolved = candidate;
+  }
+  return resolved;
+};
+
 export const resetModuleResolutionCaches = (): void => {
   filesystemEntryByPath.clear();
   packageJsonByPath.clear();

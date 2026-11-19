@@ -24,6 +24,7 @@ import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-externa
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 
 import { isPortalMountStateWrite } from "./utils/is-portal-mount-state-write.js";
+import { isReturnedSubscriptionStateReset } from "./utils/is-returned-subscription-state-reset.js";
 
 const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWriteFact): boolean => {
   if (fact.writesPropDerivedMemberValue) return true;
@@ -140,6 +141,7 @@ export const noAdjustStateOnPropChange = defineRule({
           if (writtenValueHasPropSource && !isEventOwnedPropDerivedAdjustment) {
             continue;
           }
+          if (isReturnedSubscriptionStateReset(analysis, context, node, fact)) continue;
           context.report({
             node: fact.writeSite.node,
             message: "Adjusting state in an effect after a prop changes costs an extra render.",

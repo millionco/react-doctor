@@ -697,6 +697,52 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(messages).toContain("defined outside the component");
   });
 
+  it("does not call a module const function a render-local allocation", () => {
+    const code = `
+      import { useEffect } from 'react';
+      const normalize = (value) => value.trim();
+      export function Panel({ value }) {
+        useEffect(() => { sink(normalize(value)); }, [value, normalize]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a render-local function that shadows a module const", () => {
+    const code = `
+      import { useEffect } from 'react';
+      const normalize = (value) => value.trim();
+      export function Panel({ value }) {
+        const normalize = (input) => input.toUpperCase();
+        useEffect(() => { sink(normalize(value)); }, [value, normalize]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("`normalize` is rebuilt every render");
+  });
+
+  it("keeps reporting a fresh call result from a module const function", () => {
+    const code = `
+      import { useEffect } from 'react';
+      const makeSnapshot = () => ({ current: 1 });
+      export function Panel({ value }) {
+        useEffect(() => { sink(makeSnapshot(), value); }, [makeSnapshot()]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("`makeSnapshot` is rebuilt every render");
+    expect(messages).toContain("stale `value`");
+  });
+
   it("still claims unused for a dep the callback genuinely never reads", () => {
     const code = `
       function MyComponent({ label, unusedProp }) {

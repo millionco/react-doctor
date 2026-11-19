@@ -1,4 +1,5 @@
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import { isInClosedBooleanCallbackDeadBranch } from "../../utils/is-in-closed-boolean-callback-dead-branch.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -2231,6 +2232,7 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isUrlMethodCall(node, "createObjectURL", context.scopes)) return;
         if (!escapeIsLeaky(node, context)) return;
+        if (isInClosedBooleanCallbackDeadBranch(node, context)) return;
         if (boundCreationIsDisposed(node, context)) return;
         if (programRoot) {
           programDisposalIndex ??= buildProgramDisposalIndex(programRoot, context);

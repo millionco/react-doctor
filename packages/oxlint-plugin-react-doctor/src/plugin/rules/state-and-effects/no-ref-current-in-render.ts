@@ -1,3 +1,4 @@
+import { closureCaptures } from "../../semantic/closure-captures.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -8,19 +9,24 @@ import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import {
   resolveReactRefObjectSymbol,
   resolveReactRefSymbol,
 } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
+import { someAst } from "../../utils/some-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -448,8 +454,188 @@ const isInitializationInputIndependent = (
   return isInputIndependent;
 };
 
+const isPassiveRefRecordInitialization = (
+  value: EsTreeNode,
+  writeNode: EsTreeNode,
+  renderOwner: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(value, "ObjectExpression") ||
+    !isNodeOfType(writeNode, "AssignmentExpression") ||
+    writeNode.operator !== "=" ||
+    !isNodeOfType(writeNode.parent, "ExpressionStatement") ||
+    !isNodeOfType(writeNode.parent.parent, "BlockStatement")
+  ) {
+    return false;
+  }
+  const assignmentBlock = writeNode.parent.parent;
+  const writeStart = getRangeStart(writeNode);
+  if (
+    writeStart === null ||
+    someAst(
+      renderOwner,
+      (node) =>
+        isNodeOfType(node, "Identifier") && node.name === "eval" && scopes.isGlobalReference(node),
+    )
+  ) {
+    return false;
+  }
+  const storedValues = new Set<EsTreeNode>();
+  const storedCallbacks = new Set<EsTreeNode>();
+  const callbackSymbols = new Set<SymbolDescriptor>();
+  const setSymbols = new Set<SymbolDescriptor>();
+  const renderScope = scopes.ownScopeFor(renderOwner);
+  let hasStoredRenderRef = false;
+
+  const isPassiveValue = (node: EsTreeNode): boolean => {
+    const expression = stripParenExpression(node);
+    if (isNodeOfType(expression, "ObjectExpression")) {
+      return expression.properties.every((property) => {
+        if (!isNodeOfType(property, "Property") || property.kind !== "init" || property.method) {
+          return false;
+        }
+        const name = getStaticPropertyKeyName(property, { allowComputedString: true });
+        if (name === "__proto__") return false;
+        if (name === null) {
+          const key = stripParenExpression(property.key);
+          if (!property.computed || !isNodeOfType(key, "Identifier")) return false;
+          const keySymbol = scopes.symbolFor(key);
+          const keyInitializer = keySymbol && getDirectConstInitializer(keySymbol);
+          if (
+            keySymbol?.scope !== scopes.rootScope ||
+            !keyInitializer ||
+            !keySymbol.references.every((reference) => reference.flag === "read")
+          ) {
+            return false;
+          }
+          const symbolCall = stripParenExpression(keyInitializer);
+          if (
+            !isNodeOfType(symbolCall, "CallExpression") ||
+            symbolCall.arguments.length !== 0 ||
+            !isProvenUnmodifiedGlobalNamespaceReference(
+              symbolCall.callee,
+              "Symbol",
+              scopes,
+              undefined,
+              true,
+            )
+          ) {
+            return false;
+          }
+        }
+        return isPassiveValue(property.value);
+      });
+    }
+    if (isNodeOfType(expression, "Literal")) return !("regex" in expression);
+    if (!isNodeOfType(expression, "Identifier")) return false;
+    const symbol = scopes.symbolFor(expression);
+    const initializer = symbol && getDirectConstInitializer(symbol);
+    if (
+      !symbol ||
+      !initializer ||
+      !symbol.references.every((reference) => reference.flag === "read")
+    ) {
+      return false;
+    }
+    storedValues.add(expression);
+    const containingProperty = findTransparentExpressionRoot(expression).parent;
+    if (isNodeOfType(containingProperty, "Property") && containingProperty.shorthand) {
+      storedValues.add(containingProperty.key);
+    }
+    if (
+      symbol.scope === renderScope &&
+      resolveReactRefObjectSymbol(expression, scopes) === symbol
+    ) {
+      hasStoredRenderRef = true;
+      return true;
+    }
+    const declaration = symbol.declarationNode.parent;
+    const declarationStart = getRangeStart(symbol.declarationNode);
+    if (
+      declaration?.parent !== assignmentBlock ||
+      declarationStart === null ||
+      declarationStart >= writeStart
+    ) {
+      return false;
+    }
+    const initialValue = stripParenExpression(initializer);
+    if (isNodeOfType(initialValue, "ArrowFunctionExpression")) {
+      if (
+        someAst(
+          initialValue,
+          (node) =>
+            isNodeOfType(node, "ThisExpression") ||
+            isNodeOfType(node, "Super") ||
+            (isNodeOfType(node, "MetaProperty") && node.meta.name === "new") ||
+            (isNodeOfType(node, "Identifier") &&
+              node.name === "arguments" &&
+              scopes.isGlobalReference(node)),
+        )
+      ) {
+        return false;
+      }
+      callbackSymbols.add(symbol);
+      storedCallbacks.add(initialValue);
+      return true;
+    }
+    if (
+      !isNodeOfType(initialValue, "NewExpression") ||
+      initialValue.arguments.length !== 0 ||
+      !isProvenUnmodifiedGlobalNamespaceReference(
+        initialValue.callee,
+        "Set",
+        scopes,
+        undefined,
+        true,
+      )
+    ) {
+      return false;
+    }
+    setSymbols.add(symbol);
+    return true;
+  };
+
+  return (
+    isPassiveValue(value) &&
+    hasStoredRenderRef &&
+    [...callbackSymbols].every((symbol) =>
+      symbol.references.every((reference) => storedValues.has(reference.identifier)),
+    ) &&
+    [...storedCallbacks].every((callback) =>
+      closureCaptures(callback, scopes).every((reference) => {
+        const symbol = reference.resolvedSymbol;
+        if (!symbol || reference.flag !== "read") return false;
+        if (symbol.kind === "import" || isOutsideAllFunctions(symbol)) return true;
+        if (symbol.kind !== "const" || symbol.references.some((use) => use.flag !== "read")) {
+          return false;
+        }
+        if (setSymbols.has(symbol)) return true;
+        if (symbol.scope !== renderScope) return false;
+        if (resolveReactRefObjectSymbol(reference.identifier, scopes) === symbol) return true;
+        const statePair = resolveReactUseStatePair(reference.identifier, scopes);
+        return (
+          statePair?.setterSymbol === symbol &&
+          statePair.declarator.init !== null &&
+          isReactApiCall(statePair.declarator.init, "useState", scopes, {
+            resolveNamedAliases: true,
+          })
+        );
+      }),
+    ) &&
+    [...setSymbols].every((symbol) =>
+      symbol.references.every(
+        (reference) =>
+          storedValues.has(reference.identifier) ||
+          [...storedCallbacks].some((callback) => isAstDescendant(reference.identifier, callback)),
+      ),
+    )
+  );
+};
+
 const isPredictableInitializationValue = (
   node: EsTreeNode,
+  writeNode: EsTreeNode,
   refSymbol: SymbolDescriptor,
   renderOwner: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -458,7 +644,9 @@ const isPredictableInitializationValue = (
   const value = resolveInitializationValue(node, scopes);
   return Boolean(
     value &&
-    isInitializationInputIndependent(value, renderOwner, scopes) &&
+    (isInitializationInputIndependent(value, renderOwner, scopes) ||
+      (value === stripParenExpression(node) &&
+        isPassiveRefRecordInitialization(value, writeNode, renderOwner, scopes))) &&
     !containsNonDeterministicSource(value) &&
     ((isProvablyTruthyInitializationValue(value, scopes) &&
       (!requiresClosedTruthyDomain || !refHasDeclaredType(refSymbol))) ||
@@ -608,6 +796,7 @@ const isPredictableGuardedInitialization = (
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
   isPredictableInitializationValue(
     write.value,
+    write.node,
     refSymbol,
     renderOwner,
     scopes,

@@ -2481,6 +2481,9 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (
             !rootSymbol ||
             !isFunctionValueSymbol(rootSymbol) ||
+            (isNodeOfType(unwrapExpression(reportNode), "Identifier") &&
+              rootSymbol.kind === "const" &&
+              rootSymbol.scope.kind === "module") ||
             isRecursiveInitializerCapture(rootSymbol, callbackToAnalyze ?? callbackArgument)
           ) {
             continue;

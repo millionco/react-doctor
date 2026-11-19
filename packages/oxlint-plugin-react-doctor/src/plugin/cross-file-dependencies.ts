@@ -1,3 +1,4 @@
+import { collectRefCurrentInRenderDependencies } from "./rules/state-and-effects/no-ref-current-in-render.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -559,6 +560,15 @@ const collectReactNativeVersionDependencies: CrossFileDependencyCollector = ({
   resolvePackageVersion(absoluteFilePath, "react-native");
 };
 
+const collectRefCurrentDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  collectRefCurrentInRenderDependencies(program, analyzeScopes(program), absoluteFilePath);
+};
+
 const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   resolveInkVersion(absoluteFilePath);
 };
@@ -637,6 +647,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
+    ["no-ref-current-in-render", collectRefCurrentDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],

@@ -23,9 +23,8 @@ export interface SidecarProbeAnswerResolver {
  *     hashes the cache-partition loop already computed
  *     (`contentHashByRelativePath`); everything else (package.json,
  *     tsconfig, ignored files) is hashed on demand.
- *   - `exists` — the existence class a module-resolution candidate probe
- *     sees: `"file"`, `"dir"`, or `"none"` (missing or an exotic entry —
- *     `statSync` follows symlinks, matching the resolvers).
+ *   - `exists` — the entry kind, including whether it is a symbolic
+ *     link and its target kind. Ordinary paths use `"file"` or `"dir"`.
  *
  * Answers are memoized per scan: the filesystem is frozen for the run, and
  * hot dependency paths (a barrel imported by hundreds of files, the shared

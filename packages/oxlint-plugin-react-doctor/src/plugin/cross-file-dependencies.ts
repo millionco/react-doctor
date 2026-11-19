@@ -44,6 +44,7 @@ import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.
 import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
+import { getImportedWindowListenerReceiverKey } from "./rules/state-and-effects/utils/get-imported-window-listener-receiver-key.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
 
 /**
@@ -573,6 +574,35 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectClassWindowListenerDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  sourceText,
+  staticImports,
+  getProgram,
+}) => {
+  if (
+    !sourceText.includes("addEventListener") &&
+    !sourceText.includes("removeEventListener") &&
+    !sourceText.includes("\\u")
+  )
+    return;
+  if (
+    !staticImports.some(
+      ({ moduleRequest, entries }) =>
+        (moduleRequest.value.startsWith("./") || moduleRequest.value.startsWith("../")) &&
+        entries.some(({ importName }) => importName.kind === "Default"),
+    )
+  )
+    return;
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression"))
+      getImportedWindowListenerReceiverKey(node, absoluteFilePath, scopes);
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -580,6 +610,10 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
       collectInkVersionDependencies,
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
+    [
+      "class-component-missing-component-will-unmount-teardown",
+      collectClassWindowListenerDependencies,
+    ],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],

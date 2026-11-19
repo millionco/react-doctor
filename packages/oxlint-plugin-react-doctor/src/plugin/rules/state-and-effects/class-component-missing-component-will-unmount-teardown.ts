@@ -21,6 +21,11 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import {
+  getImportedWindowListenerReceiverKey,
+  getWindowReceiverListenerCall,
+  IMPORTED_WINDOW_GETTER_KEY_PREFIX,
+} from "./utils/get-imported-window-listener-receiver-key.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -926,11 +931,58 @@ const isStaticallyFalseCaptureValue = (node: EsTreeNode, scopes: ScopeAnalysis):
   );
 };
 
+const importedWindowListenerReleasePrefix =
+  "listener:removeEventListener:" + IMPORTED_WINDOW_GETTER_KEY_PREFIX;
+
+const getWindowListenerReceiverKey = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+  classBody: EsTreeNode | null,
+  filename: string | undefined,
+): string | null => {
+  if (!filename || !isNodeOfType(classBody, "ClassBody")) return null;
+  const handler = call.arguments[1];
+  if (!handler) return null;
+  const memberName = getRootThisMemberName(handler);
+  if (
+    !memberName ||
+    !getClassBodyIndex(classBody).memberFunctionsByName.has(memberName) ||
+    !isStableInstanceMember(memberName, handler, classBody)
+  )
+    return null;
+  const declaredHandler = classBody.body.find(
+    (member) => getClassMemberName(member) === memberName,
+  );
+  if (
+    (!isNodeOfType(declaredHandler, "MethodDefinition") &&
+      !isNodeOfType(declaredHandler, "PropertyDefinition")) ||
+    declaredHandler.static ||
+    declaredHandler.computed ||
+    !isFunctionLike(declaredHandler.value)
+  )
+    return null;
+  const enclosingMember = getEnclosingClassMember(call, classBody);
+  if (
+    !isNodeOfType(enclosingMember, "MethodDefinition") &&
+    !isNodeOfType(enclosingMember, "PropertyDefinition")
+  )
+    return null;
+  let functionNode = findEnclosingFunction(call);
+  while (
+    functionNode !== enclosingMember.value &&
+    isNodeOfType(functionNode, "ArrowFunctionExpression")
+  )
+    functionNode = findEnclosingFunction(functionNode);
+  if (functionNode !== enclosingMember.value) return null;
+  return getImportedWindowListenerReceiverKey(call, filename, scopes);
+};
+
 const listenerIdentityKey = (
   call: EsTreeNodeOfType<"CallExpression">,
   signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  filename?: string,
 ): string | null => {
   const callee = stripParenExpression(call.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
@@ -949,7 +1001,9 @@ const listenerIdentityKey = (
   ) {
     return null;
   }
-  const receiverKey = serializeListenerIdentityPart(callee.object, scopes, classBody);
+  const receiverKey =
+    serializeListenerIdentityPart(callee.object, scopes, classBody) ??
+    getWindowListenerReceiverKey(call, scopes, classBody, filename);
   if (!receiverKey) return null;
   const identityArgumentKeys: string[] = [];
   for (const [argumentIndex, argumentKind] of effectiveSignature.identityArgumentKinds.entries()) {
@@ -1020,8 +1074,9 @@ const listenerReleaseKey = (
   signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  filename?: string,
 ): string | null => {
-  const identityKey = listenerIdentityKey(call, signature, scopes, classBody);
+  const identityKey = listenerIdentityKey(call, signature, scopes, classBody, filename);
   return identityKey ? `listener:${signature.releaseMethodName}:${identityKey}` : null;
 };
 
@@ -1070,11 +1125,12 @@ const listenerRegistrationReleaseKeys = (
   signature: ListenerMethodSignature,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  filename?: string,
 ): ReadonlyArray<string> => {
   const releaseMethodNames = EVENT_EMITTER_RELEASE_METHOD_NAMES.get(methodName) ?? [
     signature.releaseMethodName,
   ];
-  const identityKey = listenerIdentityKey(call, signature, scopes, classBody);
+  const identityKey = listenerIdentityKey(call, signature, scopes, classBody, filename);
   const releaseKeys = identityKey
     ? releaseMethodNames.map((releaseMethodName) => `listener:${releaseMethodName}:${identityKey}`)
     : [];
@@ -1128,13 +1184,14 @@ const cleanupReleaseKeys = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
   classBody: EsTreeNode | null,
+  filename?: string,
 ): ReadonlyArray<string> => {
   const callee = stripParenExpression(call.callee);
   if (isNodeOfType(callee, "MemberExpression")) {
     const methodName = getStaticPropertyName(callee);
     const signature = methodName ? LISTENER_RELEASE_SIGNATURES.get(methodName) : undefined;
     if (signature) {
-      const releaseKey = listenerReleaseKey(call, signature, scopes, classBody);
+      const releaseKey = listenerReleaseKey(call, signature, scopes, classBody, filename);
       if (releaseKey) return [releaseKey];
     }
     if (methodName === "removeAllListeners" && call.arguments.length <= 1) {
@@ -1176,6 +1233,7 @@ const functionHasPotentialSynchronousThrow = (
   classBody: EsTreeNode | null,
   scopes: ScopeAnalysis,
   beforeRangeStart: number,
+  filename?: string,
   visitedFunctions = new Set<EsTreeNode>(),
 ): boolean => {
   if (visitedFunctions.has(functionNode)) return true;
@@ -1188,7 +1246,17 @@ const functionHasPotentialSynchronousThrow = (
       return false;
     }
     if (!isNodeOfType(candidate, "CallExpression")) return;
-    if (cleanupReleaseKeys(candidate, scopes, classBody).length > 0) return;
+    if (cleanupReleaseKeys(candidate, scopes, classBody, filename).length > 0) return;
+    if (filename) {
+      const listener = getWindowReceiverListenerCall(candidate);
+      if (
+        listener &&
+        isNodeOfType(listener.callee, "MemberExpression") &&
+        getStaticPropertyName(listener.callee) === "removeEventListener" &&
+        getWindowListenerReceiverKey(listener, scopes, classBody, filename)
+      )
+        return;
+    }
     if (isProvenNonThrowingBuiltInCall(candidate, scopes)) return;
     const callee = stripParenExpression(candidate.callee);
     if (isNodeOfType(callee, "MemberExpression")) {
@@ -1205,6 +1273,7 @@ const functionHasPotentialSynchronousThrow = (
             classBody,
             scopes,
             Number.POSITIVE_INFINITY,
+            filename,
             new Set(visitedFunctions),
           )
         ) {
@@ -1222,6 +1291,7 @@ const functionHasPotentialSynchronousThrow = (
         classBody,
         scopes,
         Number.POSITIVE_INFINITY,
+        filename,
         new Set(visitedFunctions),
       )
     ) {
@@ -1259,7 +1329,12 @@ const collectMobxDisposalReleaseCalls = (
     const cleanupCallsByKey = new Map<string, EsTreeNode[]>();
     walkClassSynchronousFlow(cleanupFunction, classBody, (cleanupCandidate) => {
       if (!isNodeOfType(cleanupCandidate, "CallExpression")) return;
-      for (const releaseKey of cleanupReleaseKeys(cleanupCandidate, context.scopes, classBody)) {
+      for (const releaseKey of cleanupReleaseKeys(
+        cleanupCandidate,
+        context.scopes,
+        classBody,
+        context.filename,
+      )) {
         const cleanupCalls = cleanupCallsByKey.get(releaseKey) ?? [];
         cleanupCalls.push(cleanupCandidate);
         cleanupCallsByKey.set(releaseKey, cleanupCalls);
@@ -1315,6 +1390,7 @@ const collectCleanupReleaseKeys = (
       classBody,
       context.scopes,
       candidate.range[0],
+      context.filename,
     );
     const callee = stripParenExpression(candidate.callee);
     if (isNodeOfType(callee, "Identifier")) {
@@ -1346,6 +1422,8 @@ const collectCleanupReleaseKeys = (
         visitedFunctions,
       );
       for (const releaseKey of delegatedReleaseKeys) {
+        if (hasThrowingPrelude && releaseKey.startsWith(importedWindowListenerReleasePrefix))
+          continue;
         const releaseCalls = releaseCallsByKey.get(releaseKey) ?? [];
         releaseCalls.push(candidate);
         releaseCallsByKey.set(releaseKey, releaseCalls);
@@ -1353,7 +1431,7 @@ const collectCleanupReleaseKeys = (
     }
     for (const releaseKey of hasThrowingPrelude
       ? []
-      : cleanupReleaseKeys(candidate, context.scopes, classBody)) {
+      : cleanupReleaseKeys(candidate, context.scopes, classBody, context.filename)) {
       const releaseCalls = releaseCallsByKey.get(releaseKey) ?? [];
       releaseCalls.push(candidate);
       releaseCallsByKey.set(releaseKey, releaseCalls);
@@ -1408,11 +1486,17 @@ const collectGuaranteedCleanupReleaseCounts = (
         classBody,
         context.scopes,
         candidate.range[0],
+        context.filename,
       )
     ) {
       return;
     }
-    for (const releaseKey of cleanupReleaseKeys(candidate, context.scopes, classBody)) {
+    for (const releaseKey of cleanupReleaseKeys(
+      candidate,
+      context.scopes,
+      classBody,
+      context.filename,
+    )) {
       const directReleaseCalls = directReleaseCallsByKey.get(releaseKey) ?? [];
       directReleaseCalls.push(candidate);
       directReleaseCallsByKey.set(releaseKey, directReleaseCalls);
@@ -1518,7 +1602,7 @@ const collectMountedListenerCounts = (
     const methodName = getStaticPropertyName(callee);
     const signature = methodName ? LISTENER_REGISTRATION_SIGNATURES.get(methodName) : undefined;
     if (!signature) return;
-    const identityKey = listenerIdentityKey(node, signature, scopes, classBody);
+    const identityKey = listenerIdentityKey(node, signature, scopes, classBody, context.filename);
     if (!identityKey) return;
     const matchingCalls = listenerCalls.get(identityKey) ?? [];
     matchingCalls.push(node);
@@ -1716,9 +1800,18 @@ const isMountHazard = (
       ? scopes.symbolFor(receiverBase)
       : null;
     const isLocalReceiver = receiverSymbol ? localReceiverSymbolIds.has(receiverSymbol.id) : false;
-    const listenerKey = signature ? listenerIdentityKey(node, signature, scopes, classBody) : null;
+    const listenerKey = signature
+      ? listenerIdentityKey(node, signature, scopes, classBody, context.filename)
+      : null;
     const registrationReleaseKeys = signature
-      ? listenerRegistrationReleaseKeys(node, methodName, signature, scopes, classBody)
+      ? listenerRegistrationReleaseKeys(
+          node,
+          methodName,
+          signature,
+          scopes,
+          classBody,
+          context.filename,
+        )
       : [];
     const removalCalls = registrationReleaseKeys.flatMap(
       (releaseKey) => removedListeners.get(releaseKey) ?? [],
@@ -1786,7 +1879,14 @@ const isMountHazard = (
         : 1,
       releaseKeys: signature
         ? [
-            ...listenerRegistrationReleaseKeys(node, methodName, signature, scopes, classBody),
+            ...listenerRegistrationReleaseKeys(
+              node,
+              methodName,
+              signature,
+              scopes,
+              classBody,
+              context.filename,
+            ),
             ...returnedReleaseKeys,
           ]
         : returnedReleaseKeys,

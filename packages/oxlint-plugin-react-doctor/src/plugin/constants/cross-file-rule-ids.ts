@@ -31,6 +31,8 @@ import { INK_RULE_IDS } from "./ink.js";
 //     manifest's react-native version plus `android/gradle.properties` and
 //     static Expo app configs (`is-legacy-arch-react-native-file.ts`) to stay
 //     silent on legacy-architecture apps where `boxShadow` is unsupported.
+//     `no-array-index-as-key` resolves tsconfig/jsconfig aliases for the
+//     React memo import used by its fixed ordinal renderer exception.
 //
 // `cross-file-rule-ids.test.ts` reproduces the transitive import-graph
 // analysis and fails if a rule reaching a cross-file primitive is missing from
@@ -51,6 +53,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-missing-metadata",
   "nextjs-no-img-element",
   "nextjs-no-use-search-params-without-suspense",
+  "no-array-index-as-key",
   "no-dynamic-import-path",
   "no-full-lodash-import",
   "no-hydration-branch-on-browser-global",

@@ -3,6 +3,7 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
+import { isStableEffectCallbackDependency } from "./utils/is-stable-effect-callback-dependency.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -91,7 +92,10 @@ export const noAdjustStateOnPropChange = defineRule({
         if (!dependencyReferences) return;
         const hasPropDependency = dependencyReferences
           .flatMap((reference) =>
-            isState(analysis, reference) ? [] : getUpstreamRefs(analysis, reference),
+            isState(analysis, reference) ||
+            isStableEffectCallbackDependency(reference.identifier, node, context.scopes)
+              ? []
+              : getUpstreamRefs(analysis, reference),
           )
           .some(
             (reference) =>

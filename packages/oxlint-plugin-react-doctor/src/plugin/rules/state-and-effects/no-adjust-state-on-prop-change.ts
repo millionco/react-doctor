@@ -1,5 +1,6 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { isClosedDomQueryAccumulatorWrite } from "./utils/is-closed-dom-query-accumulator-write.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
@@ -104,6 +105,7 @@ export const noAdjustStateOnPropChange = defineRule({
           if (
             fact.isDeferred ||
             isOwnedRequestMapReset(fact.writeSite, context) ||
+            isClosedDomQueryAccumulatorWrite(node.arguments[0], fact.writeSite, context.scopes) ||
             isPortalMountStateWrite(fact.writeSite, context) ||
             isReleasedObjectUrlStateWrite(fact.writeSite, context) ||
             hasDeferredOrExternalEffectWork(analysis, node, context, fact.writeSite)

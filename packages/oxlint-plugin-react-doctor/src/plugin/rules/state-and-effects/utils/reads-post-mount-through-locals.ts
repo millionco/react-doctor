@@ -17,6 +17,7 @@ interface ReadsPostMountOptions {
   // `ref.current.scrollWidth` still matches through its layout member.
   ignoreBareRefCurrent?: boolean;
   scopes?: ScopeAnalysis;
+  additionalRead?: (node: EsTreeNode, walkedRoot: EsTreeNode) => boolean;
 }
 
 const isBareRefCurrentRead = (node: EsTreeNode): boolean =>
@@ -84,7 +85,7 @@ export const readsPostMountValueThroughLocals = (
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (found) return false;
-    if (matchesPostMountRead(child, options)) {
+    if (matchesPostMountRead(child, options) || options.additionalRead?.(child, root)) {
       found = true;
       return false;
     }

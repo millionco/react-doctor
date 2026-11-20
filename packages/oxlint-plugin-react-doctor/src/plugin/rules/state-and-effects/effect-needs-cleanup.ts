@@ -11,6 +11,9 @@ import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callbac
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
 import { getNativeTimerCalleeName } from "../../utils/get-native-timer-callee-name.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
@@ -4764,6 +4767,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4773,7 +4777,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4822,6 +4826,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4837,7 +4842,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -8600,6 +8605,144 @@ const hasSafeForEachProjectionCleanup = (
   );
 };
 
+const GLOBAL_TIMEOUT_RECEIVER_NAMES = new Set(["global", "globalThis", "self", "window"]);
+const GLOBAL_TIMEOUT_METHOD_NAMES = new Set(["setTimeout", "clearTimeout"]);
+const directGlobalTimeoutAccessByScopes = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasOnlyDirectGlobalTimeoutAccess = (scopes: ScopeAnalysis): boolean => {
+  const cached = directGlobalTimeoutAccessByScopes.get(scopes);
+  if (cached !== undefined) return cached;
+  let hasUnresolvedAccess = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasUnresolvedAccess) return false;
+    if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
+    if (node.name === "eval" || node.name === "Function") {
+      hasUnresolvedAccess = true;
+      return false;
+    }
+    let callee = findTransparentExpressionRoot(node);
+    if (GLOBAL_TIMEOUT_RECEIVER_NAMES.has(node.name)) {
+      const member = callee.parent;
+      if (
+        !isNodeOfType(member, "MemberExpression") ||
+        member.object !== callee ||
+        !GLOBAL_TIMEOUT_METHOD_NAMES.has(getStaticPropertyName(member) ?? "")
+      ) {
+        hasUnresolvedAccess = true;
+        return false;
+      }
+      callee = findTransparentExpressionRoot(member);
+    } else if (!GLOBAL_TIMEOUT_METHOD_NAMES.has(node.name)) {
+      return;
+    }
+    const call = callee.parent;
+    if (!isNodeOfType(call, "CallExpression") || call.callee !== callee) {
+      hasUnresolvedAccess = true;
+      return false;
+    }
+  });
+  directGlobalTimeoutAccessByScopes.set(scopes, !hasUnresolvedAccess);
+  return !hasUnresolvedAccess;
+};
+
+const resolveLocalNullishTimeoutCleanupHandle = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): EsTreeNode | null => {
+  if (
+    usage.registrationVerbName !== "setTimeout" ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    call.optional ||
+    call.arguments.length !== 1
+  )
+    return null;
+  const expression = stripParenExpression(call.arguments[0]);
+  if (!isNodeOfType(expression, "LogicalExpression") || expression.operator !== "??") return null;
+  const handle = stripParenExpression(expression.left);
+  const fallback = stripParenExpression(expression.right);
+  if (
+    !isNodeOfType(handle, "Identifier") ||
+    !isNodeOfType(fallback, "Identifier") ||
+    fallback.name !== "undefined" ||
+    !context.scopes.isGlobalReference(fallback)
+  )
+    return null;
+
+  const cleanup = findEnclosingFunction(call);
+  if (
+    !cleanup ||
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    !isReturnedEffectCleanupFunction(cleanup, context)
+  )
+    return null;
+  const callRoot = findTransparentExpressionRoot(call);
+  if (
+    cleanup.body !== callRoot &&
+    (!isNodeOfType(cleanup.body, "BlockStatement") ||
+      cleanup.body.body[0] !== callRoot.parent ||
+      !isNodeOfType(callRoot.parent, "ExpressionStatement"))
+  )
+    return null;
+
+  const allocation = findTransparentExpressionRoot(usage.node);
+  const declarator = allocation.parent;
+  const declaration = declarator?.parent;
+  const effect = findEnclosingFunction(cleanup);
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== allocation ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    !effect ||
+    !isFunctionLike(effect) ||
+    !isNodeOfType(effect.body, "BlockStatement")
+  )
+    return null;
+  const effectStatements: ReadonlyArray<EsTreeNode> = effect.body.body;
+  const allocationIndex = effectStatements.indexOf(declaration);
+  const returned = effectStatements[allocationIndex + 1];
+  const symbol = context.scopes.symbolFor(handle);
+  if (
+    allocationIndex < 0 ||
+    !isNodeOfType(returned, "ReturnStatement") ||
+    !returned.argument ||
+    stripParenExpression(returned.argument) !== cleanup ||
+    !symbol ||
+    symbol.bindingIdentifier !== declarator.id ||
+    getDirectUnreassignedInitializer(symbol) !== allocation ||
+    symbol.references.length !== 1 ||
+    symbol.references[0].identifier !== handle ||
+    !hasCompleteSymbolReferences(symbol, context.scopes.rootScope.node, context.scopes)
+  )
+    return null;
+  const { scopes } = context;
+  if (
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      usage.node.callee,
+      "setTimeout",
+      scopes,
+      undefined,
+      true,
+    ) ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      call.callee,
+      "clearTimeout",
+      scopes,
+      undefined,
+      true,
+    ) ||
+    !hasOnlyDirectGlobalTimeoutAccess(scopes)
+  )
+    return null;
+
+  // A retained native timer handle always survives the nullish fallback unchanged.
+  return handle;
+};
+
 const doesReleaseCallMatchUsage = (
   node: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -8620,8 +8763,10 @@ const doesReleaseCallMatchUsage = (
     ) {
       return false;
     }
+    const cleanupArgument =
+      resolveLocalNullishTimeoutCleanupHandle(callNode, usage, context) ?? callNode.arguments?.[0];
     const cleanupArgumentKey = resolveExpressionKey(
-      callNode.arguments?.[0],
+      cleanupArgument,
       context,
       new Set(),
       parameterSubstitutions,
@@ -8630,7 +8775,6 @@ const doesReleaseCallMatchUsage = (
       return true;
     }
     if (parameterSubstitutions.size > 0 && cleanupArgumentKey !== null) return false;
-    const cleanupArgument = callNode.arguments?.[0];
     if (cleanupArgument && isAstNode(cleanupArgument)) {
       const cleanupStorageKeys = resolveRetainedStorageKeysForExpression(
         cleanupArgument,
@@ -8642,7 +8786,7 @@ const doesReleaseCallMatchUsage = (
     const collectionKey = findContainingCollectionKey(usage.node, context);
     return (
       collectionKey !== null &&
-      collectionKey === resolveIteratorCollectionKey(callNode.arguments?.[0], context)
+      collectionKey === resolveIteratorCollectionKey(cleanupArgument, context)
     );
   }
 
@@ -9915,6 +10059,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9942,7 +10087,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

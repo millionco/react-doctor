@@ -1840,18 +1840,164 @@ const refOwnershipValuesMatch = (
   return Boolean(firstRef && resolveReactRefSymbol(second, scopes)?.id === firstRef.id);
 };
 
+const AMBIENT_REALM_NAMES = new Set([
+  "document",
+  "eval",
+  "frames",
+  "Function",
+  "global",
+  "globalThis",
+  "Object",
+  "opener",
+  "parent",
+  "Reflect",
+  "self",
+  "setInterval",
+  "setTimeout",
+  "top",
+  "window",
+]);
+const REALM_ACCESS_PROPERTIES = new Set([
+  "constructor",
+  "contentDocument",
+  "contentWindow",
+  "defaultView",
+  "document",
+  "eval",
+  "Function",
+  "ownerDocument",
+  "setInterval",
+  "setTimeout",
+  "view",
+  "window",
+]);
+const directObjectUrlUseByScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const usesObjectUrlMethodsDirectly = (scopes: ScopeAnalysis): boolean => {
+  const cached = directObjectUrlUseByScope.get(scopes);
+  if (cached !== undefined) return cached;
+  let onlyDirectUses = true;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (!onlyDirectUses) return false;
+    if (
+      isNodeOfType(node, "MemberExpression") ||
+      (isNodeOfType(node, "Property") && isNodeOfType(node.parent, "ObjectPattern"))
+    ) {
+      const key = isNodeOfType(node, "MemberExpression") ? node.property : node.key;
+      const property = isNodeOfType(node, "MemberExpression")
+        ? getStaticPropertyName(node)
+        : getStaticPropertyKeyName(node, { allowComputedString: true });
+      if (
+        (node.computed && !isNodeOfType(stripParenExpression(key), "Literal")) ||
+        property === "URL" ||
+        (property && REALM_ACCESS_PROPERTIES.has(property))
+      ) {
+        onlyDirectUses = false;
+      }
+      return;
+    }
+    if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
+    if (AMBIENT_REALM_NAMES.has(node.name)) {
+      onlyDirectUses = false;
+      return false;
+    }
+    if (node.name !== "URL") return;
+    const receiver = findTransparentExpressionRoot(node);
+    const member = receiver.parent;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== receiver ||
+      member.computed
+    ) {
+      onlyDirectUses = false;
+      return false;
+    }
+    const method = getStaticPropertyName(member);
+    const operation = findTransparentExpressionRoot(member).parent;
+    onlyDirectUses =
+      ((method === "createObjectURL" || method === "revokeObjectURL") &&
+        isNodeOfType(operation, "CallExpression") &&
+        stripParenExpression(operation.callee) === member) ||
+      (method === "revokeObjectURL" &&
+        isNodeOfType(operation, "UnaryExpression") &&
+        operation.operator === "typeof");
+  });
+  directObjectUrlUseByScope.set(scopes, onlyDirectUses);
+  return onlyDirectUses;
+};
+
+const isNativeObjectUrlRevokerAvailability = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const test = stripParenExpression(node);
+  if (
+    !isNodeOfType(test, "BinaryExpression") ||
+    test.operator !== "===" ||
+    !isNodeOfType(test.right, "Literal") ||
+    test.right.value !== "function"
+  ) {
+    return false;
+  }
+  const typeCheck = stripParenExpression(test.left);
+  if (!isNodeOfType(typeCheck, "UnaryExpression") || typeCheck.operator !== "typeof") {
+    return false;
+  }
+  const method = stripParenExpression(typeCheck.argument);
+  if (
+    !isNodeOfType(method, "MemberExpression") ||
+    method.computed ||
+    !isNodeOfType(method.object, "Identifier") ||
+    method.object.name !== "URL" ||
+    getStaticPropertyName(method) !== "revokeObjectURL"
+  ) {
+    return false;
+  }
+  // The File API exposes creation and revocation on the same native URL object.
+  return (
+    isProvenUnmodifiedGlobalNamespaceReference(
+      method.object,
+      "URL",
+      scopes,
+      "createObjectURL",
+      true,
+    ) &&
+    isProvenUnmodifiedGlobalNamespaceReference(
+      method.object,
+      "URL",
+      scopes,
+      "revokeObjectURL",
+      true,
+    ) &&
+    usesObjectUrlMethodsDirectly(scopes)
+  );
+};
+
 const refValueIsRevoked = (
   statement: EsTreeNode,
   reference: EsTreeNode,
   nextValue: EsTreeNode | null,
   scopes: ScopeAnalysis,
+  allowNativeAvailabilityCheck = false,
 ): boolean => {
   if (isNodeOfType(statement, "BlockStatement"))
     return Boolean(
-      statement.body[0] && refValueIsRevoked(statement.body[0], reference, nextValue, scopes),
+      statement.body[0] &&
+      refValueIsRevoked(
+        statement.body[0],
+        reference,
+        nextValue,
+        scopes,
+        allowNativeAvailabilityCheck,
+      ),
     );
   if (isNodeOfType(statement, "IfStatement")) {
-    const test = stripParenExpression(statement.test);
+    let test = stripParenExpression(statement.test);
+    if (
+      isNodeOfType(test, "LogicalExpression") &&
+      test.operator === "&&" &&
+      allowNativeAvailabilityCheck &&
+      isNativeObjectUrlRevokerAvailability(test.right, scopes)
+    ) {
+      test = stripParenExpression(test.left);
+    }
     const guard =
       isNodeOfType(test, "LogicalExpression") && test.operator === "&&" ? test.left : test;
     if (!refOwnershipValuesMatch(guard, reference, scopes)) return false;
@@ -1866,7 +2012,13 @@ const refValueIsRevoked = (
       )
         return false;
     }
-    return refValueIsRevoked(statement.consequent, reference, nextValue, scopes);
+    return refValueIsRevoked(
+      statement.consequent,
+      reference,
+      nextValue,
+      scopes,
+      allowNativeAvailabilityCheck,
+    );
   }
   return (
     isNodeOfType(statement, "ExpressionStatement") &&
@@ -1885,6 +2037,7 @@ const refStoreHasReplacementCleanup = (
   nextValue: EsTreeNode,
   isArray: boolean,
   scopes: ScopeAnalysis,
+  allowNativeAvailabilityCheck = false,
 ): boolean => {
   const statement = store.parent;
   const block = statement?.parent;
@@ -1893,7 +2046,8 @@ const refStoreHasReplacementCleanup = (
   const position = block.body.findIndex((child) => child === statement);
   const previous = block.body[position - 1];
   if (!previous) return false;
-  if (!isArray) return refValueIsRevoked(previous, reference, nextValue, scopes);
+  if (!isArray)
+    return refValueIsRevoked(previous, reference, nextValue, scopes, allowNativeAvailabilityCheck);
   const declaration = block.body[position - 2];
   if (
     !isNodeOfType(declaration, "VariableDeclaration") ||
@@ -1913,12 +2067,53 @@ const refStoreHasReplacementCleanup = (
   );
 };
 
+const getTopLevelReactEffectStatement = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"ExpressionStatement"> | null => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "Identifier") || !isReactApiCall(call, "useEffect", scopes)) {
+    return null;
+  }
+  const specifier = scopes.symbolFor(callee)?.declarationNode;
+  const declaration = specifier?.parent;
+  if (
+    !isNodeOfType(specifier, "ImportSpecifier") ||
+    specifier.importKind === "type" ||
+    !isNodeOfType(declaration, "ImportDeclaration") ||
+    declaration.importKind === "type" ||
+    declaration.source.value !== "react"
+  ) {
+    return null;
+  }
+  const statement = findTransparentExpressionRoot(call).parent;
+  const owner = findEnclosingFunction(call);
+  return isFunctionLike(owner) &&
+    isNodeOfType(statement, "ExpressionStatement") &&
+    statement.parent === owner.body
+    ? statement
+    : null;
+};
+
+const getCreationEffectStatement = (
+  createCall: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNodeOfType<"ExpressionStatement"> | null => {
+  const callback = findEnclosingFunction(createCall);
+  if (!isFunctionLike(callback) || callback.async || callback.generator) return null;
+  const callbackRoot = findTransparentExpressionRoot(callback);
+  const call = callbackRoot.parent;
+  if (!isNodeOfType(call, "CallExpression") || call.arguments[0] !== callbackRoot) return null;
+  return getTopLevelReactEffectStatement(call, scopes);
+};
+
 const refStoreHasUnmountCleanup = (
   reference: EsTreeNode,
   store: EsTreeNode,
   isArray: boolean,
   index: ProgramDisposalIndex,
   context: RuleContext,
+  creationEffect?: EsTreeNodeOfType<"ExpressionStatement">,
 ): boolean => {
   const ref = resolveReactRefSymbol(reference, context.scopes);
   if (!ref || ref.references.some((usage) => usage.flag !== "read")) return false;
@@ -1955,6 +2150,17 @@ const refStoreHasUnmountCleanup = (
       findEnclosingFunction(call) !== findEnclosingFunction(initializer)
     )
       return [];
+    if (creationEffect) {
+      const registration = getTopLevelReactEffectStatement(call, context.scopes);
+      if (
+        !registration ||
+        stripParenExpression(call.arguments[0] as EsTreeNode) !== effect ||
+        registration.parent !== creationEffect.parent ||
+        registration.range[0] >= creationEffect.range[0]
+      ) {
+        return [];
+      }
+    }
     const returned =
       isNodeOfType(effect.body, "BlockStatement") &&
       effect.body.body.length === 1 &&
@@ -1966,7 +2172,9 @@ const refStoreHasUnmountCleanup = (
     const first = isNodeOfType(body, "BlockStatement") ? body.body[0] : body;
     if (!first) return [];
     if (!isArray)
-      return refValueIsRevoked(first, reference, null, context.scopes) ? [returned] : [];
+      return refValueIsRevoked(first, reference, null, context.scopes, Boolean(creationEffect))
+        ? [returned]
+        : [];
     const expression = isNodeOfType(first, "ExpressionStatement") ? first.expression : first;
     if (
       !isNodeOfType(expression, "CallExpression") ||
@@ -2000,7 +2208,14 @@ const refStoreHasUnmountCleanup = (
       if (consumer.operator !== "=") return false;
       if (
         !isArray &&
-        refStoreHasReplacementCleanup(consumer, member, consumer.right, false, context.scopes)
+        refStoreHasReplacementCleanup(
+          consumer,
+          member,
+          consumer.right,
+          false,
+          context.scopes,
+          Boolean(creationEffect),
+        )
       )
         return true;
       const previousStatement = consumer.parent?.parent;
@@ -2008,7 +2223,13 @@ const refStoreHasUnmountCleanup = (
         !isAstDescendant(consumer, cleanup) &&
         !(
           isNodeOfType(previousStatement, "BlockStatement") &&
-          refValueIsRevoked(previousStatement, member, null, context.scopes)
+          refValueIsRevoked(
+            previousStatement,
+            member,
+            null,
+            context.scopes,
+            Boolean(creationEffect),
+          )
         )
       )
         return false;
@@ -2130,10 +2351,20 @@ const refOwnedCreationIsDisposed = (
       refOwnershipValuesMatch(store.arguments[0], nextValue, context.scopes)
     )
       reference = store.callee.object;
-    return Boolean(
-      reference &&
+    if (!reference) return false;
+    if (
       refStoreHasReplacementCleanup(store, reference, nextValue, isArray, context.scopes) &&
-      refStoreHasUnmountCleanup(reference, store, isArray, index, context),
+      refStoreHasUnmountCleanup(reference, store, isArray, index, context)
+    ) {
+      return true;
+    }
+
+    // Register the disposer before the allocation effect can throw after storing the URL.
+    const creationEffect = isArray ? null : getCreationEffectStatement(createCall, context.scopes);
+    return Boolean(
+      creationEffect &&
+      refStoreHasReplacementCleanup(store, reference, nextValue, false, context.scopes, true) &&
+      refStoreHasUnmountCleanup(reference, store, false, index, context, creationEffect),
     );
   });
 };

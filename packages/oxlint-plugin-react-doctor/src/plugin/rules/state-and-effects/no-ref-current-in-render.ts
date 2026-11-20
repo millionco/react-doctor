@@ -1,3 +1,4 @@
+import { isProvenImportedQueryClientRef } from "../../utils/is-proven-imported-query-client-ref.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -509,6 +510,7 @@ const hasNoCoExecutableCompetingWrite = (
   renderOwner: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  requiresSingleWrite = false,
 ): boolean => {
   const writeConstraints = getBranchConstraints(write.node, renderOwner);
   const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
@@ -541,6 +543,7 @@ const hasNoCoExecutableCompetingWrite = (
       ? resolveInitializationValue(assignedValue, scopes)
       : null;
     const isDeferredTruthyWrite =
+      !requiresSingleWrite &&
       deferredExecutionBoundary !== null &&
       deferredExecutionBoundary !== renderOwner &&
       !synchronouslyInvokedFunctions.has(deferredExecutionBoundary) &&
@@ -554,7 +557,8 @@ const hasNoCoExecutableCompetingWrite = (
         competingWrite?.refSymbol.id === refSymbol.id ||
         (writtenExpression && expressionContainsRefCurrent(writtenExpression, refSymbol, scopes))
       ) ||
-      !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner))
+      (!requiresSingleWrite &&
+        !canExecuteTogether(writeConstraints, getBranchConstraints(child, renderOwner)))
     ) {
       return;
     }
@@ -603,26 +607,32 @@ const isPredictableGuardedInitialization = (
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
+  filename: string | undefined,
 ): boolean =>
   write.value !== null &&
   refHasEmptySentinelInitializer(refSymbol, scopes) &&
-  isPredictableInitializationValue(
+  !hasRepeatedExecutionAncestor(write.node, guardedBranch) &&
+  (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
+  hasNoPriorCoExecutableWrite(write, renderOwner, refSymbol, scopes) &&
+  hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes) &&
+  refDoesNotEscape(renderOwner, refSymbol, scopes) &&
+  (isPredictableInitializationValue(
     write.value,
     refSymbol,
     renderOwner,
     scopes,
     requiresClosedTruthyDomain,
-  ) &&
-  !hasRepeatedExecutionAncestor(write.node, guardedBranch) &&
-  (guardedBranch === renderOwner || !hasRepeatedExecutionAncestor(guardedBranch, renderOwner)) &&
-  hasNoPriorCoExecutableWrite(write, renderOwner, refSymbol, scopes) &&
-  hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes) &&
-  refDoesNotEscape(renderOwner, refSymbol, scopes);
+  ) ||
+    (isNodeOfType(write.node, "AssignmentExpression") &&
+      findDeferredExecutionBoundary(refSymbol.bindingIdentifier) === renderOwner &&
+      hasNoCoExecutableCompetingWrite(write, renderOwner, refSymbol, scopes, true) &&
+      isProvenImportedQueryClientRef(write.value, refSymbol, scopes, filename)));
 
 const isDocumentedLazyInitialization = (
   write: RefCurrentWrite,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
+  filename: string | undefined,
 ): boolean => {
   const renderOwner = findRenderPhaseComponentOrHook(write.node, scopes);
   if (!renderOwner) return false;
@@ -634,6 +644,7 @@ const isDocumentedLazyInitialization = (
       refSymbol,
       scopes,
       write.operator === "||=",
+      filename,
     );
   }
   if (write.operator !== "=") return false;
@@ -655,6 +666,7 @@ const isDocumentedLazyInitialization = (
         refSymbol,
         scopes,
         true,
+        filename,
       )
     ) {
       return true;
@@ -681,6 +693,7 @@ const isDocumentedLazyInitialization = (
           refSymbol,
           scopes,
           false,
+          filename,
         )
       )
         return true;
@@ -689,6 +702,18 @@ const isDocumentedLazyInitialization = (
     ancestor = descendant.parent;
   }
   return false;
+};
+
+// Replay the same import and project probes under the sidecar recorder.
+export const collectRefCurrentInRenderDependencies = (
+  program: EsTreeNode,
+  scopes: ScopeAnalysis,
+  filename: string,
+): void => {
+  walkAst(program, (node) => {
+    const write = getRefCurrentWrite(node, scopes);
+    if (write) isDocumentedLazyInitialization(write, write.refSymbol, scopes, filename);
+  });
 };
 
 export const noRefCurrentInRender = defineRule({
@@ -709,7 +734,8 @@ export const noRefCurrentInRender = defineRule({
     const reportWrite = (node: EsTreeNode) => {
       const write = getRefCurrentWrite(node, context.scopes);
       if (!write || !findRenderPhaseComponentOrHook(node, context.scopes)) return;
-      if (isDocumentedLazyInitialization(write, write.refSymbol, context.scopes)) return;
+      if (isDocumentedLazyInitialization(write, write.refSymbol, context.scopes, context.filename))
+        return;
       report(isNodeOfType(node, "AssignmentExpression") ? node.left : node);
     };
 

@@ -7,6 +7,7 @@ import {
   SIDECAR_LINT_CACHE_FILENAME,
   SIDECAR_LINT_CACHE_SCHEMA_VERSION,
 } from "../src/constants.js";
+import { createSidecarProbeAnswerResolver } from "../src/runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "../src/runners/oxlint/sidecar-lint-cache.js";
 import type {
   SidecarDependencyProbe,
@@ -90,6 +91,59 @@ describe("createSidecarLintCache", () => {
     expect(replayed?.diagnostics).toHaveLength(1);
     expect(reader.lookup("src/clean.tsx hashB")?.diagnostics).toEqual([]);
     expect(reader.lookup("src/never-seen.tsx hashZ")).toBeNull();
+  });
+
+  it.each([
+    { transition: "an ordinary package directory becomes a link", startsAsLink: false },
+    { transition: "a package directory link is retargeted", startsAsLink: true },
+  ])("invalidates cache when $transition with identical manifest bytes", ({ startsAsLink }) => {
+    const rootDirectory = makeCacheDir();
+    const packagePath = "node_modules/example";
+    const manifestPath = `${packagePath}/package.json`;
+    const packageDirectory = path.join(rootDirectory, packagePath);
+    const originalPackage = startsAsLink
+      ? path.join(rootDirectory, "original-example")
+      : packageDirectory;
+    const relocatedPackage = path.join(rootDirectory, "relocated-example");
+    const manifest = JSON.stringify({ name: "example" });
+    for (const directory of [originalPackage, relocatedPackage]) {
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, "package.json"), manifest);
+    }
+    if (startsAsLink) {
+      fs.mkdirSync(path.dirname(packageDirectory), { recursive: true });
+      fs.symlinkSync(originalPackage, packageDirectory, "junction");
+    }
+    const createAnswers = () =>
+      createSidecarProbeAnswerResolver({ rootDirectory, contentHashByRelativePath: new Map() });
+    const before = createAnswers();
+    const manifestHash = before.answerFor("content", manifestPath);
+    const writer = createSidecarLintCache(rootDirectory, "ordinary-package");
+    const key = "src/app.tsx hashA";
+    writer.store(key, {
+      probeIds: [
+        writer.internProbe("content", manifestPath, manifestHash),
+        writer.internProbe("exists", packagePath, before.answerFor("exists", packagePath)),
+      ],
+      diagnostics: [],
+    });
+    writer.persist();
+
+    const baseline = createSidecarLintCache(rootDirectory, "ordinary-package");
+    expect(baseline.isReplayable(baseline.lookup(key)!, createAnswers().answerFor)).toBe(true);
+
+    if (startsAsLink) {
+      fs.unlinkSync(packageDirectory);
+    } else {
+      fs.rmSync(packageDirectory, { recursive: true });
+    }
+    fs.symlinkSync(relocatedPackage, packageDirectory, "junction");
+
+    const after = createAnswers();
+    const reader = createSidecarLintCache(rootDirectory, "ordinary-package");
+    expect(manifestHash).not.toBe("absent");
+    expect(after.answerFor("content", manifestPath)).toBe(manifestHash);
+    expect(reader.isReplayable(reader.lookup(key)!, after.answerFor)).toBe(false);
   });
 
   it("interns one record per distinct (kind, path, answer) across entries", () => {

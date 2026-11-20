@@ -7,6 +7,7 @@ import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { getNextPageJsxImports } from "../../utils/get-next-page-jsx-imports.js";
 import { functionIsReferencedAsJsxElement } from "../../utils/function-is-referenced-as-jsx-element.js";
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { functionHasReactElementReturnType } from "../../utils/function-has-react-element-return-type.js";
@@ -660,6 +661,7 @@ export const onlyExportComponents = defineRule({
     const legacyRenderNames = new Set<string>();
     const reactDomNamespaceNames = new Set<string>();
     const rootNames = new Set<string>();
+    let nextPageJsxImports: ReadonlySet<string> | undefined;
     let hasRootMount = false;
     let hasReactImport = false;
     const isCreateRootCall = (node: EsTreeNode): boolean => {
@@ -1119,7 +1121,18 @@ export const onlyExportComponents = defineRule({
                   !shouldUseCuratedBehavior ||
                     functionHasReactRenderSemantics(declaration, state) ||
                     localComponentNames.has(declaration.id.name) ||
-                    classifiedExport.kind === "allowed"
+                    classifiedExport.kind === "allowed" ||
+                    (fastRefreshStatus.runtime === "next" &&
+                      classifiedExport.kind === "react-component" &&
+                      getFunctionBindingSymbols(declaration, state.scopes).some((symbol) =>
+                        symbol.references.every((reference) => reference.flag === "read"),
+                      ) &&
+                      state.scopes
+                        .symbolFor(declaration.id)
+                        ?.references.every((reference) => reference.flag === "read") &&
+                      (nextPageJsxImports ??= getNextPageJsxImports(filename)).has(
+                        declaration.id.name,
+                      ))
                     ? classifiedExport
                     : { kind: "non-component", reportNode: declaration.id },
                 );

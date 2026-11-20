@@ -1,3 +1,7 @@
+import {
+  isClosedReactMediaEffect,
+  isPlainMediaListenerCall,
+} from "./utils/is-closed-branch-media-effect.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -7,7 +11,10 @@ import { isStableLogicalReceiver } from "../../utils/is-stable-logical-receiver.
 import { hasStableLogicalDataProperty } from "../../utils/has-stable-logical-data-property.js";
 import { hasLogicalReceiverOrigin } from "../../utils/has-logical-receiver-origin.js";
 import { hasDeclaredCallableListenerResult } from "../../utils/has-declared-callable-listener-result.js";
-import { isClosedLocalMatchMediaCall } from "./utils/is-closed-local-match-media-call.js";
+import {
+  isClosedDirectMatchMediaCall,
+  isClosedLocalMatchMediaCall,
+} from "./utils/is-closed-local-match-media-call.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -7377,6 +7384,127 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
+const doesBranchAssignedMediaCleanupReleaseUsage = (
+  callback: EsTreeNode,
+  returnStatement: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isClosedReactMediaEffect(callback, context.scopes) ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    !isNodeOfType(returnStatement, "ReturnStatement") ||
+    !returnStatement.argument ||
+    usage.kind !== "subscribe" ||
+    !["addEventListener", "addListener"].includes(usage.registrationVerbName ?? "") ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    findEnclosingFunction(usage.node) !== callback
+  )
+    return false;
+  const statements = callback.body.body;
+  const branch = statements.at(-2);
+  const returned = stripParenExpression(returnStatement.argument);
+  if (
+    statements.at(-1) !== returnStatement ||
+    !isNodeOfType(returned, "Identifier") ||
+    !isNodeOfType(branch, "IfStatement")
+  )
+    return false;
+  const slot = context.scopes.symbolFor(returned);
+  if (
+    !slot ||
+    slot.kind !== "let" ||
+    slot.initializer ||
+    !isNodeOfType(slot.declarationNode, "VariableDeclarator") ||
+    !isNodeOfType(slot.declarationNode.parent, "VariableDeclaration") ||
+    slot.declarationNode.parent.parent !== callback.body ||
+    !hasCompleteSymbolReferences(slot, context.scopes.rootScope.node, context.scopes)
+  )
+    return false;
+  const registrationCallee = stripParenExpression(usage.node.callee);
+  if (
+    !isNodeOfType(registrationCallee, "MemberExpression") ||
+    !isPlainMediaListenerCall(usage.registrationVerbName ?? "", usage.node, context.scopes) ||
+    !isNodeOfType(registrationCallee.object, "Identifier")
+  )
+    return false;
+  const receiver = context.scopes.symbolFor(registrationCallee.object);
+  const acquisition =
+    receiver?.kind === "const" ? resolveStableValue(registrationCallee.object, context) : null;
+  if (
+    !acquisition ||
+    !isClosedDirectMatchMediaCall(acquisition, context.scopes, isPlainMediaListenerCall)
+  )
+    return false;
+  // A closed branch pair carries its cleanup value to one final return. Never
+  // merge unrelated assignments into the general stable-value resolver.
+  const assignments: EsTreeNode[] = [];
+  let matchingAssignment: EsTreeNode | null = null;
+  let currentBranch: EsTreeNode | null | undefined = branch;
+  while (currentBranch) {
+    if (
+      !isNodeOfType(currentBranch, "IfStatement") ||
+      !isNodeOfType(currentBranch.consequent, "BlockStatement") ||
+      currentBranch.consequent.body.length !== 2
+    )
+      return false;
+    const [registrationStatement, assignmentStatement] = currentBranch.consequent.body;
+    if (
+      !isNodeOfType(registrationStatement, "ExpressionStatement") ||
+      !isNodeOfType(registrationStatement.expression, "CallExpression") ||
+      !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
+      !isNodeOfType(assignmentStatement.expression, "AssignmentExpression")
+    )
+      return false;
+    const assignment = assignmentStatement.expression;
+    const target = stripParenExpression(assignment.left);
+    const cleanup = stripParenExpression(assignment.right);
+    if (
+      assignment.operator !== "=" ||
+      !isNodeOfType(target, "Identifier") ||
+      context.scopes.symbolFor(target) !== slot ||
+      !isNodeOfType(cleanup, "ArrowFunctionExpression") ||
+      cleanup.async ||
+      cleanup.params.length !== 0 ||
+      !isNodeOfType(cleanup.body, "CallExpression")
+    )
+      return false;
+    assignments.push(assignment);
+    if (registrationStatement.expression === usage.node) {
+      if (
+        !isPlainMediaListenerCall(
+          usage.registrationVerbName === "addListener" ? "removeListener" : "removeEventListener",
+          cleanup.body,
+          context.scopes,
+        ) ||
+        !doesCleanupFunctionReleaseUsage(cleanup, usage, context, new Set(), new Map(), true)
+      )
+        return false;
+      matchingAssignment = assignment;
+    }
+    currentBranch = currentBranch.alternate;
+  }
+  if (!matchingAssignment || slot.references.length !== assignments.length + 1) return false;
+  const assignedTargets = new Set<EsTreeNode>(
+    assignments.flatMap((assignment) =>
+      isNodeOfType(assignment, "AssignmentExpression") ? [assignment.left] : [],
+    ),
+  );
+  if (
+    !slot.references.every(
+      (reference) =>
+        reference.identifier === returned ||
+        (assignedTargets.has(reference.identifier) &&
+          findEnclosingFunction(reference.identifier) === callback),
+    )
+  )
+    return false;
+  return (
+    doMatchingNodesCoverEveryPathAfterUsage(usage.node, [matchingAssignment], context) &&
+    doMatchingNodesCoverEveryPathAfterUsage(matchingAssignment, [returnStatement], context)
+  );
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -7484,7 +7612,11 @@ const effectHasCleanupForUsage = (
         return;
       }
       const returnedSymbol = context.scopes.symbolFor(returnedValue);
-      if (!returnedSymbol?.initializer) return;
+      if (!returnedSymbol?.initializer) {
+        if (doesBranchAssignedMediaCleanupReleaseUsage(callback, child, usage, context))
+          matchingCleanupReturns.push(child);
+        return;
+      }
     }
     const cleanupFunction = resolveStableValue(returnedValue, context);
     if (cleanupFunction && doesBoundCleanupReleaseUsage(cleanupFunction, usage, context)) {

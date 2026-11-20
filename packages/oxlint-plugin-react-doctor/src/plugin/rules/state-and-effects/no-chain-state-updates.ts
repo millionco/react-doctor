@@ -17,6 +17,7 @@ import {
   getRef,
   getUpstreamRefs,
 } from "./utils/effect/ast.js";
+import { isOwnedViewportSnapshotState } from "./utils/is-owned-viewport-snapshot-state.js";
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
@@ -179,7 +180,15 @@ export const noChainStateUpdates = defineRule({
       // Every triggering state dep is driven by a timer / listener / observer
       // / subscription — there is no single event handler to set all the
       // related state together, so the chain is the correct shape here.
-      if (stateDeps.every((ref) => isExternallyDrivenState(analysis, ref))) return;
+      if (
+        stateDeps.every((ref) => {
+          if (isExternallyDrivenState(analysis, ref)) return true;
+          const declarator = getUseStateDeclarator(ref);
+          return declarator !== null && isOwnedViewportSnapshotState(declarator, context.scopes);
+        })
+      ) {
+        return;
+      }
 
       const stateDepDeclarators = new Set(
         stateDeps

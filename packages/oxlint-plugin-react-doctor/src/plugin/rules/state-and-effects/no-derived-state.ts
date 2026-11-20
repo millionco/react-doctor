@@ -11,6 +11,8 @@ import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
+import { isCommittedModeValueHold } from "./utils/is-committed-mode-value-hold.js";
+
 const getStateName = (stateDeclarator: EsTreeNode): string => {
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator")) return "<state>";
   if (!isNodeOfType(stateDeclarator.id, "ArrayPattern")) return "<state>";
@@ -87,6 +89,8 @@ export const noDerivedState = defineRule({
           ) {
             continue;
           }
+          if (isCommittedModeValueHold(context, node, fact.callExpression, fact.stateDeclarator))
+            continue;
           reportStateWrite(fact.callExpression, fact.stateDeclarator);
         }
       },

@@ -1,3 +1,16 @@
+import * as path from "node:path";
+import { findNearestPackageDirectory } from "../../utils/read-nearest-package-manifest.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import {
+  hasStaticViteModuleResolution,
+  resolveUniqueViteRelativeModule,
+} from "../../utils/has-static-vite-module-resolution.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import {
+  isGlobalNamespaceUnmodified,
+  isProvenUnmodifiedGlobalNamespaceReference,
+} from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { collectLoadingLifecycleResets } from "../../utils/collect-loading-lifecycle-resets.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
@@ -1119,13 +1132,254 @@ const isNeverRejectingExpression = (
   if (isNeverRejectingHelperCall(inner, scopes)) return true;
   return isNeverRejectingLocalAsyncHelperCall(inner, depth, scopes);
 };
+const promiseRealmIsUnmodifiedByScopes = new WeakMap<ScopeAnalysis, boolean>();
+const OPAQUE_REALM_GLOBAL_NAMES = new Set([
+  "Object",
+  "Reflect",
+  "Function",
+  "eval",
+  "setTimeout",
+  "setInterval",
+  "document",
+  "frames",
+]);
+const GLOBAL_REALM_RECEIVER_NAMES = new Set(["window", "self", "globalThis", "global"]);
+const isUnrestrictedRealmReceiver = (node: EsTreeNode): boolean => {
+  const reference = findTransparentExpressionRoot(node);
+  const member = reference.parent;
+  return !(
+    isNodeOfType(member, "MemberExpression") &&
+    member.object === reference &&
+    !member.computed &&
+    getStaticPropertyName(member) === "localStorage"
+  );
+};
+const PROMISE_METHOD_NAMES = new Set(["then", "catch", "finally"]);
+const PROTOTYPE_ESCAPE_PROPERTY_NAMES = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+const isPromiseRealmUnmodified = (scopes: ScopeAnalysis): boolean => {
+  const cached = promiseRealmIsUnmodifiedByScopes.get(scopes);
+  if (cached !== undefined) return cached;
+  if (!isGlobalNamespaceUnmodified("Promise", scopes)) {
+    promiseRealmIsUnmodifiedByScopes.set(scopes, false);
+    return false;
+  }
+  let hasOpaquePrototypeMutation = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasOpaquePrototypeMutation) return false;
+    if (
+      isNodeOfType(node, "ThisExpression") ||
+      (isNodeOfType(node, "Identifier") &&
+        scopes.isGlobalReference(node) &&
+        (OPAQUE_REALM_GLOBAL_NAMES.has(node.name) ||
+          (GLOBAL_REALM_RECEIVER_NAMES.has(node.name) && isUnrestrictedRealmReceiver(node))))
+    ) {
+      hasOpaquePrototypeMutation = true;
+      return false;
+    }
+    if (isNodeOfType(node, "ObjectPattern")) {
+      if (
+        node.properties.some((property) => {
+          if (!isNodeOfType(property, "Property") || property.computed) return true;
+          const key = isNodeOfType(property.key, "Identifier")
+            ? property.key.name
+            : isNodeOfType(property.key, "Literal")
+              ? property.key.value
+              : null;
+          return (
+            typeof key !== "string" ||
+            PROTOTYPE_ESCAPE_PROPERTY_NAMES.has(key) ||
+            PROMISE_METHOD_NAMES.has(key)
+          );
+        })
+      ) {
+        hasOpaquePrototypeMutation = true;
+        return false;
+      }
+    }
+    if (!isNodeOfType(node, "MemberExpression")) return;
+    const property = getStaticPropertyName(node);
+    if (
+      property === null ||
+      PROTOTYPE_ESCAPE_PROPERTY_NAMES.has(property) ||
+      (PROMISE_METHOD_NAMES.has(property) && isWithinAssignmentTarget(node)) ||
+      isProvenGlobalNamespaceReference(node, "Reflect", scopes) ||
+      isProvenGlobalNamespaceReference(node, "Object", scopes)
+    ) {
+      hasOpaquePrototypeMutation = true;
+      return false;
+    }
+  });
+  if (hasOpaquePrototypeMutation) {
+    promiseRealmIsUnmodifiedByScopes.set(scopes, false);
+    return false;
+  }
+  promiseRealmIsUnmodifiedByScopes.set(scopes, true);
+  return true;
+};
+
+const isDefinitelyInitializedRead = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNodeOfType(node, "Literal")) return true;
+  if (!isNodeOfType(node, "Identifier")) return false;
+  const symbol = scopes.symbolFor(node);
+  if (!symbol) return false;
+  if (symbol.kind === "parameter") return true;
+  const declaration = symbol.declarationNode.parent;
+  const block = declaration?.parent;
+  const useStart = getNodeStart(node);
+  const declarationEnd = declaration ? getNodeEnd(declaration) : null;
+  return (
+    symbol.kind === "const" &&
+    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+    symbol.declarationNode.id === symbol.bindingIdentifier &&
+    isNodeOfType(declaration, "VariableDeclaration") &&
+    isNodeOfType(block, "BlockStatement") &&
+    findEnclosingFunction(node) === findEnclosingFunction(declaration) &&
+    isAstDescendant(node, block) &&
+    useStart !== null &&
+    declarationEnd !== null &&
+    declarationEnd < useStart
+  );
+};
+
+const isDirectAsyncPromiseProducer = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(call, "CallExpression") || call.optional) return false;
+  const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "Identifier") || !scopes.symbolFor(callee)) return false;
+  if (!call.arguments.every((argument) => isDefinitelyInitializedRead(argument, scopes)))
+    return false;
+  const local = resolveExactLocalFunction(callee, scopes);
+  if (local && isFunctionLike(local) && local.async) {
+    return (
+      !("generator" in local && local.generator) &&
+      (scopes.symbolFor(callee)?.kind === "function" || isDefinitelyInitializedRead(callee, scopes))
+    );
+  }
+  const symbol = scopes.symbolFor(callee);
+  if (
+    symbol?.kind !== "import" ||
+    !symbol.references.every((reference) => reference.flag === "read") ||
+    !hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes)
+  )
+    return false;
+  const binding = getImportBindingForName(callee, callee.name);
+  if (!binding?.source.startsWith(".") || binding.isNamespace || !binding.exportedName)
+    return false;
+  const resolved = resolveCrossFileExportWithinBudget(binding.source, binding.exportedName);
+  if (
+    !resolved ||
+    !currentLintedFilename ||
+    findNearestPackageDirectory(resolved.filePath) !==
+      findNearestPackageDirectory(path.resolve(currentLintedFilename)) ||
+    resolveUniqueViteRelativeModule(currentLintedFilename, binding.source) !== resolved.filePath ||
+    !isFunctionLike(resolved.node) ||
+    !resolved.node.async
+  )
+    return false;
+  if ("generator" in resolved.node && resolved.node.generator) return false;
+  const foreignScopes = analyzeScopes(resolved.programNode);
+  return (
+    isStableForeignHelper(resolved.node, foreignScopes) && isPromiseRealmUnmodified(foreignScopes)
+  );
+};
+
+const isLiteralStateNotification = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.arguments.length !== 1)
+    return false;
+  const [argument] = call.arguments;
+  if (!isNodeOfType(argument, "Literal") || typeof argument.value !== "string") return false;
+  const callee = stripParenExpression(call.callee);
+  if (isNodeOfType(callee, "MemberExpression") && !callee.computed && !callee.optional) {
+    const receiver = stripParenExpression(callee.object);
+    return (
+      isProvenUnmodifiedGlobalNamespaceReference(receiver, "console", scopes, undefined, true) &&
+      isProvenNonThrowingBuiltInCall(call, scopes)
+    );
+  }
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = scopes.symbolFor(callee);
+  const declarator = symbol?.declarationNode;
+  if (symbol?.kind !== "const" || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  return (
+    isNodeOfType(declarator.id, "ArrayPattern") &&
+    declarator.id.elements[1] === symbol.bindingIdentifier &&
+    symbol.references.every((reference) => reference.flag === "read") &&
+    hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes) &&
+    isNodeOfType(declarator.init, "CallExpression") &&
+    isReactApiCall(declarator.init, "useState", scopes)
+  );
+};
+
+const hasTerminalStateNotificationCatch = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(expression, "CallExpression") ||
+    expression.optional ||
+    expression.arguments.length !== 1
+  )
+    return false;
+  const catchMember = stripParenExpression(expression.callee);
+  if (
+    !isNodeOfType(catchMember, "MemberExpression") ||
+    catchMember.computed ||
+    catchMember.optional ||
+    getStaticPropertyName(catchMember) !== "catch"
+  )
+    return false;
+  const [onRejected] = expression.arguments;
+  if (
+    !isNodeOfType(onRejected, "ArrowFunctionExpression") ||
+    onRejected.async ||
+    onRejected.params.length !== 0 ||
+    !isNodeOfType(onRejected.body, "BlockStatement") ||
+    onRejected.body.body.length === 0 ||
+    !onRejected.body.body.every(
+      (statement) =>
+        isNodeOfType(statement, "ExpressionStatement") &&
+        isLiteralStateNotification(stripParenExpression(statement.expression), scopes),
+    )
+  )
+    return false;
+  const fulfilled = stripParenExpression(catchMember.object);
+  if (
+    !isNodeOfType(fulfilled, "CallExpression") ||
+    fulfilled.optional ||
+    fulfilled.arguments.length !== 1 ||
+    !isNodeOfType(fulfilled.arguments[0], "ArrowFunctionExpression")
+  )
+    return false;
+  const thenMember = stripParenExpression(fulfilled.callee);
+  return (
+    isNodeOfType(thenMember, "MemberExpression") &&
+    !thenMember.computed &&
+    !thenMember.optional &&
+    getStaticPropertyName(thenMember) === "then" &&
+    currentLintedFilename !== undefined &&
+    hasStaticViteModuleResolution(currentLintedFilename) &&
+    isPromiseRealmUnmodified(scopes) &&
+    isDirectAsyncPromiseProducer(stripParenExpression(thenMember.object), scopes)
+  );
+};
+
 const isNeverRejectingAwaitedExpression = (
   awaitNode: EsTreeNodeOfType<"AwaitExpression">,
   scopes: ScopeAnalysis,
 ): boolean => {
   const awaited = awaitNode.argument;
   if (!awaited) return false;
-  return isNeverRejectingExpression(awaited, NEVER_REJECTING_ANALYSIS_MAX_DEPTH, scopes);
+  return (
+    hasTerminalStateNotificationCatch(stripParenExpression(awaited), scopes) ||
+    isNeverRejectingExpression(awaited, NEVER_REJECTING_ANALYSIS_MAX_DEPTH, scopes)
+  );
 };
 
 const CANCELLATION_GUARD_TEST_PATTERN =

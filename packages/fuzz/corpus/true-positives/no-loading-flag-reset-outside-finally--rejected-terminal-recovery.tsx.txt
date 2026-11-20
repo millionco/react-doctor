@@ -1,0 +1,11 @@
+import { useState } from "react";
+
+export function SubmitPreferences({ save }: { save: () => Promise<void> }) {
+  const [loading, setLoading] = useState(false);
+  const submit = async () => {
+    setLoading(true);
+    await save().then(() => undefined).catch(() => Promise.reject(new Error("Recovery failed")));
+    setLoading(false);
+  };
+  return <button type="button" disabled={loading} onClick={submit}>Save</button>;
+}

@@ -16,6 +16,10 @@ import {
 import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
+import {
+  hasAutomaticTypeScriptJsxPragma,
+  resolveDirectTypeScriptJsxRoot,
+} from "./utils/resolve-direct-typescript-jsx.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
@@ -528,6 +532,13 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+const collectDirectTypeScriptJsxDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  sourceText,
+}) => {
+  if (hasAutomaticTypeScriptJsxPragma(sourceText)) resolveDirectTypeScriptJsxRoot(absoluteFilePath);
+};
+
 const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
   collectBrowserGuardDependencies(input);
@@ -609,6 +620,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
+    ["react-in-jsx-scope", collectDirectTypeScriptJsxDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
     ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],

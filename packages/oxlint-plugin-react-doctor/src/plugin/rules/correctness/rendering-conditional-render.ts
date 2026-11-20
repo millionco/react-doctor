@@ -1,3 +1,4 @@
+import { isClosedStringReactState } from "./utils/is-closed-string-react-state.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { isBooleanResultExpression } from "../../utils/is-boolean-result-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -87,7 +88,12 @@ export const renderingConditionalRender = defineRule({
       const isNumericIdentifier = isNodeOfType(left, "Identifier") && isNumericName(left.name);
       if (isNumericIdentifier) {
         const symbol = context.scopes.symbolFor(left);
-        if (symbol && isBooleanResultExpression(getDirectConstInitializer(symbol))) return;
+        if (
+          symbol &&
+          (isBooleanResultExpression(getDirectConstInitializer(symbol)) ||
+            isClosedStringReactState(symbol, context.scopes))
+        )
+          return;
       }
 
       if (isLengthMemberAccess || isNumericIdentifier) {

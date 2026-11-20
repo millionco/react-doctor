@@ -1,3 +1,4 @@
+import { hasOrdinaryViteReactProvider } from "./rules/state-and-effects/utils/has-ordinary-vite-react-provider.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -196,6 +197,14 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectEffectCleanupDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  const usesReactEffect = flattenImportEntries(input.staticImports).some(
+    ({ source, exportedName }) => source === "react" && exportedName === "useEffect",
+  );
+  if (usesReactEffect) hasOrdinaryViteReactProvider(input.absoluteFilePath);
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -581,7 +590,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
-    ["effect-needs-cleanup", collectEffectValueHelperDependencies],
+    ["effect-needs-cleanup", collectEffectCleanupDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],

@@ -1,3 +1,4 @@
+import { isEffectOwnedInlineTimerArrayCovered } from "./utils/is-effect-owned-inline-timer-array-covered.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -4764,6 +4765,7 @@ const isEffectLocalLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return guardSymbol.references.every((reference) => {
     if (!isWithinAssignmentTarget(reference.identifier)) return true;
     const assignmentTarget = findTransparentExpressionRoot(reference.identifier);
@@ -4773,7 +4775,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4822,6 +4824,7 @@ const isEffectLocalObjectLifecycleGuard = (
   ) {
     return false;
   }
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return objectSymbol.references.every((reference) => {
     const memberExpression = getOutermostMemberReference(reference.identifier);
     if (
@@ -4837,7 +4840,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctionSet.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -7374,6 +7377,26 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
+const hasTimerCallbackResourceUsage = (node: EsTreeNode, context: RuleContext): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return true;
+  const [callback] = node.arguments;
+  if (!isFunctionLike(callback)) return true;
+  const checkedFunctions = new Set<EsTreeNode>();
+  let hasResourceUsage = false;
+  walkAst(callback, (child) => {
+    if (hasResourceUsage) return false;
+    if (!isFunctionLike(child)) return;
+    for (const invoked of collectSynchronouslyInvokedLocalFunctions(child, context.scopes)) {
+      if (checkedFunctions.has(invoked)) continue;
+      checkedFunctions.add(invoked);
+      if (findSubscribeLikeUsages(invoked, context).length === 0) continue;
+      hasResourceUsage = true;
+      return false;
+    }
+  });
+  return hasResourceUsage;
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -7384,6 +7407,13 @@ const effectHasCleanupForUsage = (
     return false;
   }
   if (callback.async) return false;
+  if (
+    usage.kind === "timer" &&
+    usage.registrationVerbName === "setTimeout" &&
+    isEffectOwnedInlineTimerArrayCovered(callback, usage.node, context) &&
+    !hasTimerCallbackResourceUsage(usage.node, context)
+  )
+    return true;
   const usageCallee = isNodeOfType(usage.node, "CallExpression")
     ? stripParenExpression(usage.node.callee)
     : null;
@@ -9915,6 +9945,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9942,7 +9973,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

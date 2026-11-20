@@ -65,6 +65,8 @@ describe("rules-of-hooks — HTTP callback adapter", () => {
       ruleIds: ["rules-of-hooks"],
     });
     expect(trace).not.toBeNull();
+    const contentPaths = Array.from(trace?.contentPaths ?? [], path.normalize);
+    const existencePaths = Array.from(trace?.existencePaths ?? [], path.normalize);
     for (const dependency of [
       configuration,
       path.join(workspace, "app", "jsconfig.json"),
@@ -72,10 +74,10 @@ describe("rules-of-hooks — HTTP callback adapter", () => {
       path.join(workspace, "app", "package.json"),
       path.join(workspace, "package.json"),
     ]) {
-      expect(trace?.contentPaths.has(dependency)).toBe(true);
+      expect(contentPaths).toContain(path.normalize(dependency));
     }
-    expect(trace?.existencePaths.has(path.join(workspace, "app", "babel.config.js"))).toBe(true);
-    expect(trace?.existencePaths.has(path.join(workspace, "pnpm-workspace.yaml"))).toBe(true);
+    expect(existencePaths).toContain(path.join(workspace, "app", "babel.config.js"));
+    expect(existencePaths).toContain(path.join(workspace, "pnpm-workspace.yaml"));
   });
 
   it.each([

@@ -1,3 +1,4 @@
+import { normalize } from "node:path";
 import { analyzeScopes, type ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
@@ -264,10 +265,12 @@ export const isImportedHttpMiddlewareAdapter = (
   )
     return false;
   const packageDirectory = findNearestPackageDirectory(context.filename);
+  const adapterPackageDirectory = findNearestPackageDirectory(resolved.filePath);
   const next = readNearestPackageManifest(context.filename)?.dependencies?.next;
   return Boolean(
     packageDirectory &&
-    packageDirectory === findNearestPackageDirectory(resolved.filePath) &&
+    adapterPackageDirectory &&
+    normalize(packageDirectory) === normalize(adapterPackageDirectory) &&
     next === "14.0.3" &&
     hasStandardNextModuleResolution(packageDirectory) &&
     hasStandardProviderOverrides(packageDirectory) &&

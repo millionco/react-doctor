@@ -1,6 +1,9 @@
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -1015,6 +1018,280 @@ const isGuaranteedScheduledRevoke = (
       executionBoundary,
       context,
     )
+  );
+};
+
+const BLOB_URL_GLOBAL_OBJECT_NAMES = new Set([
+  "window",
+  "globalThis",
+  "self",
+  "global",
+  "document",
+  "frames",
+  "frameElement",
+  "parent",
+  "top",
+  "opener",
+  "eval",
+  "Function",
+]);
+const BLOB_URL_INDIRECT_REALM_MEMBERS = new Set([
+  "URL",
+  "Blob",
+  "ownerDocument",
+  "defaultView",
+  "contentDocument",
+  "contentWindow",
+  "constructor",
+  "__proto__",
+  "getPrototypeOf",
+  "setPrototypeOf",
+  "defineProperty",
+  "defineProperties",
+  "__defineGetter__",
+  "__defineSetter__",
+]);
+const BLOB_URL_METHOD_NAMES = new Set(["createObjectURL", "revokeObjectURL"]);
+const directBlobUrlAccessByScopes = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasOnlyDirectBlobUrlAccess = (scopes: ScopeAnalysis): boolean => {
+  const cached = directBlobUrlAccessByScopes.get(scopes);
+  if (cached !== undefined) return cached;
+  let hasOpaqueAccess = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasOpaqueAccess) return false;
+    if (isNodeOfType(node, "MemberExpression")) {
+      const name = getStaticPropertyName(node) ?? "";
+      const receiver = stripParenExpression(node.object);
+      if (
+        BLOB_URL_INDIRECT_REALM_MEMBERS.has(name) ||
+        (BLOB_URL_METHOD_NAMES.has(name) &&
+          (!isNodeOfType(receiver, "Identifier") ||
+            receiver.name !== "URL" ||
+            !scopes.isGlobalReference(receiver)))
+      ) {
+        hasOpaqueAccess = true;
+        return false;
+      }
+    }
+    if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
+    if (BLOB_URL_GLOBAL_OBJECT_NAMES.has(node.name)) {
+      hasOpaqueAccess = true;
+      return false;
+    }
+    const root = findTransparentExpressionRoot(node);
+    const parent = root.parent;
+    if (node.name === "Blob") {
+      hasOpaqueAccess = !isNodeOfType(parent, "NewExpression") || parent.callee !== root;
+    } else if (node.name === "URL") {
+      if (
+        !isNodeOfType(parent, "MemberExpression") ||
+        parent.object !== root ||
+        !BLOB_URL_METHOD_NAMES.has(getStaticPropertyName(parent) ?? "")
+      ) {
+        hasOpaqueAccess = true;
+        return false;
+      }
+      const member = findTransparentExpressionRoot(parent);
+      const call = member.parent;
+      hasOpaqueAccess = !isNodeOfType(call, "CallExpression") || call.callee !== member;
+    }
+  });
+  directBlobUrlAccessByScopes.set(scopes, !hasOpaqueAccess);
+  return !hasOpaqueAccess;
+};
+
+const readBareIfBody = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  if (!isNodeOfType(node, "IfStatement") || node.alternate) return null;
+  const body = node.consequent;
+  if (!isNodeOfType(body, "BlockStatement")) return body;
+  return body.body.length === 1 ? body.body[0] : null;
+};
+
+const asyncEffectPrivateBlobCreationIsDisposed = (
+  createCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const { scopes } = context;
+  const argument = createCall.arguments[0];
+  if (
+    createCall.optional ||
+    createCall.arguments.length !== 1 ||
+    !isNodeOfType(argument, "Identifier")
+  )
+    return false;
+  const blob = scopes.symbolFor(argument);
+  const initializer = blob && getDirectConstInitializer(blob);
+  if (
+    !isNodeOfType(initializer, "NewExpression") ||
+    !isNodeOfType(initializer.callee, "Identifier") ||
+    initializer.callee.name !== "Blob" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      initializer.callee,
+      "Blob",
+      scopes,
+      undefined,
+      true,
+    ) ||
+    !blob ||
+    blob.references.length !== 1
+  )
+    return false;
+
+  const allocationRoot = findTransparentExpressionRoot(createCall);
+  const assignment = allocationRoot.parent;
+  const statement = assignment?.parent;
+  const block = statement?.parent;
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.operator !== "=" ||
+    assignment.right !== allocationRoot ||
+    !isNodeOfType(assignment.left, "Identifier") ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    !isNodeOfType(block, "BlockStatement")
+  )
+    return false;
+  const body: readonly EsTreeNode[] = block.body;
+  const allocationIndex = body.indexOf(statement);
+  const guard = body[allocationIndex - 1];
+  const guardExit = readBareIfBody(guard);
+  if (
+    !isNodeOfType(guard, "IfStatement") ||
+    !isNodeOfType(guard.test, "Identifier") ||
+    !isNodeOfType(guardExit, "ReturnStatement") ||
+    guardExit.argument ||
+    blob.declarationNode.parent !== body[allocationIndex - 2]
+  )
+    return false;
+
+  const asynchronousWork = findEnclosingFunction(createCall);
+  if (
+    !isNodeOfType(asynchronousWork, "ArrowFunctionExpression") ||
+    !asynchronousWork.async ||
+    asynchronousWork.params.length !== 0 ||
+    !isNodeOfType(asynchronousWork.body, "BlockStatement")
+  )
+    return false;
+  const [firstStatement] = asynchronousWork.body.body;
+  if (
+    !isNodeOfType(firstStatement, "ExpressionStatement") ||
+    !isNodeOfType(stripParenExpression(firstStatement.expression), "AwaitExpression")
+  )
+    return false;
+  let container: EsTreeNode | null | undefined = block;
+  while (container !== asynchronousWork.body) {
+    if (!isNodeOfType(container, "BlockStatement") && !isNodeOfType(container, "IfStatement"))
+      return false;
+    container = container.parent;
+  }
+  const workRoot = findTransparentExpressionRoot(asynchronousWork);
+  const invocation = workRoot.parent;
+  if (
+    !isNodeOfType(invocation, "CallExpression") ||
+    invocation.optional ||
+    invocation.callee !== workRoot ||
+    invocation.arguments.length !== 0
+  )
+    return false;
+  const invocationRoot = findTransparentExpressionRoot(invocation);
+  const use = invocationRoot.parent;
+  const discard =
+    isNodeOfType(use, "UnaryExpression") && use.operator === "void" ? use : invocationRoot;
+  const effectStatement = discard.parent;
+  const effect = findEnclosingFunction(invocation);
+  if (
+    !isNodeOfType(effectStatement, "ExpressionStatement") ||
+    effectStatement.expression !== discard ||
+    !isFunctionLike(effect) ||
+    effect.async ||
+    !isNodeOfType(effect.body, "BlockStatement")
+  )
+    return false;
+  const effectCall = findTransparentExpressionRoot(effect).parent;
+  if (
+    !isNodeOfType(effectCall, "CallExpression") ||
+    !isReactApiCall(effectCall, "useEffect", scopes) ||
+    getEffectCallback(effectCall) !== effect
+  )
+    return false;
+  const effectBody: readonly EsTreeNode[] = effect.body.body;
+  const invocationIndex = effectBody.indexOf(effectStatement);
+  const returned = effectBody[invocationIndex + 1];
+  if (
+    invocationIndex < 0 ||
+    !isNodeOfType(returned, "ReturnStatement") ||
+    !isNodeOfType(returned.argument, "ArrowFunctionExpression") ||
+    returned.argument.async ||
+    returned.argument.params.length !== 0 ||
+    !isNodeOfType(returned.argument.body, "BlockStatement") ||
+    returned.argument.body.body.length !== 2
+  )
+    return false;
+
+  const [stopStatement, revokeGuard] = returned.argument.body.body;
+  const stop = isNodeOfType(stopStatement, "ExpressionStatement") ? stopStatement.expression : null;
+  const revokeStatement = readBareIfBody(revokeGuard);
+  const revoke = isNodeOfType(revokeStatement, "ExpressionStatement")
+    ? revokeStatement.expression
+    : null;
+  if (
+    !isNodeOfType(stop, "AssignmentExpression") ||
+    stop.operator !== "=" ||
+    !isNodeOfType(stop.left, "Identifier") ||
+    !isNodeOfType(stop.right, "Literal") ||
+    stop.right.value !== true ||
+    !isNodeOfType(revokeGuard, "IfStatement") ||
+    !isNodeOfType(revokeGuard.test, "Identifier") ||
+    !isNodeOfType(revoke, "CallExpression") ||
+    revoke.optional ||
+    revoke.arguments.length !== 1 ||
+    !isNodeOfType(revoke.arguments[0], "Identifier") ||
+    !isUrlMethodCall(revoke, "revokeObjectURL", scopes)
+  )
+    return false;
+  const cancelled = scopes.symbolFor(guard.test);
+  const handle = scopes.symbolFor(assignment.left);
+  if (
+    !cancelled ||
+    cancelled.kind !== "let" ||
+    !isNodeOfType(cancelled.initializer, "Literal") ||
+    cancelled.initializer.value !== false ||
+    cancelled.references.length !== 2 ||
+    !handle ||
+    handle.kind !== "let" ||
+    !isNodeOfType(handle.initializer, "Literal") ||
+    handle.initializer.value !== null ||
+    scopes.symbolFor(stop.left) !== cancelled ||
+    scopes.symbolFor(revokeGuard.test) !== handle ||
+    scopes.symbolFor(revoke.arguments[0]) !== handle
+  )
+    return false;
+  if (
+    ![cancelled, handle].every(
+      (symbol) =>
+        isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+        symbol.declarationNode.id === symbol.bindingIdentifier &&
+        symbol.declarationNode.parent?.parent === effect.body &&
+        symbol.declarationNode.range[1] < effectStatement.range[0] &&
+        hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes),
+    )
+  )
+    return false;
+  if (
+    handle.references.some(
+      ({ identifier, flag }) =>
+        identifier !== assignment.left &&
+        identifier !== handle.bindingIdentifier &&
+        (flag !== "read" || isWithinAssignmentTarget(identifier)),
+    )
+  )
+    return false;
+
+  // Build the private Blob before checking cancellation so construction can
+  // run user code without making the later allocation miss teardown.
+  return (
+    hasCompleteSymbolReferences(blob, scopes.rootScope.node, scopes) &&
+    hasOnlyDirectBlobUrlAccess(scopes)
   );
 };
 
@@ -2232,6 +2509,7 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
         if (!isUrlMethodCall(node, "createObjectURL", context.scopes)) return;
         if (!escapeIsLeaky(node, context)) return;
         if (boundCreationIsDisposed(node, context)) return;
+        if (asyncEffectPrivateBlobCreationIsDisposed(node, context)) return;
         if (programRoot) {
           programDisposalIndex ??= buildProgramDisposalIndex(programRoot, context);
           if (refOwnedCreationIsDisposed(node, programDisposalIndex, context)) return;

@@ -7,6 +7,7 @@ import { getDirectConstInitializer } from "../../../utils/get-direct-const-initi
 import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { hasCompleteSymbolReferences } from "../../../utils/has-complete-symbol-references.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../../utils/is-react-api-call.js";
@@ -236,7 +237,17 @@ const isSafeRegistrationHandler = (
   );
 };
 
-const isReadOnlyReceiverUse = (reference: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+type MediaListenerValidator = (
+  method: string,
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+) => boolean;
+
+const isReadOnlyReceiverUse = (
+  reference: EsTreeNode,
+  scopes: ScopeAnalysis,
+  validateListener: MediaListenerValidator,
+): boolean => {
   const receiver = findTransparentExpressionRoot(reference);
   const member = receiver.parent;
   if (isNodeOfType(member, "UnaryExpression") && member.operator === "!") return true;
@@ -250,12 +261,17 @@ const isReadOnlyReceiverUse = (reference: EsTreeNode, scopes: ScopeAnalysis): bo
     MEDIA_LISTENER_METHODS.has(property) &&
     ((isNodeOfType(consumer, "CallExpression") &&
       consumer.callee === access &&
-      isSafeRegistrationHandler(property, consumer, scopes)) ||
+      validateListener(property, consumer, scopes)) ||
       (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "typeof"))
   );
 };
 
-const hasUnescapedMediaQueryResult = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const hasUnescapedMediaQueryResult = (
+  call: EsTreeNode,
+  scopes: ScopeAnalysis,
+  validateListener: MediaListenerValidator = isSafeRegistrationHandler,
+  requireCompleteReferences = false,
+): boolean => {
   const owner = getOwningLocalConst(call, scopes);
   if (!owner) return false;
   const pending = [owner];
@@ -264,11 +280,16 @@ const hasUnescapedMediaQueryResult = (call: EsTreeNode, scopes: ScopeAnalysis): 
     const symbol = pending.pop();
     if (!symbol || visited.has(symbol)) continue;
     visited.add(symbol);
+    if (
+      requireCompleteReferences &&
+      !hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes)
+    )
+      return false;
     for (const { identifier } of symbol.references) {
       const alias = getOwningLocalConst(identifier, scopes);
       if (alias) {
         pending.push(alias);
-      } else if (!isReadOnlyReceiverUse(identifier, scopes)) {
+      } else if (!isReadOnlyReceiverUse(identifier, scopes, validateListener)) {
         return false;
       }
     }
@@ -383,5 +404,25 @@ export const isClosedLocalMatchMediaCall = (raw: EsTreeNode, scopes: ScopeAnalys
   }
   return (
     getSoleAmbientMatchMediaCall(scopes) === result && hasUnescapedMediaQueryResult(call, scopes)
+  );
+};
+
+// The effect-local branch profile shares the exact receiver and ambient fences,
+// but supplies its own plain zero-argument handler validator. The existing local
+// factory/store profile retains its original default validator.
+export const isClosedDirectMatchMediaCall = (
+  raw: EsTreeNode,
+  scopes: ScopeAnalysis,
+  validateListener: MediaListenerValidator,
+): boolean => {
+  const call = stripParenExpression(raw);
+  return (
+    isNodeOfType(call, "CallExpression") &&
+    !call.optional &&
+    isWindowMatchMedia(call.callee, scopes) &&
+    call.arguments.length === 1 &&
+    !isNodeOfType(call.arguments[0], "SpreadElement") &&
+    getSoleAmbientMatchMediaCall(scopes) === call &&
+    hasUnescapedMediaQueryResult(call, scopes, validateListener, true)
   );
 };

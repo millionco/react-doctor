@@ -197,6 +197,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",
       "prefer-dynamic-import",
+      "react-in-jsx-scope",
       "react-router-csp-nonce-consistency",
       "react-router-descendant-routes-require-splat",
       "react-router-guard-aborted-handle-error",

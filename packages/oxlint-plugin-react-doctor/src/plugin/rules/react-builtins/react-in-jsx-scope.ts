@@ -1,6 +1,37 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  hasAutomaticTypeScriptJsxPragma,
+  resolveDirectTypeScriptJsxRoot,
+} from "../../utils/resolve-direct-typescript-jsx.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+
+const fileEmitsWithAutomaticTypeScriptJsx = (context: RuleContext): boolean => {
+  const filename = context.filename;
+  if (!filename?.endsWith(".tsx")) return false;
+  let source: string;
+  try {
+    source = context.sourceCode?.getText?.() ?? readFileSync(filename, "utf8");
+  } catch {
+    return false;
+  }
+  if (!hasAutomaticTypeScriptJsxPragma(source)) return false;
+
+  const compilerRoot = resolveDirectTypeScriptJsxRoot(filename);
+  if (!compilerRoot) return false;
+  const settings = context.settings?.["react-doctor"];
+  return !(
+    typeof settings === "object" &&
+    settings !== null &&
+    "rootDirectory" in settings &&
+    typeof settings.rootDirectory === "string" &&
+    resolve(settings.rootDirectory) !== compilerRoot
+  );
+};
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
 
@@ -26,14 +57,17 @@ export const reactInJsxScope = defineRule({
   defaultEnabled: false,
   recommendation:
     "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (findVariableInitializer(node, "React")) return;
-      context.report({ node: node.name, message: MESSAGE });
-    },
-    JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-      if (findVariableInitializer(node, "React")) return;
-      context.report({ node: node.openingFragment, message: MESSAGE });
-    },
-  }),
+  create: (context) => {
+    if (fileEmitsWithAutomaticTypeScriptJsx(context)) return EMPTY_RULE_VISITORS;
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (findVariableInitializer(node, "React")) return;
+        context.report({ node: node.name, message: MESSAGE });
+      },
+      JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
+        if (findVariableInitializer(node, "React")) return;
+        context.report({ node: node.openingFragment, message: MESSAGE });
+      },
+    };
+  },
 });

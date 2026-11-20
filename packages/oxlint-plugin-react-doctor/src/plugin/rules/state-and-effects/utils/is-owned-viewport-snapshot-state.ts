@@ -136,6 +136,7 @@ const getViewportRead = (
   statement: EsTreeNode | undefined,
   name: string,
   scopes: ScopeAnalysis,
+  comparisonRead?: EsTreeNode,
 ) => {
   if (!isNodeOfType(value, "Identifier")) return null;
   const symbol = scopes.symbolFor(value);
@@ -151,10 +152,13 @@ const getViewportRead = (
     !isNodeOfType(property, "Property") ||
     property.value !== value ||
     !symbol.references.some((reference) => reference.identifier === value) ||
+    (comparisonRead !== undefined &&
+      !symbol.references.some((reference) => reference.identifier === comparisonRead)) ||
     symbol.references.some(
       (reference) =>
         reference.flag !== "read" ||
         (reference.identifier !== value &&
+          reference.identifier !== comparisonRead &&
           !(property.shorthand && reference.identifier === property.key)),
     )
   ) {
@@ -163,7 +167,78 @@ const getViewportRead = (
   return getWindowMember(initializer, name, scopes);
 };
 
-const getViewportWrite = (identifier: EsTreeNode, scopes: ScopeAnalysis) => {
+const isViewportAxisRead = (node: EsTreeNode, receiver: EsTreeNode, axis?: string): boolean =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.optional &&
+  !node.computed &&
+  node.object === receiver &&
+  isNodeOfType(node.property, "Identifier") &&
+  (axis === undefined
+    ? node.property.name === "width" || node.property.name === "height"
+    : node.property.name === axis);
+
+const getPreviousAxisComparison = (
+  node: EsTreeNode,
+  axis: string,
+  previous: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+) => {
+  if (
+    !isNodeOfType(node, "BinaryExpression") ||
+    node.operator !== "===" ||
+    !isNodeOfType(node.left, "MemberExpression") ||
+    !isViewportAxisRead(node.left, node.left.object, axis) ||
+    !isNodeOfType(node.left.object, "Identifier") ||
+    scopes.symbolFor(node.left.object) !== previous ||
+    !isNodeOfType(node.right, "Identifier")
+  ) {
+    return null;
+  }
+  return { previousRead: node.left.object, measuredRead: node.right };
+};
+
+const getEqualityGuardedViewportValue = (
+  node: EsTreeNode,
+  program: EsTreeNode,
+  scopes: ScopeAnalysis,
+) => {
+  if (
+    !isNodeOfType(node, "ArrowFunctionExpression") ||
+    node.async ||
+    node.params.length !== 1 ||
+    !isNodeOfType(node.params[0], "Identifier") ||
+    !isNodeOfType(node.body, "ConditionalExpression") ||
+    !isNodeOfType(node.body.test, "LogicalExpression") ||
+    node.body.test.operator !== "&&" ||
+    !isNodeOfType(node.body.consequent, "Identifier")
+  ) {
+    return null;
+  }
+  const previous = scopes.symbolFor(node.params[0]);
+  if (!previous || scopes.symbolFor(node.body.consequent) !== previous) return null;
+  const width = getPreviousAxisComparison(node.body.test.left, "width", previous, scopes);
+  const height = getPreviousAxisComparison(node.body.test.right, "height", previous, scopes);
+  const values = getPlainViewportValues(node.body.alternate);
+  if (!width || !height || !values) return null;
+
+  const expectedReads = new Set<EsTreeNode>([
+    width.previousRead,
+    height.previousRead,
+    node.body.consequent,
+  ]);
+  if (
+    previous.references.length !== expectedReads.size ||
+    !previous.references.every(
+      (reference) => reference.flag === "read" && expectedReads.has(reference.identifier),
+    ) ||
+    !hasCompleteSymbolReferences(previous, program, scopes)
+  ) {
+    return null;
+  }
+  return { values, widthComparison: width.measuredRead, heightComparison: height.measuredRead };
+};
+
+const getViewportWrite = (identifier: EsTreeNode, program: EsTreeNode, scopes: ScopeAnalysis) => {
   const statement = identifier.parent?.parent;
   const call = getExpressionStatementCall(statement);
   const block = statement?.parent;
@@ -179,12 +254,29 @@ const getViewportWrite = (identifier: EsTreeNode, scopes: ScopeAnalysis) => {
   ) {
     return null;
   }
-  const values = getPlainViewportValues(call.arguments[0]);
+  const argument = call.arguments[0];
+  const direct = getPlainViewportValues(argument);
+  const guarded = direct ? null : getEqualityGuardedViewportValue(argument, program, scopes);
+  const values = direct ?? guarded?.values;
   const position = block.body.findIndex((entry) => entry === statement);
   if (!values || position < 2) return null;
-  const width = getViewportRead(values[0], block.body[position - 2], "innerWidth", scopes);
-  const height = getViewportRead(values[1], block.body[position - 1], "innerHeight", scopes);
-  return width && height ? { callback, block, position, width, height } : null;
+  const width = getViewportRead(
+    values[0],
+    block.body[position - 2],
+    "innerWidth",
+    scopes,
+    guarded?.widthComparison,
+  );
+  const height = getViewportRead(
+    values[1],
+    block.body[position - 1],
+    "innerHeight",
+    scopes,
+    guarded?.heightComparison,
+  );
+  return width && height
+    ? { callback, block, position, width, height, equalityGuarded: guarded !== null }
+    : null;
 };
 
 const getResizeListener = (
@@ -248,13 +340,35 @@ const isClosedTimerReference = (node: EsTreeNodeOfType<"Identifier">): boolean =
   return call.arguments.length === 2 && isNodeOfType(call.arguments[0], "ArrowFunctionExpression");
 };
 
+const isClosedWindowTimerCall = (member: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(member, "MemberExpression") || !isNodeOfType(member.property, "Identifier")) {
+    return false;
+  }
+  const name = member.property.name;
+  if (name !== "setTimeout" && name !== "clearTimeout") return false;
+  if (!getWindowMember(member, name, scopes)) return false;
+  const call = member.parent;
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.callee !== member)
+    return false;
+  if (name === "clearTimeout") {
+    return call.arguments.length === 1 && !isNodeOfType(call.arguments[0], "SpreadElement");
+  }
+  return (
+    call.arguments.length === 2 &&
+    isNodeOfType(call.arguments[0], "ArrowFunctionExpression") &&
+    !isNodeOfType(call.arguments[1], "SpreadElement")
+  );
+};
+
 const hasClosedWindowReferences = (
   program: EsTreeNode,
   members: ReadonlyArray<EsTreeNodeOfType<"MemberExpression">>,
   scopes: ScopeAnalysis,
+  equalityGuarded: boolean,
 ): boolean => {
   const admittedMembers = new Set<EsTreeNode>(members);
   const admittedReceivers = new Set<EsTreeNode>(members.map((member) => member.object));
+  const admittedTimerNames = new Set<EsTreeNode>();
   let closed = true;
   walkAst(program, (node) => {
     if (!closed) return false;
@@ -284,14 +398,21 @@ const hasClosedWindowReferences = (
         (node.name === "setTimeout" ||
           node.name === "clearTimeout" ||
           node.name === "setInterval") &&
+        !admittedTimerNames.has(node) &&
         !isClosedTimerReference(node)
       ) {
         closed = false;
       }
     } else if (isNodeOfType(node, "MemberExpression") && !admittedMembers.has(node)) {
+      if (equalityGuarded && isClosedWindowTimerCall(node, scopes)) {
+        admittedReceivers.add(node.object);
+        admittedTimerNames.add(node.property);
+        return;
+      }
       const name = getResolvedStaticPropertyName(node, scopes);
       if (
         (name !== null && guardedMemberNames.has(name)) ||
+        (equalityGuarded && name === "useMemo") ||
         (node.computed &&
           name === null &&
           (isWithinAssignmentTarget(node) ||
@@ -303,6 +424,48 @@ const hasClosedWindowReferences = (
     return undefined;
   });
   return closed;
+};
+
+const isUseMemoDependency = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const dependencies = identifier.parent;
+  const call = dependencies?.parent;
+  if (
+    !isNodeOfType(dependencies, "ArrayExpression") ||
+    !isNamedReactCall(call, "useMemo", scopes) ||
+    call.arguments.length !== 2 ||
+    call.arguments[1] !== dependencies ||
+    !dependencies.elements.some((element) => element === identifier) ||
+    !dependencies.elements.every((element) => element && !isNodeOfType(element, "SpreadElement"))
+  ) {
+    return false;
+  }
+  const callback = call.arguments[0];
+  return (
+    isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !callback.async &&
+    callback.params.length === 0
+  );
+};
+
+const hasPrivateViewportRecord = (
+  state: EsTreeNode,
+  program: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const symbol = scopes.symbolFor(state);
+  return Boolean(
+    symbol &&
+    symbol.bindingIdentifier === state &&
+    hasCompleteSymbolReferences(symbol, program, scopes) &&
+    symbol.references.every(({ identifier, flag }) => {
+      if (flag !== "read" || isWithinAssignmentTarget(identifier)) return false;
+      const member = identifier.parent;
+      return (
+        (isNodeOfType(member, "MemberExpression") && isViewportAxisRead(member, identifier)) ||
+        isUseMemoDependency(identifier, scopes)
+      );
+    }),
+  );
 };
 
 const matchesOwnedViewportSnapshot = (declarator: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -342,17 +505,19 @@ const matchesOwnedViewportSnapshot = (declarator: EsTreeNode, scopes: ScopeAnaly
     return false;
   }
   const writes = setterSymbol.references.map((reference) =>
-    reference.flag === "read" ? getViewportWrite(reference.identifier, scopes) : null,
+    reference.flag === "read" ? getViewportWrite(reference.identifier, program, scopes) : null,
   );
   const mount = writes.find((write) => isNodeOfType(write?.callback.parent, "CallExpression"));
   const resize = writes.find((write) => isNodeOfType(write?.callback.parent, "VariableDeclarator"));
   if (
     !mount ||
     !resize ||
+    mount.equalityGuarded ||
     mount.position !== 3 ||
     mount.block.body.length !== 5 ||
     resize.position !== 2 ||
-    resize.block.body.length !== 3
+    resize.block.body.length !== 3 ||
+    (resize.equalityGuarded && !hasPrivateViewportRecord(state, program, scopes))
   ) {
     return false;
   }
@@ -401,6 +566,7 @@ const matchesOwnedViewportSnapshot = (declarator: EsTreeNode, scopes: ScopeAnaly
     program,
     [mount.width, mount.height, resize.width, resize.height, add.member, remove.member],
     scopes,
+    resize.equalityGuarded,
   );
 };
 

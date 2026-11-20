@@ -1,3 +1,4 @@
+import { collectBrowserEffectForwardingCandidates } from "../../utils/collect-browser-effect-forwarding-candidates.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -2053,6 +2054,13 @@ const addAggregatePropsDependency = (
   if (hasMemberCallForRoot(callback, "props", scopes)) captureKeys.add("props");
 };
 
+type ForwardedEffectCall = EsTreeNodeOfType<"CallExpression">;
+
+interface BrowserEffectAnalysis {
+  readonly uncheckedCallers: Set<ForwardedEffectCall>;
+  readonly fallbackReports: Array<() => void>;
+}
+
 export const exhaustiveDeps = defineRule({
   id: "exhaustive-deps",
   title: "Missing effect dependencies",
@@ -2116,10 +2124,32 @@ If the missing value is recreated every render, move it inside the hook or stabi
     const isAutoDependenciesHook = (hookName: string): boolean =>
       settings.experimental_autoDependenciesHooks.includes(hookName);
 
+    const forwardingAnalyses: BrowserEffectAnalysis[] = [];
+    const forwardingByCaller = new Map<ForwardedEffectCall, BrowserEffectAnalysis>();
+    const forwardingByInnerCall = new Map<ForwardedEffectCall, BrowserEffectAnalysis>();
+
     return {
+      Program() {
+        if (!shouldUseCuratedBehavior) return;
+        for (const candidate of collectBrowserEffectForwardingCandidates(context.scopes)) {
+          if (HOOKS_REQUIRING_DEPS_MATCH.has(candidate.name)) continue;
+          const analysis: BrowserEffectAnalysis = {
+            uncheckedCallers: new Set(candidate.callers),
+            fallbackReports: [],
+          };
+          forwardingAnalyses.push(analysis);
+          for (const caller of candidate.callers) forwardingByCaller.set(caller, analysis);
+          for (const innerCall of candidate.innerCalls)
+            forwardingByInnerCall.set(innerCall, analysis);
+        }
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const hookName = getHookName(node.callee, context.scopes);
-        if (!hookName || !isHookOfInterest(hookName, node.callee)) return;
+        const diagnosticHookName = getHookName(node.callee, context.scopes);
+        if (!diagnosticHookName) return;
+        const forwarding = forwardingByCaller.get(node);
+        const isOrdinaryHook = isHookOfInterest(diagnosticHookName, node.callee);
+        if (!forwarding && !isOrdinaryHook) return;
+        const hookName = forwarding && !isOrdinaryHook ? "useEffect" : diagnosticHookName;
         let callbackToAnalyze: EsTreeNode | null = null;
         const report = (descriptor: ReportDescriptor): void =>
           context.report({
@@ -2127,18 +2157,21 @@ If the missing value is recreated every render, move it inside the hook or stabi
             contextNodes: callbackToAnalyze ? [node, callbackToAnalyze] : [node],
           });
 
-        for (const finding of findForwardedFreshHookDependencies(
-          node,
-          context,
-          EFFECT_HOOK_NAMES,
-        )) {
-          report({
-            node: finding.reportNode,
-            message: buildForwardedUnstableDepMessage(finding.bindingName),
-          });
+        if (isOrdinaryHook) {
+          for (const finding of findForwardedFreshHookDependencies(
+            node,
+            context,
+            EFFECT_HOOK_NAMES,
+          )) {
+            report({
+              node: finding.reportNode,
+              message: buildForwardedUnstableDepMessage(finding.bindingName),
+            });
+          }
         }
 
         if (
+          !forwarding &&
           HOOKS_REQUIRING_DEPS_MATCH.has(hookName) &&
           !isReactApiCall(node, HOOKS_REQUIRING_DEPS_MATCH, context.scopes, {
             allowGlobalReactNamespace: true,
@@ -2153,7 +2186,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
         const depsArgumentIndex = getDepsArgumentIndex(hookName);
         const callbackArgument = node.arguments[callbackArgumentIndex];
         if (!callbackArgument) {
-          report({ node, message: buildMissingCallbackMessage(hookName) });
+          report({ node, message: buildMissingCallbackMessage(diagnosticHookName) });
           return;
         }
         const depsArgumentRaw = node.arguments[depsArgumentIndex];
@@ -2184,16 +2217,20 @@ If the missing value is recreated every render, move it inside the hook or stabi
             ) {
               return;
             }
-            report({
-              node: callbackExpression,
-              message: buildUnknownCallbackMessage(hookName),
-            });
+            const reportUnknownCallback = () =>
+              report({
+                node: callbackExpression,
+                message: buildUnknownCallbackMessage(diagnosticHookName),
+              });
+            const innerForwarding = forwardingByInnerCall.get(node);
+            if (innerForwarding) innerForwarding.fallbackReports.push(reportUnknownCallback);
+            else reportUnknownCallback();
             return;
           }
         } else if (depsArgumentRaw) {
           report({
             node: callbackArgument as EsTreeNode,
-            message: buildUnknownCallbackMessage(hookName),
+            message: buildUnknownCallbackMessage(diagnosticHookName),
           });
           return;
         } else {
@@ -2201,7 +2238,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           // variable) — can't statically analyze its closure. We
           // still flag missing deps for hooks that require them.
           if (HOOKS_REQUIRING_DEPS_ARRAY.has(hookName) && !node.arguments[depsArgumentIndex]) {
-            report({ node, message: buildMissingDepArrayMessage(hookName) });
+            report({ node, message: buildMissingDepArrayMessage(diagnosticHookName) });
           }
           return;
         }
@@ -2212,7 +2249,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           callbackToAnalyze.async &&
           (EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS.has(hookName) || hookName === "useEffect")
         ) {
-          report({ node: callbackArgument, message: buildAsyncEffectMessage(hookName) });
+          report({ node: callbackArgument, message: buildAsyncEffectMessage(diagnosticHookName) });
         }
         if (callbackToAnalyze) {
           const outerAssignments = collectOuterAssignments(callbackToAnalyze, context.scopes);
@@ -2249,7 +2286,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             if (setterName) {
               report({
                 node: callbackToAnalyze,
-                message: buildSetStateWithoutDepsMessage(hookName, setterName),
+                message: buildSetStateWithoutDepsMessage(diagnosticHookName, setterName),
               });
               return;
             }
@@ -2258,7 +2295,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             HOOKS_REQUIRING_DEPS_ARRAY.has(hookName) ||
             (settings.requireExplicitEffectDeps && HOOKS_REQUIRING_DEPS_MATCH.has(hookName))
           ) {
-            report({ node, message: buildMissingDepArrayMessage(hookName) });
+            report({ node, message: buildMissingDepArrayMessage(diagnosticHookName) });
           }
           return;
         }
@@ -2274,7 +2311,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (HOOKS_REQUIRING_DEPS_ARRAY.has(hookName)) {
             report({
               node: depsArgument,
-              message: buildMissingDepArrayMessage(hookName),
+              message: buildMissingDepArrayMessage(diagnosticHookName),
             });
           }
           return;
@@ -2284,7 +2321,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (HOOKS_REQUIRING_DEPS_ARRAY.has(hookName)) {
             report({
               node: depsArgument,
-              message: buildMissingDepArrayMessage(hookName),
+              message: buildMissingDepArrayMessage(diagnosticHookName),
             });
             return;
           }
@@ -2299,7 +2336,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             ? context.scopes.symbolFor(depsArgument)
             : null;
           if (depsSymbol?.kind === "parameter") return;
-          report({ node: depsArgument, message: buildNonArrayDepsMessage(hookName) });
+          report({ node: depsArgument, message: buildNonArrayDepsMessage(diagnosticHookName) });
           const nonArrayCaptureKeys =
             callbackToAnalyze !== null
               ? new Set(
@@ -2318,7 +2355,10 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (nonArrayCaptureKeys.size > 0) {
             report({
               node: depsArgument,
-              message: buildMissingDepMessage(hookName, [...nonArrayCaptureKeys].join(", ")),
+              message: buildMissingDepMessage(
+                diagnosticHookName,
+                [...nonArrayCaptureKeys].join(", "),
+              ),
             });
           }
           return;
@@ -2340,7 +2380,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           return isNonStringLiteral(unwrapExpression(element as EsTreeNode));
         });
         if (hasNonStringLiteralDep) {
-          report({ node: depsArgument, message: buildLiteralDepMessage(hookName) });
+          report({ node: depsArgument, message: buildLiteralDepMessage(diagnosticHookName) });
         }
 
         const declaredKeys = new Set<string>();
@@ -2358,7 +2398,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             // reusable hook, not a hidden-deps mistake.
             const spreadRootSymbol = getRootSymbol(elementNode.argument, context.scopes);
             if (spreadRootSymbol?.kind !== "parameter") {
-              report({ node: elementNode, message: buildSpreadDepMessage(hookName) });
+              report({ node: elementNode, message: buildSpreadDepMessage(diagnosticHookName) });
             }
             continue;
           }
@@ -2392,7 +2432,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
               if (!didReportRefCurrentDep) {
                 report({
                   node: elementNode,
-                  message: buildRefCurrentDepMessage(hookName, fullChain),
+                  message: buildRefCurrentDepMessage(diagnosticHookName, fullChain),
                 });
                 didReportRefCurrentDep = true;
               }
@@ -2402,17 +2442,17 @@ If the missing value is recreated every render, move it inside the hook or stabi
 
           const key = computeDeclaredDepKey(elementNode);
           if (key === null) {
-            report({ node: elementNode, message: buildComplexDepMessage(hookName) });
+            report({ node: elementNode, message: buildComplexDepMessage(diagnosticHookName) });
             continue;
           }
           if (hasComputedMemberExpression(stripped)) {
-            report({ node: elementNode, message: buildComplexDepMessage(hookName) });
+            report({ node: elementNode, message: buildComplexDepMessage(diagnosticHookName) });
             continue;
           }
           if (seenDeclaredKeys.has(key)) {
             report({
               node: elementNode,
-              message: buildDuplicateDepMessage(hookName, key),
+              message: buildDuplicateDepMessage(diagnosticHookName, key),
             });
             didReportDuplicateDep = true;
             continue;
@@ -2460,18 +2500,18 @@ If the missing value is recreated every render, move it inside the hook or stabi
         if (missingCaptureKeys.length > 0 && shouldGroupMissingDeps) {
           report({
             node: depsArgument,
-            message: buildMissingDepMessage(hookName, missingCaptureKeys.join(", ")),
+            message: buildMissingDepMessage(diagnosticHookName, missingCaptureKeys.join(", ")),
           });
         } else {
           for (const missingCaptureKey of missingCaptureKeys) {
             report({
               node: depsArgument,
-              message: buildMissingDepMessage(hookName, missingCaptureKey),
+              message: buildMissingDepMessage(diagnosticHookName, missingCaptureKey),
             });
           }
         }
         if (missingCaptureKeys.length === 0 && hasLiteralDepElement && !hasNonStringLiteralDep) {
-          report({ node: depsArgument, message: buildLiteralDepMessage(hookName) });
+          report({ node: depsArgument, message: buildLiteralDepMessage(diagnosticHookName) });
         }
 
         for (const declaredKey of declaredKeys) {
@@ -2487,7 +2527,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           }
           report({
             node: reportNode,
-            message: buildUnstableDepMessage(hookName, declaredKey),
+            message: buildUnstableDepMessage(diagnosticHookName, declaredKey),
           });
         }
 
@@ -2540,7 +2580,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           }
           report({
             node: reportNode,
-            message: buildUnstableDepMessage(hookName, declaredKey),
+            message: buildUnstableDepMessage(diagnosticHookName, declaredKey),
           });
           didReportUnstableDep = true;
         }
@@ -2603,7 +2643,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           // the callee-keyed unnecessary-dep message would be factually
           // wrong, so report it as a complex expression instead.
           if (isNodeOfType(unwrapExpression(reportNode), "CallExpression")) {
-            report({ node: reportNode, message: buildComplexDepMessage(hookName) });
+            report({ node: reportNode, message: buildComplexDepMessage(diagnosticHookName) });
             continue;
           }
           unnecessaryDeclaredKeys.push(declaredKey);
@@ -2619,9 +2659,19 @@ If the missing value is recreated every render, move it inside the hook or stabi
           report({
             node: unnecessaryReportNode,
             message: areAllModuleScopeCaptured
-              ? buildModuleScopeDepMessage(hookName, unnecessaryDeclaredKeys.join(", "))
-              : buildUnnecessaryDepMessage(hookName, unnecessaryDeclaredKeys.join(", ")),
+              ? buildModuleScopeDepMessage(diagnosticHookName, unnecessaryDeclaredKeys.join(", "))
+              : buildUnnecessaryDepMessage(diagnosticHookName, unnecessaryDeclaredKeys.join(", ")),
           });
+        }
+        forwarding?.uncheckedCallers.delete(node);
+      },
+      "Program:exit"() {
+        // Only replace the opaque-call diagnostics after every local caller
+        // has completed the ordinary dependency analysis.
+        for (const analysis of forwardingAnalyses) {
+          if (analysis.uncheckedCallers.size > 0) {
+            for (const report of analysis.fallbackReports) report();
+          }
         }
       },
     };

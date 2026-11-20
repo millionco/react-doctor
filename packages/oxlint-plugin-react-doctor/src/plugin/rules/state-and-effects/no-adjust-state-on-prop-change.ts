@@ -1,3 +1,4 @@
+import { isPrivateStorageInitializationWrite } from "./utils/is-private-storage-initialization-write.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
@@ -103,6 +104,7 @@ export const noAdjustStateOnPropChange = defineRule({
         for (const fact of facts) {
           if (
             fact.isDeferred ||
+            isPrivateStorageInitializationWrite(fact.writeSite, context) ||
             isOwnedRequestMapReset(fact.writeSite, context) ||
             isPortalMountStateWrite(fact.writeSite, context) ||
             isReleasedObjectUrlStateWrite(fact.writeSite, context) ||

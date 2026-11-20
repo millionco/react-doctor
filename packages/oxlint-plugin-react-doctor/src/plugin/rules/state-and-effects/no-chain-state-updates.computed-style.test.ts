@@ -15,6 +15,14 @@ describe("native bare computed-style reads", () => {
       "setShade(getComputedStyle(surfaceRef.current).opacity);",
     ],
     ["", "setShade(getComputedStyle(surfaceRef.current).opacity);"],
+    [
+      'export const canUseBrowser = typeof window !== "undefined";',
+      "const readShade = element => getComputedStyle(element).opacity; setShade(readShade(surfaceRef.current));",
+    ],
+    [
+      'export const canUseBrowser = typeof globalThis !== "undefined";',
+      "setShade(getComputedStyle(surfaceRef.current).opacity);",
+    ],
     ["", "setShade((getComputedStyle as typeof getComputedStyle)(surfaceRef.current).opacity);"],
     ["", "const style = getComputedStyle(surfaceRef.current); setShade(style.opacity);"],
     [
@@ -57,6 +65,9 @@ const ShadeMeter = () => {
     "self.getComputedStyle = customReader;",
     "delete window.getComputedStyle;",
     "const realm = window;",
+    'export const available = typeof window !== "undefined"; const realm = window;',
+    'export const available = typeof globalThis !== "undefined"; globalThis.getComputedStyle = customReader;',
+    "void (typeof (window.getComputedStyle = customReader));",
     "const { getComputedStyle: readStyle } = globalThis;",
     "const readStyle = getComputedStyle;",
     "consume(getComputedStyle);",

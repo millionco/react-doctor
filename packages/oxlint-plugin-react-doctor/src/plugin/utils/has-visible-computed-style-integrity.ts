@@ -68,6 +68,13 @@ export const hasVisibleComputedStyleIntegrity = (scopes: ScopeAnalysis): boolean
       }
       if (!isProvenGlobalObjectReference(identifier, scopes)) continue;
       if (
+        reference.flag === "read" &&
+        isNodeOfType(consumer, "UnaryExpression") &&
+        consumer.operator === "typeof" &&
+        consumer.argument === referenceRoot
+      )
+        continue;
+      if (
         reference.flag !== "read" ||
         !isNodeOfType(consumer, "MemberExpression") ||
         consumer.object !== referenceRoot

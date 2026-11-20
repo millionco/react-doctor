@@ -38,6 +38,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getModuleNamespaceSource } from "../r3f/utils/get-module-namespace-source.js";
 import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
+import { isImportedHttpMiddlewareAdapter } from "./utils/is-imported-http-middleware-adapter.js";
 import { isLocalNonHookMemberCallee } from "./utils/is-local-non-hook-member-callee.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
@@ -1084,6 +1085,11 @@ export const rulesOfHooks = defineRule({
         }
 
         if (enclosing.isAsync) {
+          if (
+            !enclosing.isComponentOrHook &&
+            isImportedHttpMiddlewareAdapter(node, enclosing.node, context)
+          )
+            return;
           context.report({ node: node.callee, message: buildAsyncMessage(hookName) });
           return;
         }

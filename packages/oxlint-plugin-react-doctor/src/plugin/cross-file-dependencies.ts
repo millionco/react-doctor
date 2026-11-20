@@ -1,3 +1,5 @@
+import { findEnclosingFunction } from "./utils/find-enclosing-function.js";
+import { isImportedHttpMiddlewareAdapter } from "./rules/react-builtins/utils/is-imported-http-middleware-adapter.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -207,6 +209,11 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
+    if (isNodeOfType(node.callee, "Identifier") && /^use[A-Z0-9]/.test(node.callee.name)) {
+      const enclosing = findEnclosingFunction(node);
+      if (enclosing)
+        isImportedHttpMiddlewareAdapter(node, enclosing, { filename: absoluteFilePath, scopes });
+    }
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);

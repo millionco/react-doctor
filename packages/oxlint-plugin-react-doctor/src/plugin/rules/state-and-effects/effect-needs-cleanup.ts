@@ -7,6 +7,7 @@ import { isStableLogicalReceiver } from "../../utils/is-stable-logical-receiver.
 import { hasStableLogicalDataProperty } from "../../utils/has-stable-logical-data-property.js";
 import { hasLogicalReceiverOrigin } from "../../utils/has-logical-receiver-origin.js";
 import { hasDeclaredCallableListenerResult } from "../../utils/has-declared-callable-listener-result.js";
+import { isClosedLocalMatchMediaCall } from "./utils/is-closed-local-match-media-call.js";
 import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
@@ -1576,7 +1577,7 @@ const isProvenMediaQueryListExpression = (
       resolveNamedAliases: true,
     })
   ) {
-    return false;
+    return isClosedLocalMatchMediaCall(unwrappedExpression, context.scopes);
   }
   const factory = getEffectCallback(unwrappedExpression, context.scopes);
   return Boolean(
@@ -4751,7 +4752,7 @@ const canInterruptionReachUsageThroughCatch = (
 const isEffectLocalLifecycleGuard = (
   callback: EsTreeNode,
   guardState: BooleanGuardState,
-  cleanupFunctions: ReadonlyArray<EsTreeNode>,
+  cleanupFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
 ): boolean => {
   if (!guardState.bindingIdentifier) return false;
@@ -4773,7 +4774,7 @@ const isEffectLocalLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === assignmentTarget &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctions.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4781,7 +4782,7 @@ const isEffectLocalLifecycleGuard = (
 const isEffectLocalObjectLifecycleGuard = (
   callback: EsTreeNode,
   guardState: BooleanGuardState,
-  cleanupFunctions: ReadonlyArray<EsTreeNode>,
+  cleanupFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
 ): boolean => {
   const guardMemberExpressions: EsTreeNodeOfType<"MemberExpression">[] = [];
@@ -4837,7 +4838,7 @@ const isEffectLocalObjectLifecycleGuard = (
       assignment.operator === "=" &&
       assignment.left === memberExpression &&
       readStaticBoolean(assignment.right) === guardState.value &&
-      cleanupFunctions.includes(findEnclosingFunction(assignment) ?? assignment)
+      cleanupFunctions.has(findEnclosingFunction(assignment) ?? assignment)
     );
   });
 };
@@ -4919,10 +4920,11 @@ const isDeferredHelperInvocationProtectedByEffectLifecycleGuard = (
     return cleanupFunction && isFunctionLike(cleanupFunction) ? [cleanupFunction] : [];
   });
   if (cleanupFunctions.length !== cleanupReturns.length) return false;
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return collectDeferredUsageGuardStates(invocationOwner, invocationCall, context, true).some(
     (guardState) =>
-      (isEffectLocalLifecycleGuard(callback, guardState, cleanupFunctions, context) ||
-        isEffectLocalObjectLifecycleGuard(callback, guardState, cleanupFunctions, context)) &&
+      (isEffectLocalLifecycleGuard(callback, guardState, cleanupFunctionSet, context) ||
+        isEffectLocalObjectLifecycleGuard(callback, guardState, cleanupFunctionSet, context)) &&
       !hasPotentialInterruptionAfterGuard(invocationOwner, guardState, invocationCall, context) &&
       !deferredUsageWritesGuardBeforeUsage(invocationOwner, invocationCall, guardState, context) &&
       cleanupReturns.every((cleanupReturn) =>
@@ -6446,9 +6448,10 @@ const hasGuardedDeferredCleanup = (
     });
   }
   if (hasPotentialInterruption) return false;
+  const cleanupFunctionSet = new Set(cleanupFunctions);
   return collectDeferredUsageGuardStates(usageFunction, usage.node, context).some(
     (guardState) =>
-      isEffectLocalLifecycleGuard(callback, guardState, cleanupFunctions, context) &&
+      isEffectLocalLifecycleGuard(callback, guardState, cleanupFunctionSet, context) &&
       !hasPotentialInterruptionAfterGuard(usageFunction, guardState, usage.node, context) &&
       !deferredUsageWritesGuardBeforeUsage(usageFunction, usage.node, guardState, context) &&
       cleanupReturns.every((cleanupReturn) =>
@@ -9915,6 +9918,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
   const bindingIdentifier = getFunctionBindingIdentifier(retainedFunction);
   const retainedSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!retainedSymbol || retainedSymbol.references.length === 0) return false;
+  const effectCallSet = new Set(effectCalls);
   const effectCallbacks = new Set(
     effectCalls.flatMap((effectCall) => {
       const callback = getEffectCallback(effectCall);
@@ -9942,7 +9946,7 @@ const isRetainedFunctionExclusivelyEffectInvoked = (
       isNodeOfType(dependencyArray, "ArrayExpression") &&
       isNodeOfType(effectCall, "CallExpression") &&
       effectCall.arguments?.[1] === dependencyArray &&
-      effectCalls.includes(effectCall),
+      effectCallSet.has(effectCall),
     );
   });
 };

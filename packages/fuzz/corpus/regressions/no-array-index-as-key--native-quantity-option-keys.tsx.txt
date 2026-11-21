@@ -1,0 +1,15 @@
+// rule: no-array-index-as-key
+// weakness: other
+// source: CartPage quantity options audit
+// verdict: pass
+import React from "react";
+
+export const Quantity = ({ stock }: { stock: { count: number } }) => (
+  <select>
+    {Array.from({ length: stock.count }, (_, index) => (
+      <option key={index + 1} value={index + 1}>
+        {index + 1}
+      </option>
+    ))}
+  </select>
+);

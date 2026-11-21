@@ -1,0 +1,17 @@
+// rule: no-array-index-as-key
+// weakness: other
+// source: quantity option integer boundary audit
+// verdict: fail
+import React from "react";
+
+export const Quantity = ({ stock }: { stock: { count: number } }) => (
+  <select>
+    {Array.from({ length: stock.count }, (_, index) => (
+      <option key={index + 9007199254740991} value={index + 9007199254740991}>
+        {index + 9007199254740991}
+      </option>
+    ))}
+  </select>
+);
+
+export const FourOptions = () => <Quantity stock={{ count: 4 }} />;

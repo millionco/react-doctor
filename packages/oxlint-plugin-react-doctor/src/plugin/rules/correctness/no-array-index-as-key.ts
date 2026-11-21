@@ -5,9 +5,11 @@ import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -555,6 +557,177 @@ const isFixedMemoReceiver = (receiver: EsTreeNode): boolean => {
   if (!useMemoReturnsArrayLiteral(initializer) && !hasEmptyDependencyArray(initializer))
     return false;
   return !isBindingReassignedOrMutated(node, node.name);
+};
+
+const ARRAY_PROVIDER_CARRIERS = new Set([
+  "document",
+  "eval",
+  "frames",
+  "Function",
+  "global",
+  "globalThis",
+  "Object",
+  "opener",
+  "parent",
+  "process",
+  "Reflect",
+  "require",
+  "self",
+  "setInterval",
+  "setTimeout",
+  "top",
+  "window",
+]);
+const closedArrayFromByProgram = new WeakMap<EsTreeNode, boolean>();
+
+const hasClosedNativeArrayFrom = (node: EsTreeNode, context: RuleContext): boolean => {
+  const program = findProgramRoot(node);
+  if (!program) return false;
+  const cached = closedArrayFromByProgram.get(program);
+  if (cached !== undefined) return cached;
+
+  let isClosed = true;
+  walkAst(program, (candidate) => {
+    if (!isClosed) return false;
+    // A computed or alternate constructor path could replace Array.from
+    // without a direct write to the global Array binding.
+    if (
+      isNodeOfType(candidate, "ThisExpression") ||
+      isNodeOfType(candidate, "ImportExpression") ||
+      isNodeOfType(candidate, "TSImportEqualsDeclaration")
+    )
+      isClosed = false;
+    if (
+      isNodeOfType(candidate, "ImportDeclaration") &&
+      ["vm", "node:vm", "module", "node:module"].includes(String(candidate.source.value))
+    ) {
+      isClosed = false;
+    }
+    if (isNodeOfType(candidate, "MemberExpression")) {
+      const property = getStaticPropertyName(candidate);
+      if (
+        property === "constructor" ||
+        property === "__proto__" ||
+        (candidate.computed && !property)
+      ) {
+        isClosed = false;
+      }
+    }
+    if (isNodeOfType(candidate, "Property") && isNodeOfType(candidate.parent, "ObjectPattern")) {
+      const key = getStaticPropertyKeyName(candidate, { allowComputedString: true });
+      if (key === "constructor" || key === "__proto__" || (candidate.computed && key === null)) {
+        isClosed = false;
+      }
+    }
+    if (!isNodeOfType(candidate, "Identifier") || !context.scopes.isGlobalReference(candidate))
+      return;
+    if (ARRAY_PROVIDER_CARRIERS.has(candidate.name)) isClosed = false;
+    if (candidate.name !== "Array") return;
+    const member = candidate.parent;
+    const call = member?.parent;
+    isClosed =
+      isClosed &&
+      isNodeOfType(member, "MemberExpression") &&
+      member.object === candidate &&
+      !member.computed &&
+      !member.optional &&
+      isNodeOfType(call, "CallExpression") &&
+      call.callee === member &&
+      !call.optional &&
+      isArrayFromCall(call);
+  });
+  closedArrayFromByProgram.set(program, isClosed);
+  return isClosed;
+};
+
+const getQuantityOrdinalOffset = (expression: EsTreeNode, indexName: string): number | null => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Identifier") && value.name === indexName) return 0;
+  if (
+    !isNodeOfType(value, "BinaryExpression") ||
+    value.operator !== "+" ||
+    !isNodeOfType(value.left, "Identifier") ||
+    value.left.name !== indexName ||
+    !isNodeOfType(value.right, "Literal") ||
+    value.right.value !== 1
+  )
+    return null;
+  // With an actual array index, adding one stays in the exact integer range.
+  return 1;
+};
+
+const isNativeQuantityOptionIterator = (
+  iterator: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const [lengthSource, callback] = iterator.arguments;
+  const callee = iterator.callee;
+  if (
+    !isArrayFromCall(iterator) ||
+    iterator.optional ||
+    iterator.arguments.length !== 2 ||
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    callee.optional ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    !context.scopes.isGlobalReference(callee.object) ||
+    !isNodeOfType(lengthSource, "ObjectExpression") ||
+    lengthSource.properties.length !== 1 ||
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    callback.params.length !== 2
+  ) {
+    return false;
+  }
+  const [lengthProperty] = lengthSource.properties;
+  if (
+    !isNodeOfType(lengthProperty, "Property") ||
+    lengthProperty.kind !== "init" ||
+    lengthProperty.method ||
+    lengthProperty.computed ||
+    !isNodeOfType(lengthProperty.key, "Identifier") ||
+    lengthProperty.key.name !== "length"
+  )
+    return false;
+  const index = callback.params[1];
+  const returned = getSingleReturnExpression(callback);
+  if (!isNodeOfType(index, "Identifier") || !returned) return false;
+  const option = stripParenExpression(returned);
+  if (
+    !isNodeOfType(option, "JSXElement") ||
+    !isNodeOfType(option.openingElement.name, "JSXIdentifier") ||
+    option.openingElement.name.name !== "option" ||
+    option.openingElement.attributes.length !== 2
+  ) {
+    return false;
+  }
+
+  let keyOffset: number | null = null;
+  let valueOffset: number | null = null;
+  for (const attribute of option.openingElement.attributes) {
+    if (
+      !isNodeOfType(attribute, "JSXAttribute") ||
+      !isNodeOfType(attribute.name, "JSXIdentifier") ||
+      !isNodeOfType(attribute.value, "JSXExpressionContainer")
+    )
+      return false;
+    const offset = getQuantityOrdinalOffset(attribute.value.expression, index.name);
+    if (attribute.name.name === "key") keyOffset = offset;
+    else if (attribute.name.name === "value") valueOffset = offset;
+    else return false;
+  }
+  const children = option.children.filter(
+    (child) => !isNodeOfType(child, "JSXText") || child.value.trim() !== "",
+  );
+  return (
+    keyOffset !== null &&
+    keyOffset === valueOffset &&
+    children.length === 1 &&
+    isNodeOfType(children[0], "JSXExpressionContainer") &&
+    getQuantityOrdinalOffset(children[0].expression, index.name) === keyOffset &&
+    hasClosedNativeArrayFrom(iterator, context)
+  );
 };
 
 const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
@@ -1973,7 +2146,8 @@ export const noArrayIndexAsKey = defineRule({
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
-            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context) ||
+            isNativeQuantityOptionIterator(indexUse.binding.iteratorCall, context))
         )
           return;
         const indexName = indexUse.identifier.name;

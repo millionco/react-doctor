@@ -2756,3 +2756,56 @@ describe("closed stable focus data actions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("native quantity options", () => {
+  const renderQuantity = (key: string, value: string, label: string, attributes = "") => `
+    import React from "react";
+    export const Quantity = ({ stock }) => (
+      <select>{Array.from({ length: stock.count }, (_, index) => (
+        <option key={${key}} value={${value}} ${attributes}>{${label}}</option>
+      ))}</select>
+    );
+  `;
+  const knownOrdinal = renderQuantity("index + 1", "index + 1", "index + 1");
+
+  it.each(["index", "index + 1"])("recognizes an intrinsic option with ordinal %s", (ordinal) => {
+    const result = runRule(noArrayIndexAsKey, renderQuantity(ordinal, ordinal, ordinal));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["different option values", renderQuantity("index + 1", "stock.values[index]", "index + 1")],
+    ["different option labels", renderQuantity("index + 1", "index + 1", "stock.labels[index]")],
+    [
+      "observable option instances",
+      renderQuantity("index + 1", "index + 1", "index + 1", "ref={stock.onRef}"),
+    ],
+    [
+      "unsafe integer sums",
+      renderQuantity(
+        "index + 9007199254740991",
+        "index + 9007199254740991",
+        "index + 9007199254740991",
+      ),
+    ],
+    ["shadowed Array provider", knownOrdinal.replace("({ stock })", "({ stock, Array })")],
+    ["direct Array.from replacement", `${knownOrdinal}\nArray.from = customFrom;`],
+    [
+      "destructured Array provider",
+      `${knownOrdinal}\nconst { constructor: ArrayProvider } = []; ArrayProvider.from = customFrom;`,
+    ],
+    [
+      "global carrier alias",
+      `${knownOrdinal}\nconst ArrayProvider = globalThis.Array; ArrayProvider.from = customFrom;`,
+    ],
+    [
+      "string timer provider replacement",
+      `${knownOrdinal}\nsetTimeout("Array.from = customFrom", 0);`,
+    ],
+  ])("retains the warning for %s", (_name, code) => {
+    const result = runRule(noArrayIndexAsKey, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

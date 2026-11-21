@@ -1,0 +1,5 @@
+// rule: no-pass-data-to-parent
+// verdict: fail
+// source: synthetic
+
+import{useEffect,useState}from'react';export function Panel({onData}){const[n,setN]=useState(0);useEffect(()=>{onData(Boolean(n))},[n,onData]);return <button onClick={()=>setN(n+1)}>{n}</button>}

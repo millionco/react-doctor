@@ -669,3 +669,46 @@ describe("notifications without state payloads", () => {
     },
   );
 });
+
+describe("no-prop-callback-in-effect — ref-backed rising edges", () => {
+  const component = (effectBody: string) => `
+    import { useEffect, useRef, useState } from "react";
+    export function Action({ notify }) {
+      const [pressed] = useState(false);
+      const [value] = useState("");
+      const previous = useRef(false);
+      useEffect(() => { ${effectBody} }, [notify, pressed, value]);
+      return null;
+    }
+  `;
+
+  it("allows the guarded notification and reports the separate state mirror", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      component(`
+        const rising = pressed && !previous.current;
+        if (rising) notify(value);
+        previous.current = pressed;
+        notify(value);
+      `),
+      { includeLocations: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.line).toBe(11);
+  });
+
+  it.each([
+    "if (rising) notify(value); previous.current = !pressed;",
+    "if (rising) { notify(value); if (value) return; } previous.current = pressed;",
+    "if (rising) { for (let index = 0; index < 2; index++) notify(value); } previous.current = pressed;",
+    "if (rising) notify(value); previous.current = pressed; expose(previous);",
+  ])("reports when the local edge proof does not cover the notification", (body: string) => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      component(`const rising = pressed && !previous.current; ${body}`),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

@@ -60,6 +60,7 @@ import {
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
+import { getCoveredWindowListenerCaptures } from "./exhaustive-deps-window-listener-captures.js";
 import {
   getFunctionValueNode,
   isRecursiveInitializerCapture,
@@ -439,6 +440,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  coveredWindowListenerCaptures?: ReadonlyMap<SymbolDescriptor, ReadonlySet<string>>,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -452,6 +454,11 @@ const collectCaptureDepKeys = (
     const symbol = reference.resolvedSymbol;
     if (!symbol) continue;
     if (isRecursiveInitializerCapture(symbol, callback)) continue;
+    const coveredListenerKeys = coveredWindowListenerCaptures?.get(symbol);
+    if (coveredListenerKeys) {
+      for (const key of coveredListenerKeys) keys.add(key);
+      continue;
+    }
     if (allowSoleWriterEffectGuards && isSoleWriterEffectGuardCapture(symbol, callback, scopes)) {
       stableCapturedNames.add(symbol.name);
       continue;
@@ -2434,6 +2441,12 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          shouldUseCuratedBehavior &&
+            hookName === "useEffect" &&
+            callbackToAnalyze === callbackExpression &&
+            isReactApiCall(node, "useEffect", context.scopes, { resolveNamedAliases: true })
+            ? getCoveredWindowListenerCaptures(callbackExpression, depsArgument, context.scopes)
+            : undefined,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

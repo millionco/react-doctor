@@ -1,0 +1,30 @@
+// rule: no-loading-flag-reset-outside-finally
+// weakness: control-flow
+// verdict: fail
+
+import React from 'react';
+// Source-only Node ESM/SSR witness; no evaluation claimed.
+const { constructor: compile } = (() => {});
+export async function installVisibleProviderOverride() {
+  const { default: provider } = await compile("return import('react')")();
+  const original = provider.useEffect;
+  provider.useEffect = (callback, dependencies) => original(
+    dependencies.length === 1 ? () => {} : callback, dependencies);
+}
+export function History({ open, load }) {
+ const sequence = React.useRef(0);
+ const [loading, setLoading] = React.useState(false);
+ const refresh = React.useCallback(async () => {
+  const request = ++sequence.current;
+  setLoading(true);
+  try { await load(); }
+  finally { if (sequence.current === request) setLoading(false); }
+ }, [load]);
+ React.useEffect(() => { setLoading(false); }, [open]);
+ React.useEffect(() => {
+  if (!open) { return; }
+  void refresh();
+  return () => { sequence.current += 1; };
+ }, [open, refresh]);
+ return loading ? <span>Loading</span> : null;
+}

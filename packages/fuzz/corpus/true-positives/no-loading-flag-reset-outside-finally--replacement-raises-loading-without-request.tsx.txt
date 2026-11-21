@@ -1,0 +1,44 @@
+// rule: no-loading-flag-reset-outside-finally
+// weakness: control-flow
+// verdict: fail
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+export function History({ open, getHistory }: {
+  open: boolean;
+  getHistory?: () => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const generation = useRef(0);
+  const refresh = useCallback(async () => {
+    const request = ++generation.current;
+    if (!getHistory) {
+      setLoading(true);
+      return;
+    }
+    setLoading(true);
+    try {
+      await getHistory();
+    } finally {
+      if (generation.current === request) {
+        setLoading(false);
+      }
+    }
+  }, [getHistory]);
+
+  useEffect(() => {
+    setLoading(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void refresh();
+    return () => {
+      generation.current += 1;
+    };
+  }, [open, refresh]);
+
+  return loading ? <div>Loading history</div> : null;
+}

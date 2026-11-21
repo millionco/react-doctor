@@ -39,6 +39,7 @@ import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-tran
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isCopyOnWriteContainer } from "../../utils/is-copy-on-write-container.js";
+import { isOwnedStateMapCopyWrite } from "./is-owned-state-map-copy-write.js";
 import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
 import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -2072,7 +2073,10 @@ const callHasSideEffectName = (
   ) {
     return false;
   }
-  return !receiverIsUpdaterLocal(receiver, updaterFunction, executedFunctions, context);
+  return (
+    !isOwnedStateMapCopyWrite(call, updaterFunction, context.scopes) &&
+    !receiverIsUpdaterLocal(receiver, updaterFunction, executedFunctions, context)
+  );
 };
 
 const nodeIsReachable = (

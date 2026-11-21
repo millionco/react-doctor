@@ -57,6 +57,7 @@ import {
   buildUnnecessaryDepMessage,
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
+import { isLocalCallbackRefCurrentCapture } from "./exhaustive-deps-local-callback-ref.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
@@ -439,6 +440,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  localCallbackRefConsumer?: EsTreeNodeOfType<"CallExpression">,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -479,6 +481,20 @@ const collectCaptureDepKeys = (
     }
     const depKey = computeDepKey(reference);
     if (!depKey) continue;
+    if (
+      localCallbackRefConsumer &&
+      depKey === symbol.name &&
+      ![...(declaredKeys ?? [])].some((key) => key === depKey || key.startsWith(`${depKey}.`)) &&
+      isLocalCallbackRefCurrentCapture(
+        reference,
+        symbol,
+        localCallbackRefConsumer,
+        callback,
+        scopes,
+      )
+    ) {
+      continue;
+    }
     if (
       depKey === symbol.name &&
       isBooleanGuardReference(reference.identifier) &&
@@ -2434,6 +2450,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          shouldUseCuratedBehavior && hookName === "useCallback" ? node : undefined,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

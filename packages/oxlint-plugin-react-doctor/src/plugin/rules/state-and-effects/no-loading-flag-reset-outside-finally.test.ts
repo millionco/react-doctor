@@ -3898,3 +3898,156 @@ describe("render lifecycle resets", () => {
     },
   );
 });
+
+describe("cleanup restarts with a separate loading reset", () => {
+  const validStartup = [
+    "if (!load) { setLoading(false); return; }",
+    "setLoading(true);",
+    "setError(null);",
+  ].join("\n");
+
+  it.each([
+    ["resets on the closed branch and enters the guarded try when active", validStartup, "open", 0],
+    ["keeps a warning for a different reset dependency", validStartup, "otherOpen", 1],
+    [
+      "keeps a warning when a replacement sets loading and returns before the try",
+      "setLoading(true); if (!load) return;",
+      "open",
+      1,
+    ],
+    [
+      "keeps a warning when an early branch sets loading without starting a request",
+      "if (!load) { setLoading(true); return; } setLoading(true);",
+      "open",
+      1,
+    ],
+    [
+      "keeps a warning when an opaque call can interrupt entry to the try",
+      "if (!load) { setLoading(false); return; } setLoading(true); prepare();",
+      "open",
+      1,
+    ],
+  ])("%s", (_description, startup, resetDependency, expectedCount) => {
+    const source = `
+      import { useCallback, useEffect, useRef, useState } from "react";
+      const HistoryPanel = ({ open, otherOpen, load, prepare }) => {
+        const sequence = useRef(0);
+        const [loading, setLoading] = useState(false);
+        const [, setError] = useState(null);
+        const refresh = useCallback(async () => {
+          const request = ++sequence.current;
+          ${startup}
+          try {
+            await load();
+          } finally {
+            if (sequence.current === request) {
+              setLoading(false); // finally reset
+            }
+          }
+        }, [load, prepare]);
+
+        useEffect(() => {
+          setLoading(false);
+        }, [${resetDependency}]);
+
+        useEffect(() => {
+          if (!open) {
+            return;
+          }
+          void refresh();
+          return () => {
+            sequence.current += 1;
+          };
+        }, [open, refresh]);
+        const labels = ["Loading"];
+        return loading ? <span>{labels[0]}</span> : null;
+      };
+    `;
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, { includeLocations: true });
+    const finalizerResetLine =
+      source.split("\n").findIndex((line) => line.includes("// finally reset")) + 1;
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual(
+      expectedCount === 0 ? [] : [finalizerResetLine],
+    );
+  });
+});
+
+describe("closed React hook providers for loading resets", () => {
+  it.each([
+    [
+      "visible React effect replacement",
+      `const stockEffect = React.useEffect;
+React.useEffect = (callback, dependencies) => stockEffect(
+  dependencies.length === 1 ? () => {} : callback, dependencies);`,
+    ],
+    [
+      "escaped React effect replacement",
+      `const provider = React;
+const stockEffect = provider.useEffect;
+provider.useEffect = (callback, dependencies) => stockEffect(
+  dependencies.length === 1 ? () => {} : callback, dependencies);`,
+    ],
+    [
+      "destructured React provider constructor",
+      `// Source-only Node ESM/SSR witness; no evaluation claimed.
+const { constructor: compile } = (() => {});
+export async function installVisibleProviderOverride() {
+  const { default: provider } = await compile("return import('react')")();
+  const original = provider.useEffect;
+  provider.useEffect = (callback, dependencies) => original(
+    dependencies.length === 1 ? () => {} : callback, dependencies);
+}`,
+    ],
+    [
+      "computed React provider constructor",
+      `// Source-only Node ESM/SSR witness; no evaluation claimed.
+const field = 'constructor';
+const compile = (() => {})[field];
+export async function installVisibleProviderOverride() {
+  const { default: provider } = await compile("return import('react')")();
+  const original = provider.useEffect;
+  provider.useEffect = (callback, dependencies) => original(
+    dependencies.length === 1 ? () => {} : callback, dependencies);
+}`,
+    ],
+  ])("retains the guarded warning for %s", (_description, setup) => {
+    const source = `
+      import React from "react";
+      ${setup}
+      const Panel = ({ open, load }) => {
+        const generation = React.useRef(0);
+        const [loading, setLoading] = React.useState(false);
+        const refresh = React.useCallback(async () => {
+          const request = ++generation.current;
+          setLoading(true);
+          try {
+            await load();
+          } finally {
+            if (generation.current === request) {
+              setLoading(false); // finally reset
+            }
+          }
+        }, [load]);
+        React.useEffect(() => {
+          setLoading(false);
+        }, [open]);
+        React.useEffect(() => {
+          if (!open) {
+            return;
+          }
+          void refresh();
+          return () => {
+            generation.current += 1;
+          };
+        }, [open, refresh]);
+        return loading ? <span>Loading</span> : null;
+      };
+    `;
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, { includeLocations: true });
+    const finalizerResetLine =
+      source.split("\n").findIndex((line) => line.includes("// finally reset")) + 1;
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([finalizerResetLine]);
+  });
+});

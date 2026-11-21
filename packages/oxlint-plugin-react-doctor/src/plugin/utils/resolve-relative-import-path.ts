@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { hasStaticViteResolution } from "./has-static-vite-resolution.js";
 import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 
 const MODULE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
@@ -167,6 +168,76 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
+
+const findOwningPackage = (filename: string): string | null => {
+  let directory = path.dirname(filename);
+  while (true) {
+    const manifest = path.join(directory, "package.json");
+    if (getExistingFilePath(manifest)) return manifest;
+    const parent = path.dirname(directory);
+    if (parent === directory) return null;
+    directory = parent;
+  }
+};
+
+const hasRegistryVersion = (manifest: Record<string, unknown>, name: string): boolean => {
+  const optional = manifest.optionalDependencies;
+  if (isObjectRecord(optional) && Object.hasOwn(optional, name)) return false;
+  const sections = [manifest.dependencies, manifest.devDependencies];
+  const selectors = sections.flatMap((section) =>
+    isObjectRecord(section) && Object.hasOwn(section, name) ? [section[name]] : [],
+  );
+  return (
+    selectors.length === 1 &&
+    typeof selectors[0] === "string" &&
+    /^[~^]?\d+\.\d+\.\d+$/u.test(selectors[0])
+  );
+};
+
+const canRemapPackage = (manifest: Record<string, unknown>): boolean =>
+  ["browser", "overrides", "pnpm", "resolutions", "workspaces"].some((key) =>
+    Object.hasOwn(manifest, key),
+  );
+
+// Exemptions need one direct source across the default extension orders.
+export const resolveUnambiguousViteImportPath = (
+  filename: string,
+  source: string,
+): string | null => {
+  if (filename.length === 0 || (!source.startsWith("./") && !source.startsWith("../"))) return null;
+  const importer = path.resolve(filename);
+  const modulePath = path.resolve(path.dirname(importer), source);
+  if (getExistingDirectoryPath(modulePath)) return null;
+  const candidates = new Set([modulePath, ...getModuleFilePathCandidates(modulePath)]);
+  const files = [...candidates].filter((candidate) => getExistingFilePath(candidate));
+  if (files.length !== 1) return null;
+  const target = files[0];
+  if (!target) return null;
+  const manifest = findOwningPackage(importer);
+  if (!manifest || findOwningPackage(target) !== manifest) return null;
+  const packageJson = readPackageJson(manifest);
+  if (
+    !packageJson ||
+    canRemapPackage(packageJson) ||
+    !["react", "vite", "@vitejs/plugin-react"].every((name) =>
+      hasRegistryVersion(packageJson, name),
+    )
+  )
+    return null;
+  const build = isObjectRecord(packageJson.scripts) ? packageJson.scripts.build : null;
+  if (build !== "vite build" && build !== "tsc && vite build") return null;
+  const directory = path.dirname(manifest);
+  const parentManifest = findOwningPackage(directory);
+  if (parentManifest) {
+    const parent = readPackageJson(parentManifest);
+    if (!parent || canRemapPackage(parent)) return null;
+  }
+  const configs = MODULE_FILE_EXTENSIONS.map((extension) =>
+    path.join(directory, `vite.config${extension}`),
+  ).filter((candidate) => getExistingFilePath(candidate));
+  const [config] = configs;
+  return configs.length === 1 && config && hasStaticViteResolution(config) ? target : null;
+};
 
 export const resetModuleResolutionCaches = (): void => {
   filesystemEntryByPath.clear();

@@ -39,6 +39,7 @@ import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-tran
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isCopyOnWriteContainer } from "../../utils/is-copy-on-write-container.js";
+import { isGuardedCopyOnWriteDeletion } from "../../utils/is-guarded-copy-on-write-deletion.js";
 import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
 import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -1588,6 +1589,12 @@ const getExternallyVisiblePropertyWrite = (
   } else if (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") {
     writeTarget = stripParenExpression(node.argument);
   }
+  if (
+    writeTarget &&
+    isNodeOfType(node, "UnaryExpression") &&
+    isGuardedCopyOnWriteDeletion(writeTarget, updaterFunction, context.scopes)
+  )
+    return null;
   return writeTarget &&
     isNodeOfType(writeTarget, "MemberExpression") &&
     memberWriteHasExternalReceiver(writeTarget, updaterFunction, executedFunctions, context)

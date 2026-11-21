@@ -17,6 +17,7 @@ import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
+import { isAfterLocalFalseServerSnapshotReturn } from "../../utils/is-after-falsy-server-snapshot-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
@@ -2089,6 +2090,8 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         return;
       }
       if (isAfterClientOnlyEarlyReturn(conditionNode, componentOrHookNode, context.scopes)) return;
+      if (isAfterLocalFalseServerSnapshotReturn(conditionNode, componentOrHookNode, context.scopes))
+        return;
       const openingElement = findEnclosingJsxOpeningElement(conditionNode);
       if (
         hasSuppressHydrationWarningAttribute(openingElement) &&

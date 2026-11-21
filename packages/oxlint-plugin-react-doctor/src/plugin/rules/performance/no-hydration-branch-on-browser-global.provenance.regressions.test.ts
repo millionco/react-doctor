@@ -318,3 +318,75 @@ describe("no-hydration-branch-on-browser-global — helper provenance", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("no-hydration-branch-on-browser-global — local server snapshots", () => {
+  it("local false positive", () => {
+    const result = run(
+      "import {useSyncExternalStore} from 'react';\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(subscribe,()=>true,()=>false);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready)return null; return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("spread server true retain", () => {
+    const result = run(
+      "import {useSyncExternalStore} from 'react';\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(...([subscribe,()=>true,()=>true] as const),()=>true,()=>false);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready)return null; return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("loop break retain", () => {
+    const result = run(
+      "import {useSyncExternalStore} from 'react';\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(subscribe,()=>true,()=>false);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready){do{if(allow)break;return null;}while(false);} return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("conditional return retain", () => {
+    const result = run(
+      "import {useSyncExternalStore} from 'react';\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(subscribe,()=>true,()=>false);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready){if(allow)return null;} return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("true server retain", () => {
+    const result = run(
+      "import {useSyncExternalStore} from 'react';\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(subscribe,()=>true,()=>true);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready)return null; return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("namespace provider retain", () => {
+    const result = run(
+      "import * as React from 'react';\nReact.useSyncExternalStore=(_s,_c,_ss)=>true;\nimport {useSyncExternalStore} from 'react';\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(subscribe,()=>true,()=>false);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready)return null; return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("dynamic provider retain", () => {
+    const result = run(
+      "import {useSyncExternalStore} from 'react';\nimport('react').then(module=>{module.default.useSyncExternalStore=()=>true;});\nconst subscribe=()=>()=>{};\nconst useReady=()=>useSyncExternalStore(subscribe,()=>true,()=>false);\nconst browser=()=>typeof window!=='undefined' && window.innerWidth>500;\nexport function View({allow=false}){const ready=useReady(); if(!ready)return null; return browser()?<video/>:<img/>;}\n",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("retains module require provider retain", () => {
+    const result = run(
+      '"use client";\nimport { useSyncExternalStore } from "react";\nconst reactProvider = module.require("react");\nreactProvider.useSyncExternalStore = () => true;\nconst subscribe = () => () => {};\nconst useClient = () => useSyncExternalStore(subscribe, () => true, () => false);\nexport function Screen() {\n  const ready = useClient();\n  if (!ready) return null;\n  return typeof window === "undefined" ? <p>Server</p> : <p>Browser</p>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("retains create require provider retain", () => {
+    const result = run(
+      '"use client";\nimport { useSyncExternalStore } from "react";\nimport { createRequire } from "node:module";\nconst get = createRequire(import.meta.url);\nget("react").useSyncExternalStore = () => true;\nconst subscribe = () => () => {};\nconst useClient = () => useSyncExternalStore(subscribe, () => true, () => false);\nexport function Screen() {\n  const ready = useClient();\n  if (!ready) return null;\n  return typeof window === "undefined" ? <p>Server</p> : <p>Browser</p>;\n}\n',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

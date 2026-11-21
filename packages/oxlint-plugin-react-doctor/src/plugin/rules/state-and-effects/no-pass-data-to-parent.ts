@@ -3,6 +3,9 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -284,6 +287,80 @@ const hasMutableBindingWrite = (reference: Reference): boolean =>
       (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
     ),
   );
+
+const stockBooleanByScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasClosedGlobalBoolean = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const cached = stockBooleanByScope.get(scopes);
+  if (cached !== undefined) return cached;
+  const program = findProgramRoot(node);
+  if (!program) return false;
+  let closed = true;
+  walkAst(program, (candidate) => {
+    if (!closed || isTypeScriptTypePosition(candidate)) return false;
+    if (
+      !isNodeOfType(candidate, "Identifier") ||
+      !scopes.isGlobalReference(candidate) ||
+      !scopes.referenceFor(candidate)
+    )
+      return;
+    const parent = candidate.parent;
+    if (["window", "self", "globalThis", "global"].includes(candidate.name)) {
+      if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "typeof") return;
+      if (
+        !isNodeOfType(parent, "MemberExpression") ||
+        parent.object !== candidate ||
+        getStaticMemberPropertyName(parent) === null ||
+        getStaticMemberPropertyName(parent) === "Boolean"
+      )
+        closed = false;
+    }
+    if (
+      candidate.name === "Boolean" &&
+      (isWithinAssignmentTarget(candidate) ||
+        !isNodeOfType(parent, "CallExpression") ||
+        parent.callee !== candidate ||
+        parent.optional ||
+        parent.arguments.length !== 1 ||
+        isNodeOfType(parent.arguments[0], "SpreadElement"))
+    )
+      closed = false;
+  });
+  stockBooleanByScope.set(scopes, closed);
+  return closed;
+};
+
+// Only the stock conversion callee is static machinery. Its argument still
+// participates in normal dataflow; require a direct parent-prop binding here
+// because a child state leaf can otherwise disappear in upstream expansion.
+const isBooleanPropConversionCallee = (
+  node: EsTreeNode,
+  analysis: ProgramAnalysis,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(node, "Identifier") ||
+    node.name !== "Boolean" ||
+    !scopes.isGlobalReference(node)
+  )
+    return false;
+  const call = node.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.callee !== node ||
+    call.optional ||
+    call.arguments.length !== 1 ||
+    !isNodeOfType(call.arguments[0], "Identifier")
+  )
+    return false;
+  const argument = getRef(analysis, call.arguments[0]);
+  return (
+    !!argument &&
+    isProp(analysis, argument) &&
+    !hasMutableBindingWrite(argument) &&
+    hasClosedGlobalBoolean(node, scopes)
+  );
+};
 
 const TRANSPARENT_PROP_VALUE_HOOK_NAMES: ReadonlySet<string> = new Set(["useMemo", "useRef"]);
 const TRANSPARENT_GLOBAL_VALUE_NAMES: ReadonlySet<string> = new Set([
@@ -1827,6 +1904,8 @@ export const noPassDataToParent = defineRule({
             ) {
               return false;
             }
+            if (isBooleanPropConversionCallee(argIdentifier, analysis, context.scopes))
+              return false;
             if (isUseStateIdentifier(argIdentifier)) return false;
             if (isComponentPropOriginatedReference(analysis, argRef, context.scopes)) return false;
             if (isProp(analysis, argRef)) return false;

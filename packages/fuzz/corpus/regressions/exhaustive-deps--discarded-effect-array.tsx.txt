@@ -1,0 +1,21 @@
+// rule: exhaustive-deps
+// verdict: pass
+// source: synthetic
+
+import { useEffect, useState } from "react";
+
+export function Results({ category, publish }: {
+  category: string;
+  publish: (rows: string[]) => void;
+}) {
+  const [previous, setPrevious] = useState(category);
+  const [rows, setRows] = useState<string[]>([]);
+  const changed = category !== previous;
+  if (changed) {
+    setPrevious(category);
+    setRows([]);
+  }
+  const visibleRows = changed ? [] : rows;
+  useEffect(() => { publish(visibleRows); }, [publish, visibleRows]);
+  return null;
+}

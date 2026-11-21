@@ -58,6 +58,7 @@ import {
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
+import { isDiscardedRenderArrayDependency } from "./exhaustive-deps-render-retry.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
@@ -2534,7 +2535,9 @@ If the missing value is recreated every render, move it inside the hook or stabi
             !rootSymbol ||
             !hasDirectIdentifierDeclarator(rootSymbol) ||
             symbolHasStableValue(rootSymbol, context.scopes) ||
-            !isUnstableInitializer(rootSymbol.initializer, context.scopes)
+            !isUnstableInitializer(rootSymbol.initializer, context.scopes) ||
+            (hookName === "useEffect" &&
+              isDiscardedRenderArrayDependency(node, rootSymbol, context.scopes))
           ) {
             continue;
           }

@@ -279,7 +279,7 @@ describe("gitlabCiProvider", () => {
     const content = fs.readFileSync(result.path, "utf8");
     expect(result.path.endsWith(".gitlab-ci.yml")).toBe(true);
     expect(content).toContain("--blocking none --scope changed");
-    expect(content).toContain('--base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"');
+    expect(content).toContain('--base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"');
     expect(content).toContain('if: $CI_PIPELINE_SOURCE == "merge_request_event"');
   });
 
@@ -311,7 +311,7 @@ describe("gitlabCiProvider", () => {
     );
     expect(full).not.toContain("--base");
     const toDiff = gitlabCiProvider.applyGate(full, { ...ERROR_GATE, scope: "changed" });
-    expect(toDiff?.content).toContain('--base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"');
+    expect(toDiff?.content).toContain('--base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"');
     expect(gitlabCiProvider.applyGate(toDiff?.content ?? "", ERROR_GATE)?.content).not.toContain(
       "--base",
     );
@@ -385,7 +385,7 @@ describe("gitlabCiProvider", () => {
       "    - some-tool --blocking warning --scope full",
       "react-doctor:",
       "  script:",
-      '    - npx react-doctor@latest --blocking error --scope changed --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"',
+      '    - npx react-doctor@latest --blocking error --scope changed --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"',
       "",
     ].join("\n");
     const gate = gitlabCiProvider.parseGate(merged);
@@ -404,6 +404,18 @@ describe("gitlabCiProvider", () => {
     const gate = gitlabCiProvider.parseGate(config);
     expect(gate.blocking).toBe("error");
     expect(gate.scope).toBe("changed");
+  });
+
+  it("upgrades old CI_MERGE_REQUEST_TARGET_BRANCH_NAME to CI_MERGE_REQUEST_DIFF_BASE_SHA", () => {
+    const oldConfig = [
+      "react-doctor:",
+      "  script:",
+      '    - npx react-doctor@latest --blocking error --scope changed --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"',
+      "",
+    ].join("\n");
+    const result = gitlabCiProvider.applyGate(oldConfig, { ...ADVISORY_GATE, scope: "changed" });
+    expect(result?.content).toContain('--base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"');
+    expect(result?.content).not.toContain("CI_MERGE_REQUEST_TARGET_BRANCH_NAME");
   });
 });
 

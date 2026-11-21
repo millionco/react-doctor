@@ -1,3 +1,4 @@
+import { isMemoizedCountSlotMap } from "../../utils/is-memoized-count-slot-map.js";
 import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
@@ -1973,7 +1974,8 @@ export const noArrayIndexAsKey = defineRule({
         if (
           indexUse.binding.iteratorCall &&
           (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
-            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context) ||
+            isMemoizedCountSlotMap(indexUse.binding.iteratorCall, context))
         )
           return;
         const indexName = indexUse.identifier.name;

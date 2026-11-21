@@ -61,6 +61,12 @@ import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
+  type CoveredLookupEffect,
+  getCoveredLookupEffect,
+  isPureDerivedFunction,
+  resolveCoveredLookupSourceKeys,
+} from "./exhaustive-deps-covered-lookup.js";
+import {
   getFunctionValueNode,
   isRecursiveInitializerCapture,
   isStableRefContainerCapture,
@@ -439,6 +445,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  coveredLookupEffect?: CoveredLookupEffect,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -499,7 +506,10 @@ const collectCaptureDepKeys = (
         resolveCalledArgumentPropertyKeys(reference, scopes) ??
         resolvePureCalledFunctionSourceKeys(reference, symbol, scopes) ??
         resolveRenderDerivedMutableSourceKeys(reference, symbol, scopes) ??
-        resolveReactiveIdentitySourceKeys(symbol, scopes);
+        resolveReactiveIdentitySourceKeys(symbol, scopes) ??
+        (coveredLookupEffect
+          ? resolveCoveredLookupSourceKeys(reference, symbol, scopes, coveredLookupEffect)
+          : null);
       if (identitySourceKeys) {
         if (identitySourceKeys.size === 0) stableCapturedNames.add(depKey);
         for (const identitySourceKey of identitySourceKeys) keys.add(identitySourceKey);
@@ -653,67 +663,6 @@ const resolveReactiveIdentitySourceKeys = (
     return null;
   }
   return resolveIdentitySourceKeysFromExpression(symbol.initializer, scopes, new Set([symbol.id]));
-};
-
-const isPureDerivedExpression = (expression: EsTreeNode): boolean => {
-  const candidate = unwrapExpression(expression);
-  if (isNodeOfType(candidate, "Literal") || isNodeOfType(candidate, "Identifier")) return true;
-  if (isNodeOfType(candidate, "MemberExpression")) {
-    return (
-      isPureDerivedExpression(candidate.object) &&
-      (!candidate.computed || isPureDerivedExpression(candidate.property))
-    );
-  }
-  if (isNodeOfType(candidate, "BinaryExpression") || isNodeOfType(candidate, "LogicalExpression")) {
-    return isPureDerivedExpression(candidate.left) && isPureDerivedExpression(candidate.right);
-  }
-  if (isNodeOfType(candidate, "UnaryExpression")) {
-    return candidate.operator !== "delete" && isPureDerivedExpression(candidate.argument);
-  }
-  if (isNodeOfType(candidate, "ConditionalExpression")) {
-    return (
-      isPureDerivedExpression(candidate.test) &&
-      isPureDerivedExpression(candidate.consequent) &&
-      isPureDerivedExpression(candidate.alternate)
-    );
-  }
-  if (isNodeOfType(candidate, "TemplateLiteral")) {
-    return candidate.expressions.every((nestedExpression) =>
-      isPureDerivedExpression(nestedExpression),
-    );
-  }
-  return false;
-};
-
-const isPureDerivedStatement = (statement: EsTreeNode): boolean => {
-  if (isNodeOfType(statement, "BlockStatement")) {
-    return statement.body.every((nestedStatement) => isPureDerivedStatement(nestedStatement));
-  }
-  if (isNodeOfType(statement, "ReturnStatement")) {
-    return !statement.argument || isPureDerivedExpression(statement.argument);
-  }
-  if (isNodeOfType(statement, "IfStatement")) {
-    return (
-      isPureDerivedExpression(statement.test) &&
-      isPureDerivedStatement(statement.consequent) &&
-      (!statement.alternate || isPureDerivedStatement(statement.alternate))
-    );
-  }
-  return false;
-};
-
-const isPureDerivedFunction = (functionNode: EsTreeNode): boolean => {
-  if (
-    !isNodeOfType(functionNode, "FunctionDeclaration") &&
-    !isNodeOfType(functionNode, "FunctionExpression") &&
-    !isNodeOfType(functionNode, "ArrowFunctionExpression")
-  ) {
-    return false;
-  }
-  if (functionNode.async || functionNode.generator) return false;
-  return isNodeOfType(functionNode.body, "BlockStatement")
-    ? isPureDerivedStatement(functionNode.body)
-    : isPureDerivedExpression(functionNode.body);
 };
 
 const resolvePureCalledFunctionSourceKeys = (
@@ -2434,6 +2383,14 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          shouldUseCuratedBehavior && hookName === "useEffect"
+            ? getCoveredLookupEffect(
+                node,
+                callbackToAnalyze ?? callbackArgument,
+                depsArgument,
+                context.scopes,
+              )
+            : undefined,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

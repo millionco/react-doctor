@@ -1,0 +1,17 @@
+// rule: no-side-effect-in-state-updater-function
+// verdict: fail
+// source: synthetic
+
+import { useState } from "react";
+
+export function Registry({ remove }: { remove: readonly string[] }) {
+  const [registry, setRegistry] = useState({ entries: {} as Record<string, number> });
+  return <button onClick={() => setRegistry((previous) => {
+    let draft = previous;
+    for (const key of remove) {
+      if (draft === previous) draft = { ...previous };
+      delete draft.entries[key];
+    }
+    return draft;
+  })}>{Object.keys(registry.entries).length}</button>;
+}

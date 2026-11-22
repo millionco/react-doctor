@@ -76,6 +76,47 @@ describe("rules-of-hooks standard Next.js index pages", () => {
   });
 
   it.each([
+    'import Page from "../index"; export const preview = () => Page();',
+    'import * as route from "../index"; export const preview = () => route.default();',
+    'import { default as Page } from "../page-preview"; export const preview = () => Page();',
+  ])("reports an ordinary imported page call at the caller", (source) => {
+    placeFile("pages/index.tsx", pageSource);
+    placeFile("pages/page-preview.ts", 'export { default } from "./index";');
+    const filename = placeFile("pages/api/preview.tsx", source);
+    const result = runRule(rulesOfHooks, source, { filename });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("Render this Next.js page with JSX"),
+      }),
+    ]);
+  });
+
+  it.each([
+    'import Page from "../index"; export const preview = () => <Page />;',
+    'export { default as Page } from "../index";',
+    'import type Page from "../index"; export const preview = () => Page();',
+    'import Page from "../index"; export const preview = (Page) => Page();',
+  ])("keeps valid or unresolved imports quiet", (source) => {
+    placeFile("pages/index.tsx", pageSource);
+    const filename = placeFile("pages/api/preview.tsx", source);
+    expect(runRule(rulesOfHooks, source, { filename }).diagnostics).toEqual([]);
+  });
+
+  it("does not infer a React Hook from the target's local useState name", () => {
+    placeFile(
+      "pages/index.tsx",
+      pageSource.replace(
+        'import { useState } from "react";',
+        "const useState = (value) => [value];",
+      ),
+    );
+    const source = 'import Page from "../index"; export const preview = () => Page();';
+    const filename = placeFile("pages/api/preview.tsx", source);
+    expect(runRule(rulesOfHooks, source, { filename }).diagnostics).toEqual([]);
+  });
+
+  it.each([
     ["direct call", "if (pageProps.eager) Component(pageProps);", "Component"],
     ["duplicate binding", "if (pageProps.eager) Alias(pageProps);", "Component, Component: Alias"],
     [

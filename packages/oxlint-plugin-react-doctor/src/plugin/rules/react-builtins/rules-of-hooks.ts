@@ -1,3 +1,4 @@
+import { resolveDirectImportedNextPageInvocation } from "./utils/resolve-direct-imported-next-page-invocation.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { isNextFileActive } from "../../utils/is-next-file.js";
@@ -1054,6 +1055,18 @@ export const rulesOfHooks = defineRule({
     );
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const importedPageHook = resolveDirectImportedNextPageInvocation(
+          node,
+          context.filename,
+          context.scopes,
+        );
+        if (importedPageHook) {
+          context.report({
+            node: node.callee,
+            message: `Render this Next.js page with JSX so React can run its ${importedPageHook} Hook within the page's render.`,
+          });
+          return;
+        }
         const hookContext = isHookCall(node, context.scopes, settings);
         if (!hookContext) return;
         const { hookName } = hookContext;

@@ -51,7 +51,8 @@ export const createScanResultCacheLifecycle = async (
     configSourceDirectory: input.configSourceDirectory,
     invocationState: input.invocationState,
   });
-  const scanResultCache = cacheKey === null ? null : createScanResultCache(input.directory);
+  const scanResultCache =
+    cacheKey === null ? null : createScanResultCache(input.directory, input.options.includePaths);
   const cachedPayload =
     cacheKey === null || scanResultCache === null ? null : scanResultCache.lookup(cacheKey);
 

@@ -275,6 +275,44 @@ describe("scan result cache", () => {
     expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
   });
 
+  it("rechecks missing and edited page files for an analyzed caller", async () => {
+    const caller = "pages/api/preview.ts";
+    const page = "pages/index.tsx";
+    const pageSource =
+      'import { useState } from "react"; const index = () => { useState(0); return <main />; }; export default index;';
+    const projectDirectory = setupReactProject(tempDirectory, "next-page-caller", {
+      packageJsonExtras: {
+        dependencies: { next: "13.5.4", react: "18.2.0", "react-dom": "18.2.0" },
+      },
+      files: {
+        ".gitignore": `${page}\n`,
+        [caller]: 'import Page from "../index"; export const preview = () => Page();',
+      },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const key = await cacheKey(projectDirectory, options);
+    expect(key).not.toBeNull();
+    if (key === null) return;
+    const cached = basePayload(projectDirectory, { analyzedFiles: [caller] });
+    createScanResultCache(projectDirectory).store(key, cached);
+    expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+
+    const pagePath = path.join(projectDirectory, page);
+    fs.writeFileSync(pagePath, pageSource);
+    expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(createScanResultCache(projectDirectory).lookup(key)).toBeNull();
+
+    createScanResultCache(projectDirectory).store(key, cached);
+    expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+    fs.writeFileSync(pagePath, "export default function index() { return <main />; }");
+    expect(createScanResultCache(projectDirectory).lookup(key)).toBeNull();
+    fs.writeFileSync(pagePath, pageSource);
+    expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+    fs.rmSync(pagePath);
+    expect(createScanResultCache(projectDirectory).lookup(key)).toBeNull();
+  });
+
   it("merges entries stored by independently loaded cache instances", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "merged-writers", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

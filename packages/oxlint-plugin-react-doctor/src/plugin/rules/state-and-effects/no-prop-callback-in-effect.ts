@@ -1,3 +1,4 @@
+import { isAliasedRisingEdgeEffect } from "./utils/is-aliased-rising-edge-effect.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
@@ -420,6 +421,7 @@ export const noPropCallbackInEffect = defineRule({
         const stateLikeDeps = [...reactStateDeps, ...customHookStateDeps];
         if (stateLikeDeps.length === 0) return;
 
+        if (isAliasedRisingEdgeEffect(callback, context.scopes)) return;
         if (isRefLatchGuardedEffect(callback.body as EsTreeNode)) return;
         if (hasPreviousValueDep(node, dependencyElements)) return;
 

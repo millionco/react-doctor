@@ -17,7 +17,7 @@ import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
+import { captureCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
@@ -31,6 +31,7 @@ import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
+import { mayReadNativeMeasurementGraph } from "./utils/may-read-native-measurement-graph.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { parseCrossFileSource, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
@@ -94,7 +95,7 @@ interface CrossFileDependencyCollectorInput {
   readonly getProgram: () => EsTreeNode;
 }
 
-type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void;
+type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => false | void;
 
 interface ImportEntryName {
   readonly source: string;
@@ -281,6 +282,13 @@ const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectNoAdjustStateDependencies: CrossFileDependencyCollector = (input) => {
+  // Native attachment checks depend on path identity as well as file existence and content.
+  // The sidecar fingerprint cannot express path identity. Re-lint potential users on every scan.
+  if (mayReadNativeMeasurementGraph(input.getProgram())) return false;
+  collectEffectValueHelperDependencies(input);
 };
 
 const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => {
@@ -596,7 +604,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
-    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-adjust-state-on-prop-change", collectNoAdjustStateDependencies],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
@@ -653,7 +661,8 @@ export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
  *
  * Returns `null` (caller must treat the file as unfingerprintable and always
  * re-lint it) when the file has a fatal parse error — an execution the
- * collectors cannot mirror — or when a requested rule has no collector.
+ * collectors cannot mirror — or when a requested rule has no collector
+ * or declines to fingerprint the file.
  */
 export const collectCrossFileDependencyProbes = (input: {
   absoluteFilePath: string;
@@ -689,7 +698,11 @@ export const collectCrossFileDependencyProbes = (input: {
     staticImports,
     getProgram,
   };
-  return collectCrossFileProbes(() => {
-    for (const collector of collectors) collector(collectorInput);
+  const result = captureCrossFileProbes(() => {
+    for (const collector of collectors) {
+      if (collector(collectorInput) === false) return false;
+    }
+    return true;
   });
+  return result.value ? result.trace : null;
 };

@@ -1,0 +1,14 @@
+{
+  "name": "authored-measured-strip",
+  "private": true,
+  "main": "build/strip.cjs",
+  "module": "build/strip.mjs",
+  "scripts": {
+    "build": "webpack --config webpack.build.cjs",
+    "prebuild": "node scripts/copy-rail.cjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

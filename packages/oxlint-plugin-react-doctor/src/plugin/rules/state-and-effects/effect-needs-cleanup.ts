@@ -50,6 +50,8 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFinalSequenceExpressionValue } from "../../utils/get-final-sequence-expression-value.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -86,6 +88,7 @@ import {
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { HTML_TAGS } from "../../constants/html-tags.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
@@ -7222,6 +7225,380 @@ const hasOwnedObserverHelperCleanup = (
   });
 };
 
+const isPlainObserverHostAttachment = (
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(opening.name, "JSXIdentifier") || !HTML_TAGS.has(opening.name.name))
+    return false;
+  const isOrdinaryAttribute = (attribute: EsTreeNode): boolean =>
+    isNodeOfType(attribute, "JSXAttribute") &&
+    isNodeOfType(attribute.name, "JSXIdentifier") &&
+    attribute.name.name !== "is";
+  if (opening.attributes.every(isOrdinaryAttribute)) return true;
+  const component = findEnclosingFunction(opening);
+  if (
+    !isNodeOfType(component, "FunctionDeclaration") ||
+    !component.id ||
+    !isNodeOfType(component.parent, "Program") ||
+    !isNodeOfType(component.params[0], "ObjectPattern")
+  )
+    return false;
+  const [componentSymbol] = getFunctionBindingSymbols(component, context.scopes);
+  if (
+    !componentSymbol ||
+    !isSymbolReadOnly(componentSymbol) ||
+    !componentSymbol.references.length ||
+    !hasCompleteSymbolReferences(componentSymbol, context.scopes.rootScope.node, context.scopes)
+  )
+    return false;
+  const propPattern = component.params[0];
+  const hasOnlyOrdinaryInputs = componentSymbol.references.every(({ identifier }) => {
+    const caller = identifier.parent;
+    return (
+      isNodeOfType(caller, "JSXOpeningElement") &&
+      caller.name === identifier &&
+      caller.attributes.every(isOrdinaryAttribute)
+    );
+  });
+  if (!hasOnlyOrdinaryInputs) return false;
+  return opening.attributes.every((attribute) => {
+    if (isOrdinaryAttribute(attribute)) return true;
+    if (
+      !isNodeOfType(attribute, "JSXSpreadAttribute") ||
+      !isNodeOfType(attribute.argument, "Identifier")
+    )
+      return false;
+    const spread = context.scopes.symbolFor(attribute.argument);
+    return Boolean(
+      spread &&
+      spread.references.length === 1 &&
+      isSymbolReadOnly(spread) &&
+      hasCompleteSymbolReferences(spread, context.scopes.rootScope.node, context.scopes) &&
+      propPattern.properties.some(
+        (prop) => isNodeOfType(prop, "RestElement") && prop.argument === spread.bindingIdentifier,
+      ),
+    );
+  });
+};
+
+const hasClosedMutationObserverTrigger = (
+  callback: EsTreeNode,
+  helper: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  receiverSymbol: SymbolDescriptor,
+  cleanupReturns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+  allUsages: ReadonlyArray<SubscribeLikeUsage>,
+): boolean => {
+  const receiverInitializer = getDirectConstInitializer(receiverSymbol);
+  if (
+    !receiverInitializer ||
+    !isGlobalObserverConstruction(stripParenExpression(receiverInitializer), context) ||
+    !isNodeOfType(helper, "ArrowFunctionExpression") ||
+    helper.async ||
+    helper.params.length !== 0 ||
+    findEnclosingFunction(helper) !== callback ||
+    !isNodeOfType(helper.body, "BlockStatement")
+  )
+    return false;
+  const resizeConstruction = stripParenExpression(receiverInitializer);
+  if (
+    !isNodeOfType(resizeConstruction, "NewExpression") ||
+    !isNodeOfType(resizeConstruction.callee, "Identifier") ||
+    resizeConstruction.callee.name !== "ResizeObserver" ||
+    resizeConstruction.arguments.length !== 1
+  )
+    return false;
+  const callbackValue = stripParenExpression(resizeConstruction.arguments[0]);
+  const callbackSymbol = isNodeOfType(callbackValue, "Identifier")
+    ? context.scopes.symbolFor(callbackValue)
+    : null;
+  const resizeCallback = callbackSymbol ? getDirectConstInitializer(callbackSymbol) : callbackValue;
+  if (
+    !isNodeOfType(resizeCallback, "ArrowFunctionExpression") ||
+    resizeCallback.async ||
+    resizeCallback.params.length !== 0
+  )
+    return false;
+  const helperBinding = getFunctionBindingIdentifier(helper);
+  const helperSymbol = helperBinding ? context.scopes.symbolFor(helperBinding) : null;
+  if (
+    !helperSymbol ||
+    getDirectConstInitializer(helperSymbol) !== helper ||
+    helperSymbol.references.length !== 2 ||
+    !isSymbolReadOnly(helperSymbol) ||
+    !hasCompleteSymbolReferences(helperSymbol, context.scopes.rootScope.node, context.scopes)
+  )
+    return false;
+
+  const cleanupFunctions = new Set(
+    cleanupReturns.flatMap((returnNode) =>
+      isNodeOfType(returnNode, "ReturnStatement") && returnNode.argument
+        ? [stripParenExpression(returnNode.argument)]
+        : [],
+    ),
+  );
+  for (const cleanup of cleanupFunctions) {
+    if (
+      !isFunctionLike(cleanup) ||
+      cleanup.async ||
+      cleanup.generator ||
+      cleanup.params.length !== 0
+    )
+      return false;
+  }
+  const ownedObserverMethodsOnly = (
+    symbol: SymbolDescriptor,
+    observationOwner: EsTreeNode,
+  ): boolean =>
+    isSymbolReadOnly(symbol) &&
+    hasCompleteSymbolReferences(symbol, context.scopes.rootScope.node, context.scopes) &&
+    symbol.references.every(({ identifier }) => {
+      const member = identifier.parent;
+      const call = member?.parent;
+      if (
+        !isNodeOfType(member, "MemberExpression") ||
+        member.object !== identifier ||
+        member.computed ||
+        !isNodeOfType(call, "CallExpression") ||
+        call.callee !== member ||
+        call.optional ||
+        (getCalleeName(call) === "disconnect" && call.arguments.length !== 0)
+      )
+        return false;
+      const owner = findEnclosingFunction(call);
+      return getCalleeName(call) === "observe"
+        ? owner === observationOwner
+        : getCalleeName(call) === "disconnect" &&
+            (owner === observationOwner || (owner !== null && cleanupFunctions.has(owner)));
+    });
+  if (!ownedObserverMethodsOnly(receiverSymbol, helper)) return false;
+
+  if (!isNodeOfType(usage.node, "CallExpression")) return false;
+  const loop = usage.node.parent?.parent;
+  if (
+    !isNodeOfType(loop, "BlockStatement") ||
+    loop.body.length !== 1 ||
+    !isNodeOfType(loop.parent, "ForOfStatement") ||
+    loop.parent.await ||
+    loop.parent.body !== loop ||
+    loop.parent.parent !== helper.body ||
+    helper.body.body.length !== 2 ||
+    helper.body.body[1] !== loop.parent ||
+    !isNodeOfType(helper.body.body[0], "ExpressionStatement") ||
+    getCalleeName(helper.body.body[0].expression) !== "disconnect" ||
+    !doesReleaseCallMatchUsage(helper.body.body[0].expression, usage, context)
+  )
+    return false;
+
+  const iteration = loop.parent;
+  const children = stripParenExpression(iteration.right);
+  const observed = usage.node.arguments[0];
+  if (
+    !isNodeOfType(children, "MemberExpression") ||
+    children.computed ||
+    getStaticPropertyKeyName(children) !== "children" ||
+    !isNodeOfType(iteration.left, "VariableDeclaration") ||
+    iteration.left.kind !== "const" ||
+    iteration.left.declarations.length !== 1 ||
+    !isNodeOfType(iteration.left.declarations[0].id, "Identifier") ||
+    usage.node.arguments.length !== 1 ||
+    !isNodeOfType(observed, "Identifier") ||
+    context.scopes.symbolFor(observed)?.id !==
+      context.scopes.symbolFor(iteration.left.declarations[0].id)?.id
+  )
+    return false;
+  const capturedHost = context.scopes.symbolFor(children.object);
+  const capture = capturedHost ? getDirectUnreassignedInitializer(capturedHost) : null;
+  if (
+    !isNodeOfType(capture, "MemberExpression") ||
+    capture.computed ||
+    getStaticPropertyKeyName(capture) !== "current"
+  )
+    return false;
+  const hostRef = context.scopes.symbolFor(capture.object);
+  const hostRefInitializer = hostRef ? getDirectConstInitializer(hostRef) : null;
+  if (
+    !hostRef ||
+    !isNodeOfType(hostRefInitializer, "CallExpression") ||
+    !isReactApiCall(hostRefInitializer, "useRef", context.scopes) ||
+    !isNodeOfType(hostRefInitializer.arguments[0], "Literal") ||
+    hostRefInitializer.arguments[0].value !== null ||
+    !hasCompleteSymbolReferences(hostRef, context.scopes.rootScope.node, context.scopes)
+  )
+    return false;
+  let hasHostAttachment = false;
+  for (const { identifier } of hostRef.references) {
+    const parent = identifier.parent;
+    if (
+      isNodeOfType(parent, "MemberExpression") &&
+      parent.object === identifier &&
+      getStaticPropertyKeyName(parent) === "current" &&
+      !isWithinAssignmentTarget(parent)
+    )
+      continue;
+    const attribute = parent?.parent;
+    if (
+      !isNodeOfType(parent, "JSXExpressionContainer") ||
+      !isNodeOfType(attribute, "JSXAttribute") ||
+      !isNodeOfType(attribute.name, "JSXIdentifier") ||
+      attribute.name.name !== "ref" ||
+      !isNodeOfType(attribute.parent, "JSXOpeningElement") ||
+      !isPlainObserverHostAttachment(attribute.parent, context)
+    )
+      return false;
+    hasHostAttachment = true;
+  }
+  if (!hasHostAttachment) return false;
+
+  const invocation = helperSymbol.references
+    .map(({ identifier }) => findDirectCallForReference(identifier))
+    .find((call) => call && findEnclosingFunction(call) === callback);
+  if (
+    !invocation ||
+    !isNodeOfType(invocation, "CallExpression") ||
+    invocation.arguments.length !== 0 ||
+    !doMatchingNodesCoverEveryPathAfterUsage(invocation, cleanupReturns, context)
+  )
+    return false;
+  const callbackReference = helperSymbol.references.find(
+    ({ identifier }) => identifier.parent !== invocation,
+  );
+  const constructor = callbackReference?.identifier.parent;
+  if (
+    !isNodeOfType(constructor, "NewExpression") ||
+    !isNodeOfType(constructor.callee, "Identifier") ||
+    constructor.callee.name !== "MutationObserver" ||
+    !context.scopes.isGlobalReference(constructor.callee) ||
+    constructor.arguments.length !== 1 ||
+    constructor.arguments[0] !== callbackReference?.identifier ||
+    !isNodeOfType(constructor.parent, "VariableDeclarator") ||
+    !isNodeOfType(constructor.parent.id, "Identifier") ||
+    constructor.parent.init !== constructor ||
+    findEnclosingFunction(constructor) !== callback
+  )
+    return false;
+  const trigger = context.scopes.symbolFor(constructor.parent.id);
+  if (!trigger || trigger.kind !== "const" || !ownedObserverMethodsOnly(trigger, callback))
+    return false;
+  const triggerRegistrations = allUsages.filter(
+    (entry) =>
+      entry.registrationVerbName === "observe" &&
+      isNodeOfType(entry.node, "CallExpression") &&
+      isNodeOfType(entry.node.callee, "MemberExpression") &&
+      context.scopes.symbolFor(entry.node.callee.object)?.id === trigger.id,
+  );
+  const registration = triggerRegistrations[0];
+  if (
+    triggerRegistrations.length !== 1 ||
+    !isNodeOfType(registration.node, "CallExpression") ||
+    !nodeDominatesNode(trigger.declarationNode, registration.node, context) ||
+    !nodeDominatesNode(invocation, registration.node, context) ||
+    context.scopes.symbolFor(registration.node.arguments[0])?.id !== capturedHost?.id ||
+    registration.node.arguments.length !== 2 ||
+    !doesCleanupOwnUsageAfterRegistration(callback, registration, cleanupReturns, context)
+  )
+    return false;
+  for (const cleanup of cleanupFunctions) {
+    if (
+      !isFunctionLike(cleanup) ||
+      !isNodeOfType(cleanup.body, "BlockStatement") ||
+      cleanup.body.body.length < 2
+    )
+      return false;
+    const firstReleases = cleanup.body.body
+      .slice(0, 2)
+      .flatMap((statement) =>
+        isNodeOfType(statement, "ExpressionStatement") &&
+        getCalleeName(statement.expression) === "disconnect"
+          ? [statement.expression]
+          : [],
+      );
+    if (
+      firstReleases.length !== 2 ||
+      !firstReleases.some((release) => doesReleaseCallMatchUsage(release, usage, context)) ||
+      !firstReleases.some((release) => doesReleaseCallMatchUsage(release, registration, context))
+    )
+      return false;
+  }
+  const options = registration.node.arguments[1];
+  if (!isNodeOfType(options, "ObjectExpression") || options.properties.length !== 1) return false;
+  const childList = options.properties[0];
+  if (
+    !isNodeOfType(childList, "Property") ||
+    childList.computed ||
+    getStaticPropertyKeyName(childList) !== "childList" ||
+    !isNodeOfType(childList.value, "Literal") ||
+    childList.value.value !== true
+  )
+    return false;
+
+  if (
+    !isFunctionLike(callback) ||
+    !isNodeOfType(callback.body, "BlockStatement") ||
+    !isNodeOfType(invocation.parent, "ExpressionStatement") ||
+    invocation.parent.parent !== callback.body
+  )
+    return false;
+  const subsequentStatements = callback.body.body.slice(
+    callback.body.body.findIndex((statement) => statement === invocation.parent) + 1,
+  );
+  return subsequentStatements.every((statement) => {
+    if (cleanupReturns.includes(statement)) return true;
+    if (isNodeOfType(statement, "VariableDeclaration")) {
+      return statement.declarations.every(
+        ({ id, init }) =>
+          isNodeOfType(id, "Identifier") &&
+          (init === constructor || (isFunctionLike(init) && !init.async && !init.generator)),
+      );
+    }
+    if (
+      !isNodeOfType(statement, "ExpressionStatement") ||
+      !isNodeOfType(statement.expression, "CallExpression")
+    )
+      return false;
+    const call = statement.expression;
+    if (call === registration.node) return true;
+    const callee = stripParenExpression(call.callee);
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      callee.computed ||
+      getStaticPropertyKeyName(callee) !== "addEventListener" ||
+      context.scopes.symbolFor(callee.object)?.id !== capturedHost?.id ||
+      !isNodeOfType(call.arguments[0], "Literal") ||
+      typeof call.arguments[0].value !== "string"
+    )
+      return false;
+    const listener = stripParenExpression(call.arguments[1]);
+    const listenerSymbol = isNodeOfType(listener, "Identifier")
+      ? context.scopes.symbolFor(listener)
+      : null;
+    if (
+      !isFunctionLike(listenerSymbol ? getDirectConstInitializer(listenerSymbol) : listener) ||
+      (listenerSymbol && !nodeDominatesNode(listenerSymbol.declarationNode, call, context))
+    )
+      return false;
+    if (call.arguments.length === 2) return true;
+    const listenerOptions = call.arguments[2];
+    return (
+      call.arguments.length === 3 &&
+      ((isNodeOfType(listenerOptions, "Literal") && typeof listenerOptions.value === "boolean") ||
+        (isNodeOfType(listenerOptions, "ObjectExpression") &&
+          listenerOptions.properties.every(
+            (entry) =>
+              isNodeOfType(entry, "Property") &&
+              !entry.computed &&
+              entry.kind === "init" &&
+              (getStaticPropertyKeyName(entry) === "passive" ||
+                getStaticPropertyKeyName(entry) === "capture") &&
+              isNodeOfType(entry.value, "Literal") &&
+              typeof entry.value.value === "boolean",
+          )))
+    );
+  });
+};
+
 const hasReturnedObserverDisconnect = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -7292,6 +7669,18 @@ const hasReturnedObserverDisconnect = (
       doNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context)
     );
   }
+  if (
+    hasClosedMutationObserverTrigger(
+      callback,
+      usageFunction,
+      usage,
+      receiverSymbol,
+      matchingCleanupReturns,
+      context,
+      allUsages,
+    )
+  )
+    return true;
   if (
     !isFunctionLike(usageFunction) ||
     usageFunction.async ||

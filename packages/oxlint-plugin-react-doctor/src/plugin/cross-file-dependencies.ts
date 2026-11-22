@@ -40,7 +40,10 @@ import {
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
-import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
+import {
+  resolveRelativeImportPath,
+  resolveUnambiguousViteImportPath,
+} from "./utils/resolve-relative-import-path.js";
 import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
@@ -195,6 +198,25 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   readNearestPackageManifest(absoluteFilePath);
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const collectPropChangeStateDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  const probedSources = new Set<string>();
+  for (const declaration of input.staticImports) {
+    const source = declaration.moduleRequest.value;
+    if (
+      (!source.startsWith("./") && !source.startsWith("../")) ||
+      probedSources.has(source) ||
+      !declaration.entries.some((entry) => !entry.isType && entry.importName.kind === "Name")
+    ) {
+      continue;
+    }
+    // The rule checks only imported hooks used as effect dependencies. Probing all
+    // named relative sources covers those cases without repeating its scope walk.
+    probedSources.add(source);
+    resolveUnambiguousViteImportPath(input.absoluteFilePath, source);
   }
 };
 
@@ -596,7 +618,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
-    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-adjust-state-on-prop-change", collectPropChangeStateDependencies],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],

@@ -26,6 +26,7 @@ import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
+import { internWorkerSidecarProbeIds } from "./runners/oxlint/intern-worker-sidecar-probe-ids.js";
 import { isOxlintWorkerPoolAvailable, runOxlintProbeJob } from "./runners/oxlint/run-oxlint-job.js";
 import type { RunOxlintProbeJobInput } from "./runners/oxlint/run-oxlint-job.js";
 import { collectUnpluginAutoImportGlobalScopes } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
@@ -228,26 +229,7 @@ const collectSidecarProbesForFiles = async (input: {
         probeIdsByFile.set(file, null);
         continue;
       }
-      const probeIds: number[] = [];
-      for (const pathIndex of trace.content) {
-        probeIds.push(
-          internRelativeProbe(
-            "content",
-            result.paths[pathIndex],
-            result.existenceAnswers[pathIndex],
-          ),
-        );
-      }
-      for (const pathIndex of trace.existence) {
-        probeIds.push(
-          internRelativeProbe(
-            "exists",
-            result.paths[pathIndex],
-            result.existenceAnswers[pathIndex],
-          ),
-        );
-      }
-      probeIdsByFile.set(file, probeIds);
+      probeIdsByFile.set(file, internWorkerSidecarProbeIds(result, trace, internRelativeProbe));
     }
   };
   const runParentLane = async (): Promise<void> => {

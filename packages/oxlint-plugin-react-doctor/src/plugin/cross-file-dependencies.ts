@@ -94,7 +94,9 @@ interface CrossFileDependencyCollectorInput {
   readonly getProgram: () => EsTreeNode;
 }
 
-type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void;
+// A collector can mark a file unfingerprintable when the rule depends on
+// project membership rather than only the contents of known paths.
+type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void | false;
 
 interface ImportEntryName {
   readonly source: string;
@@ -586,6 +588,15 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    [
+      "no-array-index-as-key",
+      // The positional Embla exception can inspect new project entry points.
+      // Files without an Embla import use the original file-local analysis.
+      ({ staticImports }) =>
+        staticImports.some((entry) => entry.moduleRequest.value === "embla-carousel-react")
+          ? false
+          : undefined,
+    ],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
@@ -689,7 +700,14 @@ export const collectCrossFileDependencyProbes = (input: {
     staticImports,
     getProgram,
   };
-  return collectCrossFileProbes(() => {
-    for (const collector of collectors) collector(collectorInput);
+  let isFingerprintable = true;
+  const trace = collectCrossFileProbes(() => {
+    for (const collector of collectors) {
+      if (collector(collectorInput) === false) {
+        isFingerprintable = false;
+        break;
+      }
+    }
   });
+  return isFingerprintable ? trace : null;
 };

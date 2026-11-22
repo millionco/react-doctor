@@ -1,3 +1,5 @@
+import { hasStockDotLottiePeerProvider } from "../../utils/has-stock-dotlottie-peer-provider.js";
+import { isDotLottieRefCallbackReceiver } from "../../utils/is-dotlottie-ref-callback-receiver.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -8976,7 +8978,32 @@ const doesReleaseCallMatchUsage = (
     const releaseHandler = usesUnaryListenerSignatureForCalls
       ? callNode.arguments?.[UNARY_LISTENER_HANDLER_ARGUMENT_INDEX]
       : callNode.arguments?.[EVENT_LISTENER_HANDLER_ARGUMENT_INDEX];
-    if (!releaseHandler) return releaseVerbName === "off";
+    if (!releaseHandler) {
+      const cleanupFunction = findEnclosingFunction(callNode);
+      return (
+        releaseVerbName === "off" ||
+        (releaseVerbName === "removeEventListener" &&
+          usage.registrationVerbName === "addEventListener" &&
+          isNodeOfType(usage.node, "CallExpression") &&
+          usage.node.arguments?.length === 2 &&
+          callNode.arguments?.length === 1 &&
+          isNodeOfType(registrationCallee, "MemberExpression") &&
+          isNodeOfType(registrationCallee.object, "Identifier") &&
+          isNodeOfType(callee.object, "Identifier") &&
+          context.scopes.symbolFor(registrationCallee.object) ===
+            context.scopes.symbolFor(callee.object) &&
+          isNodeOfType(usageEventArgument, "Literal") &&
+          isNodeOfType(releaseEventArgument, "Literal") &&
+          typeof usageEventArgument.value === "string" &&
+          usageEventArgument.value === releaseEventArgument.value &&
+          cleanupFunction !== null &&
+          isFunctionLike(cleanupFunction) &&
+          isReturnedEffectCleanupFunction(cleanupFunction, context) &&
+          doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, [callNode], context) &&
+          isDotLottieRefCallbackReceiver(callee.object, context.scopes) &&
+          hasStockDotLottiePeerProvider(context, context.scopes.rootScope.node))
+      );
+    }
     const expectedHandlerKey = usesUnaryListenerSignatureForCalls
       ? (usage.handlerKey ?? usage.eventKey)
       : usage.handlerKey;

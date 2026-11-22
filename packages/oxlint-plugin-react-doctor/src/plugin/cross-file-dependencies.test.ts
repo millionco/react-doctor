@@ -104,6 +104,18 @@ describe("no-hydration-branch-on-browser-global collector", () => {
   });
 });
 
+describe("effect-needs-cleanup provider dependency collection", () => {
+  it("refreshes DotLottie provider decisions when the focal file is cached", () => {
+    const consumer = writeFixtureFile(
+      "Playback.tsx",
+      'import { DotLottieReact } from "@lottiefiles/dotlottie-react";',
+    );
+    const unrelated = writeFixtureFile("Other.ts", "export const progress = 0;");
+    expect(collectFor(consumer, ["effect-needs-cleanup"])).toBeNull();
+    expect(collectFor(unrelated, ["effect-needs-cleanup"])).not.toBeNull();
+  });
+});
+
 describe("no-barrel-import collector", () => {
   const setupBarrelFixture = (): string => {
     writeFixtureFile("src/components/Button.tsx", "export const Button = () => null;\n");

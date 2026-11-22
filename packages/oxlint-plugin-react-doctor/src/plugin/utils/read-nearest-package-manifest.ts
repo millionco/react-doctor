@@ -62,7 +62,14 @@ export const resetManifestCaches = (): void => {
 // module's reset into their own.
 export const getManifestCacheGeneration = (): number => manifestCacheGeneration;
 
-export const findNearestPackageDirectory = (filename: string): string | null => {
+interface ManifestLookupOptions {
+  readonly cache?: boolean;
+}
+
+export const findNearestPackageDirectory = (
+  filename: string,
+  { cache = true }: ManifestLookupOptions = {},
+): string | null => {
   if (!filename) return null;
 
   const containingDirectory = path.dirname(filename);
@@ -73,7 +80,9 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
   // candidate list is derivable from the filename and the memoized stop
   // directory without touching the filesystem
   // (see cross-file-probe-recorder.ts).
-  const fromCache = cachedPackageDirectoryByContainingDirectory.get(containingDirectory);
+  const fromCache = cache
+    ? cachedPackageDirectoryByContainingDirectory.get(containingDirectory)
+    : undefined;
   if (fromCache !== undefined) {
     if (isProbeRecorderActive()) {
       let probedDirectory = containingDirectory;
@@ -100,12 +109,14 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
       hasPackageJson = false;
     }
     if (hasPackageJson) {
-      cachedPackageDirectoryByContainingDirectory.set(containingDirectory, currentDirectory);
+      if (cache) {
+        cachedPackageDirectoryByContainingDirectory.set(containingDirectory, currentDirectory);
+      }
       return currentDirectory;
     }
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) {
-      cachedPackageDirectoryByContainingDirectory.set(containingDirectory, null);
+      if (cache) cachedPackageDirectoryByContainingDirectory.set(containingDirectory, null);
       return null;
     }
     currentDirectory = parentDirectory;
@@ -121,8 +132,11 @@ export const readNearestPackageManifest = (filename: string): PackageManifest | 
   return readPackageManifest(packageDirectory);
 };
 
-export const readPackageManifest = (packageDirectory: string): PackageManifest | null => {
-  const cached = cachedManifestByPackageDirectory.get(packageDirectory);
+export const readPackageManifest = (
+  packageDirectory: string,
+  { cache = true }: ManifestLookupOptions = {},
+): PackageManifest | null => {
+  const cached = cache ? cachedManifestByPackageDirectory.get(packageDirectory) : undefined;
   if (cached !== undefined && !isProbeRecorderActive()) return cached;
 
   const packageJsonPath = path.join(packageDirectory, "package.json");
@@ -142,6 +156,6 @@ export const readPackageManifest = (packageDirectory: string): PackageManifest |
   } catch {
     manifest = null;
   }
-  cachedManifestByPackageDirectory.set(packageDirectory, manifest);
+  if (cache) cachedManifestByPackageDirectory.set(packageDirectory, manifest);
   return manifest;
 };

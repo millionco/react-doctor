@@ -34,6 +34,7 @@ export interface CachedScanPayload {
   readonly securityScanFailureReason?: string | null;
   readonly suppressedRuleCounts?: ReadonlyArray<SuppressedRuleCount>;
   readonly manifestContentHash?: string | null;
+  readonly nextIndexRouteFingerprint?: string;
 }
 
 interface CachedScanPayloadFieldValidator {
@@ -120,6 +121,7 @@ const OPTIONAL_CACHED_SCAN_PAYLOAD_FIELDS: ReadonlyArray<CachedScanPayloadFieldV
   { key: "securityScanFailureReason", isValid: isNullableString },
   { key: "suppressedRuleCounts", isValid: isSuppressedRuleCountArray },
   { key: "manifestContentHash", isValid: isNullableString },
+  { key: "nextIndexRouteFingerprint", isValid: isString },
 ];
 
 const hasValidRequiredCachedScanPayloadFields = (value: Record<string, unknown>): boolean =>

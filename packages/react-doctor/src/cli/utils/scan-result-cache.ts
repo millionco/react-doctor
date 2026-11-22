@@ -23,6 +23,7 @@ import {
 } from "./constants.js";
 import { getPackageJsonPath, isRecord, runGitAsync } from "./git-hook-shared.js";
 import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
+import { resolveNextIndexRouteFingerprint } from "./resolve-next-index-route-fingerprint.js";
 import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
@@ -542,13 +543,27 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
       const describesThisProject =
         resolveProjectIdentity(payload.directory) === resolveProjectIdentity(projectDirectory) &&
         (payload.manifestContentHash ?? null) === resolveManifestContentHash(projectDirectory);
-      return describesThisProject ? payload : null;
+      if (!describesThisProject || payload.nextIndexRouteFingerprint === undefined) return null;
+      const routeFingerprint = resolveNextIndexRouteFingerprint(
+        projectDirectory,
+        payload.analyzedFiles ?? payload.scannedFilePaths,
+      );
+      return payload.nextIndexRouteFingerprint === routeFingerprint ? payload : null;
     },
     store: (key, payload) => {
+      const nextIndexRouteFingerprint = resolveNextIndexRouteFingerprint(
+        projectDirectory,
+        payload.analyzedFiles ?? payload.scannedFilePaths,
+      );
+      if (nextIndexRouteFingerprint === null) return;
       entries.set(key, {
         key,
         createdAtMs: Date.now(),
-        payload: { ...payload, manifestContentHash: resolveManifestContentHash(projectDirectory) },
+        payload: {
+          ...payload,
+          manifestContentHash: resolveManifestContentHash(projectDirectory),
+          nextIndexRouteFingerprint,
+        },
       });
       persist();
     },

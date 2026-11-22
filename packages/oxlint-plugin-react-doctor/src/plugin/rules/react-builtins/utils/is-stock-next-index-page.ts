@@ -72,6 +72,7 @@ const REGISTRY_DEPENDENCY = /^(?:latest|[~^]?\d+\.\d+\.\d+)$/;
 const JSX_PROVIDER_SYNTAX =
   /@jsx(?:ImportSource|Runtime|Frag)?\b|react\/jsx(?:-dev)?-runtime|\bcreateElement\b/;
 const MAX_SOURCE_BYTES = 512 * 1024;
+const FRESH_MANIFEST_LOOKUP = { cache: false };
 
 const probe = (filename: string): "file" | "directory" | "missing" | "opaque" => {
   recordExistenceProbe(filename);
@@ -136,7 +137,8 @@ const hasStockBuildConfiguration = (pagesDirectory: string, packageDirectory: st
       const manifestPath = path.join(current, "package.json");
       const kind = probe(manifestPath);
       if (kind !== "missing") {
-        const manifest = kind === "file" ? readPackageManifest(current) : null;
+        const manifest =
+          kind === "file" ? readPackageManifest(current, FRESH_MANIFEST_LOOKUP) : null;
         if (!manifest || hasOwnField(manifest, PACKAGE_OVERRIDE_FIELDS)) return false;
       }
     }
@@ -294,7 +296,7 @@ export const hasStockNextIndexPageRouter = (sourceFilename: string | undefined):
     path.basename(filename, path.extname(filename)) !== "index"
   )
     return false;
-  const packageDirectory = findNearestPackageDirectory(filename);
+  const packageDirectory = findNearestPackageDirectory(filename, FRESH_MANIFEST_LOOKUP);
   if (!packageDirectory) return false;
   const pagesDirectory = path.dirname(filename);
   const rootPagesDirectory = path.join(packageDirectory, "pages");
@@ -305,7 +307,7 @@ export const hasStockNextIndexPageRouter = (sourceFilename: string | undefined):
     )
       return false;
   }
-  const manifest = readPackageManifest(packageDirectory);
+  const manifest = readPackageManifest(packageDirectory, FRESH_MANIFEST_LOOKUP);
   if (!manifest || hasOwnField(manifest, PACKAGE_OVERRIDE_FIELDS)) return false;
   for (const packageName of ["next", "react", "react-dom"]) {
     const dependency = manifest.dependencies?.[packageName];

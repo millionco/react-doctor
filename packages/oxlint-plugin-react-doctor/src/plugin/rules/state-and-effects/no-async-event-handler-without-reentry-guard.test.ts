@@ -694,3 +694,311 @@ describe("no-async-event-handler-without-reentry-guard audit regressions", () =>
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("a leading React state write that disables a native button", () => {
+  it.each([
+    [
+      "opaque-request",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const client = { async post() { document.querySelector("button")?.click(); } };
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await client.post();
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "opaque-sync-prefix",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      document.querySelector("button")?.click();
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "opaque-request-options",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST", get headers() { document.querySelector("button")?.click(); return {}; } });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "replaced-browser-fetch",
+      `import { useState } from "react";
+window.fetch = async () => { document.querySelector("button")?.click(); return new Response(); };
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "aliased-browser-fetch-replacement",
+      `import { useState } from "react";
+const host = globalThis;
+host.fetch = async () => new Response();
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "defined-browser-fetch-replacement",
+      `import { useState } from "react";
+Object.defineProperty(window, "fetch", { value: async () => new Response() });
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "matching-disabled-state",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      0,
+    ],
+    [
+      "different-disabled-state",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={saved} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "shared-unprotected-handler",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <><button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button><button onClick={submit}>Also save</button></>;
+}`,
+      1,
+    ],
+    [
+      "disabled-spread-override",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} {...{ disabled: false }} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "reset-before-await",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      setIsDisabling(false);
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "conditional-leading-write",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    if (!saved) setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "escaped-disabled-setter",
+      `import { useState } from "react";
+declare function publish(value: unknown): void;
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+  publish(setIsDisabling);
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "setter-caught-before-request",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    try {
+      if (saved) throw new Error("retry");
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    } catch {
+      setIsDisabling(false);
+      await fetch("/notes", { method: "POST" });
+      setSaved(true);
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+    [
+      "await-repeats-after-reset",
+      `import { useState } from "react";
+export function Toolbar() {
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const submit = async () => {
+    setIsDisabling(true);
+    for (const attempt of [0, 1]) {
+    try {
+      await fetch("/notes", { method: "POST" });
+      setSaved(attempt === 1);
+    } finally {
+      setIsDisabling(false);
+    }
+    }
+  };
+  return <button disabled={isDisabling} onClick={submit}>{saved ? "Saved" : "Save"}</button>;
+}`,
+      1,
+    ],
+  ])("%s", (_name, source, expected) => {
+    const result = runRule(noAsyncEventHandlerWithoutReentryGuard, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

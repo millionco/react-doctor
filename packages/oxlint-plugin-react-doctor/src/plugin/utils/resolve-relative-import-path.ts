@@ -168,6 +168,19 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
 
+// An opt-in closed source proof excludes competing files and directory entry points.
+export const resolveUnambiguousDirectModuleFile = (modulePath: string): string | null => {
+  if (getExistingDirectoryPath(modulePath)) return null;
+  const candidates = new Set([modulePath, ...getModuleFilePathCandidates(modulePath)]);
+  const [file, ...others] = [...candidates].filter((candidate) => getExistingFilePath(candidate));
+  if (!file || others.length) return null;
+  try {
+    return fs.realpathSync(file) === file ? file : null;
+  } catch {
+    return null;
+  }
+};
+
 export const resetModuleResolutionCaches = (): void => {
   filesystemEntryByPath.clear();
   packageJsonByPath.clear();

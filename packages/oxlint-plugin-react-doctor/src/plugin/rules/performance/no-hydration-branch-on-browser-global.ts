@@ -17,6 +17,7 @@ import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
+import { isAfterLocalFalseServerSnapshotReturn } from "../../utils/is-after-falsy-server-snapshot-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
@@ -29,6 +30,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
+import { isClosedImportedServerSnapshotFalse } from "../../utils/read-server-snapshot-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -994,6 +996,17 @@ const matchHydrationFunctionPropertyResult = (
   return match;
 };
 
+const isBrowserPredicateBehindFalseServerSnapshot = (
+  predicateNode: EsTreeNode | undefined,
+  guardedExpression: EsTreeNode,
+  condition: EsTreeNode,
+  context: RuleContext,
+): boolean =>
+  predicateNode !== undefined &&
+  (predicateNode === guardedExpression || isDescendantOf(predicateNode, guardedExpression)) &&
+  findEnclosingFunction(predicateNode) === findEnclosingFunction(guardedExpression) &&
+  isClosedImportedServerSnapshotFalse(condition, context.scopes, context.filename);
+
 const matchHydrationConditionInternal = (
   expression: EsTreeNode,
   context: RuleContext,
@@ -1255,11 +1268,25 @@ const matchHydrationConditionInternal = (
         state,
       );
     }
-    return (
-      matchHydrationConditionInternal(unwrappedExpression.test, context, state) ??
-      matchHydrationConditionInternal(unwrappedExpression.consequent, context, state) ??
-      matchHydrationConditionInternal(unwrappedExpression.alternate, context, state)
+    const testMatch = matchHydrationConditionInternal(unwrappedExpression.test, context, state);
+    if (testMatch) return testMatch;
+    const consequentMatch = matchHydrationConditionInternal(
+      unwrappedExpression.consequent,
+      context,
+      state,
     );
+    if (
+      consequentMatch &&
+      !isBrowserPredicateBehindFalseServerSnapshot(
+        consequentMatch.predicateNode,
+        unwrappedExpression.consequent,
+        unwrappedExpression.test,
+        context,
+      )
+    ) {
+      return consequentMatch;
+    }
+    return matchHydrationConditionInternal(unwrappedExpression.alternate, context, state);
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
     if (
@@ -1309,7 +1336,15 @@ const matchHydrationConditionInternal = (
   }
   const leftMatch = matchHydrationConditionInternal(unwrappedExpression.left, context, state);
   const rightMatch = matchHydrationConditionInternal(unwrappedExpression.right, context, state);
-  const nestedMatch = leftMatch ?? rightMatch;
+  const rightIsShortCircuited =
+    unwrappedExpression.operator === "&&" &&
+    isBrowserPredicateBehindFalseServerSnapshot(
+      rightMatch?.predicateNode,
+      unwrappedExpression.right,
+      unwrappedExpression.left,
+      context,
+    );
+  const nestedMatch = leftMatch ?? (rightIsShortCircuited ? null : rightMatch);
   if (!nestedMatch) return null;
   const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client", state);
   const serverResult = readHydrationConditionResult(unwrappedExpression, context, "server", state);
@@ -2089,6 +2124,8 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         return;
       }
       if (isAfterClientOnlyEarlyReturn(conditionNode, componentOrHookNode, context.scopes)) return;
+      if (isAfterLocalFalseServerSnapshotReturn(conditionNode, componentOrHookNode, context.scopes))
+        return;
       const openingElement = findEnclosingJsxOpeningElement(conditionNode);
       if (
         hasSuppressHydrationWarningAttribute(openingElement) &&

@@ -162,21 +162,123 @@ const isMountGate = (
   );
 };
 
+const getModulePrivateBindingDeclaration = (
+  component: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  if (isNodeOfType(component, "FunctionDeclaration")) {
+    return !component.async && !component.generator && component.parent === scopes.rootScope.node
+      ? component
+      : null;
+  }
+  if (!isNodeOfType(component, "ArrowFunctionExpression") || component.async) return null;
+  const value = findTransparentExpressionRoot(component);
+  const declarator = value.parent;
+  const declaration = declarator?.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== value ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.parent !== scopes.rootScope.node
+  )
+    return null;
+  return declarator;
+};
+
+const isPostMountSetterCall = (
+  setter: EsTreeNodeOfType<"CallExpression">,
+  owner: EsTreeNode,
+  ownerBody: EsTreeNodeOfType<"BlockStatement">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callback = findEnclosingFunction(setter);
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") ||
+    callback.async ||
+    callback.params.length !== 0
+  )
+    return false;
+  const value = findTransparentExpressionRoot(callback);
+  const effect = value.parent;
+  if (!isNamedRuntimeCall(effect, "react", "useEffect", scopes) || effect.arguments[0] !== value)
+    return false;
+  const statement = findTransparentExpressionRoot(effect).parent;
+  return (
+    isNodeOfType(statement, "ExpressionStatement") &&
+    statement.parent === ownerBody &&
+    findEnclosingFunction(effect) === owner
+  );
+};
+
+const isShortCircuitMountGate = (
+  child: EsTreeNodeOfType<"JSXElement">,
+  owner: EsTreeNode,
+  ownerBody: EsTreeNodeOfType<"BlockStatement">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const element = findTransparentExpressionRoot(child);
+  const gate = element.parent;
+  if (!isNodeOfType(gate, "LogicalExpression") || gate.operator !== "&&" || gate.right !== element)
+    return false;
+  const condition = stripParenExpression(gate.left);
+  if (!isNodeOfType(condition, "Identifier")) return false;
+  const flag = scopes.symbolFor(condition);
+  if (!flag || !readOnlyReference(flag, condition, scopes)) return false;
+  const declarator = flag.declarationNode;
+  const declaration = declarator.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.parent !== ownerBody ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "ArrayPattern") ||
+    declarator.id.elements.length !== 2 ||
+    declarator.id.elements[0] !== flag.bindingIdentifier ||
+    !isNamedRuntimeCall(declarator.init, "react", "useState", scopes) ||
+    declarator.init.arguments.length !== 1 ||
+    !isNodeOfType(declarator.init.arguments[0], "Literal") ||
+    declarator.init.arguments[0].value !== false
+  )
+    return false;
+  const setter = declarator.id.elements[1];
+  if (!isNodeOfType(setter, "Identifier")) return false;
+  const dispatch = scopes.symbolFor(setter);
+  if (!dispatch || !hasCompleteSymbolReferences(dispatch, scopes.rootScope.node, scopes))
+    return false;
+  let hasPostMountTrueWrite = false;
+  for (const reference of dispatch.references) {
+    const callee = findTransparentExpressionRoot(reference.identifier);
+    const call = callee.parent;
+    if (
+      reference.flag !== "read" ||
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      call.callee !== callee ||
+      call.arguments.length !== 1
+    )
+      return false;
+    const value = stripParenExpression(call.arguments[0]);
+    if (!isNodeOfType(value, "Literal") || typeof value.value !== "boolean") return false;
+    if (value.value) {
+      if (!isPostMountSetterCall(call, owner, ownerBody, scopes)) return false;
+      hasPostMountTrueWrite = true;
+    }
+  }
+  return hasPostMountTrueWrite;
+};
+
 export const isPrivateChildBehindMountGate = (
   component: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  if (
-    !isNodeOfType(component, "FunctionDeclaration") ||
-    component.async ||
-    component.generator ||
-    component.parent !== scopes.rootScope.node
-  )
-    return false;
+  const declaration = getModulePrivateBindingDeclaration(component, scopes);
+  if (!declaration) return false;
   const bindings = getFunctionBindingSymbols(component, scopes);
   if (bindings.length !== 1) return false;
   const [binding] = bindings;
-  if (binding.declarationNode !== component || binding.references.length !== 1) return false;
+  if (binding.declarationNode !== declaration || binding.references.length !== 1) return false;
   const use = binding.references[0].identifier;
   const opening = use.parent;
   if (
@@ -198,7 +300,9 @@ export const isPrivateChildBehindMountGate = (
     isNodeOfType(owner.body, "BlockStatement") &&
     renderReturn &&
     renderReturn.parent === owner.body &&
-    isMountGate(owner.body, renderReturn, scopes) &&
+    (isNodeOfType(component, "FunctionDeclaration")
+      ? isMountGate(owner.body, renderReturn, scopes)
+      : isShortCircuitMountGate(jsx, owner, owner.body, scopes)) &&
     readOnlyReference(binding, use, scopes) &&
     !hasDynamicScope(scopes),
   );

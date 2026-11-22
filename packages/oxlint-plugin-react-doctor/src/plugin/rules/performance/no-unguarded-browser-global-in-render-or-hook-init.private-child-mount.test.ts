@@ -75,3 +75,62 @@ describe("private child mounted by an effect", () => {
     expect(result.diagnostics.some(({ message }) => message.includes("`window`"))).toBe(true);
   });
 });
+
+const shortCircuitSource = `
+  import { useEffect, useState } from "react";
+
+  export function Screen() {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+      setMounted(true);
+      return () => setMounted(false);
+    }, []);
+    return (
+      <div>
+        <button onClick={() => setMounted(false)}>Hide</button>
+        {mounted && <Viewport />}
+      </div>
+    );
+  }
+
+  const Viewport = () => <output>{window.innerWidth}</output>;
+`;
+
+describe("module-private arrow child behind a short-circuit mount gate", () => {
+  it("accepts the sole guarded JSX use with direct false resets", () => {
+    const result = run(shortCircuitSource);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "a child alias used without the mount gate",
+      code:
+        shortCircuitSource + "const Alias = Viewport; export const Alternate = () => <Alias />;",
+    },
+    {
+      name: "an eager true write before the effect",
+      code: shortCircuitSource.replace(
+        "    useEffect(",
+        "    if (!mounted) setMounted(true);\n    useEffect(",
+      ),
+    },
+    {
+      name: "a gate initialized to true",
+      code: shortCircuitSource.replace("useState(false)", "useState(true)"),
+    },
+    {
+      name: "an ordinary direct invocation",
+      code: shortCircuitSource + "export const Alternate = () => Viewport();",
+    },
+    {
+      name: "a second unguarded JSX use",
+      code: shortCircuitSource + "export const Alternate = () => <Viewport />;",
+    },
+  ])("retains the browser read for $name", ({ code }) => {
+    const result = run(code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.some(({ message }) => message.includes("`window`"))).toBe(true);
+  });
+});

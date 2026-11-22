@@ -33,7 +33,7 @@ process.on("message", (job) => {
     fs.writeSync(1, JSON.stringify({
       paths: ["src/dep.ts"],
       existenceAnswers: ["file"],
-      traces: job.files.map((file) => ({ file, content: [0], existence: [0], ruleIds: job.ruleIds })),
+      traces: job.files.map((file) => ({ file, content: [0], existence: [0], directory: [0], ruleIds: job.ruleIds })),
     }));
     writeLine(1, MARKER + ":" + job.id + ":ok");
     writeLine(2, MARKER + ":" + job.id + ":end");
@@ -182,6 +182,7 @@ describe("createOxlintWorkerPool", () => {
     expect(result.existenceAnswers).toEqual(["file"]);
     expect(result.traces.map((trace) => trace.file)).toEqual(["src/a.tsx", "src/b.tsx"]);
     expect(result.traces[0].ruleIds).toEqual(["no-barrel-import"]);
+    expect(result.traces.map((trace) => trace.directory)).toEqual([[0], [0]]);
     await pool.close();
   });
 

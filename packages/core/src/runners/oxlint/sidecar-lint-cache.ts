@@ -46,7 +46,7 @@ import { isRecord } from "../../utils/is-record.js";
 /** One recorded filesystem probe: what was consulted, and its answer. */
 export interface SidecarDependencyProbe {
   /** `"content"` — the file's bytes were read; `"exists"` — only its existence class. */
-  readonly kind: "content" | "exists";
+  readonly kind: "content" | "exists" | "directory";
   /** Root-relative (`/`-separated) path; `..`-prefixed when outside the root. */
   readonly path: string;
   /** Content hash / existence class at store time (see `resolve-sidecar-probe-answer.ts`). */
@@ -123,7 +123,7 @@ interface ProbeTable {
 const validateDiagnostic = Schema.decodeUnknownSync(CachedDiagnostic);
 
 const isProbeKind = (value: unknown): value is SidecarDependencyProbe["kind"] =>
-  value === "content" || value === "exists";
+  value === "content" || value === "exists" || value === "directory";
 
 const isProbeIdArray = (value: unknown, probeCount: number): value is ReadonlyArray<number> =>
   Array.isArray(value) &&
@@ -140,6 +140,7 @@ const createProbeTable = (): ProbeTable => {
   const idByAnswerByPathByKind = {
     content: new Map<string, Map<string, number>>(),
     exists: new Map<string, Map<string, number>>(),
+    directory: new Map<string, Map<string, number>>(),
   };
   return {
     records,

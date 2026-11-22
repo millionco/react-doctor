@@ -33,6 +33,7 @@
 export interface CrossFileProbeTrace {
   /** Paths whose existence classification (file / dir / none) was consulted. */
   readonly existencePaths: Set<string>;
+  readonly directoryPaths: Set<string>;
   /** Paths whose content (bytes, exports, parse) was consulted. */
   readonly contentPaths: Set<string>;
 }
@@ -52,6 +53,10 @@ export const recordContentProbe = (absolutePath: string): void => {
   activeProbeTrace?.contentPaths.add(absolutePath);
 };
 
+export const recordDirectoryProbe = (absolutePath: string): void => {
+  activeProbeTrace?.directoryPaths.add(absolutePath);
+};
+
 export const isProbeRecorderActive = (): boolean => activeProbeTrace !== null;
 
 // Captures a helper's probes separately while preserving the complete outer
@@ -62,6 +67,7 @@ export const captureCrossFileProbes = <Value>(
   const previousTrace = activeProbeTrace;
   const trace: CrossFileProbeTrace = {
     existencePaths: new Set<string>(),
+    directoryPaths: new Set<string>(),
     contentPaths: new Set<string>(),
   };
   activeProbeTrace = trace;
@@ -70,6 +76,8 @@ export const captureCrossFileProbes = <Value>(
   } finally {
     activeProbeTrace = previousTrace;
     if (previousTrace !== null) {
+      for (const directoryPath of trace.directoryPaths)
+        previousTrace.directoryPaths.add(directoryPath);
       for (const existencePath of trace.existencePaths) {
         previousTrace.existencePaths.add(existencePath);
       }
@@ -84,6 +92,8 @@ export const captureCrossFileProbes = <Value>(
 // as complete as a cold computation would have left it.
 export const replayCrossFileProbes = (trace: CrossFileProbeTrace): void => {
   if (activeProbeTrace === null) return;
+  for (const directoryPath of trace.directoryPaths)
+    activeProbeTrace.directoryPaths.add(directoryPath);
   for (const existencePath of trace.existencePaths) {
     activeProbeTrace.existencePaths.add(existencePath);
   }

@@ -152,7 +152,7 @@ const collectSidecarProbesForFiles = async (input: {
   pooled: PooledProbeCollection | null;
 }): Promise<Map<string, ReadonlyArray<number> | null>> => {
   const internRelativeProbe = (
-    kind: "content" | "exists",
+    kind: "content" | "exists" | "directory",
     relativePath: string,
     knownAnswer: string | null,
   ): number =>
@@ -161,7 +161,7 @@ const collectSidecarProbesForFiles = async (input: {
       relativePath,
       knownAnswer ?? input.probeAnswers.answerFor(kind, relativePath),
     );
-  const internProbe = (kind: "content" | "exists", absolutePath: string): number =>
+  const internProbe = (kind: "content" | "exists" | "directory", absolutePath: string): number =>
     internRelativeProbe(kind, input.probeAnswers.toRelativePath(absolutePath), null);
   const buildProbeIds = (file: string): number[] | null => {
     const trace = collectFileProbeTrace(
@@ -180,6 +180,9 @@ const collectSidecarProbesForFiles = async (input: {
     // the resolvers can (`"dir"` vs `"none"`).
     for (const existencePath of trace.existencePaths) {
       probeIds.push(internProbe("exists", existencePath));
+    }
+    for (const directoryPath of trace.directoryPaths) {
+      probeIds.push(internProbe("directory", directoryPath));
     }
     return probeIds;
   };
@@ -246,6 +249,9 @@ const collectSidecarProbesForFiles = async (input: {
             result.existenceAnswers[pathIndex],
           ),
         );
+      }
+      for (const pathIndex of trace.directory) {
+        probeIds.push(internRelativeProbe("directory", result.paths[pathIndex], null));
       }
       probeIdsByFile.set(file, probeIds);
     }

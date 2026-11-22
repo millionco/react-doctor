@@ -233,6 +233,49 @@ describe("scan result cache", () => {
     expect(cache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
   });
 
+  it("misses the unchanged Git key after ignored Hook callers appear or change", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "service-hook-closure", {
+      packageJsonExtras: { private: true },
+      files: {
+        ".gitignore": "src/ignored/\n",
+        "src/slots.ts":
+          'import { useState } from "react"; class SlotService { useSlots = () => useState(0); } export const service = new SlotService();',
+        "src/App.tsx":
+          'import { service } from "./slots"; export function App() { service.useSlots(); return null; }',
+      },
+    });
+    const ignoredDirectory = path.join(projectDirectory, "src", "ignored");
+    fs.mkdirSync(ignoredDirectory);
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const key = await cacheKey(projectDirectory, options);
+    if (key === null) throw new Error("missing fixture cache key");
+    const payload = basePayload(projectDirectory, {
+      analyzedFiles: ["src/slots.ts", "src/App.tsx"],
+    });
+    createScanResultCache(projectDirectory).store(key, payload);
+    const lookup = () => createScanResultCache(projectDirectory).lookup(key);
+    expect(lookup()?.serviceHookClosureSnapshot?.directoryPaths).toContain(ignoredDirectory);
+
+    const caller = path.join(ignoredDirectory, "caller.ts");
+    fs.writeFileSync(caller, 'import { service } from "../slots"; service.useSlots();');
+    expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(lookup()).toBeNull();
+    fs.unlinkSync(caller);
+    expect(lookup()).not.toBeNull();
+
+    const html = path.join(ignoredDirectory, "page.html");
+    fs.writeFileSync(html, "<div>quiet</div>");
+    createScanResultCache(projectDirectory).store(key, payload);
+    expect(lookup()?.serviceHookClosureSnapshot?.contentPaths).toContain(html);
+    fs.writeFileSync(
+      html,
+      '<script type=module>import { service } from "../slots"; service.useSlots();</script>',
+    );
+    expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(lookup()).toBeNull();
+  });
+
   it("merges entries stored by independently loaded cache instances", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "merged-writers", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

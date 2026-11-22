@@ -1,3 +1,9 @@
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
@@ -417,6 +423,144 @@ const analyzeHandlerStatements = (
   return { states, unsafeAwait: null };
 };
 
+// Limit this proof to a native operation whose argument evaluation cannot call user code.
+const isLeadingBrowserFetch = (expression: EsTreeNode, context: RuleContext): boolean => {
+  if (!isNodeOfType(expression, "CallExpression") || expression.optional) return false;
+  const { callee, arguments: args } = expression;
+  if (
+    !isNodeOfType(callee, "Identifier") ||
+    callee.name !== "fetch" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(callee, "fetch", context.scopes, undefined, true) ||
+    !isNodeOfType(args[0], "Literal") ||
+    typeof args[0].value !== "string" ||
+    args.length > 2
+  )
+    return false;
+  const options = args[1];
+  if (
+    options &&
+    (!isNodeOfType(options, "ObjectExpression") ||
+      !options.properties.every(
+        (property) =>
+          isNodeOfType(property, "Property") &&
+          property.kind === "init" &&
+          !property.computed &&
+          !property.method &&
+          getStaticPropertyKeyName(property) !== "__proto__" &&
+          isNodeOfType(property.value, "Literal") &&
+          typeof property.value.value === "string",
+      ))
+  )
+    return false;
+
+  return true;
+};
+
+// The same local state that the handler sets must disable its only native trigger.
+const hasLeadingNativeButtonDisable = (
+  handler: EsTreeNode,
+  handlerValue: EsTreeNode,
+  handlerAttribute: EsTreeNodeOfType<"JSXAttribute">,
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(opening.name, "JSXIdentifier") ||
+    opening.name.name !== "button" ||
+    getAuthoritativeJsxAttribute(opening.attributes, "onClick") !== handlerAttribute ||
+    !isNodeOfType(handler, "ArrowFunctionExpression") ||
+    !handler.async ||
+    !isNodeOfType(handler.body, "BlockStatement") ||
+    !isNodeOfType(handlerValue, "Identifier")
+  )
+    return false;
+  const disabled = getAuthoritativeJsxAttribute(opening.attributes, "disabled")?.value;
+  if (
+    !isNodeOfType(disabled, "JSXExpressionContainer") ||
+    !isNodeOfType(disabled.expression, "Identifier")
+  )
+    return false;
+  const root = findProgramRoot(handler);
+  const owner = findEnclosingFunction(handler);
+  const { scopes } = context;
+  const trigger = scopes.symbolFor(handlerValue);
+  if (
+    !root ||
+    !owner ||
+    findEnclosingFunction(opening) !== owner ||
+    trigger?.kind !== "const" ||
+    trigger.initializer !== handler ||
+    trigger.references.length !== 1 ||
+    trigger.references[0]?.identifier !== handlerValue ||
+    !hasCompleteSymbolReferences(trigger, root, scopes)
+  )
+    return false;
+
+  const flag = scopes.symbolFor(disabled.expression);
+  const tuple = flag?.declarationNode;
+  if (
+    flag?.kind !== "const" ||
+    !isNodeOfType(tuple, "VariableDeclarator") ||
+    !isNodeOfType(tuple.id, "ArrayPattern") ||
+    tuple.id.elements[0] !== flag.bindingIdentifier ||
+    !isNodeOfType(tuple.id.elements[1], "Identifier") ||
+    findEnclosingFunction(tuple) !== owner ||
+    !isNodeOfType(tuple.init, "CallExpression") ||
+    !isReactApiCall(tuple.init, "useState", scopes, { resolveNamedAliases: true }) ||
+    tuple.init.arguments.length !== 1 ||
+    !isNodeOfType(tuple.init.arguments[0], "Literal") ||
+    tuple.init.arguments[0].value !== false
+  )
+    return false;
+
+  const setter = scopes.symbolFor(tuple.id.elements[1]);
+  const first = handler.body.body[0];
+  if (
+    !setter ||
+    !isNodeOfType(first, "ExpressionStatement") ||
+    !isNodeOfType(first.expression, "CallExpression") ||
+    scopes.symbolFor(first.expression.callee) !== setter ||
+    first.expression.optional ||
+    first.expression.arguments.length !== 1 ||
+    !isNodeOfType(first.expression.arguments[0], "Literal") ||
+    first.expression.arguments[0].value !== true ||
+    !hasCompleteSymbolReferences(setter, root, scopes)
+  )
+    return false;
+
+  const awaits: EsTreeNodeOfType<"AwaitExpression">[] = [];
+  walkAst(handler.body, (child) => {
+    if (isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "AwaitExpression")) awaits.push(child);
+  });
+  const [request] = awaits;
+  const statement = request?.parent;
+  if (!request || awaits.length !== 1 || !isNodeOfType(statement, "ExpressionStatement"))
+    return false;
+  const next = handler.body.body[1];
+  const immediateRequest = isNodeOfType(next, "TryStatement") ? next.block.body[0] : next;
+  if (
+    statement !== immediateRequest ||
+    statement.expression !== request ||
+    !isLeadingBrowserFetch(request.argument, context)
+  )
+    return false;
+  return setter.references.every(({ identifier }) => {
+    const call = identifier.parent;
+    return (
+      call === first.expression ||
+      (isNodeOfType(call, "CallExpression") &&
+        call.callee === identifier &&
+        !call.optional &&
+        call.arguments.length === 1 &&
+        isNodeOfType(call.arguments[0], "Literal") &&
+        call.arguments[0].value === false &&
+        findEnclosingFunction(call) === handler &&
+        call.range[0] > request.range[1])
+    );
+  });
+};
+
 const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
   if (!isFunctionLike(functionNode)) return;
   if (!(functionNode as { async?: boolean }).async) return;
@@ -456,6 +600,16 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode, context);
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
+        if (
+          hasLeadingNativeButtonDisable(
+            handlerFunction,
+            value.expression,
+            node,
+            openingElement,
+            context,
+          )
+        )
+          return;
         analyzeAsyncHandler(context, handlerFunction);
       },
     };

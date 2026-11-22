@@ -4,8 +4,17 @@ import {
   CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS,
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
-import { recordContentProbe } from "./cross-file-probe-recorder.js";
-import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
+import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import { isPathInside } from "./is-path-inside.js";
+import { parsePackageVersion } from "./parse-package-version.js";
+import {
+  findNearestPackageDirectory,
+  readPackageManifest,
+} from "./read-nearest-package-manifest.js";
+import {
+  resolveModuleFileFromAbsolutePath,
+  resolveUnambiguousDirectModuleFile,
+} from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
   // Directory that bare `baseUrl` imports and `paths` targets resolve
@@ -379,4 +388,111 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 export const resetTsconfigAliasCaches = (): void => {
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();
+};
+
+// Opt-in proof for a direct owned source import under one ordinary ESM package.
+// The fallback and cache contract of the general alias resolver is independent.
+export const resolveClosedReactProviderPath = (filename: string, source: string): string | null => {
+  const packageDirectory = findNearestPackageDirectory(filename);
+  if (!packageDirectory) return null;
+  const manifest = readPackageManifest(packageDirectory);
+  const reactDependency = manifest?.dependencies?.react;
+  const declared =
+    typeof reactDependency === "string"
+      ? parsePackageVersion(reactDependency.replace(/^[~^]/, ""))
+      : null;
+  if (
+    !manifest ||
+    manifest.name === "react" ||
+    !declared ||
+    declared.major < 18 ||
+    declared.isPrerelease ||
+    ["browser", "overrides", "resolutions"].some((field) => Object.hasOwn(manifest, field))
+  )
+    return null;
+
+  const config = parseTsconfigFile(path.join(packageDirectory, "tsconfig.json"), []);
+  if (!config || Object.hasOwn(config, "extends") || !isObjectRecord(config.compilerOptions)) {
+    return null;
+  }
+  const options = config.compilerOptions;
+  if (["baseUrl", "jsxImportSource", "jsxFactory"].some((key) => Object.hasOwn(options, key))) {
+    return null;
+  }
+  if (!isObjectRecord(options.paths) || Array.isArray(options.paths)) return null;
+  const paths = Object.entries(options.paths);
+  const reactModules = ["react", "react/jsx-runtime", "react/jsx-dev-runtime"];
+  if (
+    paths.some(([pattern]) => reactModules.some((name) => matchPathPattern(name, pattern) !== null))
+  ) {
+    return null;
+  }
+
+  let importPath: string;
+  if (source.startsWith("./") || source.startsWith("../")) {
+    importPath = path.resolve(path.dirname(filename), source);
+  } else {
+    const matches = paths.filter(([key]) => matchPathPattern(source, key) !== null);
+    const [match] = matches;
+    if (!match || matches.length !== 1) return null;
+    const [key, targets] = match;
+    const capture = matchPathPattern(source, key);
+    if (capture === null || !Array.isArray(targets) || targets.length !== 1) return null;
+    const [target] = targets;
+    if (typeof target !== "string" || !target.trim()) return null;
+    importPath = path.resolve(packageDirectory, target.replaceAll("*", capture));
+  }
+
+  if (
+    !isPathInside(importPath, packageDirectory) ||
+    importPath.split(path.sep).includes("node_modules")
+  ) {
+    return null;
+  }
+  const importedFile = resolveUnambiguousDirectModuleFile(importPath);
+  if (
+    !importedFile ||
+    importedFile === filename ||
+    findNearestPackageDirectory(importedFile) !== packageDirectory
+  ) {
+    return null;
+  }
+  for (const file of [filename, importedFile]) {
+    let directory = path.dirname(file);
+    while (directory !== packageDirectory) {
+      if (TSCONFIG_FILE_NAMES.some((name) => hasPossibleEntry(path.join(directory, name))))
+        return null;
+      if (hasPossibleReactEntry(directory)) return null;
+      directory = path.dirname(directory);
+    }
+  }
+  let directory = packageDirectory;
+  while (true) {
+    if (hasPossibleReactEntry(directory)) {
+      const installed = readPackageManifest(path.join(directory, "node_modules", "react"));
+      const version =
+        typeof installed?.version === "string" ? parsePackageVersion(installed.version) : null;
+      return installed?.name === "react" && version && version.major >= 18 && !version.isPrerelease
+        ? importedFile
+        : null;
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) return importedFile;
+    directory = parent;
+  }
+};
+
+const hasPossibleEntry = (filename: string): boolean => {
+  recordExistenceProbe(filename);
+  try {
+    return Boolean(fs.lstatSync(filename, { throwIfNoEntry: false }));
+  } catch {
+    return true;
+  }
+};
+
+const hasPossibleReactEntry = (directory: string): boolean => {
+  const stem = path.join(directory, "node_modules", "react");
+  const suffixes = ["", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".node"];
+  return suffixes.some((suffix) => hasPossibleEntry(stem + suffix));
 };

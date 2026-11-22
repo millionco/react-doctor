@@ -185,3 +185,112 @@ describe("no-hydration-branch-on-browser-global — imported helper provenance",
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("no-hydration-branch-on-browser-global — imported server snapshots", () => {
+  beforeEach(() => {
+    writeFile(
+      "package.json",
+      JSON.stringify({
+        name: "weather-widget",
+        type: "module",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }),
+    );
+    writeFile(
+      "src/live-view.ts",
+      `import { useSyncExternalStore } from "react";
+      function subscribe() {
+        return () => {};
+      }
+      export function useLiveView() {
+        return useSyncExternalStore(subscribe, () => true, () => false);
+      }`,
+    );
+    writeFile(
+      "src/viewport.ts",
+      `export const isBrowserViewport = () => typeof document !== "undefined";`,
+    );
+  });
+
+  it.each([
+    ["leading snapshot", "const live = useLiveView();", "live && isBrowserViewport()", 0],
+    ["reversed snapshot", "const live = useLiveView();", "isBrowserViewport() && live", 1],
+    [
+      "precomputed browser predicate",
+      "const live = useLiveView(); const viewport = isBrowserViewport();",
+      "live && viewport",
+      1,
+    ],
+    [
+      "other browser branch",
+      "const live = useLiveView();",
+      "(live && isBrowserViewport()) || typeof window !== 'undefined'",
+      1,
+    ],
+    [
+      "mutable snapshot",
+      "let live = useLiveView(); live = enabled;",
+      "live && isBrowserViewport()",
+      1,
+    ],
+  ])("distinguishes a %s", (_label, declarations, choice, count) => {
+    const result = runConsumer(`
+      "use client";
+      import { useLiveView } from "@/live-view";
+      import { isBrowserViewport } from "./viewport";
+      export function WeatherWidget({ enabled }) {
+        ${declarations}
+        return ${choice} ? <strong>Open</strong> : <span>Closed</span>;
+      }
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+
+  it.each(["runtime alias", "mutable provider", "nonliteral server snapshot"])(
+    "preserves the warning with a %s",
+    (scenario) => {
+      if (scenario === "runtime alias") {
+        writeFile(
+          "tsconfig.json",
+          JSON.stringify({
+            compilerOptions: { paths: { "@/*": ["./src/*"], react: ["./src/local-react"] } },
+          }),
+        );
+      }
+      if (scenario === "mutable provider") {
+        fs.appendFileSync(
+          path.join(temporaryDirectory, "src/live-view.ts"),
+          "\nuseLiveView = () => true;\n",
+        );
+      }
+      if (scenario === "nonliteral server snapshot") {
+        writeFile(
+          "src/live-view.ts",
+          `import { useSyncExternalStore } from "react";
+          const subscribe = () => () => {};
+          export function useLiveView() {
+            return useSyncExternalStore(subscribe, () => true, () => readLocalServerFlag());
+          }`,
+        );
+      }
+      const result = runConsumer(`
+        "use client";
+        import { useLiveView } from "@/live-view";
+        import { isBrowserViewport } from "./viewport";
+        export function WeatherWidget() {
+          const live = useLiveView();
+          return live && isBrowserViewport() ? <strong>Open</strong> : <span>Closed</span>;
+        }
+      `);
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+});

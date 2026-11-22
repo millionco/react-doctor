@@ -30,6 +30,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
+import { isClosedImportedServerSnapshotFalse } from "../../utils/read-server-snapshot-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
@@ -1310,7 +1311,15 @@ const matchHydrationConditionInternal = (
   }
   const leftMatch = matchHydrationConditionInternal(unwrappedExpression.left, context, state);
   const rightMatch = matchHydrationConditionInternal(unwrappedExpression.right, context, state);
-  const nestedMatch = leftMatch ?? rightMatch;
+  const predicateNode = rightMatch?.predicateNode;
+  const rightIsShortCircuited =
+    unwrappedExpression.operator === "&&" &&
+    predicateNode !== undefined &&
+    (predicateNode === unwrappedExpression.right ||
+      isDescendantOf(predicateNode, unwrappedExpression.right)) &&
+    findEnclosingFunction(predicateNode) === findEnclosingFunction(unwrappedExpression) &&
+    isClosedImportedServerSnapshotFalse(unwrappedExpression.left, context.scopes, context.filename);
+  const nestedMatch = leftMatch ?? (rightIsShortCircuited ? null : rightMatch);
   if (!nestedMatch) return null;
   const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client", state);
   const serverResult = readHydrationConditionResult(unwrappedExpression, context, "server", state);

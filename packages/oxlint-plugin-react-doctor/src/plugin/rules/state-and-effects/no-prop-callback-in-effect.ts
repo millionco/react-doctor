@@ -1,13 +1,17 @@
+import { isAliasedRisingEdgeEffect } from "./utils/is-aliased-rising-edge-effect.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
@@ -70,6 +74,104 @@ const isRefLatchGuardedEffect = (callbackBody: EsTreeNode): boolean => {
     if (refNamesWritten.has(refName)) return true;
   }
   return false;
+};
+
+const getRefCurrentReceiver = (
+  node: EsTreeNode | null | undefined,
+): EsTreeNodeOfType<"Identifier"> | null =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.optional &&
+  getStaticPropertyName(node) === "current" &&
+  isNodeOfType(node.object, "Identifier")
+    ? node.object
+    : null;
+
+// An immutable alias of `signal && !previous.current` can describe a rising
+// edge instead of a state mirror. Prove the guard for the individual call and
+// the adjacent refresh of the same private ref.
+const findRefBackedRisingEdgeBranch = (
+  callback: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  if (callback.async || !isNodeOfType(callback.body, "BlockStatement")) return null;
+  const [declaration, branch, refreshStatement] = callback.body.body;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(branch, "IfStatement") ||
+    branch.alternate ||
+    !isNodeOfType(branch.test, "Identifier") ||
+    !isNodeOfType(refreshStatement, "ExpressionStatement")
+  ) {
+    return null;
+  }
+  const [guard] = declaration.declarations;
+  if (!guard) return null;
+  const alias = guard.init;
+  const refresh = refreshStatement.expression;
+  if (
+    scopes.symbolFor(branch.test)?.bindingIdentifier !== guard.id ||
+    !isNodeOfType(alias, "LogicalExpression") ||
+    alias.operator !== "&&" ||
+    !isNodeOfType(alias.left, "Identifier") ||
+    !isNodeOfType(alias.right, "UnaryExpression") ||
+    alias.right.operator !== "!" ||
+    !isNodeOfType(refresh, "AssignmentExpression") ||
+    refresh.operator !== "=" ||
+    !isNodeOfType(refresh.right, "Identifier")
+  ) {
+    return null;
+  }
+
+  const signal = scopes.symbolFor(alias.left);
+  const read = getRefCurrentReceiver(alias.right.argument);
+  const write = getRefCurrentReceiver(refresh.left);
+  if (!read || !write) return null;
+  const ref = scopes.symbolFor(read);
+  const initializer = ref?.initializer;
+  if (
+    signal?.kind !== "const" ||
+    scopes.symbolFor(refresh.right) !== signal ||
+    !ref ||
+    ref.kind !== "const" ||
+    scopes.symbolFor(write) !== ref ||
+    ref.references.length !== 2 ||
+    ref.references.some(
+      (reference) => reference.identifier !== read && reference.identifier !== write,
+    ) ||
+    findEnclosingFunction(ref.bindingIdentifier) !== findEnclosingFunction(callback) ||
+    !isNodeOfType(initializer, "CallExpression") ||
+    !isReactApiCall(initializer, "useRef", scopes, { resolveNamedAliases: true }) ||
+    initializer.arguments.length !== 1 ||
+    !isNodeOfType(initializer.arguments[0], "Literal") ||
+    initializer.arguments[0].value !== false
+  ) {
+    return null;
+  }
+
+  let skipsRefresh = false;
+  walkInsideStatementBlocks(branch.consequent, (node) => {
+    if (isNodeOfType(node, "ReturnStatement") || isNodeOfType(node, "ThrowStatement")) {
+      skipsRefresh = true;
+    }
+  });
+  return skipsRefresh ? null : branch.consequent;
+};
+
+const isGuardedExpressionStatement = (call: EsTreeNode, branch: EsTreeNode): boolean => {
+  let node = call.parent;
+  while (node && node !== branch) {
+    if (
+      !isNodeOfType(node, "ExpressionStatement") &&
+      !isNodeOfType(node, "BlockStatement") &&
+      !isNodeOfType(node, "IfStatement")
+    ) {
+      return false;
+    }
+    node = node.parent;
+  }
+  return node === branch;
 };
 
 // An edge-triggered transition detector: one of the deps is a
@@ -292,9 +394,10 @@ export const noPropCallbackInEffect = defineRule({
         const reactStateDeps = dependencyElements.filter((element) =>
           isReactStateDependency(analysis, element, propStackTracker.isPropName),
         );
+        const reactStateDependencySet = new Set(reactStateDeps);
         const customHookStateDeps = dependencyElements.filter(
           (element) =>
-            !reactStateDeps.includes(element) &&
+            !reactStateDependencySet.has(element) &&
             isCustomHookStateDependency(
               analysis,
               element,
@@ -318,6 +421,7 @@ export const noPropCallbackInEffect = defineRule({
         const stateLikeDeps = [...reactStateDeps, ...customHookStateDeps];
         if (stateLikeDeps.length === 0) return;
 
+        if (isAliasedRisingEdgeEffect(callback, context.scopes)) return;
         if (isRefLatchGuardedEffect(callback.body as EsTreeNode)) return;
         if (hasPreviousValueDep(node, dependencyElements)) return;
 
@@ -386,10 +490,12 @@ export const noPropCallbackInEffect = defineRule({
           });
         }
 
+        const risingEdgeBranch = findRefBackedRisingEdgeBranch(callback, context.scopes);
         const reportedNodes = new Set<EsTreeNode>();
         walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "CallExpression")) return;
           if (child.arguments.length === 0) return;
+          if (risingEdgeBranch && isGuardedExpressionStatement(child, risingEdgeBranch)) return;
           const calleeName = getPropCallbackName(child);
           if (!calleeName) return;
           if (analysis) {

@@ -669,3 +669,161 @@ describe("notifications without state payloads", () => {
     },
   );
 });
+
+describe("no-prop-callback-in-effect — ref-backed rising edges", () => {
+  const component = (effectBody: string) => `
+    import { useEffect, useRef, useState } from "react";
+    export function Action({ notify }) {
+      const [pressed] = useState(false);
+      const [value] = useState("");
+      const previous = useRef(false);
+      useEffect(() => { ${effectBody} }, [notify, pressed, value]);
+      return null;
+    }
+  `;
+
+  it("allows the guarded notification and reports the separate state mirror", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      component(`
+        const rising = pressed && !previous.current;
+        if (rising) notify(value);
+        previous.current = pressed;
+        notify(value);
+      `),
+      { includeLocations: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.line).toBe(11);
+  });
+
+  it.each([
+    "if (rising) notify(value); previous.current = !pressed;",
+    "if (rising) { notify(value); if (value) return; } previous.current = pressed;",
+    "if (rising) { for (let index = 0; index < 2; index++) notify(value); } previous.current = pressed;",
+    "if (rising) notify(value); previous.current = pressed; expose(previous);",
+  ])("reports when the local edge proof does not cover the notification", (body: string) => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      component(`const rising = pressed && !previous.current; ${body}`),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effects that snapshot and update a private rising-edge ref", () => {
+  it.each([
+    [
+      "aliased-edge-positive",
+      `import {useEffect,useRef,useState} from "react";
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);
+ useEffect(()=>{
+  const was=previous.current;
+  previous.current=signal;
+  if(!signal||was){return;}
+  onChange(count);
+ },[signal,count]);
+ return <button onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      0,
+    ],
+    [
+      "missing-refresh",
+      `import {useEffect,useRef,useState} from "react";
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);
+ useEffect(()=>{
+  const was=previous.current;
+  if(!signal||was){return;}
+  onChange(count);
+ },[signal,count]);
+ return <button onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      1,
+    ],
+    [
+      "wrong-refresh-ref",
+      `import {useEffect,useRef,useState} from "react";
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);const other=useRef(false);
+ useEffect(()=>{
+  const was=previous.current;
+  other.current=signal;
+  if(!signal||was){return;}
+  onChange(count);
+ },[signal,count]);
+ return <button onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      1,
+    ],
+    [
+      "wrong-conjunctive-exit",
+      `import {useEffect,useRef,useState} from "react";
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);
+ useEffect(()=>{
+  const was=previous.current;
+  previous.current=signal;
+  if(!signal&&was){return;}
+  onChange(count);
+ },[signal,count]);
+ return <button onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      1,
+    ],
+    [
+      "escaped-ref",
+      `import {useEffect,useRef,useState} from "react";
+declare function expose(value:unknown):void;
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);
+ useEffect(()=>{
+  const was=previous.current;
+  previous.current=signal;
+  if(!signal||was){return;}
+  onChange(count);
+ },[signal,count]);
+ return <button data-ref={(() => { expose(previous); return "ref"; })()} onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      1,
+    ],
+    [
+      "outside-edge-call",
+      `import {useEffect,useRef,useState} from "react";
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);
+ useEffect(()=>{
+  onChange(count);
+  const was=previous.current;
+  previous.current=signal;
+  if(!signal||was){return;}
+  onChange(count);
+ },[signal,count]);
+ return <button onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      2,
+    ],
+    [
+      "missing-signal-dependency",
+      `import {useEffect,useRef,useState} from "react";
+export function Notice({onChange}:{onChange:(value:number)=>void}){
+ const [signal,setSignal]=useState(false);const [count,setCount]=useState(0);const previous=useRef(false);
+ useEffect(()=>{
+  const was=previous.current;
+  previous.current=signal;
+  if(!signal||was){return;}
+  onChange(count);
+ },[count]);
+ return <button onClick={()=>{setCount(count+1);setSignal(!signal)}}>Toggle</button>;
+}`,
+      1,
+    ],
+  ])("%s", (_name, source, expected) => {
+    const result = runRule(noPropCallbackInEffect, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

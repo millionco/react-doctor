@@ -1,3 +1,4 @@
+import { isEmblaPositionButton } from "../../utils/is-embla-position-button.js";
 import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
@@ -1992,6 +1993,11 @@ export const noArrayIndexAsKey = defineRule({
           isDynamicReactChildrenExpression(iteratorCallee.object, 0),
         );
 
+        if (
+          indexUse.binding.iteratorCall &&
+          isEmblaPositionButton(node, indexUse.binding.iteratorCall, context)
+        )
+          return;
         const openingElement = node.parent;
         if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
           const elementName = openingElement.name as EsTreeNode;

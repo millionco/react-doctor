@@ -104,6 +104,18 @@ describe("no-hydration-branch-on-browser-global collector", () => {
   });
 });
 
+describe("no-array-index-as-key collector", () => {
+  it("only bypasses replay for files that might use the cross-file Embla proof", () => {
+    const source = writeFixtureFile("src/Rows.tsx", "export const labels = ['a', 'b'];");
+    const focal = writeFixtureFile(
+      "src/Dots.tsx",
+      'import useCarousel from "embla-carousel-react";',
+    );
+    expect(collectFor(source, ["no-array-index-as-key"])).not.toBeNull();
+    expect(collectFor(focal, ["no-array-index-as-key"])).toBeNull();
+  });
+});
+
 describe("no-barrel-import collector", () => {
   const setupBarrelFixture = (): string => {
     writeFixtureFile("src/components/Button.tsx", "export const Button = () => null;\n");

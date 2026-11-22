@@ -1,4 +1,8 @@
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
+import {
+  getServiceHookFieldName,
+  resolveServiceHookInvocation,
+} from "./rules/react-builtins/utils/service-hook-field.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
@@ -206,7 +210,11 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
+    if (isNodeOfType(node, "ArrowFunctionExpression")) {
+      getServiceHookFieldName(node, scopes, absoluteFilePath);
+    }
     if (!isNodeOfType(node, "CallExpression")) return;
+    resolveServiceHookInvocation(node, absoluteFilePath, scopes);
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);

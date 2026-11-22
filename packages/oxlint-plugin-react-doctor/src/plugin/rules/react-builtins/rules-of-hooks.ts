@@ -1,3 +1,7 @@
+import {
+  getServiceHookFieldName,
+  resolveServiceHookInvocation,
+} from "./utils/service-hook-field.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -603,7 +607,13 @@ const getCallExpressionCalleeName = (
 // Best-effort name inference: looks at the function's parent for a
 // VariableDeclarator / AssignmentExpression / Property / CallExpression
 // that gives the function a usable name.
-const inferFunctionName = (functionNode: EsTreeNode): string | null => {
+const inferFunctionName = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  filename?: string,
+): string | null => {
+  const serviceHookName = getServiceHookFieldName(functionNode, scopes, filename);
+  if (serviceHookName) return serviceHookName;
   if (
     (isNodeOfType(functionNode, "FunctionDeclaration") ||
       isNodeOfType(functionNode, "FunctionExpression")) &&
@@ -831,6 +841,7 @@ const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpressio
 const findEnclosingFunctionInfo = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  filename?: string,
 ): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -839,7 +850,7 @@ const findEnclosingFunctionInfo = (
       isNodeOfType(current, "FunctionExpression") ||
       isNodeOfType(current, "ArrowFunctionExpression")
     ) {
-      const resolvedName = inferFunctionName(current);
+      const resolvedName = inferFunctionName(current, scopes, filename);
       const displayName = resolvedName ?? "anonymous";
       return {
         node: current,
@@ -913,12 +924,13 @@ const isInsideLoop = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => 
 const findEnclosingComponentOrHookFunction = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  filename?: string,
 ): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
       if (isReactHocCallbackArgument(current, scopes)) return current;
-      const resolvedName = inferFunctionName(current);
+      const resolvedName = inferFunctionName(current, scopes, filename);
       if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
         return current;
       }
@@ -932,9 +944,10 @@ const isSameComponentOrHookScope = (
   symbol: SymbolDescriptor,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
+  filename?: string,
 ): boolean =>
-  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes) ===
-  findEnclosingComponentOrHookFunction(referenceNode, scopes);
+  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes, filename) ===
+  findEnclosingComponentOrHookFunction(referenceNode, scopes, filename);
 
 const isAllowedEffectEventHook = (
   hookName: string,
@@ -1036,7 +1049,10 @@ export const rulesOfHooks = defineRule({
     );
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const hookContext = isHookCall(node, context.scopes, settings);
+        const serviceHook = resolveServiceHookInvocation(node, context.filename, context.scopes);
+        const hookContext = serviceHook
+          ? { hookName: serviceHook }
+          : isHookCall(node, context.scopes, settings);
         if (!hookContext) return;
         const { hookName } = hookContext;
 
@@ -1064,7 +1080,7 @@ export const rulesOfHooks = defineRule({
             return;
         }
 
-        const enclosing = findEnclosingFunctionInfo(node, context.scopes);
+        const enclosing = findEnclosingFunctionInfo(node, context.scopes, context.filename);
 
         if (!enclosing) {
           if (isPackageImportedNonReactHookCallee(node)) return;
@@ -1072,7 +1088,10 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (isInsideClassComponent(node)) {
+        if (
+          isInsideClassComponent(node) &&
+          !getServiceHookFieldName(enclosing.node, context.scopes, context.filename)
+        ) {
           if (
             isPackageImportedNonReactHookCallee(node) ||
             isDefaultImportedClassApiMemberCallee(node)
@@ -1101,7 +1120,8 @@ export const rulesOfHooks = defineRule({
           !enclosing.isComponentOrHook &&
           enclosing.hasResolvedName &&
           RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
-          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes) === null &&
+          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes, context.filename) ===
+            null &&
           countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
             MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
@@ -1114,7 +1134,11 @@ export const rulesOfHooks = defineRule({
           let outerWalker: EsTreeNode | null = enclosing.node;
           let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
-            const parentInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+            const parentInfo = findEnclosingFunctionInfo(
+              outerWalker,
+              context.scopes,
+              context.filename,
+            );
             if (!parentInfo) break;
             outerWalker = parentInfo.node;
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
@@ -1147,7 +1171,11 @@ export const rulesOfHooks = defineRule({
             let outerWalker: EsTreeNode | null = enclosing.node;
             let outerIsComponentOrHook = false;
             while (outerWalker) {
-              const outerInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
+              const outerInfo = findEnclosingFunctionInfo(
+                outerWalker,
+                context.scopes,
+                context.filename,
+              );
               if (!outerInfo) break;
               if (outerInfo.isComponentOrHook) {
                 outerIsComponentOrHook = true;
@@ -1155,7 +1183,7 @@ export const rulesOfHooks = defineRule({
               }
               outerWalker = outerInfo.node;
             }
-            if (!outerIsComponentOrHook) return;
+            if (!outerIsComponentOrHook && !serviceHook) return;
             context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
             return;
           }
@@ -1197,7 +1225,7 @@ export const rulesOfHooks = defineRule({
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
         if (!symbol || !symbolHasReactUseEffectEventOrigin(symbol, context.scopes)) return;
-        if (!isSameComponentOrHookScope(symbol, node, context.scopes)) return;
+        if (!isSameComponentOrHookScope(symbol, node, context.scopes, context.filename)) return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 
         context.report({

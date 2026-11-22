@@ -126,14 +126,31 @@ export interface RunOxlintProbeJobInput {
   readonly abortSignal?: AbortSignal;
 }
 
-const isProbeResult = (value: unknown): value is OxlintWorkerProbeResult =>
-  isRecord(value) &&
-  Array.isArray(value.paths) &&
-  value.paths.every((entry) => typeof entry === "string") &&
-  Array.isArray(value.existenceAnswers) &&
-  value.existenceAnswers.length === value.paths.length &&
-  value.existenceAnswers.every((entry) => entry === null || typeof entry === "string") &&
-  Array.isArray(value.traces);
+const isProbeResult = (value: unknown): value is OxlintWorkerProbeResult => {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.paths) ||
+    !value.paths.every((entry) => typeof entry === "string") ||
+    !Array.isArray(value.existenceAnswers) ||
+    value.existenceAnswers.length !== value.paths.length ||
+    !value.existenceAnswers.every((entry) => entry === null || typeof entry === "string") ||
+    !Array.isArray(value.traces)
+  )
+    return false;
+  const pathCount = value.paths.length;
+  return value.traces.every((trace) => {
+    if (trace === null) return true;
+    if (!isRecord(trace) || typeof trace.file !== "string") return false;
+    return [trace.content, trace.existence, trace.directory].every(
+      (indexes) =>
+        Array.isArray(indexes) &&
+        indexes.every(
+          (index) =>
+            typeof index === "number" && Number.isInteger(index) && index >= 0 && index < pathCount,
+        ),
+    );
+  });
+};
 
 /**
  * Collects sidecar dependency probes for a batch of files on a warm pool

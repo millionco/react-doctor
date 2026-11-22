@@ -1,3 +1,7 @@
+import {
+  createServiceHookClosureSnapshot,
+  isCurrentServiceHookClosureSnapshot,
+} from "./service-hook-closure-snapshot.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -542,13 +546,26 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
       const describesThisProject =
         resolveProjectIdentity(payload.directory) === resolveProjectIdentity(projectDirectory) &&
         (payload.manifestContentHash ?? null) === resolveManifestContentHash(projectDirectory);
-      return describesThisProject ? payload : null;
+      return describesThisProject &&
+        payload.serviceHookClosureSnapshot &&
+        isCurrentServiceHookClosureSnapshot(payload.serviceHookClosureSnapshot)
+        ? payload
+        : null;
     },
     store: (key, payload) => {
+      const serviceHookClosureSnapshot = createServiceHookClosureSnapshot(
+        projectDirectory,
+        payload.analyzedFiles ?? payload.scannedFilePaths,
+      );
+      if (serviceHookClosureSnapshot === null) return;
       entries.set(key, {
         key,
         createdAtMs: Date.now(),
-        payload: { ...payload, manifestContentHash: resolveManifestContentHash(projectDirectory) },
+        payload: {
+          ...payload,
+          manifestContentHash: resolveManifestContentHash(projectDirectory),
+          serviceHookClosureSnapshot,
+        },
       });
       persist();
     },

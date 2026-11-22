@@ -1,3 +1,7 @@
+import {
+  isServiceHookClosureSnapshot,
+  type ServiceHookClosureSnapshot,
+} from "./service-hook-closure-snapshot.js";
 import * as Schema from "effect/Schema";
 import { Diagnostic as DiagnosticSchema } from "@react-doctor/core/schemas";
 import type {
@@ -34,6 +38,7 @@ export interface CachedScanPayload {
   readonly securityScanFailureReason?: string | null;
   readonly suppressedRuleCounts?: ReadonlyArray<SuppressedRuleCount>;
   readonly manifestContentHash?: string | null;
+  readonly serviceHookClosureSnapshot?: ServiceHookClosureSnapshot;
 }
 
 interface CachedScanPayloadFieldValidator {
@@ -120,6 +125,7 @@ const OPTIONAL_CACHED_SCAN_PAYLOAD_FIELDS: ReadonlyArray<CachedScanPayloadFieldV
   { key: "securityScanFailureReason", isValid: isNullableString },
   { key: "suppressedRuleCounts", isValid: isSuppressedRuleCountArray },
   { key: "manifestContentHash", isValid: isNullableString },
+  { key: "serviceHookClosureSnapshot", isValid: isServiceHookClosureSnapshot },
 ];
 
 const hasValidRequiredCachedScanPayloadFields = (value: Record<string, unknown>): boolean =>

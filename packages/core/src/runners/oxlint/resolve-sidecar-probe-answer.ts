@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import * as path from "node:path";
 import { classifyExistenceAnswer } from "../../utils/classify-existence-answer.js";
 import { hashFileContents } from "../../utils/hash-file-contents.js";
@@ -37,6 +39,7 @@ export const createSidecarProbeAnswerResolver = (input: {
 }): SidecarProbeAnswerResolver => {
   const contentAnswerByPath = new Map<string, string>();
   const existsAnswerByPath = new Map<string, string>();
+  const directoryAnswerByPath = new Map<string, string>();
   // The same dependency paths recur across most files' probe sets (a shared
   // barrel, the tsconfig chain, every node_modules candidate), so the
   // relative form is computed once per absolute path.
@@ -69,9 +72,41 @@ export const createSidecarProbeAnswerResolver = (input: {
     return answer;
   };
 
+  const directoryAnswer = (relativePath: string): string => {
+    const previous = directoryAnswerByPath.get(relativePath);
+    if (previous !== undefined) return previous;
+    let answer: string;
+    try {
+      const entries = fs.readdirSync(path.resolve(input.rootDirectory, relativePath), {
+        withFileTypes: true,
+      });
+      const members = entries.map((entry) => [
+        entry.name,
+        entry.isSymbolicLink()
+          ? "symlink"
+          : entry.isDirectory()
+            ? "directory"
+            : entry.isFile()
+              ? "file"
+              : "other",
+      ]);
+      members.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+      answer = createHash("sha256").update(JSON.stringify(members)).digest("hex");
+    } catch {
+      // Never replay a failed enumeration across scans.
+      answer = `unreadable:${randomUUID()}`;
+    }
+    directoryAnswerByPath.set(relativePath, answer);
+    return answer;
+  };
+
   return {
     answerFor: (kind, relativePath) =>
-      kind === "content" ? contentAnswer(relativePath) : existsAnswer(relativePath),
+      kind === "directory"
+        ? directoryAnswer(relativePath)
+        : kind === "content"
+          ? contentAnswer(relativePath)
+          : existsAnswer(relativePath),
     toRelativePath,
   };
 };

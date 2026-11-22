@@ -267,7 +267,11 @@ describe("scan result cache", () => {
     const html = path.join(ignoredDirectory, "page.html");
     fs.writeFileSync(html, "<div>quiet</div>");
     createScanResultCache(projectDirectory).store(key, payload);
-    expect(lookup()?.serviceHookClosureSnapshot?.contentPaths).toContain(html);
+    expect(
+      lookup()?.serviceHookClosureSnapshot?.contentPaths.map((contentPath) =>
+        path.normalize(contentPath),
+      ),
+    ).toContain(html);
     fs.writeFileSync(
       html,
       '<script type=module>import { service } from "../slots"; service.useSlots();</script>',

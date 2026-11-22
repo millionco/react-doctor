@@ -7,6 +7,7 @@ import {
   SIDECAR_LINT_CACHE_FILENAME,
   SIDECAR_LINT_CACHE_SCHEMA_VERSION,
 } from "../src/constants.js";
+import { createSidecarProbeAnswerResolver } from "../src/runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "../src/runners/oxlint/sidecar-lint-cache.js";
 import type {
   SidecarDependencyProbe,
@@ -66,6 +67,69 @@ const answerFromProbes =
     probes.find((probe) => probe.kind === kind && probe.path === probePath)?.answer ?? "absent";
 
 describe("createSidecarLintCache", () => {
+  it("invalidates a cached diagnostic when a byte-identical package link moves", () => {
+    const root = makeCacheDir();
+    const first = path.join(root, "first");
+    const second = path.join(root, "second");
+    const dependency = "linked/package.json";
+    const link = path.join(root, "linked");
+    for (const target of [first, second]) {
+      fs.mkdirSync(target);
+      fs.writeFileSync(path.join(target, "package.json"), '{"name":"library"}');
+    }
+    const resolveAnswers = () =>
+      createSidecarProbeAnswerResolver({
+        rootDirectory: root,
+        contentHashByRelativePath: new Map(),
+      });
+    const kind = process.platform === "win32" ? "junction" : "dir";
+    fs.symlinkSync(first, link, kind);
+    const before = resolveAnswers();
+    const cache = createSidecarLintCache(root, "workspace-identity");
+    cache.store("source hash", {
+      diagnostics: [diagnostic()],
+      probeIds: [
+        cache.internProbe("content", dependency, before.answerFor("content", dependency)),
+        cache.internProbe("exists", dependency, before.answerFor("exists", dependency)),
+        cache.internProbe("realpath", "linked", before.answerFor("realpath", "linked")),
+      ],
+    });
+    cache.persist();
+    const reloaded = createSidecarLintCache(root, "workspace-identity");
+    const stored = reloaded.lookup("source hash")!;
+    expect(reloaded.isReplayable(stored, before.answerFor)).toBe(true);
+    fs.unlinkSync(link);
+    fs.symlinkSync(second, link, kind);
+    const after = resolveAnswers();
+    expect(after.answerFor("content", dependency)).toBe(before.answerFor("content", dependency));
+    expect(after.answerFor("exists", dependency)).toBe(before.answerFor("exists", dependency));
+    const rescanned = createSidecarLintCache(root, "workspace-identity");
+    const replayed = rescanned.lookup("source hash")!;
+    expect(rescanned.isReplayable(replayed, after.answerFor)).toBe(false);
+  });
+
+  it("invalidates package probes when the canonical project root changes", () => {
+    const root = makeCacheDir();
+    const first = path.join(root, "first");
+    const second = path.join(root, "second");
+    const packageDirectory = path.join(first, "package");
+    const projectLink = path.join(root, "project");
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.mkdirSync(second);
+    const kind = process.platform === "win32" ? "junction" : "dir";
+    const digest = () =>
+      createSidecarProbeAnswerResolver({
+        rootDirectory: root,
+        projectRootDirectory: projectLink,
+        contentHashByRelativePath: new Map(),
+      }).answerFor("realpath", "first/package");
+    fs.symlinkSync(first, projectLink, kind);
+    const before = digest();
+    fs.unlinkSync(projectLink);
+    fs.symlinkSync(second, projectLink, kind);
+    expect(digest()).not.toBe(before);
+  });
+
   it("preserves explicit ownership through disk replay", () => {
     const cacheDirectory = makeCacheDir();
     const expected = diagnostic({ contextRanges: [{ offset: 12, length: 34 }] });

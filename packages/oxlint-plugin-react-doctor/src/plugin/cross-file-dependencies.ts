@@ -1,5 +1,8 @@
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
-import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
+import {
+  findNearestPackageDirectory,
+  readNearestPackageManifest,
+} from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
@@ -17,7 +20,7 @@ import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
+import { collectCrossFileProbes, recordRealpathProbe } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
@@ -121,6 +124,14 @@ const flattenImportEntries = (staticImports: ReadonlyArray<StaticImport>): Impor
   return flattened;
 };
 
+const collectNearestWorkspacePackageDependencies = ({
+  absoluteFilePath,
+}: Pick<CrossFileDependencyCollectorInput, "absoluteFilePath">): void => {
+  classifyPackagePlatform(absoluteFilePath);
+  const packageDirectory = findNearestPackageDirectory(absoluteFilePath);
+  if (packageDirectory !== null) recordRealpathProbe(packageDirectory);
+};
+
 // no-barrel-import reads, per relative runtime import: the resolution probe
 // chain (`resolveRelativeImportPath` — extension candidates, package.json
 // entries, index fallbacks), the resolved file's barrel classification, the
@@ -147,7 +158,7 @@ const collectNoBarrelImportDependencies: CrossFileDependencyCollector = ({
 
     if (!didProbePackagePlatform) {
       didProbePackagePlatform = true;
-      classifyPackagePlatform(absoluteFilePath);
+      collectNearestWorkspacePackageDependencies({ absoluteFilePath });
     }
     for (const entry of runtimeEntries) {
       const importedName = entry.importName.kind === "Default" ? "default" : entry.importName.name;
@@ -167,6 +178,7 @@ const collectNextjsMissingMetadataDependencies: CrossFileDependencyCollector = (
 }) => {
   if (!PAGE_FILE_PATTERN.test(absoluteFilePath)) return;
   if (INTERNAL_PAGE_PATH_PATTERN.test(absoluteFilePath)) return;
+  collectNearestWorkspacePackageDependencies({ absoluteFilePath });
   hasAncestorMetadataLayout(absoluteFilePath);
 };
 
@@ -182,6 +194,7 @@ const collectNextjsSearchParamsDependencies: CrossFileDependencyCollector = ({
   staticImports,
 }) => {
   if (!PAGE_OR_LAYOUT_FILE_PATTERN.test(absoluteFilePath)) return;
+  collectNearestWorkspacePackageDependencies({ absoluteFilePath });
   if (hasAncestorSuspenseLayout(absoluteFilePath)) return;
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
@@ -505,7 +518,7 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
   staticImports,
   getProgram,
 }) => {
-  classifyPackagePlatform(absoluteFilePath);
+  collectNearestWorkspacePackageDependencies({ absoluteFilePath });
   collectImportedJsxComponentDependencies({
     absoluteFilePath,
     staticImports,
@@ -529,12 +542,12 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
 };
 
 const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
-  collectNearestManifestDependencies(input);
+  collectNearestWorkspacePackageDependencies(input);
   collectBrowserGuardDependencies(input);
 };
 
 const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
-  collectNearestManifestDependencies(input);
+  collectNearestWorkspacePackageDependencies(input);
   collectFunctionExportDependencies(
     input,
     Number.POSITIVE_INFINITY,
@@ -549,12 +562,14 @@ const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (inp
 // records its own probe set (`recordFilesystemProbes`), so re-running it is
 // the exact dependency collection.
 const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
+  collectNearestWorkspacePackageDependencies({ absoluteFilePath });
   isLegacyArchReactNativeFile(absoluteFilePath);
 };
 
 const collectReactNativeVersionDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
 }) => {
+  collectNearestWorkspacePackageDependencies({ absoluteFilePath });
   resolvePackageVersion(absoluteFilePath, "react-native");
 };
 
@@ -586,15 +601,15 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
-    ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
+    ["nextjs-async-dynamic-api-not-awaited", collectNearestWorkspacePackageDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
-    ["no-indeterminate-attribute", collectNearestManifestDependencies],
-    ["no-locale-format-in-render", collectNearestManifestDependencies],
-    ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
+    ["no-indeterminate-attribute", collectNearestWorkspacePackageDependencies],
+    ["no-locale-format-in-render", collectNearestWorkspacePackageDependencies],
+    ["no-match-media-in-state-initializer", collectNearestWorkspacePackageDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
@@ -609,18 +624,18 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
-    ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
+    ["rendering-hydration-mismatch-time", collectNearestWorkspacePackageDependencies],
     ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],
     ["server-sequential-independent-await", collectSequentialAwaitDependencies],
     ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
-    ["rn-prefer-expo-image", collectNearestManifestDependencies],
+    ["rn-prefer-expo-image", collectNearestWorkspacePackageDependencies],
     ["rn-style-prefer-boxshadow", collectLegacyArchDependencies],
     ...REACT_ROUTER_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
       ruleId,
-      collectNearestManifestDependencies,
+      collectNearestWorkspacePackageDependencies,
     ]),
   ]);
 

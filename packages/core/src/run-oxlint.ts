@@ -35,7 +35,10 @@ import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
 import { createSidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import type { SidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
-import type { SidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
+import type {
+  SidecarDependencyProbe,
+  SidecarLintCache,
+} from "./runners/oxlint/sidecar-lint-cache.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -153,7 +156,7 @@ const collectSidecarProbesForFiles = async (input: {
   pooled: PooledProbeCollection | null;
 }): Promise<Map<string, ReadonlyArray<number> | null>> => {
   const internRelativeProbe = (
-    kind: "content" | "exists",
+    kind: SidecarDependencyProbe["kind"],
     relativePath: string,
     knownAnswer: string | null,
   ): number =>
@@ -162,7 +165,7 @@ const collectSidecarProbesForFiles = async (input: {
       relativePath,
       knownAnswer ?? input.probeAnswers.answerFor(kind, relativePath),
     );
-  const internProbe = (kind: "content" | "exists", absolutePath: string): number =>
+  const internProbe = (kind: SidecarDependencyProbe["kind"], absolutePath: string): number =>
     internRelativeProbe(kind, input.probeAnswers.toRelativePath(absolutePath), null);
   const buildProbeIds = (file: string): number[] | null => {
     const trace = collectFileProbeTrace(
@@ -181,6 +184,9 @@ const collectSidecarProbesForFiles = async (input: {
     // the resolvers can (`"dir"` vs `"none"`).
     for (const existencePath of trace.existencePaths) {
       probeIds.push(internProbe("exists", existencePath));
+    }
+    for (const realpathPath of trace.realpathPaths) {
+      probeIds.push(internProbe("realpath", realpathPath));
     }
     return probeIds;
   };
@@ -798,6 +804,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         : null;
       const probeAnswers = createSidecarProbeAnswerResolver({
         rootDirectory,
+        projectRootDirectory: project.rootDirectory,
         contentHashByRelativePath,
       });
       const allMissLintBatchesStarted = createDeferred<void>();

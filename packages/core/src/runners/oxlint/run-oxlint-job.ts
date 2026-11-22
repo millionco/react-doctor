@@ -126,14 +126,29 @@ export interface RunOxlintProbeJobInput {
   readonly abortSignal?: AbortSignal;
 }
 
-const isProbeResult = (value: unknown): value is OxlintWorkerProbeResult =>
-  isRecord(value) &&
-  Array.isArray(value.paths) &&
-  value.paths.every((entry) => typeof entry === "string") &&
-  Array.isArray(value.existenceAnswers) &&
-  value.existenceAnswers.length === value.paths.length &&
-  value.existenceAnswers.every((entry) => entry === null || typeof entry === "string") &&
-  Array.isArray(value.traces);
+const isProbeIndexArray = (value: unknown, pathCount: number): boolean =>
+  Array.isArray(value) &&
+  value.every((index) => Number.isInteger(index) && index >= 0 && index < pathCount);
+
+const isProbeResult = (value: unknown): value is OxlintWorkerProbeResult => {
+  if (!isRecord(value) || !Array.isArray(value.paths) || !Array.isArray(value.traces)) return false;
+  const pathCount = value.paths.length;
+  return (
+    value.paths.every((entry) => typeof entry === "string") &&
+    Array.isArray(value.existenceAnswers) &&
+    value.existenceAnswers.length === pathCount &&
+    value.existenceAnswers.every((entry) => entry === null || typeof entry === "string") &&
+    value.traces.every((trace) => {
+      if (trace === null) return true;
+      if (!isRecord(trace) || typeof trace.file !== "string") return false;
+      return (
+        isProbeIndexArray(trace.content, pathCount) &&
+        isProbeIndexArray(trace.existence, pathCount) &&
+        isProbeIndexArray(trace.realpath, pathCount)
+      );
+    })
+  );
+};
 
 /**
  * Collects sidecar dependency probes for a batch of files on a warm pool

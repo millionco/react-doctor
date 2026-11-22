@@ -28,13 +28,15 @@
 // synchronous sections, so a module-level slot is safe. Nested captures
 // merge their traces into the outer file-level trace.
 // When no recorder is active (every production lint path inside oxlint),
-// both record functions are a single null check.
+// each record function is a single null check.
 
 export interface CrossFileProbeTrace {
   /** Paths whose existence classification (file / dir / none) was consulted. */
   readonly existencePaths: Set<string>;
   /** Paths whose content (bytes, exports, parse) was consulted. */
   readonly contentPaths: Set<string>;
+  /** Paths whose canonical resolution or link topology was consulted. */
+  readonly realpathPaths: Set<string>;
 }
 
 export interface CapturedCrossFileProbes<Value> {
@@ -52,6 +54,10 @@ export const recordContentProbe = (absolutePath: string): void => {
   activeProbeTrace?.contentPaths.add(absolutePath);
 };
 
+export const recordRealpathProbe = (absolutePath: string): void => {
+  activeProbeTrace?.realpathPaths.add(absolutePath);
+};
+
 export const isProbeRecorderActive = (): boolean => activeProbeTrace !== null;
 
 // Captures a helper's probes separately while preserving the complete outer
@@ -63,6 +69,7 @@ export const captureCrossFileProbes = <Value>(
   const trace: CrossFileProbeTrace = {
     existencePaths: new Set<string>(),
     contentPaths: new Set<string>(),
+    realpathPaths: new Set<string>(),
   };
   activeProbeTrace = trace;
   try {
@@ -75,6 +82,9 @@ export const captureCrossFileProbes = <Value>(
       }
       for (const contentPath of trace.contentPaths) {
         previousTrace.contentPaths.add(contentPath);
+      }
+      for (const realpathPath of trace.realpathPaths) {
+        previousTrace.realpathPaths.add(realpathPath);
       }
     }
   }
@@ -89,6 +99,9 @@ export const replayCrossFileProbes = (trace: CrossFileProbeTrace): void => {
   }
   for (const contentPath of trace.contentPaths) {
     activeProbeTrace.contentPaths.add(contentPath);
+  }
+  for (const realpathPath of trace.realpathPaths) {
+    activeProbeTrace.realpathPaths.add(realpathPath);
   }
 };
 

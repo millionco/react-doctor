@@ -33,7 +33,7 @@ process.on("message", (job) => {
     fs.writeSync(1, JSON.stringify({
       paths: ["src/dep.ts"],
       existenceAnswers: ["file"],
-      traces: job.files.map((file) => ({ file, content: [0], existence: [0], ruleIds: job.ruleIds })),
+      traces: job.files.map((file) => ({ file, content: [0], existence: [0], realpath: [], ruleIds: job.ruleIds })),
     }));
     writeLine(1, MARKER + ":" + job.id + ":ok");
     writeLine(2, MARKER + ":" + job.id + ":end");

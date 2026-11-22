@@ -17,7 +17,7 @@ it("replays a pooled sidecar hit until a shared content/existence path changes b
     const dependencyPath = path.join(root, dependency);
     const cacheDirectory = path.join(root, "cache");
     fs.mkdirSync(cacheDirectory);
-    const trace = { file: source, content: [0], existence: [0] };
+    const trace = { file: source, content: [0], existence: [0], realpath: [0] };
     const result: OxlintWorkerProbeResult = {
       paths: [dependency],
       existenceAnswers: ["file"],
@@ -71,6 +71,7 @@ it("replays a pooled sidecar hit until a shared content/existence path changes b
     expect(existing?.probeIds.map((id) => cache.probeAt(id))).toEqual([
       { kind: "content", path: dependency, answer: resolver.answerFor("content", dependency) },
       { kind: "exists", path: dependency, answer: "file" },
+      { kind: "realpath", path: dependency, answer: resolver.answerFor("realpath", dependency) },
     ]);
     expect(scan()[0]?.message).toBe("export const label = 'old';");
     expect(lint).toHaveBeenCalledTimes(1);

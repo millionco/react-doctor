@@ -11,7 +11,7 @@ export const internWorkerSidecarProbeIds = (
   ) => number,
 ): number[] => {
   const probeIds: number[] = [];
-  // The worker answers path existence. The parent supplies content hashes.
+  // The worker answers existence. The parent supplies content and canonical path hashes.
   for (const pathIndex of trace.content) {
     probeIds.push(internRelativeProbe("content", result.paths[pathIndex], null));
   }
@@ -19,6 +19,9 @@ export const internWorkerSidecarProbeIds = (
     probeIds.push(
       internRelativeProbe("exists", result.paths[pathIndex], result.existenceAnswers[pathIndex]),
     );
+  }
+  for (const pathIndex of trace.realpath) {
+    probeIds.push(internRelativeProbe("realpath", result.paths[pathIndex], null));
   }
   return probeIds;
 };

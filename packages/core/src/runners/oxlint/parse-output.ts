@@ -19,6 +19,7 @@ import { findJsxOpenerSpan } from "../../find-jsx-opener-span.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
 import { isRecord } from "../../utils/is-record.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
+import { isJsxRefPropertySpan } from "../../utils/is-jsx-ref-property-span.js";
 import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { getCapabilities } from "../../project-info/capabilities.js";
@@ -159,6 +160,7 @@ const cleanDiagnosticMessage = (
   plugin: string,
   rule: string,
   project: ProjectInfo,
+  isJsxRefProperty: boolean,
 ): CleanedDiagnostic => {
   // `message` / `help` come from oxlint JSON that is only shape-checked at
   // the top level (`isOxlintOutput`), so coerce a non-string value to ""
@@ -171,6 +173,7 @@ const cleanDiagnosticMessage = (
     plugin,
     rule,
     project,
+    isJsxRefProperty,
   );
   // Final guard: a rule may echo a source fragment containing a secret
   // or PII into its message/help. Scrub it here — the single point every
@@ -188,6 +191,7 @@ const resolveCleanedDiagnostic = (
   plugin: string,
   rule: string,
   project: ProjectInfo,
+  isJsxRefProperty: boolean,
 ): CleanedDiagnostic => {
   if (plugin === "react-hooks-js") {
     const bailoutReason = message
@@ -210,6 +214,17 @@ const resolveCleanedDiagnostic = (
     // and only the elaboration stays in `help`.
     const [reasonSummary = "", ...reasonDetailLines] = bailoutReason.split("\n");
     const reasonDetail = reasonDetailLines.join("\n").trim();
+    if (rule === "refs" && isJsxRefProperty) {
+      return {
+        message: "React Compiler could not analyze this JSX ref prop.",
+        help: [
+          "If this property stores a ref object, destructure it before the JSX and pass the binding directly. Keep reads and writes of `.current` outside render.",
+          bailoutReason || help,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+    }
     if (rule === "error-boundaries") {
       return {
         message: REACT_ERROR_BOUNDARY_MESSAGE,
@@ -493,12 +508,21 @@ export const parseOxlintOutput = (
     .map((diagnostic) => {
       const { plugin, rule } = parseRuleCode(diagnostic.code);
       const primaryLabel = diagnostic.labels[0];
+      const primarySpan = primaryLabel?.span;
+      const sourceBuffer = primarySpan ? readSourceBuffer(diagnostic.filename) : null;
+      const isJsxRefProperty =
+        plugin === "react-hooks-js" &&
+        rule === "refs" &&
+        primarySpan !== undefined &&
+        sourceBuffer !== null &&
+        isJsxRefPropertySpan(diagnostic.filename, sourceBuffer, primarySpan);
       const cleaned = cleanDiagnosticMessage(
         diagnostic.message,
         diagnostic.help,
         plugin,
         rule,
         project,
+        isJsxRefProperty,
       );
       const mappedSourceFilename = resolveMappedSourceFilename(diagnostic.filename);
       const normalizedFilePath = (mappedSourceFilename ?? diagnostic.filename).replaceAll(
@@ -508,8 +532,6 @@ export const parseOxlintOutput = (
       // Carry oxlint's UTF-8 byte span through to the Diagnostic so consumers
       // can resolve a precise range. `line` / `column` stay the source of truth;
       // offset / length are additive.
-      const primarySpan = primaryLabel?.span;
-      const sourceBuffer = primarySpan ? readSourceBuffer(diagnostic.filename) : null;
       const relatedLocations = buildRelatedLocations(
         diagnostic.labels,
         normalizedFilePath,

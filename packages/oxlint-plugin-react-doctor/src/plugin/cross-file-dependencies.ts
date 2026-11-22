@@ -683,6 +683,15 @@ export const collectCrossFileDependencyProbes = (input: {
     return null;
   }
 
+  // The DotLottie workspace proof follows the installed package bytes and the
+  // target of a workspace symlink. Always refresh the affected files.
+  if (
+    input.ruleIds.includes("effect-needs-cleanup") &&
+    staticImports.some((entry) => entry.moduleRequest.value === "@lottiefiles/dotlottie-react")
+  ) {
+    return null;
+  }
+
   const collectorInput: CrossFileDependencyCollectorInput = {
     absoluteFilePath,
     sourceText: input.sourceText,

@@ -1,0 +1,19 @@
+{
+  "name": "authored-measured-strip",
+  "private": true,
+  "main": "build/strip.cjs",
+  "module": "build/strip.mjs",
+  "exports": {
+    ".": {
+      "import": "./src/AlternateEntry.tsx",
+      "require": "./build/strip.cjs"
+    }
+  },
+  "scripts": {
+    "build": "webpack --config webpack.build.cjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

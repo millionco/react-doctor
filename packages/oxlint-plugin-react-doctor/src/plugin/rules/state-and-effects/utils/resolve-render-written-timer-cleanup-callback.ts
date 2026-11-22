@@ -16,6 +16,7 @@ import { getSymbolMutationInspector } from "../../../utils/get-symbol-mutation-i
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isWithinAssignmentTarget } from "../../../utils/is-within-assignment-target.js";
 import { resolveImportedApiReference } from "../../../utils/resolve-imported-api-reference.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
@@ -35,7 +36,9 @@ const TIMER_CALLBACK_REF_RUNTIME_APIS = new Set([
   ...TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
   ...TIMER_CLEANUP_CALLEE_NAMES,
   "useCallback",
+  "useEffect",
   "useRef",
+  "useState",
 ]);
 
 const TIMER_CALLBACK_REF_OPAQUE_GLOBALS = new Set([
@@ -49,6 +52,10 @@ const TIMER_CALLBACK_REF_OPAQUE_GLOBALS = new Set([
   "global",
   "window",
   "self",
+  "parent",
+  "top",
+  "frames",
+  "opener",
 ]);
 
 const TIMER_CALLBACK_REF_OPAQUE_MEMBERS = new Set([
@@ -58,9 +65,30 @@ const TIMER_CALLBACK_REF_OPAQUE_MEMBERS = new Set([
   "Function",
   "__defineGetter__",
   "__defineSetter__",
+  "defaultView",
+  "contentWindow",
+  "view",
 ]);
 
 const callbackRefOpaqueAccessByContext = new WeakMap<RuleContext, boolean>();
+
+const isNumberLiteral = (node: EsTreeNode | null | undefined): boolean =>
+  isNodeOfType(node, "Literal") && typeof node.value === "number";
+
+const isProvenFunctionFormTimer = (callee: EsTreeNode, context: RuleContext): boolean => {
+  const calleeRoot = findTransparentExpressionRoot(callee);
+  const call = calleeRoot.parent;
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.callee !== calleeRoot) {
+    return false;
+  }
+  const [handler, delay] = call.arguments;
+  return Boolean(
+    call.arguments.length === 2 &&
+    handler &&
+    isNumberLiteral(delay) &&
+    hasClosedTimerHandler(handler, context),
+  );
+};
 
 const hasOpaqueReactCallbackRefAccess = (context: RuleContext): boolean => {
   const cached = callbackRefOpaqueAccessByContext.get(context);
@@ -75,6 +103,12 @@ const hasOpaqueReactCallbackRefAccess = (context: RuleContext): boolean => {
     ) {
       const property = getResolvedStaticPropertyName(node, scopes);
       if (
+        property !== null &&
+        TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(property) &&
+        (!isNodeOfType(node, "MemberExpression") || !isProvenFunctionFormTimer(node, context))
+      ) {
+        hasOpaqueAccess = true;
+      } else if (
         (property !== null && TIMER_CALLBACK_REF_OPAQUE_MEMBERS.has(property)) ||
         (node.computed && property === null)
       ) {
@@ -99,8 +133,12 @@ const hasOpaqueReactCallbackRefAccess = (context: RuleContext): boolean => {
           );
       }
     } else if (isNodeOfType(node, "Identifier") && scopes.isGlobalReference(node)) {
+      const parent = node.parent;
+      if (isNodeOfType(parent, "TSTypeQuery") && parent.exprName === node) return;
       if (
         TIMER_CALLBACK_REF_OPAQUE_GLOBALS.has(node.name) ||
+        (TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(node.name) &&
+          !isProvenFunctionFormTimer(node, context)) ||
         (TIMER_CALLBACK_REF_RUNTIME_APIS.has(node.name) &&
           scopes.referenceFor(node)?.flag !== "read")
       ) {
@@ -163,6 +201,176 @@ const isNamedReactCallbackRefHook = (
   return reference?.source === "react" && reference.importedName === name;
 };
 
+const isPrimitiveTimerStateSource = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Literal")) {
+    return typeof value.value === "number" || typeof value.value === "boolean";
+  }
+  const symbol = isNodeOfType(value, "Identifier") ? context.scopes.symbolFor(value) : null;
+  const initializer = symbol && getDirectConstInitializer(symbol);
+  const call = initializer ? stripParenExpression(initializer) : value;
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.arguments.length !== 1)
+    return false;
+  const callee = stripParenExpression(call.callee);
+  const argument = stripParenExpression(call.arguments[0]);
+  if (
+    !isNumberLiteral(argument) &&
+    !isNodeOfType(argument, "Identifier") &&
+    !(
+      isNodeOfType(argument, "BinaryExpression") &&
+      argument.operator === "/" &&
+      (isNumberLiteral(argument.left) || isNodeOfType(argument.left, "Identifier")) &&
+      isNumberLiteral(argument.right)
+    )
+  )
+    return false;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.optional &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "ceil" &&
+    isProvenUnmodifiedGlobalNamespaceReference(callee.object, "Math", context.scopes, "ceil", true)
+  );
+};
+
+const isClosedTimerUpdaterExpression = (expression: EsTreeNode, parameter: string): boolean => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Identifier")) return value.name === parameter;
+  if (isNodeOfType(value, "Literal")) {
+    return typeof value.value === "number" || typeof value.value === "boolean";
+  }
+  if (isNodeOfType(value, "BinaryExpression")) {
+    return (
+      value.operator !== "in" &&
+      value.operator !== "instanceof" &&
+      isClosedTimerUpdaterExpression(value.left, parameter) &&
+      isClosedTimerUpdaterExpression(value.right, parameter)
+    );
+  }
+  return (
+    isNodeOfType(value, "ConditionalExpression") &&
+    isClosedTimerUpdaterExpression(value.test, parameter) &&
+    isClosedTimerUpdaterExpression(value.consequent, parameter) &&
+    isClosedTimerUpdaterExpression(value.alternate, parameter)
+  );
+};
+
+const isClosedTimerStateUpdate = (argument: EsTreeNode, context: RuleContext): boolean => {
+  const updater = stripParenExpression(argument);
+  if (!isNodeOfType(updater, "ArrowFunctionExpression")) {
+    return isPrimitiveTimerStateSource(updater, context);
+  }
+  const [parameter] = updater.params;
+  return (
+    !updater.async &&
+    updater.params.length === 1 &&
+    isNodeOfType(parameter, "Identifier") &&
+    !isNodeOfType(updater.body, "BlockStatement") &&
+    isClosedTimerUpdaterExpression(updater.body, parameter.name)
+  );
+};
+
+const isClosedTimerSetterCall = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const call = stripParenExpression(expression);
+  if (!isNodeOfType(call, "CallExpression") || !isNodeOfType(call.callee, "Identifier"))
+    return false;
+  const setter = context.scopes.symbolFor(call.callee);
+  const declaration = setter?.declarationNode;
+  if (
+    !setter ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    !isNodeOfType(declaration.id, "ArrayPattern") ||
+    declaration.id.elements[1] !== setter.bindingIdentifier ||
+    !isNodeOfType(declaration.init, "CallExpression") ||
+    !isNamedReactCallbackRefHook(declaration.init, "useState", context) ||
+    declaration.init.arguments.length !== 1 ||
+    !isPrimitiveTimerStateSource(declaration.init.arguments[0], context)
+  ) {
+    return false;
+  }
+  const knownReferences = new Set<EsTreeNode>(
+    setter.references.map((reference) => reference.identifier),
+  );
+  let hasUntrackedReference = false;
+  walkAst(context.scopes.rootScope.node, (node) => {
+    if (hasUntrackedReference) return false;
+    if (
+      (!isNodeOfType(node, "Identifier") && !isNodeOfType(node, "JSXIdentifier")) ||
+      node.name !== setter.name ||
+      node === setter.bindingIdentifier ||
+      knownReferences.has(node)
+    )
+      return;
+    const symbol = context.scopes.symbolFor(node);
+    if (!symbol || symbol === setter) {
+      hasUntrackedReference = true;
+      return false;
+    }
+  });
+  return (
+    !hasUntrackedReference &&
+    setter.references.every((reference) => {
+      const update = reference.identifier.parent;
+      return (
+        reference.flag === "read" &&
+        isNodeOfType(update, "CallExpression") &&
+        !update.optional &&
+        update.callee === reference.identifier &&
+        update.arguments.length === 1 &&
+        isClosedTimerStateUpdate(update.arguments[0], context)
+      );
+    })
+  );
+};
+
+const hasClosedTimerHandler = (argument: EsTreeNode, context: RuleContext): boolean => {
+  const handler = stripParenExpression(argument);
+  if (!isNodeOfType(handler, "ArrowFunctionExpression") || handler.async || handler.params.length) {
+    return false;
+  }
+  if (!isNodeOfType(handler.body, "BlockStatement")) {
+    return isClosedTimerSetterCall(handler.body, context);
+  }
+  const statements = handler.body.body;
+  if (statements.length === 0) return true;
+  const [statement] = statements;
+  return (
+    statements.length === 1 &&
+    isNodeOfType(statement, "ExpressionStatement") &&
+    isClosedTimerSetterCall(statement.expression, context)
+  );
+};
+
+const isClosedTimerSetupStatement = (statement: EsTreeNode, context: RuleContext): boolean => {
+  if (isNodeOfType(statement, "VariableDeclaration") && statement.kind === "const") {
+    const [declaration] = statement.declarations;
+    return Boolean(
+      statement.declarations.length === 1 &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.init &&
+      isPrimitiveTimerStateSource(declaration.init, context),
+    );
+  }
+  if (isNodeOfType(statement, "ExpressionStatement")) {
+    return isClosedTimerSetterCall(statement.expression, context);
+  }
+  if (!isNodeOfType(statement, "IfStatement") || statement.alternate) return false;
+  const test = stripParenExpression(statement.test);
+  const condition =
+    isNodeOfType(test, "UnaryExpression") && test.operator === "!"
+      ? stripParenExpression(test.argument)
+      : test;
+  const branch = statement.consequent;
+  const earlyReturn =
+    isNodeOfType(branch, "BlockStatement") && branch.body.length === 1 ? branch.body[0] : branch;
+  return (
+    isNodeOfType(condition, "Identifier") &&
+    isNodeOfType(earlyReturn, "ReturnStatement") &&
+    !earlyReturn.argument
+  );
+};
+
 const hasClosedTimerCleanupHandle = (
   allocationCall: EsTreeNode,
   callback: EsTreeNodeOfType<"ArrowFunctionExpression">,
@@ -174,10 +382,16 @@ const hasClosedTimerCleanupHandle = (
   const allocation = findTransparentExpressionRoot(allocationCall).parent;
   const setupBody = cleanupReturn.parent;
   const setup = findEnclosingFunction(cleanupReturn);
+  const effect = setup ? findTransparentExpressionRoot(setup).parent : null;
   if (
     !isNodeOfType(allocationCall, "CallExpression") ||
     !isNodeOfType(allocationCall.callee, "Identifier") ||
     !context.scopes.isGlobalReference(allocationCall.callee) ||
+    !allocationCall.arguments[0] ||
+    !hasClosedTimerHandler(allocationCall.arguments[0], context) ||
+    !isNodeOfType(effect, "CallExpression") ||
+    effect.arguments[0] !== setup ||
+    !isNamedReactCallbackRefHook(effect, "useEffect", context) ||
     !setup ||
     !isFunctionLike(setup) ||
     setup.async ||
@@ -189,6 +403,12 @@ const hasClosedTimerCleanupHandle = (
     !isNodeOfType(allocation.parent, "ExpressionStatement") ||
     setupBody.body[setupBody.body.findIndex((statement) => statement === cleanupReturn) - 1] !==
       allocation.parent ||
+    !setupBody.body
+      .slice(
+        0,
+        setupBody.body.findIndex((statement) => statement === allocation.parent),
+      )
+      .every((statement) => isClosedTimerSetupStatement(statement, context)) ||
     stripParenExpression(allocation.right) !== allocationCall ||
     !isDirectTimerRefCurrent(allocation.left) ||
     !isNodeOfType(allocation.left.object, "Identifier")

@@ -25,6 +25,32 @@ describe("effect-needs-cleanup render-written timer callback refs", () => {
   });
 
   it.each([
+    ["an opaque interval delay", source.replace(", 1000);", ", readDelay());")],
+    ["an opaque trailing interval argument", source.replace(", 1000);", ", 1000, notify());")],
+    [
+      "an external callback scheduled by the interval",
+      source
+        .replace("({ enabled })", "({ enabled, update })")
+        .replace("() => setTicks((value) => (value <= 0 ? 0 : value - 1))", "update"),
+    ],
+    [
+      "an external callback before the allocation",
+      source
+        .replace("({ enabled })", "({ enabled, update })")
+        .replace(
+          "    handleRef.current = setInterval",
+          "    update();\n    handleRef.current = setInterval",
+        ),
+    ],
+    ["a separately scheduled string callback", `setTimeout("refreshStatus()", 0);\n${source}`],
+    [
+      "a separately scheduled ordinary callback",
+      `setTimeout(function () { refreshStatus(this); }, 0);\n${source}`,
+    ],
+    [
+      "a browser timer namespace destructure",
+      `const { setTimeout: schedule } = document.defaultView;\nschedule(() => {}, 0);\n${source}`,
+    ],
     [
       "an overwritten callback",
       source.replace("stopRef.current = stop;", "stopRef.current = () => {};"),
@@ -63,8 +89,8 @@ describe("effect-needs-cleanup render-written timer callback refs", () => {
     [
       "a second allocation in the same slot",
       source.replace(
-        "handleRef.current = setInterval(update, 1000);",
-        "handleRef.current = setInterval(update, 1000); handleRef.current = setInterval(update, 1000);",
+        "handleRef.current = setInterval(() => setTicks((value) => (value <= 0 ? 0 : value - 1)), 1000);",
+        "handleRef.current = setInterval(() => setTicks((value) => (value <= 0 ? 0 : value - 1)), 1000); handleRef.current = setInterval(() => setTicks((value) => (value <= 0 ? 0 : value - 1)), 1000);",
       ),
     ],
     [

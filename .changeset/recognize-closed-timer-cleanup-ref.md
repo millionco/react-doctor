@@ -4,4 +4,4 @@
 "react-doctor": patch
 ---
 
-Recognize timer cleanup through a private callback ref when its only render write preserves the cleanup callback and the timer handle cannot be replaced before teardown.
+Recognize timer cleanup through a private callback ref when the timer callback, setup, and ref writes are locally proven.

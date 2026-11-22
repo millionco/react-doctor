@@ -1,3 +1,9 @@
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -385,6 +391,139 @@ interface CaptureCollection {
   outerFunctionCapturedNames: Set<string>;
 }
 
+// Resolve only a private function property transported by a direct local hook's
+// fresh memoized object. This is value provenance, not a callback-timing waiver.
+const getUniqueTailReturn = (fn: EsTreeNode): EsTreeNode | null => {
+  if (!isFunctionLike(fn) || !isNodeOfType(fn.body, "BlockStatement")) return null;
+  const tail = fn.body.body.at(-1);
+  if (!isNodeOfType(tail, "ReturnStatement") || !tail.argument) return null;
+  let otherReturn = false;
+  walkAst(fn.body, (node) => {
+    if (node !== fn.body && isFunctionLike(node)) return false;
+    if (isNodeOfType(node, "ReturnStatement") && node !== tail) otherReturn = true;
+  });
+  return otherReturn ? null : unwrapExpression(tail.argument);
+};
+
+// Direct eval can observe parameter properties absent from resolved references.
+// Keep this fence local to the new returned-helper provenance route.
+const hasSelectedHelperDirectEval = (helper: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let found = false;
+  walkAst(helper, (node) => {
+    if (found) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = unwrapExpression(node.callee);
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "eval" &&
+      scopes.isGlobalReference(callee)
+    )
+      found = true;
+  });
+  return found;
+};
+
+const resolveMemoizedLocalHookProperty = (
+  callee: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const symbol = scopes.symbolFor(callee);
+  const declaration = symbol?.declarationNode;
+  const program = findProgramRoot(callee);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !program ||
+    !isSymbolReadOnly(symbol) ||
+    !hasCompleteSymbolReferences(symbol, program, scopes) ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    !isNodeOfType(declaration.id, "ObjectPattern") ||
+    !isNodeOfType(declaration.init, "CallExpression") ||
+    declaration.init.optional ||
+    declaration.init.arguments.length !== 0
+  )
+    return null;
+  let propertyName: string | null = null;
+  for (const property of declaration.id.properties) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.kind !== "init" ||
+      property.computed ||
+      property.method ||
+      !isNodeOfType(property.value, "Identifier")
+    )
+      return null;
+    const name = getStaticPropertyKeyName(property);
+    if (!name || name === "__proto__") return null;
+    if (scopes.symbolFor(property.value) === symbol) propertyName = name;
+  }
+  if (!propertyName) return null;
+  const hook = resolveExactLocalFunction(declaration.init.callee, scopes);
+  if (!hook || !isFunctionLike(hook) || hook.async || hook.generator || hook.params.length !== 0)
+    return null;
+  const memo = getUniqueTailReturn(hook);
+  if (
+    !isNodeOfType(memo, "CallExpression") ||
+    memo.optional ||
+    memo.arguments.length !== 2 ||
+    !isNodeOfType(memo.callee, "Identifier") ||
+    !isNodeOfType(memo.arguments[1], "ArrayExpression") ||
+    memo.arguments[1].elements.some((entry) => !entry || isNodeOfType(entry, "SpreadElement"))
+  )
+    return null;
+  const imported = resolveImportedApiReference(memo.callee, scopes);
+  const memoSymbol = scopes.symbolFor(memo.callee);
+  const importedDeclaration = memoSymbol && getImportDeclarationForSymbol(memoSymbol);
+  if (
+    imported?.source !== "react" ||
+    imported.importedName !== "useMemo" ||
+    imported.isNamespace ||
+    !memoSymbol ||
+    !isSymbolReadOnly(memoSymbol) ||
+    importedDeclaration?.importKind === "type" ||
+    importedDeclaration?.attributes?.length
+  )
+    return null;
+  const factory = memo.arguments[0];
+  if (
+    !isNodeOfType(factory, "ArrowFunctionExpression") ||
+    factory.async ||
+    factory.params.length !== 0
+  )
+    return null;
+  const returned = getUniqueTailReturn(factory);
+  if (!isNodeOfType(returned, "ObjectExpression")) return null;
+  const names = new Set<string>();
+  let selected: EsTreeNode | null = null;
+  for (const property of returned.properties) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.kind !== "init" ||
+      property.computed ||
+      property.method ||
+      !isNodeOfType(property.value, "Identifier")
+    )
+      return null;
+    const name = getStaticPropertyKeyName(property);
+    if (!name || name === "__proto__" || names.has(name)) return null;
+    names.add(name);
+    const binding = scopes.symbolFor(property.value);
+    if (
+      !binding ||
+      binding.kind !== "const" ||
+      !isSymbolReadOnly(binding) ||
+      !hasCompleteSymbolReferences(binding, program, scopes) ||
+      findEnclosingFunction(binding.declarationNode) !== factory ||
+      !isNodeOfType(binding.initializer, "ArrowFunctionExpression") ||
+      binding.initializer.async
+    )
+      return null;
+    if (name === propertyName) selected = binding.initializer;
+  }
+  return selected && !hasSelectedHelperDirectEval(selected, scopes) ? selected : null;
+};
+
 const resolveCalledArgumentPropertyKeys = (
   reference: ReferenceDescriptor,
   scopes: ScopeAnalysis,
@@ -393,7 +532,9 @@ const resolveCalledArgumentPropertyKeys = (
   const call = argument.parent;
   if (!isNodeOfType(call, "CallExpression") || call.callee === argument) return null;
   const position = call.arguments.findIndex((candidate) => candidate === argument);
-  const helper = resolveExactLocalFunction(call.callee, scopes);
+  const helper =
+    resolveExactLocalFunction(call.callee, scopes) ??
+    resolveMemoizedLocalHookProperty(call.callee, scopes);
   if (
     position < 0 ||
     call.arguments

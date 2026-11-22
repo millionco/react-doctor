@@ -293,4 +293,65 @@ describe("no-hydration-branch-on-browser-global — imported server snapshots", 
       expect(result.diagnostics).toHaveLength(1);
     },
   );
+
+  it.each([
+    ["direct consequent", "const live = useLiveView();", "live ? isBrowserViewport() : null", 0],
+    ["browser alternate", "const live = useLiveView();", "live ? null : isBrowserViewport()", 1],
+    ["browser test", "const live = useLiveView();", "isBrowserViewport() ? live : null", 1],
+    [
+      "eager browser value",
+      "const live = useLiveView(); const viewport = isBrowserViewport();",
+      "live ? viewport : null",
+      1,
+    ],
+    [
+      "mutable ternary snapshot",
+      "let live = useLiveView(); live = enabled;",
+      "live ? isBrowserViewport() : null",
+      1,
+    ],
+    [
+      "unproved snapshot alias",
+      "const live = useLiveView(); const selected = live;",
+      "selected ? isBrowserViewport() : null",
+      1,
+    ],
+  ])("distinguishes a ternary %s", (_label, declarations, choice, count) => {
+    const result = runConsumer(`
+      "use client";
+      import { useLiveView } from "@/live-view";
+      import { isBrowserViewport } from "./viewport";
+      export function WeatherWidget({ enabled }) {
+        ${declarations}
+        return (${choice}) ? <strong>Open</strong> : <span>Closed</span>;
+      }
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+
+  it("retains a ternary browser call with a nonliteral server snapshot", () => {
+    writeFile(
+      "src/live-view.ts",
+      `import { useSyncExternalStore } from "react";
+      function subscribe() { return () => {}; }
+      export function useLiveView() {
+        return useSyncExternalStore(subscribe, () => true, () => readLocalServerFlag());
+      }`,
+    );
+    const result = runConsumer(`
+      "use client";
+      import { useLiveView } from "@/live-view";
+      import { isBrowserViewport } from "./viewport";
+      export function WeatherWidget() {
+        const live = useLiveView();
+        const visible = live ? isBrowserViewport() : null;
+        return visible ? <strong>Open</strong> : <span>Closed</span>;
+      }
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

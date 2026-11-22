@@ -996,6 +996,17 @@ const matchHydrationFunctionPropertyResult = (
   return match;
 };
 
+const isBrowserPredicateBehindFalseServerSnapshot = (
+  predicateNode: EsTreeNode | undefined,
+  guardedExpression: EsTreeNode,
+  condition: EsTreeNode,
+  context: RuleContext,
+): boolean =>
+  predicateNode !== undefined &&
+  (predicateNode === guardedExpression || isDescendantOf(predicateNode, guardedExpression)) &&
+  findEnclosingFunction(predicateNode) === findEnclosingFunction(guardedExpression) &&
+  isClosedImportedServerSnapshotFalse(condition, context.scopes, context.filename);
+
 const matchHydrationConditionInternal = (
   expression: EsTreeNode,
   context: RuleContext,
@@ -1257,11 +1268,25 @@ const matchHydrationConditionInternal = (
         state,
       );
     }
-    return (
-      matchHydrationConditionInternal(unwrappedExpression.test, context, state) ??
-      matchHydrationConditionInternal(unwrappedExpression.consequent, context, state) ??
-      matchHydrationConditionInternal(unwrappedExpression.alternate, context, state)
+    const testMatch = matchHydrationConditionInternal(unwrappedExpression.test, context, state);
+    if (testMatch) return testMatch;
+    const consequentMatch = matchHydrationConditionInternal(
+      unwrappedExpression.consequent,
+      context,
+      state,
     );
+    if (
+      consequentMatch &&
+      !isBrowserPredicateBehindFalseServerSnapshot(
+        consequentMatch.predicateNode,
+        unwrappedExpression.consequent,
+        unwrappedExpression.test,
+        context,
+      )
+    ) {
+      return consequentMatch;
+    }
+    return matchHydrationConditionInternal(unwrappedExpression.alternate, context, state);
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
     if (
@@ -1311,14 +1336,14 @@ const matchHydrationConditionInternal = (
   }
   const leftMatch = matchHydrationConditionInternal(unwrappedExpression.left, context, state);
   const rightMatch = matchHydrationConditionInternal(unwrappedExpression.right, context, state);
-  const predicateNode = rightMatch?.predicateNode;
   const rightIsShortCircuited =
     unwrappedExpression.operator === "&&" &&
-    predicateNode !== undefined &&
-    (predicateNode === unwrappedExpression.right ||
-      isDescendantOf(predicateNode, unwrappedExpression.right)) &&
-    findEnclosingFunction(predicateNode) === findEnclosingFunction(unwrappedExpression) &&
-    isClosedImportedServerSnapshotFalse(unwrappedExpression.left, context.scopes, context.filename);
+    isBrowserPredicateBehindFalseServerSnapshot(
+      rightMatch?.predicateNode,
+      unwrappedExpression.right,
+      unwrappedExpression.left,
+      context,
+    );
   const nestedMatch = leftMatch ?? (rightIsShortCircuited ? null : rightMatch);
   if (!nestedMatch) return null;
   const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client", state);

@@ -89,6 +89,8 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import {
   isSynchronousIteratorCallback,
@@ -10546,6 +10548,298 @@ const areRetainedTimerInvocationsProtected = (
   });
 };
 
+const isNativeEventSourceSetupStatement = (
+  statement: EsTreeNode,
+  source: SymbolDescriptor,
+  context: RuleContext,
+): boolean => {
+  const hasNoEventSourceAlias = (handler: EsTreeNode): boolean =>
+    isNodeOfType(handler, "ArrowFunctionExpression") &&
+    handler.params.every((parameter) => {
+      if (!isNodeOfType(parameter, "Identifier")) return false;
+      const binding = context.scopes.symbolFor(parameter);
+      return Boolean(
+        binding &&
+        hasCompleteSymbolReferences(binding, context.scopes.rootScope.node, context.scopes) &&
+        binding.references.every(({ identifier }) => {
+          const member = identifier.parent;
+          return (
+            isNodeOfType(member, "MemberExpression") &&
+            member.object === identifier &&
+            !member.computed &&
+            getStaticPropertyKeyName(member) === "data" &&
+            !isWithinAssignmentTarget(member)
+          );
+        }),
+      );
+    });
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  const expression = stripParenExpression(statement.expression);
+  if (isNodeOfType(expression, "AssignmentExpression") && expression.operator === "=") {
+    const member = expression.left;
+    return (
+      isNodeOfType(member, "MemberExpression") &&
+      !member.computed &&
+      context.scopes.symbolFor(member.object) === source &&
+      ["onopen", "onmessage", "onerror"].includes(getStaticPropertyKeyName(member) ?? "") &&
+      hasNoEventSourceAlias(expression.right)
+    );
+  }
+  if (!isNodeOfType(expression, "CallExpression") || expression.optional) return false;
+  const callee = stripParenExpression(expression.callee);
+  const event = expression.arguments[0];
+  const handler = expression.arguments[1];
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    !callee.optional &&
+    context.scopes.symbolFor(callee.object) === source &&
+    getStaticPropertyKeyName(callee) === "addEventListener" &&
+    expression.arguments.length === 2 &&
+    isNodeOfType(event, "Literal") &&
+    typeof event.value === "string" &&
+    hasNoEventSourceAlias(handler)
+  );
+};
+
+const isEffectOwnedEventSourceCleanup = (
+  effectCallback: EsTreeNode,
+  retainedFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const { scopes } = context;
+  const program = scopes.rootScope.node;
+  const construction = usage.node;
+  if (
+    usage.kind !== "socket" ||
+    !isSocketConstruction(construction) ||
+    !isNodeOfType(construction.callee, "Identifier") ||
+    construction.callee.name !== "EventSource" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      construction.callee,
+      "EventSource",
+      scopes,
+      undefined,
+      true,
+    ) ||
+    !isFunctionLike(retainedFunction) ||
+    retainedFunction.async ||
+    retainedFunction.generator ||
+    !isNodeOfType(retainedFunction.body, "BlockStatement") ||
+    !isFunctionLike(effectCallback) ||
+    effectCallback.async ||
+    effectCallback.generator ||
+    !isNodeOfType(effectCallback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+
+  const effectCall = effectCallback.parent;
+  if (
+    !isNodeOfType(effectCall, "CallExpression") ||
+    effectCall.arguments[0] !== effectCallback ||
+    effectCall.arguments.length !== 2 ||
+    !isReactApiCall(effectCall, "useEffect", scopes) ||
+    effectCallback.body.body.length !== 2
+  ) {
+    return false;
+  }
+  const [invokeStatement, cleanupReturn] = effectCallback.body.body;
+  if (
+    !isNodeOfType(invokeStatement, "ExpressionStatement") ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement")
+  )
+    return false;
+  const invoke = stripParenExpression(invokeStatement.expression);
+  const cleanup = cleanupReturn.argument;
+  const binding = getFunctionBindingIdentifier(retainedFunction);
+  const connect = binding ? scopes.symbolFor(binding) : null;
+  const dependencies = effectCall.arguments[1];
+  if (
+    !isNodeOfType(invoke, "CallExpression") ||
+    invoke.optional ||
+    invoke.arguments.length !== 0 ||
+    !connect ||
+    !getDirectUnreassignedInitializer(connect) ||
+    resolveRefOwnedCleanupFunction(invoke.callee, context) !== retainedFunction ||
+    !hasCompleteSymbolReferences(connect, program, scopes) ||
+    !isNodeOfType(dependencies, "ArrayExpression") ||
+    dependencies.elements.length !== 1 ||
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    cleanup.params.length !== 0
+  ) {
+    return false;
+  }
+  const directCalls = connect.references.filter(
+    ({ identifier }) => findDirectCallForReference(identifier) === invoke,
+  );
+  if (
+    connect.references.length !== 2 ||
+    directCalls.length !== 1 ||
+    !connect.references.every(
+      ({ identifier }) =>
+        identifier === directCalls[0].identifier ||
+        dependencies.elements.some((element) => element === identifier),
+    )
+  )
+    return false;
+
+  let stockTargetPrototype = true;
+  walkAst(program, (node) => {
+    if (!stockTargetPrototype) return false;
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
+      node.callee.name === "eval" &&
+      scopes.isGlobalReference(node.callee)
+    ) {
+      stockTargetPrototype = false;
+      return false;
+    }
+    if (!isNodeOfType(node, "Identifier") && !isNodeOfType(node, "MemberExpression")) return;
+    const namespace = ["EventSource", "EventTarget"].find((name) =>
+      isProvenGlobalNamespaceReference(node, name, scopes),
+    );
+    if (!namespace) return;
+    const reference = findTransparentExpressionRoot(node);
+    const parent = reference.parent;
+    const accessesPrototype =
+      isNodeOfType(parent, "MemberExpression") &&
+      parent.object === reference &&
+      (getStaticPropertyKeyName(parent) === "prototype" ||
+        (parent.computed && getStaticPropertyKeyName(parent) === null));
+    const destructuresNamespace =
+      isNodeOfType(parent, "VariableDeclarator") &&
+      parent.init === reference &&
+      !isNodeOfType(parent.id, "Identifier");
+    const passesNamespaceToConstructor =
+      isNodeOfType(parent, "NewExpression") && parent.callee !== reference;
+    if (
+      accessesPrototype ||
+      destructuresNamespace ||
+      passesNamespaceToConstructor ||
+      (namespace === "EventTarget" &&
+        !isProvenUnmodifiedGlobalNamespaceReference(node, namespace, scopes, undefined, true))
+    ) {
+      stockTargetPrototype = false;
+      return false;
+    }
+  });
+  if (!stockTargetPrototype) return false;
+  const resource = construction.parent;
+  if (
+    !isNodeOfType(resource, "VariableDeclarator") ||
+    resource.init !== construction ||
+    !isNodeOfType(resource.id, "Identifier") ||
+    !isNodeOfType(resource.parent, "VariableDeclaration") ||
+    resource.parent.kind !== "const" ||
+    resource.parent.declarations.length !== 1 ||
+    resource.parent.parent !== retainedFunction.body
+  ) {
+    return false;
+  }
+  const source = scopes.symbolFor(resource.id);
+  const storage = findRetainedResourceStorage(construction, context);
+  const store = storage?.anchor;
+  if (
+    !source ||
+    !storage ||
+    !isNodeOfType(store, "AssignmentExpression") ||
+    !isNodeOfType(store.left, "MemberExpression") ||
+    store.left.computed ||
+    !isNodeOfType(store.left.object, "Identifier") ||
+    !isNodeOfType(store.right, "Identifier") ||
+    scopes.symbolFor(store.right) !== source ||
+    !hasCompleteSymbolReferences(source, program, scopes)
+  ) {
+    return false;
+  }
+  const statements = retainedFunction.body.body;
+  const declarationIndex = statements.findIndex((statement) => statement === resource.parent);
+  const setup = statements.slice(declarationIndex + 2);
+  if (
+    declarationIndex < 0 ||
+    statements[declarationIndex + 1] !== store.parent ||
+    !setup.every((statement) => isNativeEventSourceSetupStatement(statement, source, context))
+  ) {
+    return false;
+  }
+
+  const storeReceiver = store.left.object;
+  const slot = store.left;
+  const ref = resolveReactRefSymbol(slot, scopes);
+  const init = ref ? getDirectUnreassignedInitializer(ref) : null;
+  const cleanupBody = cleanup.body;
+  const firstCleanup =
+    isNodeOfType(cleanupBody, "BlockStatement") && cleanupBody.body.length === 1
+      ? cleanupBody.body[0]
+      : cleanupBody;
+  const releaseExpression = isNodeOfType(firstCleanup, "ExpressionStatement")
+    ? firstCleanup.expression
+    : firstCleanup;
+  const release = isNodeOfType(releaseExpression, "ChainExpression")
+    ? releaseExpression.expression
+    : stripParenExpression(releaseExpression);
+  const close = isNodeOfType(release, "CallExpression") ? release.callee : null;
+  const receiver = isNodeOfType(close, "MemberExpression") ? close.object : null;
+  if (
+    !ref ||
+    findEnclosingFunction(ref.declarationNode) !== findEnclosingFunction(retainedFunction) ||
+    findEnclosingFunction(effectCallback) !== findEnclosingFunction(retainedFunction) ||
+    !isNodeOfType(init, "CallExpression") ||
+    !isReactApiCall(init, "useRef", scopes) ||
+    init.arguments.length !== 1 ||
+    !isNodeOfType(init.arguments[0], "Literal") ||
+    init.arguments[0].value !== null ||
+    !isNodeOfType(release, "CallExpression") ||
+    release.arguments.length !== 0 ||
+    !isNodeOfType(close, "MemberExpression") ||
+    close.computed ||
+    getStaticPropertyKeyName(close) !== "close" ||
+    !(close.optional || release.optional) ||
+    !isNodeOfType(receiver, "MemberExpression") ||
+    receiver.computed ||
+    !isNodeOfType(receiver.object, "Identifier") ||
+    resolveReactRefSymbol(receiver, scopes) !== ref ||
+    !hasCompleteSymbolReferences(ref, program, scopes) ||
+    ref.references.length !== 2 ||
+    !ref.references.every(
+      ({ identifier }) => identifier === storeReceiver || identifier === receiver.object,
+    )
+  ) {
+    return false;
+  }
+  if (
+    !source.references.every(({ identifier }) => {
+      if (identifier === store.right) return true;
+      const member = identifier.parent;
+      if (
+        !isNodeOfType(member, "MemberExpression") ||
+        member.object !== identifier ||
+        member.computed
+      )
+        return false;
+      const operation = member.parent;
+      if (
+        getStaticPropertyKeyName(member) === "close" &&
+        isNodeOfType(operation, "CallExpression") &&
+        operation.callee === member &&
+        operation.arguments.length === 0
+      )
+        return true;
+      return (
+        isNodeOfType(operation?.parent, "ExpressionStatement") &&
+        setup.some((statement) => statement === operation.parent)
+      );
+    })
+  )
+    return false;
+  return doesReleaseCallMatchUsage(release, { ...usage, handleKey: storage.key }, context);
+};
+
 const hasGuaranteedRefOwnedUnmountCleanup = (
   retainedFunction: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -10621,13 +10915,14 @@ const hasGuaranteedRefOwnedUnmountCleanup = (
     const effectCallback = getEffectCallback(effectCall);
     if (
       effectCallback &&
-      effectReturnsRefOwnedCleanup(
-        effectCallback,
-        componentFunction,
-        retainedFunction,
-        usage,
-        context,
-      )
+      (isEffectOwnedEventSourceCleanup(effectCallback, retainedFunction, usage, context) ||
+        effectReturnsRefOwnedCleanup(
+          effectCallback,
+          componentFunction,
+          retainedFunction,
+          usage,
+          context,
+        ))
     ) {
       return true;
     }

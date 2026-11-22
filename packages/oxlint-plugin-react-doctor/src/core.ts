@@ -31,6 +31,7 @@ export {
   CROSS_FILE_DEPENDENCY_COLLECTORS,
   UNBOUNDED_CROSS_FILE_RULE_IDS,
   collectCrossFileDependencyProbes,
+  collectNextIndexPageDependencyProbes,
 } from "./plugin/cross-file-dependencies.js";
 export type { CrossFileProbeTrace } from "./plugin/utils/cross-file-probe-recorder.js";
 export { reactDoctorScanRules as REACT_DOCTOR_SCAN_RULES } from "./plugin/security-scan-rule-registry.js";

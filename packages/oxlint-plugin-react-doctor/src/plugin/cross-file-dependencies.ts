@@ -1,5 +1,11 @@
+import * as path from "node:path";
+import { resolveDirectImportedNextPageInvocation } from "./rules/react-builtins/utils/resolve-direct-imported-next-page-invocation.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
-import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
+import {
+  findNearestPackageDirectory,
+  readNearestPackageManifest,
+  readPackageManifest,
+} from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
@@ -17,7 +23,10 @@ import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
+import {
+  captureCrossFileProbes,
+  collectCrossFileProbes,
+} from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
@@ -45,6 +54,7 @@ import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
+import { hasStockNextIndexPageRouter } from "./rules/react-builtins/utils/is-stock-next-index-page.js";
 
 /**
  * Per-rule cross-file dependency collectors — the foundation of the sidecar
@@ -202,11 +212,13 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   getProgram,
 }) => {
+  hasStockNextIndexPageRouter(absoluteFilePath);
   const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
     if (!isNodeOfType(node, "CallExpression")) return;
+    resolveDirectImportedNextPageInvocation(node, absoluteFilePath, scopes);
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);
@@ -692,4 +704,44 @@ export const collectCrossFileDependencyProbes = (input: {
   return collectCrossFileProbes(() => {
     for (const collector of collectors) collector(collectorInput);
   });
+};
+
+const NEXT_INDEX_ROUTE_PATTERN = /(?:^|\/)pages\/index\.[jt]sx?$/;
+
+export const collectNextIndexPageDependencyProbes = (
+  absolutePaths: ReadonlyArray<string>,
+  readSource: (absolutePath: string) => string | null,
+): CrossFileProbeTrace | null => {
+  const nextPackageByDirectory = new Map<string, boolean>();
+  const captured = captureCrossFileProbes(() => {
+    for (const absoluteFilePath of absolutePaths) {
+      const directory = path.dirname(absoluteFilePath);
+      let hasNextDependency = nextPackageByDirectory.get(directory);
+      if (hasNextDependency === undefined) {
+        const packageDirectory = findNearestPackageDirectory(absoluteFilePath, { cache: false });
+        hasNextDependency =
+          packageDirectory !== null &&
+          typeof readPackageManifest(packageDirectory, { cache: false })?.dependencies?.next ===
+            "string";
+        nextPackageByDirectory.set(directory, hasNextDependency);
+      }
+      if (!hasNextDependency) continue;
+      const sourceText = readSource(absoluteFilePath);
+      if (sourceText === null) return false;
+      if (
+        !sourceText.includes("import") &&
+        !NEXT_INDEX_ROUTE_PATTERN.test(normalizeFilename(absoluteFilePath))
+      ) {
+        continue;
+      }
+      const trace = collectCrossFileDependencyProbes({
+        absoluteFilePath,
+        sourceText,
+        ruleIds: ["rules-of-hooks"],
+      });
+      if (trace === null) return false;
+    }
+    return true;
+  });
+  return captured.value ? captured.trace : null;
 };

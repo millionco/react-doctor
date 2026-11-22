@@ -9,6 +9,10 @@ import type {
   SuppressedRuleCount,
 } from "@react-doctor/core";
 import { isRecord } from "./git-hook-shared.js";
+import {
+  isNextIndexRouteSnapshot,
+  type NextIndexRouteSnapshot,
+} from "./resolve-next-index-route-fingerprint.js";
 
 export interface CachedScanPayload {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
@@ -34,6 +38,7 @@ export interface CachedScanPayload {
   readonly securityScanFailureReason?: string | null;
   readonly suppressedRuleCounts?: ReadonlyArray<SuppressedRuleCount>;
   readonly manifestContentHash?: string | null;
+  readonly nextIndexRouteSnapshot?: NextIndexRouteSnapshot;
 }
 
 interface CachedScanPayloadFieldValidator {
@@ -120,6 +125,7 @@ const OPTIONAL_CACHED_SCAN_PAYLOAD_FIELDS: ReadonlyArray<CachedScanPayloadFieldV
   { key: "securityScanFailureReason", isValid: isNullableString },
   { key: "suppressedRuleCounts", isValid: isSuppressedRuleCountArray },
   { key: "manifestContentHash", isValid: isNullableString },
+  { key: "nextIndexRouteSnapshot", isValid: isNextIndexRouteSnapshot },
 ];
 
 const hasValidRequiredCachedScanPayloadFields = (value: Record<string, unknown>): boolean =>

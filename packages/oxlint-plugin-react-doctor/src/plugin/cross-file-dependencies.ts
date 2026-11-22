@@ -45,6 +45,7 @@ import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
+import { hasStockNextIndexPageRouter } from "./rules/react-builtins/utils/is-stock-next-index-page.js";
 
 /**
  * Per-rule cross-file dependency collectors — the foundation of the sidecar
@@ -202,6 +203,7 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   getProgram,
 }) => {
+  hasStockNextIndexPageRouter(absoluteFilePath);
   const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);

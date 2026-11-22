@@ -7,7 +7,10 @@ import {
   UNBOUNDED_CROSS_FILE_RULE_IDS,
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
+import { runRule } from "../test-utils/run-rule.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
+import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-state-on-prop-change.js";
+import { resetFilesystemCaches } from "./utils/reset-filesystem-caches.js";
 import {
   CROSS_FILE_BARREL_FOLLOW_DEPTH,
   DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
@@ -56,6 +59,68 @@ const collectFor = (absoluteFilePath: string, ruleIds: ReadonlyArray<string>) =>
   });
 
 const fixturePath = (relativePath: string): string => path.join(temporaryDirectory, relativePath);
+
+describe("no-adjust-state-on-prop-change", () => {
+  it("tracks the Vite config and its absent competitors for an imported hook", () => {
+    writeFixtureFile(
+      "package.json",
+      JSON.stringify({
+        private: true,
+        scripts: { build: "vite build" },
+        dependencies: { react: "19.2.3" },
+        devDependencies: { vite: "7.3.1", "@vitejs/plugin-react": "4.7.0" },
+      }),
+    );
+    const stockConfig = `
+      import { defineConfig } from "vite";
+      import react from "@vitejs/plugin-react";
+      export default defineConfig({ plugins: [react()] });`;
+    const configPath = writeFixtureFile("vite.config.ts", stockConfig);
+    const helperPath = writeFixtureFile(
+      "src/usePanel.ts",
+      `import { useState } from "react";
+      export function usePanel(onNotice) {
+        const [selection, setSelection] = useState(null);
+        const select = (value) => { setSelection(value); };
+        const notify = () => { onNotice(); };
+        return { selection, select, notify };
+      }`,
+    );
+    const consumer = `import { useEffect, useState } from "react";
+      import { usePanel } from "./usePanel";
+      export function Panel({ onNotice }) {
+        const { selection } = usePanel(onNotice);
+        const [draft, setDraft] = useState(false);
+        useEffect(() => { setDraft(false); }, [selection]);
+        return draft;
+      }`;
+    const panelPath = writeFixtureFile("src/Panel.tsx", consumer);
+    const diagnostics = () => {
+      const result = runRule(noAdjustStateOnPropChange, consumer, { filename: panelPath });
+      expect(result.parseErrors).toEqual([]);
+      return result.diagnostics;
+    };
+    expect(diagnostics()).toEqual([]);
+
+    const trace = collectFor(panelPath, ["no-adjust-state-on-prop-change"]);
+    expect(trace?.contentPaths.has(configPath)).toBe(true);
+    expect(trace?.contentPaths.has(helperPath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("vite.config.js"))).toBe(true);
+
+    writeFixtureFile(
+      "vite.config.ts",
+      `import { defineConfig } from "vite";
+      export default defineConfig({ resolve: { alias: { "./usePanel": "./alternate" } } });`,
+    );
+    resetFilesystemCaches();
+    expect(diagnostics()).toHaveLength(1);
+
+    writeFixtureFile("vite.config.ts", stockConfig);
+    writeFixtureFile("vite.config.js", "export default {};");
+    resetFilesystemCaches();
+    expect(diagnostics()).toHaveLength(1);
+  });
+});
 
 describe("collectCrossFileDependencyProbes — driver", () => {
   it("returns null for a rule without a collector (must degrade to unbounded)", () => {

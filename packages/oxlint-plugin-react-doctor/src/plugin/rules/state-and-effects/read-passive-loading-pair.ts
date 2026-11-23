@@ -1,6 +1,7 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -9,12 +10,15 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
+type PassiveResetMode = "after-request" | "before-request" | "after-request-with-cleanup";
+
 interface PassiveLoadingPairInput {
   readonly owner: EsTreeNode;
   readonly request: EsTreeNode;
   readonly extraSetterIdentifier: EsTreeNode;
   readonly firstAwait: EsTreeNodeOfType<"AwaitExpression">;
   readonly context: RuleContext;
+  readonly resetMode?: PassiveResetMode;
 }
 
 interface PassiveLoadingPair {
@@ -23,7 +27,10 @@ interface PassiveLoadingPair {
   readonly openBinding: SymbolDescriptor;
   readonly viewBinding: SymbolDescriptor;
   readonly getterBinding: SymbolDescriptor;
-  readonly earlierEffect: EsTreeNode;
+  readonly requestEffect: EsTreeNode;
+  readonly requestCleanup: EsTreeNode | null;
+  readonly resetBody: EsTreeNodeOfType<"BlockStatement">;
+  readonly stableReset: NonNullable<ReturnType<typeof readStableCallback>>;
   readonly contextHookCall: EsTreeNodeOfType<"CallExpression">;
   readonly contextField: string;
 }
@@ -81,8 +88,17 @@ const readCallback = (call: EsTreeNode, api: "useEffect" | "useCallback", contex
   return { callback, dependencies: dependencies.elements };
 };
 
-const readStableCallback = (dependency: EsTreeNode, owner: EsTreeNode, context: RuleContext) => {
-  if (!isNodeOfType(dependency, "Identifier")) return false;
+interface StableResetCallback {
+  readonly binding: SymbolDescriptor;
+  readonly callback: EsTreeNodeOfType<"ArrowFunctionExpression">;
+}
+
+const readStableCallback = (
+  dependency: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+): StableResetCallback | null => {
+  if (!isNodeOfType(dependency, "Identifier")) return null;
   const binding = context.scopes.symbolFor(dependency);
   const declaration = binding?.declarationNode;
   if (
@@ -93,20 +109,67 @@ const readStableCallback = (dependency: EsTreeNode, owner: EsTreeNode, context: 
     !hasCompleteSymbolReferences(binding, owner, context.scopes) ||
     !hasReadonlyReferences(binding)
   ) {
-    return false;
+    return null;
   }
-  if (!isFunctionLike(owner) || declaration.parent?.parent !== owner.body) return false;
+  if (!isFunctionLike(owner) || declaration.parent?.parent !== owner.body) return null;
   const hook = readCallback(declaration.init, "useCallback", context);
-  return Boolean(hook && !hook.callback.async && hook.dependencies.length === 0);
+  return hook && !hook.callback.async && hook.dependencies.length === 0
+    ? { binding, callback: hook.callback }
+    : null;
 };
 
-const launchesRequestWhenOpen = (
+const readGenerationCleanup = (effect: EsTreeNode, context: RuleContext): EsTreeNode | null => {
+  if (!isNodeOfType(effect, "ExpressionStatement")) return null;
+  const effectBody = readCallback(effect.expression, "useEffect", context)?.callback.body;
+  if (!isNodeOfType(effectBody, "BlockStatement")) return null;
+  const returned = effectBody.body[2];
+  return isNodeOfType(returned, "ReturnStatement") &&
+    isNodeOfType(returned.argument, "ArrowFunctionExpression") &&
+    !returned.argument.async &&
+    returned.argument.params.length === 0 &&
+    isNodeOfType(returned.argument.body, "BlockStatement") &&
+    returned.argument.body.body.length === 1
+    ? returned.argument.body.body[0]
+    : null;
+};
+
+const readOpenReset = (
+  argument: EsTreeNode,
+  getter: SymbolDescriptor,
+  requireRequestCleanup: boolean,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  if (!requireRequestCleanup) {
+    return isNodeOfType(argument, "Identifier") ? context.scopes.symbolFor(argument) : null;
+  }
+  if (
+    !isNodeOfType(argument, "CallExpression") ||
+    argument.optional ||
+    !isNodeOfType(argument.callee, "Identifier") ||
+    argument.callee.name !== "Boolean" ||
+    !context.scopes.isGlobalReference(argument.callee) ||
+    argument.arguments.length !== 1
+  ) {
+    return null;
+  }
+  const [operand] = argument.arguments;
+  return isNodeOfType(operand, "LogicalExpression") &&
+    operand.operator === "&&" &&
+    isNodeOfType(operand.left, "Identifier") &&
+    isNodeOfType(operand.right, "Identifier") &&
+    context.scopes.symbolFor(operand.right) === getter
+    ? context.scopes.symbolFor(operand.left)
+    : null;
+};
+
+const readOpenRequestLaunch = (
   statement: EsTreeNode,
   open: SymbolDescriptor,
   request: SymbolDescriptor,
   context: RuleContext,
-): boolean => {
-  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  requireRequestCleanup = false,
+) => {
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
   const effect = readCallback(statement.expression, "useEffect", context);
   if (
     !effect ||
@@ -115,13 +178,12 @@ const launchesRequestWhenOpen = (
     !usesDependency(effect.dependencies, open, context) ||
     !usesDependency(effect.dependencies, request, context) ||
     !isNodeOfType(effect.callback.body, "BlockStatement") ||
-    effect.callback.body.body.length !== 2
+    effect.callback.body.body.length !== (requireRequestCleanup ? 3 : 2)
   ) {
-    return false;
+    return null;
   }
   const [guard, launch] = effect.callback.body.body;
-  return Boolean(
-    isNodeOfType(guard, "IfStatement") &&
+  return isNodeOfType(guard, "IfStatement") &&
     !guard.alternate &&
     isNodeOfType(guard.test, "UnaryExpression") &&
     guard.test.operator === "!" &&
@@ -138,12 +200,65 @@ const launchesRequestWhenOpen = (
     !launch.expression.argument.optional &&
     launch.expression.argument.arguments.length === 0 &&
     isNodeOfType(launch.expression.argument.callee, "Identifier") &&
-    context.scopes.symbolFor(launch.expression.argument.callee) === request,
-  );
+    context.scopes.symbolFor(launch.expression.argument.callee) === request
+    ? { callee: launch.expression.argument.callee, dependencies: effect.dependencies }
+    : null;
 };
 
-// The later effect's only changing dependencies must also schedule the
-// earlier request effect. Provider identity, mounting, and generation
+const hasClosedRequestUses = (
+  request: SymbolDescriptor,
+  launch: NonNullable<ReturnType<typeof readOpenRequestLaunch>>,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const otherReferences = request.references.filter(
+    ({ identifier }) =>
+      identifier !== launch.callee && !launch.dependencies.some((node) => node === identifier),
+  );
+  if (otherReferences.length === 0) return true;
+  if (otherReferences.length !== 2 || !isFunctionLike(owner)) return false;
+  return otherReferences.some(({ identifier }) => {
+    const call = identifier.parent;
+    const awaiting = call?.parent;
+    if (
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      call.callee !== identifier ||
+      call.arguments.length !== 0 ||
+      !isNodeOfType(awaiting, "AwaitExpression") ||
+      awaiting.argument !== call ||
+      !isNodeOfType(awaiting.parent, "ExpressionStatement")
+    ) {
+      return false;
+    }
+    const callback = findEnclosingFunction(awaiting);
+    const hook = callback?.parent;
+    const declaration = hook?.parent;
+    if (
+      !hook ||
+      !isNodeOfType(declaration, "VariableDeclarator") ||
+      declaration.init !== hook ||
+      !isNodeOfType(declaration.id, "Identifier") ||
+      !isNodeOfType(declaration.parent, "VariableDeclaration") ||
+      declaration.parent.kind !== "const" ||
+      declaration.parent.parent !== owner.body
+    ) {
+      return false;
+    }
+    const restore = readCallback(hook, "useCallback", context);
+    return Boolean(
+      restore &&
+      restore.callback === callback &&
+      restore.callback.async &&
+      otherReferences.some((reference) =>
+        restore.dependencies.some((node) => node === reference.identifier),
+      ),
+    );
+  });
+};
+
+// The reset effect's changing dependencies must also schedule the
+// request effect. Provider identity, mounting, and generation
 // ownership are checked independently by the caller.
 export const readPassiveLoadingPair = ({
   owner,
@@ -151,7 +266,10 @@ export const readPassiveLoadingPair = ({
   extraSetterIdentifier,
   firstAwait,
   context,
+  resetMode = "after-request",
 }: PassiveLoadingPairInput): PassiveLoadingPair | null => {
+  const resetBeforeRequest = resetMode === "before-request";
+  const requireRequestCleanup = resetMode === "after-request-with-cleanup";
   if (!isFunctionLike(owner) || !isNodeOfType(owner.body, "BlockStatement")) return null;
   const awaitBinding = firstAwait.parent;
   const awaitStatement = awaitBinding?.parent;
@@ -247,12 +365,11 @@ export const readPassiveLoadingPair = ({
     setterCall.optional ||
     setterCall.callee !== extraSetterIdentifier ||
     setterCall.arguments.length !== 1 ||
-    !isNodeOfType(setterCall.arguments[0], "Identifier") ||
     !isNodeOfType(setterCall.parent, "ExpressionStatement")
   ) {
     return null;
   }
-  const open = context.scopes.symbolFor(setterCall.arguments[0]);
+  const open = readOpenReset(setterCall.arguments[0], getter, requireRequestCleanup, context);
   const effectBlock = setterCall.parent.parent;
   const effectCallback = effectBlock?.parent;
   const effectCall = effectCallback?.parent;
@@ -267,31 +384,45 @@ export const readPassiveLoadingPair = ({
   ) {
     return null;
   }
-  const laterEffect = readCallback(effectCall, "useEffect", context);
+  const resetEffect = readCallback(effectCall, "useEffect", context);
   if (
-    !laterEffect ||
-    laterEffect.callback !== effectCallback ||
-    laterEffect.callback.async ||
-    laterEffect.dependencies.length !== 3 ||
-    !usesDependency(laterEffect.dependencies, view, context) ||
-    !usesDependency(laterEffect.dependencies, open, context)
+    !resetEffect ||
+    resetEffect.callback !== effectCallback ||
+    resetEffect.callback.async ||
+    resetEffect.dependencies.length !== (requireRequestCleanup ? 4 : 3) ||
+    (requireRequestCleanup && !usesDependency(resetEffect.dependencies, getter, context)) ||
+    !usesDependency(resetEffect.dependencies, view, context) ||
+    !usesDependency(resetEffect.dependencies, open, context)
   ) {
     return null;
   }
-  const stable = laterEffect.dependencies.filter(
+  const stable = resetEffect.dependencies.filter(
     (node) =>
-      node && !usesDependency([node], view, context) && !usesDependency([node], open, context),
+      node &&
+      !usesDependency([node], view, context) &&
+      !usesDependency([node], open, context) &&
+      (!requireRequestCleanup || !usesDependency([node], getter, context)),
   );
-  if (stable.length !== 1 || !stable[0] || !readStableCallback(stable[0], owner, context)) {
-    return null;
+  const stableReset =
+    stable.length === 1 && stable[0] ? readStableCallback(stable[0], owner, context) : null;
+  if (!stableReset) return null;
+  const resetIndex = owner.body.body.findIndex((statement) => statement === effectStatement);
+  const requestEffect = resetBeforeRequest
+    ? owner.body.body[resetIndex + 1]
+    : owner.body.body
+        .slice(0, resetIndex)
+        .find((statement) =>
+          readOpenRequestLaunch(statement, open, requestBinding, context, requireRequestCleanup),
+        );
+  if (!requestEffect) return null;
+  const requestCleanup = requireRequestCleanup
+    ? readGenerationCleanup(requestEffect, context)
+    : null;
+  if (requireRequestCleanup && !requestCleanup) return null;
+  if (resetBeforeRequest) {
+    const launch = readOpenRequestLaunch(requestEffect, open, requestBinding, context);
+    if (!launch || !hasClosedRequestUses(requestBinding, launch, owner, context)) return null;
   }
-  const laterIndex = owner.body.body.findIndex((statement) => statement === effectStatement);
-  const earlierEffect =
-    laterIndex > 0 &&
-    owner.body.body
-      .slice(0, laterIndex)
-      .find((statement) => launchesRequestWhenOpen(statement, open, requestBinding, context));
-  if (!earlierEffect) return null;
 
   const [parameter] = owner.params;
   if (!parameter) return null;
@@ -328,7 +459,10 @@ export const readPassiveLoadingPair = ({
         openBinding: open,
         viewBinding: view,
         getterBinding: getter,
-        earlierEffect,
+        requestEffect,
+        requestCleanup,
+        resetBody: effectBlock,
+        stableReset,
         contextHookCall: getterDeclaration.init,
         contextField,
       }

@@ -231,6 +231,21 @@ describe("scan result cache", () => {
     expect(await cacheKey(projectDirectory, options)).not.toBeNull();
   });
 
+  it("bypasses whole-scan replay for verifier-dependent Vite and Jest loading ownership", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "vite-jest-loading-cache", {
+      files: {
+        "src/App.tsx": "export const App = () => <main />;",
+        "vite.config.ts": "export default {};",
+        "jest.config.cjs": "module.exports = {};",
+      },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).not.toBeNull();
+    fs.mkdirSync(path.join(projectDirectory, "node_modules", "vite"), { recursive: true });
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
+  });
+
   it("bypasses lint replay when a project can use the Stencil compiler", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "stencil-runtime-cache", {
       files: { "stencil.config.ts": "export const config = {};" },

@@ -11,10 +11,13 @@ import {
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findExportedValue } from "./find-exported-value.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
 import { getNodeStartIndex } from "./get-node-start-index.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 import { isTypeOnlyImport } from "./is-type-only-import.js";
 import { parseSourceText } from "./parse-source-file.js";
 import {
@@ -39,6 +42,12 @@ export interface NamedJestCallerInput {
   readonly exportedName: string;
   readonly property: string;
   readonly profile: NamedJestCallerProfile;
+  readonly checkOpening?: (
+    opening: EsTreeNodeOfType<"JSXOpeningElement">,
+    program: Program,
+    scopes: ScopeAnalysis,
+  ) => boolean;
+  readonly checkMockSetup?: (source: NamedJestSourceInspection) => boolean;
 }
 
 interface NamedJestOpening {
@@ -56,6 +65,14 @@ interface BareJestMock {
   readonly registration: "react-i18next";
   readonly focalImport: "react-i18next";
   readonly provider: StockPhysicalEntry;
+}
+
+export interface NamedJestSourceInspection {
+  readonly program: Program;
+  readonly scopes: ScopeAnalysis;
+  readonly renders: readonly EsTreeNodeOfType<"CallExpression">[];
+  readonly localMocks: readonly LocalJestMock[];
+  readonly isStockGlobal: (node: EsTreeNode, name: string) => boolean;
 }
 
 export interface NamedJestCaller {
@@ -323,10 +340,12 @@ const readJestOpenings = (
   text: string,
   property: string,
   scopes: ScopeAnalysis,
-): NamedJestOpening[] | null => {
+  checkOpening: NamedJestCallerInput["checkOpening"],
+): { openings: NamedJestOpening[]; renders: EsTreeNodeOfType<"CallExpression">[] } | null => {
   const symbol = scopes.symbolFor(local);
   if (!symbol || !hasCompleteSymbolReferences(symbol, program, scopes)) return null;
   const openings: NamedJestOpening[] = [];
+  const renders: EsTreeNodeOfType<"CallExpression">[] = [];
   for (const { flag, identifier } of symbol.references) {
     const parent = identifier.parent;
     if (flag !== "read" || !isNodeOfType(identifier, "JSXIdentifier")) return null;
@@ -335,7 +354,9 @@ const readJestOpenings = (
       !isNodeOfType(parent, "JSXOpeningElement") ||
       parent.name !== identifier ||
       !isNodeOfType(parent.parent, "JSXElement") ||
-      !isTruthyJsxProperty(parent, property, program, scopes) ||
+      !(checkOpening
+        ? checkOpening(parent, program, scopes)
+        : isTruthyJsxProperty(parent, property, program, scopes)) ||
       parent.attributes.some(
         (attribute) =>
           !isNodeOfType(attribute, "JSXAttribute") ||
@@ -358,8 +379,9 @@ const readJestOpenings = (
     if (!title) return null;
     const position = getNodeStartIndex(element);
     openings.push({ title, line: text.slice(0, position).split("\n").length });
+    renders.push(render);
   }
-  return openings.length ? openings : null;
+  return openings.length ? { openings, renders } : null;
 };
 
 const readMockRegistrations = (program: Program, scopes: ScopeAnalysis): string[] | null => {
@@ -474,14 +496,14 @@ const readScopedMocks = (
   const imports = runtimeImports(focal)
     .map((node) => literalText(node.source))
     .filter((specifier) => specifier !== undefined);
+  const importsReactI18next = imports.includes("react-i18next");
   const relevantNames = new Set<string>([...PROTECTED_TEST_IMPORTS, ...registrations]);
   const localTargets = new Set<string>();
   for (const registration of registrations) {
     const declared = resolveModule(root, testFile, registration, mappings);
     if (!declared) return null;
     if (declared.kind === "bare") {
-      if (declared.specifier !== "react-i18next" || !imports.includes(declared.specifier))
-        return null;
+      if (declared.specifier !== "react-i18next" || !importsReactI18next) return null;
       const lookup = (issuer: string) =>
         resolveStockPhysicalEntry({
           projectRoot: root,
@@ -534,6 +556,8 @@ export const readNamedJestCaller = ({
   exportedName,
   property,
   profile,
+  checkOpening,
+  checkMockSetup,
 }: NamedJestCallerInput): NamedJestCaller | null => {
   try {
     if (
@@ -588,15 +612,341 @@ export const readNamedJestCaller = ({
     );
     if (!imported) return null;
     const scopes = analyzeScopes(program);
-    const openings = readJestOpenings(program, imported.local, text, property, scopes);
-    if (!openings) return null;
+    const selectedOpenings = readJestOpenings(
+      program,
+      imported.local,
+      text,
+      property,
+      scopes,
+      checkOpening,
+    );
+    if (!selectedOpenings) return null;
+    const { openings, renders } = selectedOpenings;
     const registrations = readMockRegistrations(program, scopes);
     if (!registrations) return null;
     const mocks = readScopedMocks(projectRoot, testFile, focalFile, registrations, focal, mappings);
-    return mocks
-      ? { specifier: imported.specifier, localName: imported.local.name, openings, ...mocks }
-      : null;
+    if (
+      !mocks ||
+      (checkMockSetup &&
+        !checkMockSetup({
+          program,
+          scopes,
+          renders,
+          localMocks: mocks.localMocks,
+          isStockGlobal: (node, name) => stockJestGlobal(node, name, scopes),
+        }))
+    )
+      return null;
+    return { specifier: imported.specifier, localName: imported.local.name, openings, ...mocks };
   } catch {
     return null;
   }
+};
+
+/** Reuse the named route's explicit local/mock-path model without executing Jest. */
+export const createSelectedJestModuleResolver = (root: string, profile: NamedJestCallerProfile) => {
+  const mappings: readonly Mapping[] = profile.moduleNameMapper.map(([name, target]) => [
+    new RegExp(name, "u"),
+    target,
+  ]);
+  const selected = new Map<string, ResolvedModule | null>();
+  return {
+    resolve: (issuer: string, specifier: string) => {
+      const key = JSON.stringify([issuer, specifier]);
+      if (selected.has(key)) return selected.get(key) ?? null;
+      try {
+        const result = resolveModule(root, issuer, specifier, mappings);
+        selected.set(key, result);
+        return result;
+      } catch {
+        selected.set(key, null);
+        return null;
+      }
+    },
+    admitsNoManualMock: (names: ReadonlySet<string>) => !hasRelevantManualMock(root, names),
+  };
+};
+
+export interface JestExplicitSourceSubstitution {
+  readonly specifier: string;
+  readonly factory: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">;
+}
+
+export interface JestExplicitSourceMockScope {
+  readonly substitutions: readonly JestExplicitSourceSubstitution[];
+  readonly actualImports: readonly string[];
+  readonly registeredMocks: readonly string[];
+}
+
+const isOrdinaryTestHostProbe = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const member = node.parent;
+  if (isNodeOfType(member, "MemberExpression") && member.object === node && !member.optional) {
+    const key = getStaticPropertyKeyName(member);
+    if (isNodeOfType(node, "Identifier") && node.name === "window" && key === "localStorage")
+      return true;
+    if (
+      isNodeOfType(node, "Identifier") &&
+      node.name === "global" &&
+      key !== null &&
+      /^__[a-zA-Z][a-zA-Z0-9]*$/u.test(key)
+    )
+      return true;
+  }
+  const call = node.parent;
+  if (
+    !isNodeOfType(node, "Identifier") ||
+    node.name !== "window" ||
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.arguments.length !== 3 ||
+    call.arguments[0] !== node ||
+    !isNodeOfType(call.callee, "MemberExpression") ||
+    !isNodeOfType(call.callee.object, "Identifier") ||
+    call.callee.object.name !== "Object" ||
+    !scopes.isGlobalReference(call.callee.object) ||
+    getStaticPropertyKeyName(call.callee) !== "defineProperty" ||
+    !isNodeOfType(call.arguments[1], "Literal") ||
+    call.arguments[1].value !== "ResizeObserver"
+  )
+    return false;
+  return (
+    isNodeOfType(call.arguments[2], "ObjectExpression") &&
+    call.arguments[2].properties.every(
+      (entry) =>
+        isNodeOfType(entry, "Property") &&
+        entry.kind === "init" &&
+        ["configurable", "value", "writable"].includes(getStaticPropertyKeyName(entry) ?? ""),
+    )
+  );
+};
+
+const substitutesWithOwnedExports = (
+  factory: JestExplicitSourceSubstitution["factory"],
+  scopes: ScopeAnalysis,
+): boolean => {
+  let expression: EsTreeNode | null = factory.body;
+  if (isNodeOfType(factory.body, "BlockStatement")) {
+    const statements = factory.body.body;
+    const last = statements.at(-1);
+    if (!isNodeOfType(last, "ReturnStatement")) return false;
+    expression = last.argument ?? null;
+    if (
+      !statements.slice(0, -1).every(
+        (statement) =>
+          isNodeOfType(statement, "VariableDeclaration") &&
+          statement.kind === "const" &&
+          statement.declarations.every((declaration) => {
+            if (!isNodeOfType(declaration, "VariableDeclarator") || !declaration.init) return false;
+            const init = stripParenExpression(declaration.init);
+            if (
+              !isNodeOfType(init, "CallExpression") ||
+              init.optional ||
+              !isNodeOfType(init.callee, "MemberExpression") ||
+              !stockJestGlobal(init.callee.object, "jest", scopes)
+            )
+              return false;
+            const method = getStaticPropertyKeyName(init.callee);
+            return method === "fn" || method === "requireActual";
+          }),
+      )
+    )
+      return false;
+  }
+  if (!expression) return false;
+  const node = stripParenExpression(expression);
+  if (isCallback(node)) return true;
+  if (!isNodeOfType(node, "ObjectExpression")) return false;
+  const names = new Set<string>();
+  for (const member of node.properties) {
+    if (!isNodeOfType(member, "Property") || member.kind !== "init" || member.method) return false;
+    const key = getStaticPropertyKeyName(member);
+    if (!key || key === "__proto__" || names.has(key)) return false;
+    names.add(key);
+  }
+  return true;
+};
+
+const readsOrdinaryTestObjectOperation = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const member = node.parent;
+  const call = member?.parent;
+  if (
+    !isNodeOfType(member, "MemberExpression") ||
+    member.object !== node ||
+    !isNodeOfType(call, "CallExpression") ||
+    call.callee !== member ||
+    call.optional
+  )
+    return false;
+  const name = getStaticPropertyKeyName(member);
+  return (
+    (name === "keys" && call.arguments.length === 1) ||
+    (name === "defineProperty" &&
+      isNodeOfType(call.arguments[0], "Identifier") &&
+      call.arguments[0].name === "window" &&
+      scopes.isGlobalReference(call.arguments[0]) &&
+      isOrdinaryTestHostProbe(call.arguments[0], scopes))
+  );
+};
+
+const readsActualReactOnlyToCreateElements = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  program: Program,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const expression = findTransparentExpressionRoot(call);
+  const declaration = expression.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.init !== expression ||
+    !isNodeOfType(declaration.id, "Identifier")
+  )
+    return false;
+  const binding = scopes.symbolFor(declaration.id);
+  return Boolean(
+    binding?.kind === "const" &&
+    hasCompleteSymbolReferences(binding, program, scopes) &&
+    binding.references.every(({ identifier, flag }) => {
+      const member = identifier.parent;
+      const use = member?.parent;
+      return (
+        flag === "read" &&
+        isNodeOfType(member, "MemberExpression") &&
+        member.object === identifier &&
+        !member.computed &&
+        !member.optional &&
+        getStaticPropertyKeyName(member) === "createElement" &&
+        isNodeOfType(use, "CallExpression") &&
+        use.callee === member &&
+        !use.optional
+      );
+    }),
+  );
+};
+
+// Every sibling shares this test's Jest module registry. The selected test
+// has its own scoped call grammar, but dependencies must not gain that API.
+export const hasNoJestRuntimeRegistryReferences = (
+  program: Program,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let closed = true;
+  walkAst(program, (node) => {
+    if (!closed) return false;
+    if (
+      (isNodeOfType(node, "Identifier") &&
+        node.name === "jest" &&
+        scopes.isGlobalReference(node)) ||
+      ((isNodeOfType(node, "ImportDeclaration") ||
+        isNodeOfType(node, "ExportAllDeclaration") ||
+        isNodeOfType(node, "ExportNamedDeclaration") ||
+        isNodeOfType(node, "ImportExpression")) &&
+        node.source &&
+        literalText(node.source) === "@jest/globals")
+    ) {
+      closed = false;
+      return false;
+    }
+  });
+  return closed;
+};
+
+/** Scope census for explicit stubs. The caller must still bind each edge's
+ * effective Jest module ID, include every actualImports edge, and compare the
+ * test module's selected physical renderer. */
+export const readJestExplicitSourceMockScope = (
+  program: Program,
+  scopes: ScopeAnalysis,
+): JestExplicitSourceMockScope | null => {
+  const substitutions = new Map<string, JestExplicitSourceSubstitution>();
+  const registeredSpecs = new Set<string>();
+  const actualImports: string[] = [];
+  let unsupported = false;
+  walkAst(program, (node) => {
+    if (unsupported) return false;
+    if (isNodeOfType(node, "ImportExpression") || isNodeOfType(node, "WithStatement")) {
+      unsupported = true;
+      return false;
+    }
+    if (!isNodeOfType(node, "Identifier")) return;
+    if (
+      node.name === "Object" &&
+      scopes.isGlobalReference(node) &&
+      !readsOrdinaryTestObjectOperation(node, scopes)
+    ) {
+      unsupported = true;
+      return false;
+    }
+    if (
+      AMBIENT_LOOKUP_OR_MUTATION.has(node.name) &&
+      scopes.isGlobalReference(node) &&
+      !isOrdinaryTestHostProbe(node, scopes)
+    ) {
+      unsupported = true;
+      return false;
+    }
+    if (!stockJestGlobal(node, "jest", scopes)) return;
+    const access = node.parent;
+    if (isNodeOfType(access, "ImportSpecifier")) return;
+    const call = access?.parent;
+    if (
+      !isNodeOfType(access, "MemberExpression") ||
+      access.object !== node ||
+      access.optional ||
+      access.computed ||
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      call.callee !== access
+    ) {
+      unsupported = true;
+      return false;
+    }
+    const method = getStaticPropertyKeyName(access);
+    if (method === "fn" || (method === "clearAllMocks" && call.arguments.length === 0)) return;
+    if (
+      method === "spyOn" &&
+      call.arguments.length === 2 &&
+      isNodeOfType(call.arguments[0], "Identifier") &&
+      call.arguments[0].name === "console" &&
+      scopes.isGlobalReference(call.arguments[0]) &&
+      ["error", "warn"].includes(literalText(call.arguments[1]) ?? "")
+    )
+      return;
+    const specifier = call.arguments[0] && literalText(call.arguments[0]);
+    if (method === "requireActual" && call.arguments.length === 1 && specifier) {
+      if (specifier === "react" && !readsActualReactOnlyToCreateElements(call, program, scopes)) {
+        unsupported = true;
+        return false;
+      }
+      actualImports.push(specifier);
+      return;
+    }
+    const factory = call.arguments[1];
+    const statement = call.parent;
+    if (
+      method !== "mock" ||
+      call.arguments.length !== 2 ||
+      !specifier ||
+      !isCallback(factory) ||
+      factory.async ||
+      factory.params.length !== 0 ||
+      !isNodeOfType(statement, "ExpressionStatement") ||
+      statement.parent !== program ||
+      registeredSpecs.has(specifier)
+    ) {
+      unsupported = true;
+      return false;
+    }
+    registeredSpecs.add(specifier);
+    // An opaque factory is not a valid substitution cut. Keeping the real
+    // route is safe while still recording literal requireActual dependencies.
+    if (substitutesWithOwnedExports(factory, scopes))
+      substitutions.set(specifier, { specifier, factory });
+  });
+  return unsupported
+    ? null
+    : {
+        substitutions: [...substitutions.values()],
+        actualImports,
+        registeredMocks: [...registeredSpecs],
+      };
 };

@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { hasStockNodeNpmCompilerEnvironment } from "./has-stock-node-npm-compiler-environment.js";
+import {
+  hasExpectedNpmLauncher,
+  hasStockNodeNpmCompilerEnvironment,
+} from "./has-stock-node-npm-compiler-environment.js";
 import type { DeclaredClassicRemixRoute } from "./read-declared-classic-remix-route.js";
 import { STOCK_CLASSIC_REMIX_PROFILE } from "./stock-classic-remix-profile.js";
 import {
@@ -11,15 +14,6 @@ import { verifyStockNpmCompilerPackages } from "./verify-stock-npm-compiler-pack
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-
-const hasExpectedLauncher = (launcher: string, relativeTarget: string): boolean => {
-  if (fs.lstatSync(launcher, { throwIfNoEntry: false })?.isSymbolicLink() !== true) return false;
-  const target = path.resolve(path.dirname(launcher), relativeTarget);
-  if (fs.readlinkSync(launcher) !== relativeTarget || fs.realpathSync(launcher) !== target)
-    return false;
-  const info = fs.lstatSync(target, { throwIfNoEntry: false });
-  return info?.isFile() === true && (info.mode & 0o111) !== 0;
-};
 
 const NPM_RUNNER_OVERRIDES = new Set([
   "npm_config_workspace",
@@ -93,12 +87,12 @@ export const hasVerifiedClassicRemixCompiler = (route: DeclaredClassicRemixRoute
     }
 
     const bin = path.join(projectRoot, "node_modules", ".bin");
-    if (!hasExpectedLauncher(path.join(bin, "remix"), "../@remix-run/dev/dist/cli.js"))
+    if (!hasExpectedNpmLauncher(path.join(bin, "remix"), "../@remix-run/dev/dist/cli.js"))
       return false;
     if (
       requiredPackageScript === "build:remix" &&
       (Object.hasOwn(manifest, "config") ||
-        !hasExpectedLauncher(path.join(bin, "run-s"), "../npm-run-all/bin/run-s/index.js") ||
+        !hasExpectedNpmLauncher(path.join(bin, "run-s"), "../npm-run-all/bin/run-s/index.js") ||
         !hasStockNpmRunner(projectRoot))
     ) {
       return false;

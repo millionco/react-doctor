@@ -440,8 +440,9 @@ export const resolveScanResultToolchainFingerprint = (
 };
 
 const mayUseProjectJsxRuntimeProof = (input: ScanResultCacheKeyInput): boolean => {
+  if (!input.options.lint) return false;
+  if (fs.existsSync(path.join(input.projectDirectory, "stencil.config.ts"))) return true;
   if (
-    !input.options.lint ||
     !["electron.vite.config.mjs", "remix.config.js"].some((filename) =>
       fs.existsSync(path.join(input.projectDirectory, filename)),
     )

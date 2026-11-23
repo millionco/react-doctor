@@ -13,6 +13,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isReactThreeFiberCanvasOwnedLine } from "../../utils/is-react-three-fiber-canvas-owned-line.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import {
+  hasVerifiedStencilClassCompiler,
+  isStencilComponentJsx,
+} from "../../utils/is-verified-stencil-component-jsx.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
@@ -96,6 +100,11 @@ export const noUnknownProperty = defineRule({
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreSet = new Set(ignore);
+    let stencilClassCompiler: boolean | undefined;
+    const usesStencilClassCompiler = () => {
+      stencilClassCompiler ??= hasVerifiedStencilClassCompiler(context);
+      return stencilClassCompiler;
+    };
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -131,6 +140,14 @@ export const noUnknownProperty = defineRule({
           const actualName = getJsxAttributeName(attribute.name);
           if (!actualName) continue;
           if (ignoreSet.has(actualName)) continue;
+          if (
+            shouldUseCuratedBehavior &&
+            actualName === "class" &&
+            isStencilComponentJsx(node, context) &&
+            usesStencilClassCompiler()
+          ) {
+            continue;
+          }
           if (
             shouldUseCuratedBehavior &&
             node.name.name === "line" &&

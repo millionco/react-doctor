@@ -86,22 +86,31 @@ export const createCrossFileClosureSnapshot = (
       const sourceText = bytes.toString("utf8");
       // Conservative cheap filter; source edits remain pinned by the ordinary
       // scan key. Literal import and class keywords also occur in comments.
+      const hasEscapedIdentifier = sourceText.includes("\\u");
       if (
+        !hasEscapedIdentifier &&
         !sourceText.includes("class") &&
         !sourceText.includes("import") &&
         !sourceText.includes("require") &&
         !sourceText.includes("React")
       )
         continue;
+      const ruleIds = ["rules-of-hooks", "no-pass-live-state-to-parent"];
+      if (
+        hasEscapedIdentifier ||
+        sourceText.includes("useEffect") ||
+        sourceText.includes("useCallback")
+      )
+        ruleIds.push("exhaustive-deps");
+      if (
+        hasEscapedIdentifier ||
+        (sourceText.includes("useState") && sourceText.includes("useRef"))
+      )
+        ruleIds.push("no-adjust-state-on-prop-change");
       const trace = collectCrossFileDependencyProbes({
         absoluteFilePath: filename,
         sourceText,
-        ruleIds:
-          sourceText.includes("useEffect") ||
-          sourceText.includes("useCallback") ||
-          sourceText.includes("\\u")
-            ? ["rules-of-hooks", "no-pass-live-state-to-parent", "exhaustive-deps"]
-            : ["rules-of-hooks", "no-pass-live-state-to-parent"],
+        ruleIds,
       });
       if (trace === null) return null;
       contentPaths.add(filename);

@@ -1,3 +1,4 @@
+import { isOmittedPrivateNullStateIdentityWrite } from "./rules/state-and-effects/utils/is-omitted-private-null-state-identity-write.js";
 import { collectGuardedRecordCaptureDependencies } from "./rules/react-builtins/exhaustive-deps-guarded-record-capture.js";
 import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
 import {
@@ -209,6 +210,24 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectPropChangeAdjustmentDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  // The identity reset proof only recognizes direct named state and ref imports.
+  // An escaped spelling must also reach the AST check.
+  if (
+    !input.sourceText.includes("\\u") &&
+    !(input.sourceText.includes("useState") && input.sourceText.includes("useRef"))
+  )
+    return;
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  const context = { scopes, filename: input.absoluteFilePath };
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "CallExpression")) isOmittedPrivateNullStateIdentityWrite(node, context);
+  });
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -646,7 +665,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
-    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-adjust-state-on-prop-change", collectPropChangeAdjustmentDependencies],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],

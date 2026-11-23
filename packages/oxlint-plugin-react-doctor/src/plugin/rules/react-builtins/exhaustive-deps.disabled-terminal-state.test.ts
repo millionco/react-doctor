@@ -236,3 +236,136 @@ describe("exhaustive-deps ref-guarded state writes", () => {
     },
   );
 });
+
+const DORMANT_SET_RECORD_CHILD = `
+  import { useEffect, useRef } from "react";
+  export default function Child({ onStart, value }: { onStart?: () => void; value?: number }) {
+    const pending = useRef(new Set<number>());
+    const record = { value };
+    const start = () => {
+      if (!onStart) return;
+      pending.current.add(1);
+      onStart();
+    };
+    useEffect(() => {
+      return () => {
+        for (const item of pending.current) {
+          void record.value;
+          void item;
+        }
+      };
+    }, [value]);
+    return <button onClick={start}>Start</button>;
+  }
+`;
+
+const OMITTED_CALLBACK_RECORD_CHILD = `
+  import { useCallback } from "react";
+  export default function Child({ onStart, value }: { onStart?: (value?: number) => void; value?: number }) {
+    const record = { value };
+    const start = useCallback(() => {
+      if (!onStart) return;
+      onStart(record.value);
+    }, [onStart, value]);
+    return <button onClick={start}>Start</button>;
+  }
+`;
+
+const runRecord = (source: string, upstream = false) => {
+  place("components/Child.tsx", source);
+  return runRule(exhaustiveDeps, source, {
+    filename,
+    ...(upstream ? { settings: { "react-doctor": { portedRuleMode: "upstream" } } } : {}),
+  });
+};
+
+describe("exhaustive-deps private omitted callback record captures", () => {
+  it.each([DORMANT_SET_RECORD_CHILD, OMITTED_CALLBACK_RECORD_CHILD])(
+    "projects a private record only in curated mode when every caller omits activation",
+    (source) => {
+      placePage("");
+      const curated = runRecord(source);
+      expect(curated.parseErrors).toEqual([]);
+      expect(curated.diagnostics).toEqual([]);
+      const upstream = runRecord(source, true);
+      expect(upstream.parseErrors).toEqual([]);
+      expect(upstream.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([DORMANT_SET_RECORD_CHILD, OMITTED_CALLBACK_RECORD_CHILD])(
+    "retains the record warning when activation is supplied or spread",
+    (source) => {
+      for (const attributes of ["onStart={() => {}}", "{...{ onStart: () => {} }}"]) {
+        placePage(attributes);
+        expect(runRecord(source).diagnostics.length).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  it("retains a cleanup record capture when another path can add to its Set", () => {
+    placePage("");
+    const source = DORMANT_SET_RECORD_CHILD.replace(
+      "const record = { value };",
+      "const record = { value }; useEffect(() => { pending.current.add(2); }, []);",
+    );
+    expect(runRecord(source).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("retains a callback record capture read before the omitted-prop return", () => {
+    placePage("");
+    const source = OMITTED_CALLBACK_RECORD_CHILD.replace(
+      "if (!onStart) return;",
+      "void record.value; if (!onStart) return;",
+    );
+    expect(runRecord(source).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it.each([DORMANT_SET_RECORD_CHILD, OMITTED_CALLBACK_RECORD_CHILD])(
+    "records caller contents and directory membership for both Hook shapes",
+    (source) => {
+      place("components/Child.tsx", source);
+      const consumer = placePage("");
+      const trace = collectCrossFileDependencyProbes({
+        absoluteFilePath: filename,
+        sourceText: source,
+        ruleIds: ["exhaustive-deps"],
+      });
+      expect(trace?.contentPaths.has(consumer)).toBe(true);
+      expect(trace?.directoryPaths.has(dirname(consumer))).toBe(true);
+    },
+  );
+});
+
+describe("exhaustive-deps omitted record integrity opponents", () => {
+  it("retains cleanup captures when a sibling app module replaces global Set", () => {
+    placePage("");
+    place(
+      "app/page.tsx",
+      `import "./replace-set"; import Child from "../components/Child"; export default function Page() { return <Child />; }`,
+    );
+    place(
+      "app/replace-set.tsx",
+      `globalThis.Set = class ReplacementSet extends Set {
+        constructor() { super([1]); }
+      } as typeof Set;
+      export default function ReplacementNotice() { return <span />; }`,
+    );
+    expect(runRecord(DORMANT_SET_RECORD_CHILD).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("retains captures after destructuring reassignment of the omitted callback prop", () => {
+    placePage("");
+    const source = OMITTED_CALLBACK_RECORD_CHILD.replace(
+      "const record = { value };",
+      "const record = { value }; [onStart] = [() => {}];",
+    );
+    expect(runRecord(source).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("retains captures for an inherited Object.prototype callback name", () => {
+    placePage("");
+    const source = OMITTED_CALLBACK_RECORD_CHILD.replaceAll("onStart", "toString");
+    expect(runRecord(source).diagnostics.length).toBeGreaterThan(0);
+  });
+});

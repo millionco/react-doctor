@@ -70,6 +70,7 @@ import {
   hasUnreachableRefGuardedStateWrite,
 } from "./exhaustive-deps-disabled-terminal-state.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
+import { resolveGuardedRecordCaptureKeys } from "./exhaustive-deps-guarded-record-capture.js";
 import {
   getFunctionValueNode,
   isRecursiveInitializerCapture,
@@ -450,8 +451,13 @@ const collectCaptureDepKeys = (
   allowSoleWriterEffectGuards = false,
   filename?: string,
   allowFunctionalUpdaterForwarders = false,
+  allowGuardedRecordCaptures = false,
 ): CaptureCollection => {
   const keys = new Set<string>();
+  const guardedRecordProjections =
+    allowGuardedRecordCaptures && filename
+      ? new Map<SymbolDescriptor, ReadonlySet<string> | null>()
+      : null;
   const stableCapturedNames = new Set<string>();
   const moduleScopeCapturedNames = new Set<string>();
   const outerFunctionCapturedNames = new Set<string>();
@@ -500,6 +506,23 @@ const collectCaptureDepKeys = (
     if (isStableRefContainerCapture(symbol, depKey, scopes)) {
       stableCapturedNames.add(depKey);
       continue;
+    }
+    if (
+      guardedRecordProjections &&
+      filename &&
+      isNodeOfType(symbol.initializer, "ObjectExpression")
+    ) {
+      if (!guardedRecordProjections.has(symbol)) {
+        guardedRecordProjections.set(
+          symbol,
+          resolveGuardedRecordCaptureKeys(callback, symbol, scopes, filename),
+        );
+      }
+      const projected = guardedRecordProjections.get(symbol);
+      if (projected) {
+        for (const key of projected) keys.add(key);
+        continue;
+      }
     }
     if (depKey === symbol.name) {
       if (declaredExactBindingKeys?.has(depKey)) {
@@ -2657,6 +2680,10 @@ If the missing value is recreated every render, move it inside the hook or stabi
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
           shouldUseCuratedBehavior && isReactApiCall(node, "useEffect", context.scopes),
+          shouldUseCuratedBehavior &&
+            callbackArgument === callbackToAnalyze &&
+            (isReactApiCall(node, "useEffect", context.scopes) ||
+              isReactApiCall(node, "useCallback", context.scopes)),
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

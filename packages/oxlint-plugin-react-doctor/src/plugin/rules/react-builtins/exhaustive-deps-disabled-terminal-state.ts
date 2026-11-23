@@ -1,6 +1,8 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -76,7 +78,7 @@ const sameFunctionBody = (body: EsTreeNode, node: EsTreeNode): boolean => {
 
 // A callback declared under this early return cannot perform any of the
 // alternate writes when its owner received no value for the checked prop.
-const findWriterGate = (
+export const findWriterGate = (
   write: EsTreeNode,
   component: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -106,11 +108,23 @@ const findWriterGate = (
   return isNodeOfType(checked, "Identifier") ? (scopes.symbolFor(checked) ?? null) : null;
 };
 
-const resolveSimplePropName = (component: EsTreeNode, binding: SymbolDescriptor): string | null => {
+export const resolveSimplePropName = (
+  component: EsTreeNode,
+  binding: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): string | null => {
   if (!isFunctionLike(component) || component.params.length !== 1) return null;
   const parameter = component.params[0];
   if (!isNodeOfType(parameter, "ObjectPattern")) return null;
-  if (!binding.references.every(({ flag }) => flag === "read")) return null;
+  const program = findProgramRoot(component);
+  if (
+    !program ||
+    !hasCompleteSymbolReferences(binding, program, scopes) ||
+    binding.references.some(
+      ({ flag, identifier }) => flag !== "read" || isWithinAssignmentTarget(identifier),
+    )
+  )
+    return null;
   for (const property of parameter.properties) {
     if (
       isNodeOfType(property, "Property") &&
@@ -123,7 +137,7 @@ const resolveSimplePropName = (component: EsTreeNode, binding: SymbolDescriptor)
   return null;
 };
 
-const hasOpaqueLexicalAccess = (component: EsTreeNode): boolean => {
+export const hasOpaqueLexicalAccess = (component: EsTreeNode): boolean => {
   let opaque = false;
   walkAst(component, (node) => {
     if (opaque) return false;
@@ -217,7 +231,7 @@ export const endsWithDisabledTerminalStateGuard = (
     prop = gate;
   }
   if (!prop) return false;
-  const propName = resolveSimplePropName(component, prop);
+  const propName = resolveSimplePropName(component, prop, scopes);
   return (
     propName !== null && isPropOmittedByPrivateJsxConsumers(component, scopes, filename, propName)
   );
@@ -226,12 +240,12 @@ export const endsWithDisabledTerminalStateGuard = (
 const isNullLiteral = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "Literal") && node.value === null;
 
-const resolveOmittedCallbackProp = (
+export const resolveOmittedCallbackProp = (
   gate: SymbolDescriptor,
   component: EsTreeNode,
   scopes: ScopeAnalysis,
 ): string | null => {
-  const direct = resolveSimplePropName(component, gate);
+  const direct = resolveSimplePropName(component, gate, scopes);
   if (direct !== null) return direct;
   const initializer = getDirectConstInitializer(gate);
   if (
@@ -244,7 +258,7 @@ const resolveOmittedCallbackProp = (
   )
     return null;
   const prop = scopes.symbolFor(initializer.left);
-  return prop ? resolveSimplePropName(component, prop) : null;
+  return prop ? resolveSimplePropName(component, prop, scopes) : null;
 };
 
 const isCurrentMember = (node: EsTreeNode): boolean =>

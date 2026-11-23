@@ -25,7 +25,11 @@ const hasStockEnvironment = (): boolean =>
   !process.versions.bun &&
   !process.versions.electron &&
   process.versions.node.startsWith("24.") &&
-  process.execArgv.length === 0 &&
+  // The analyzer's managed worker carries heap/tiering flags; those are
+  // not passed to the package's separate #!/usr/bin/env node compiler.
+  process.execArgv.every((argument) =>
+    /^--(?:max-old-space-size|invocation-count-for-turbofan)=[1-9][0-9]*$/u.test(argument),
+  ) &&
   (process.env.NODE_ENV === undefined || process.env.NODE_ENV === "production") &&
   Object.entries(process.env).every(
     ([key, value]) =>

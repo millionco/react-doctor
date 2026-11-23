@@ -207,6 +207,30 @@ describe("scan result cache", () => {
     ).toBeNull();
   });
 
+  it("bypasses whole-scan replay when the opted-in CRA JSX compiler is present", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "cra-jsx-scope-cache", {
+      files: { "src/App.jsx": "export const App = () => <main />;" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true, adoptExistingLintConfig: false });
+    const jsxScope = { rules: { "react-doctor/react-in-jsx-scope": "warn" as const } };
+    const key = () =>
+      cacheKey(
+        projectDirectory,
+        options,
+        VERSION,
+        null,
+        createScanResultCacheInvocationState(),
+        jsxScope,
+      );
+    expect(await key()).not.toBeNull();
+    fs.mkdirSync(path.join(projectDirectory, "node_modules", "react-scripts"), {
+      recursive: true,
+    });
+    expect(await key()).toBeNull();
+    expect(await cacheKey(projectDirectory, options)).not.toBeNull();
+  });
+
   it("bypasses lint replay when a project can use the Stencil compiler", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "stencil-runtime-cache", {
       files: { "stencil.config.ts": "export const config = {};" },

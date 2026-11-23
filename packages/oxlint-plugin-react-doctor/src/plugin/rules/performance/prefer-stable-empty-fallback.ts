@@ -15,7 +15,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 interface EmptyFallback {
   readonly emptyKind: "array" | "object";
   readonly emptyNode: EsTreeNode;
-  readonly nonEmptyExpression: EsTreeNode;
 }
 
 const isEmptyArrayLiteral = (expression: EsTreeNode): boolean => {
@@ -63,10 +62,10 @@ const matchEmptyFallbackInLogicalExpression = (expression: EsTreeNode): EmptyFal
   // code. That's a typo / dead-code bug, not the perf footgun this
   // rule targets, and the diagnostic message would be inverted.
   if (isEmptyArrayLiteral(right) && isStableNonEmptyExpression(left)) {
-    return { emptyKind: "array", emptyNode: right, nonEmptyExpression: left };
+    return { emptyKind: "array", emptyNode: right };
   }
   if (isEmptyObjectLiteral(right) && isStableNonEmptyExpression(left)) {
-    return { emptyKind: "object", emptyNode: right, nonEmptyExpression: left };
+    return { emptyKind: "object", emptyNode: right };
   }
 
   return null;

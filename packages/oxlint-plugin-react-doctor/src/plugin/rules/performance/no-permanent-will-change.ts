@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -48,7 +49,7 @@ export const noPermanentWillChange = defineRule({
 
       for (const property of expression.properties ?? []) {
         if (!isNodeOfType(property, "Property")) continue;
-        const key = isNodeOfType(property.key, "Identifier") ? property.key.name : null;
+        const key = getStaticPropertyKeyName(property);
         if (key !== "willChange") continue;
 
         // `willChange: isDragging ? "transform" : "auto"` — a conditional or

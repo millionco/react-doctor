@@ -3,6 +3,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -18,12 +19,6 @@ interface PropsShape {
 const mergePropsShape = (target: PropsShape, source: PropsShape): void => {
   target.hasDangerously ||= source.hasDangerously;
   target.hasChildren ||= source.hasChildren;
-};
-
-const getStaticPropName = (key: EsTreeNode): string | null => {
-  if (isNodeOfType(key, "Identifier")) return key.name;
-  if (isNodeOfType(key, "Literal") && typeof key.value === "string") return key.value;
-  return null;
 };
 
 const resolvePropsShape = (
@@ -54,7 +49,7 @@ const resolvePropsShape = (
       continue;
     }
     if (!isNodeOfType(property, "Property") || property.computed) continue;
-    const propName = getStaticPropName(property.key as EsTreeNode);
+    const propName = getStaticPropertyKeyName(property);
     if (propName === "dangerouslySetInnerHTML") shape.hasDangerously = true;
     if (propName === "children") shape.hasChildren = true;
   }

@@ -299,3 +299,16 @@ describe("Git.diffSelection — git-flag injection (CVE-2018-17456 shape)", () =
     await expectInvalidReason("");
   });
 });
+
+describe("Git.branchExists — git-flag injection guard", () => {
+  it("returns false for unsafe refnames before spawning git", async () => {
+    const exists = await Effect.runPromise(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.branchExists("/repo", "--upload-pack=evil");
+      }).pipe(Effect.provide(Git.layerNode)),
+    );
+
+    expect(exists).toBe(false);
+  });
+});

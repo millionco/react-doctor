@@ -145,7 +145,11 @@ export const parseEvaluationArguments = (
     "--rule",
   ];
   const incompatibleMatrixOption = hasMatrixOption
-    ? matrixIncompatibleOptions.find((option) => argumentsToParse.includes(option))
+    ? matrixIncompatibleOptions.find((option) =>
+        argumentsToParse.some(
+          (argument) => argument === option || argument.startsWith(`${option}=`),
+        ),
+      )
     : undefined;
   if (incompatibleMatrixOption) {
     throw new Error(

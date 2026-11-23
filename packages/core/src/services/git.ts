@@ -579,14 +579,16 @@ export class Git extends Context.Service<
         directory: string,
         branch: string,
       ): Effect.Effect<boolean, ReactDoctorError> =>
-        runGit(directory, ["rev-parse", "--verify", branch]).pipe(
-          Effect.map((result) => result.status === 0),
-          Effect.catch((error) =>
-            error.reason._tag === "GitInvocationFailed"
-              ? Effect.succeed(false)
-              : Effect.fail(error),
-          ),
-        );
+        isSafeGitRevision(branch)
+          ? runGit(directory, ["rev-parse", "--verify", branch]).pipe(
+              Effect.map((result) => result.status === 0),
+              Effect.catch((error) =>
+                error.reason._tag === "GitInvocationFailed"
+                  ? Effect.succeed(false)
+                  : Effect.fail(error),
+              ),
+            )
+          : Effect.succeed(false);
 
       const headSha = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "HEAD"]).pipe(
@@ -1083,7 +1085,7 @@ export class Git extends Context.Service<
             const stdout = matches.length === 0 ? "" : `${matches.join("\n")}\n`;
             return { status: matches.length === 0 ? 1 : 0, stdout } satisfies GitGrepResult;
           }),
-        changedLineRanges: () => Effect.succeed(snapshot.changedLineRanges ?? []),
+        changedLineRanges: () => Effect.succeed(snapshot.changedLineRanges ?? null),
       }),
     );
 }

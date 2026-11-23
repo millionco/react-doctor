@@ -1,21 +1,7 @@
 // Trusted published npm release profiles; no project content or lockfile hash.
-export interface ElectronCompilerPackageProfile {
-  readonly directory: string;
-  readonly name: string;
-  readonly version: string;
-  readonly memberCount: number;
-  readonly contentDigest: string;
-  readonly entryMembers: Readonly<Record<string, string>>;
-}
-export const STOCK_ELECTRON_RENDERER_PROFILE: {
-  readonly packages: readonly ElectronCompilerPackageProfile[];
-  readonly edges: readonly {
-    readonly issuer: string;
-    readonly specifier: string;
-    readonly target: string;
-  }[];
-  readonly missing: readonly { readonly issuer: string; readonly specifier: string }[];
-} = {
+import type { StockNpmCompilerProfile } from "./verify-stock-npm-compiler-packages.js";
+
+export const STOCK_ELECTRON_RENDERER_PROFILE: StockNpmCompilerProfile = {
   packages: [
     {
       directory: "node_modules/electron-vite",

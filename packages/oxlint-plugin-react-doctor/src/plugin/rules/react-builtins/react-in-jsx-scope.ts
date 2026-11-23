@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { hasAutomaticClassicRemixJsx } from "../../utils/has-automatic-classic-remix-jsx.js";
 import { hasAutomaticElectronRendererJsx } from "../../utils/has-automatic-electron-renderer-jsx.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
@@ -37,7 +38,8 @@ export const reactInJsxScope = defineRule({
   create: (context) => {
     let hasAutomaticFactory: boolean | undefined;
     const usesAutomaticFactory = () => {
-      hasAutomaticFactory ??= hasAutomaticElectronRendererJsx(context);
+      hasAutomaticFactory ??=
+        hasAutomaticElectronRendererJsx(context) || hasAutomaticClassicRemixJsx(context);
       return hasAutomaticFactory;
     };
     return {

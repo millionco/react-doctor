@@ -20,17 +20,29 @@ const isPhysicalDirectory = (directory: string): boolean =>
   fs.lstatSync(directory, { throwIfNoEntry: false })?.isDirectory() === true &&
   fs.realpathSync(directory) === directory;
 
-const readEntries = (directory: string): FilesystemEntry[] | null => {
+const readEntries = (
+  directory: string,
+  runtimeLinks?: ReadonlyMap<string, string>,
+): FilesystemEntry[] | null => {
   const entries: FilesystemEntry[] = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const filename = path.join(directory, entry.name);
+    const expectedTarget = runtimeLinks?.get(filename);
+    if (expectedTarget !== undefined) {
+      if (!entry.isSymbolicLink() || fs.realpathSync(filename) !== expectedTarget) return null;
+      continue;
+    }
     if (!entry.isDirectory() && !entry.isFile()) return null;
     entries.push([path.join(directory, entry.name), entry.isDirectory()]);
   }
   return entries;
 };
 
-const listPackageDirectories = (nodeModules: string): string[] | null => {
-  const entries = readEntries(nodeModules);
+const listPackageDirectories = (
+  nodeModules: string,
+  runtimeLinks?: ReadonlyMap<string, string>,
+): string[] | null => {
+  const entries = readEntries(nodeModules, runtimeLinks);
   if (!entries) return null;
   const packages: string[] = [];
   for (const [filename, directory] of entries) {
@@ -85,6 +97,7 @@ const readPackageContents = (
 export const verifyStockNpmCompilerSnapshot = (
   root: string,
   expected: StockNpmCompilerSnapshot,
+  runtimeLinks?: ReadonlyMap<string, string>,
 ): boolean => {
   const moduleRoot = path.join(root, "node_modules");
   if (!isPhysicalDirectory(moduleRoot) || path.sep !== "/") return false;
@@ -92,7 +105,7 @@ export const verifyStockNpmCompilerSnapshot = (
   const packages: PackageContents[] = [];
   let memberCount = 0;
   while (pending.length > 0) {
-    const directories = listPackageDirectories(pending.pop()!);
+    const directories = listPackageDirectories(pending.pop()!, runtimeLinks);
     if (!directories) return false;
     for (const directory of directories) {
       if (packages.length >= expected.packages) return false;

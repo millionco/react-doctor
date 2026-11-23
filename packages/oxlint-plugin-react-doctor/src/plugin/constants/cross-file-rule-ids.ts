@@ -68,6 +68,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "forwarded-set-state-in-effect",
   "no-derived-state",
   "no-derived-state-effect",
+  "no-effect-chain",
   "no-event-handler",
   "no-initialize-state",
   "no-mutating-reducer-state",

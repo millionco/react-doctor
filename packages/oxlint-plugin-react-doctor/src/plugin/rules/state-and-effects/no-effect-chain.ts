@@ -49,6 +49,7 @@ import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blo
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { createUnreachableMountEffectProof } from "./is-unreachable-mount-prop-reset.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -2453,6 +2454,7 @@ export const noEffectChain = defineRule({
   recommendation:
     "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
   create: (context: RuleContext) => {
+    const isUnreachableMountEffect = createUnreachableMountEffectProof(context);
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
@@ -2568,7 +2570,8 @@ export const noEffectChain = defineRule({
             break;
           }
           if (!chainedStateName) continue;
-          if (reportedNodes.has(readerEffect.node)) continue;
+          if (reportedNodes.has(readerEffect.node) || isUnreachableMountEffect(readerEffect.node))
+            continue;
           reportedNodes.add(readerEffect.node);
 
           context.report({

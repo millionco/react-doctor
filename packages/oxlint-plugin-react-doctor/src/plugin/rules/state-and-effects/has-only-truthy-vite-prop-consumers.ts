@@ -14,7 +14,9 @@ import { readVerifiedStockViteBrowserProject } from "../../utils/read-verified-s
 import { readStockJestNamedRenderer } from "../../utils/stock-vite-providers/read-stock-jest-named-renderer.js";
 import { readsVerifiedPackageLauncher } from "../../utils/stock-vite-providers/reads-verified-package-launcher.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { hasNoOtherMountedLoadingTests } from "./has-no-other-mounted-loading-tests.js";
 import { inspectConsumer } from "./inspect-direct-jsx-prop-consumer.js";
+import { readClosedJsxBrowserCaller } from "./read-closed-jsx-browser-caller.js";
 
 interface VitePropConsumerInput {
   readonly projectRoot: string;
@@ -23,6 +25,7 @@ interface VitePropConsumerInput {
   readonly property: string;
   readonly program: EsTreeNodeOfType<"Program">;
   readonly scopes: ScopeAnalysis;
+  readonly requireCompleteMountCoverage?: boolean;
 }
 
 const observeJestProfile = (kind: "exists" | "content" | "realpath", filename: string): void => {
@@ -40,12 +43,17 @@ export const hasOnlyTruthyVitePropConsumers = (input: VitePropConsumerInput): bo
       filename,
       program,
       scopes,
-      inspectProject: ({ index, closure, appEntry, readSource, readEmittedSource }) => {
+      inspectProject: (inspection) => {
+        const { index, closure, appEntry, readSource, readEmittedSource } = inspection;
         const incoming = [...(index.consumerModulesByFilePath.get(filename) ?? [])];
         const browserCallers = incoming.filter((module) => closure.reachable.has(module.filePath));
         const tests = incoming.filter((module) => !closure.reachable.has(module.filePath));
         if (browserCallers.length !== 1 || tests.length !== 1) return null;
         const caller = browserCallers[0];
+        const callerSources = input.requireCompleteMountCoverage
+          ? readClosedJsxBrowserCaller(caller.filePath, inspection)
+          : [];
+        if (!callerSources) return null;
         testFile = tests[0].filePath;
         let specifier: string | undefined;
         let opaque = false;
@@ -66,10 +74,16 @@ export const hasOnlyTruthyVitePropConsumers = (input: VitePropConsumerInput): bo
         const callerText = readEmittedSource(caller.filePath) ?? readSource(caller.filePath);
         if (
           !callerText ||
-          inspectConsumer(callerText, { route: "lazy", property, tag: "default", specifier }) !== 1
+          inspectConsumer(callerText, {
+            route: "lazy",
+            property,
+            tag: "default",
+            specifier,
+            requireClosedDefaultFunction: input.requireCompleteMountCoverage,
+          }) !== 1
         )
           return null;
-        return [filename, caller.filePath, appEntry];
+        return [filename, caller.filePath, appEntry, ...callerSources];
       },
     });
     if (!project || !testFile) return false;
@@ -109,7 +123,16 @@ export const hasOnlyTruthyVitePropConsumers = (input: VitePropConsumerInput): bo
       jsxRuntimeSpecifier: "react/jsx-runtime",
     });
     return (
-      jest?.react.entry === browser.react.entry && jest.client.entry === browser.renderer.entry
+      jest?.react.entry === browser.react.entry &&
+      jest.client.entry === browser.renderer.entry &&
+      (!input.requireCompleteMountCoverage ||
+        hasNoOtherMountedLoadingTests({
+          project,
+          projectRoot,
+          focalFile: filename,
+          namedTestFile: testFile,
+          jestReactEntry: jest.react.entry,
+        }))
     );
   } catch {
     return false;

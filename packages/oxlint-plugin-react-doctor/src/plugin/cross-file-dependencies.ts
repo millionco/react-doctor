@@ -34,7 +34,10 @@ import { collectImportedJsxComponentDependencies } from "./utils/collect-importe
 import { collectCrossFileProbes, recordExistenceProbe } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
-import { hasPotentialMountPropReset } from "./rules/state-and-effects/find-negated-effect-prop.js";
+import {
+  hasPotentialMountPropReset,
+  hasPotentialNegatedMountEffect,
+} from "./rules/state-and-effects/find-negated-effect-prop.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
@@ -683,6 +686,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
+    ["no-effect-chain", () => undefined],
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
@@ -770,18 +774,24 @@ export const collectCrossFileDependencyProbes = (input: {
     return null;
   }
 
+  const checkMountReset = input.ruleIds.includes("no-adjust-state-on-prop-change");
+  const checkNegatedMountEffect =
+    input.ruleIds.includes("no-effect-chain") && input.sourceText.includes("&&");
   if (
-    input.ruleIds.includes("no-adjust-state-on-prop-change") &&
+    (checkMountReset || checkNegatedMountEffect) &&
     input.sourceText.includes("!") &&
     input.sourceText.includes("export")
   ) {
     const program = getProgram();
     attachParentReferences(program);
-    if (
-      isNodeOfType(program, "Program") &&
-      hasPotentialMountPropReset(program, analyzeScopes(program))
-    ) {
-      return null;
+    if (isNodeOfType(program, "Program")) {
+      const scopes = analyzeScopes(program);
+      // A verified mount can depend on an external caller or a different test mount.
+      if (
+        (checkMountReset && hasPotentialMountPropReset(program, scopes)) ||
+        (checkNegatedMountEffect && hasPotentialNegatedMountEffect(program, scopes))
+      )
+        return null;
     }
   }
 

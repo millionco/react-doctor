@@ -2,6 +2,7 @@ import { analyzeScopes, type ScopeAnalysis } from "../../semantic/scope-analysis
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { hasClosedDefaultFunctionExport } from "../../utils/has-closed-default-function-export.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseSourceText } from "../../utils/parse-source-file.js";
@@ -60,7 +61,12 @@ const getLazyReactBinding = (
   return initializer.id;
 };
 
-const isReturnedInTransparentJsx = (element: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const isReturnedInTransparentJsx = (
+  element: EsTreeNode,
+  scopes: ScopeAnalysis,
+  program: EsTreeNode,
+  requireClosedDefaultFunction: boolean,
+): boolean => {
   let child = element;
   while (child.parent) {
     const parent: EsTreeNode = child.parent;
@@ -68,7 +74,9 @@ const isReturnedInTransparentJsx = (element: EsTreeNode, scopes: ScopeAnalysis):
       return (
         parent.argument === child &&
         isNodeOfType(parent.parent, "BlockStatement") &&
-        isNodeOfType(parent.parent.parent, "FunctionDeclaration")
+        isNodeOfType(parent.parent.parent, "FunctionDeclaration") &&
+        (!requireClosedDefaultFunction ||
+          hasClosedDefaultFunctionExport(parent.parent.parent, program, scopes))
       );
     }
     if (
@@ -135,6 +143,7 @@ interface ConsumerInput {
   readonly property: string;
   readonly specifier: string;
   readonly route: "lazy" | "named";
+  readonly requireClosedDefaultFunction?: boolean;
   readonly checkOpening?: (opening: EsTreeNodeOfType<"JSXOpeningElement">) => boolean;
 }
 
@@ -181,7 +190,13 @@ export const inspectConsumerModule = (
     scopes,
     input.property,
     (element) => {
-      if (input.route === "lazy") return isReturnedInTransparentJsx(element, scopes);
+      if (input.route === "lazy")
+        return isReturnedInTransparentJsx(
+          element,
+          scopes,
+          program,
+          input.requireClosedDefaultFunction === true,
+        );
       const call = element.parent;
       return (
         isNodeOfType(call, "CallExpression") &&

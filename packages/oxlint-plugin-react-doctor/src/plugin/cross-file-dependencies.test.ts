@@ -82,6 +82,44 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-effect-chain collector", () => {
+  const mountedEffect = `
+    import { useEffect as afterCommit, useState } from "react";
+    export function Panel({ visible }) {
+      const [ready, setReady] = useState(true);
+      afterCommit(() => {
+        if (!visible && !ready) {
+          setReady(true);
+        }
+      }, [visible, ready]);
+      return <output>{String(ready)}</output>;
+    }
+    export default Panel;
+  `;
+
+  it("keeps a potential caller-dependent effect fresh", () => {
+    const file = writeFixtureFile("Panel.tsx", mountedEffect);
+    expect(collectFor(file, ["no-effect-chain"])).toBeNull();
+  });
+
+  it.each([
+    [
+      "an effect in a locally analyzed component",
+      mountedEffect.replace("export default Panel;", ""),
+    ],
+    [
+      "an effect whose first condition is local",
+      mountedEffect.replace("!visible && !ready", "!ready && !visible"),
+    ],
+  ])("collects no cross-file inputs for %s", (_name, source) => {
+    const file = writeFixtureFile("Panel.tsx", source);
+    const trace = collectFor(file, ["no-effect-chain"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.size).toBe(0);
+    expect(trace?.existencePaths.size).toBe(0);
+  });
+});
+
 describe("no-unknown-property collector", () => {
   it("tracks a missing Stencil marker and re-lints after it appears", () => {
     const component = writeFixtureFile(

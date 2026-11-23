@@ -57,6 +57,7 @@ describe("buildOxlintChildEnv", () => {
       npm_config_foo: "bar",
     });
     expect(childEnv.NODE_OPTIONS).toBeUndefined();
+    expect(childEnv.REACT_DOCTOR_OXLINT_NODE_OPTIONS_PRESENT).toBe("1");
     expect(childEnv.NODE_DEBUG).toBeUndefined();
     expect(childEnv.npm_config_foo).toBeUndefined();
     expect(childEnv.PATH).toBe("/usr/bin");

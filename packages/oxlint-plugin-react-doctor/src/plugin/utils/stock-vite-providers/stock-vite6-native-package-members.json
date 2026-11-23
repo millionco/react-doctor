@@ -1,0 +1,18 @@
+{
+  "@esbuild/linux-x64": {
+    "packageName": "@esbuild/linux-x64",
+    "version": "0.25.12",
+    "files": {
+      "bin/esbuild": "bab29b2ca7a9e89b67cf720b77b2d743f9f31f5cf0d5bd74ee8c8de30ced7014",
+      "package.json": "fdf02f1b53a4651a3eea731e2ad0a9c7d4fd8646430a5935d551e610e8d469fc"
+    }
+  },
+  "@rollup/rollup-linux-x64-gnu": {
+    "packageName": "@rollup/rollup-linux-x64-gnu",
+    "version": "4.59.0",
+    "files": {
+      "rollup.linux-x64-gnu.node": "c3aedeb1740b7363287f97013b4e03e3485bf0a74c442e90862e8cf53c9144f5",
+      "package.json": "119bf5922da37602ead3a4c40f2b6279a1501388d6fe944c0be18b16e95a35af"
+    }
+  }
+}

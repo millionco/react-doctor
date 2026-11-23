@@ -1,10 +1,10 @@
 import {
   hasClosedCommittedLoadingMirror,
   hasClosedLoadingGenerationCleanup,
-  hasClosedResetFirstGeneration,
+  hasClosedLoadingGeneration,
 } from "./read-committed-open-loading-mirror.js";
 import { hasClosedResetFirstPreviewDisposal } from "./read-reset-first-preview-disposal.js";
-import { readPassiveLoadingPair } from "./read-passive-loading-pair.js";
+import { readPassiveLoadingPair, readRenderLoadingPair } from "./read-passive-loading-pair.js";
 import { verifyMountedPassiveLoadingPair } from "./verify-mounted-passive-loading-pair.js";
 import {
   createSplitGenerationReactImporterProof,
@@ -2840,13 +2840,12 @@ const getPublishedNextGenerationComparison = (
       };
 };
 
-const getDirectPrimitiveReactSetter = (
+const getDirectReactSetter = (
   statement: EsTreeNode,
   functionNode: EsTreeNode,
   owner: EsTreeNode,
   context: RuleContext,
   importerProof: SplitGenerationReactImporterProof,
-  allowEmptyArray = false,
 ): EsTreeNodeOfType<"CallExpression"> | null => {
   if (!isNodeOfType(statement, "ExpressionStatement") || !isFunctionLike(owner)) return null;
   const call = stripParenExpression(statement.expression);
@@ -2857,18 +2856,6 @@ const getDirectPrimitiveReactSetter = (
     call.arguments.length !== 1
   )
     return null;
-  const argument = stripParenExpression(call.arguments[0]);
-  const isPrimitive =
-    isNodeOfType(argument, "Literal") &&
-    (argument.value === null ||
-      typeof argument.value === "string" ||
-      typeof argument.value === "boolean" ||
-      typeof argument.value === "number" ||
-      typeof argument.value === "bigint");
-  const isEmptyArray =
-    allowEmptyArray && isNodeOfType(argument, "ArrayExpression") && argument.elements.length === 0;
-  if (!isPrimitive && !isEmptyArray) return null;
-
   const setter = context.scopes.symbolFor(call.callee);
   const declaration = setter?.declarationNode;
   if (
@@ -2906,6 +2893,29 @@ const getDirectPrimitiveReactSetter = (
     })
     ? call
     : null;
+};
+
+const getDirectPrimitiveReactSetter = (
+  statement: EsTreeNode,
+  functionNode: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+  allowEmptyArray = false,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  const call = getDirectReactSetter(statement, functionNode, owner, context, importerProof);
+  if (!call) return null;
+  const argument = stripParenExpression(call.arguments[0]);
+  const isPrimitive =
+    isNodeOfType(argument, "Literal") &&
+    (argument.value === null ||
+      typeof argument.value === "string" ||
+      typeof argument.value === "boolean" ||
+      typeof argument.value === "number" ||
+      typeof argument.value === "bigint");
+  const isEmptyArray =
+    allowEmptyArray && isNodeOfType(argument, "ArrayExpression") && argument.elements.length === 0;
+  return isPrimitive || isEmptyArray ? call : null;
 };
 
 const isInitializedRequestGuard = (
@@ -3557,6 +3567,32 @@ const isNegativeFinalizerGuard = (
   );
 };
 
+const readSoleDirectFinalizerGuard = (
+  reset: EsTreeNode,
+  lastStatement: EsTreeNode | undefined,
+): EsTreeNodeOfType<"IfStatement"> | null => {
+  const resetStatement = reset.parent;
+  const finalizerGuard = resetStatement?.parent?.parent;
+  const finalizer = finalizerGuard?.parent;
+  const protectingTry = finalizer?.parent;
+  if (
+    !isNodeOfType(finalizerGuard, "IfStatement") ||
+    finalizerGuard.alternate ||
+    !isNodeOfType(finalizerGuard.consequent, "BlockStatement") ||
+    finalizerGuard.consequent.body.length !== 1 ||
+    finalizerGuard.consequent.body[0] !== resetStatement ||
+    !isNodeOfType(finalizer, "BlockStatement") ||
+    finalizer.body.length !== 1 ||
+    finalizer.body[0] !== finalizerGuard ||
+    !isNodeOfType(protectingTry, "TryStatement") ||
+    protectingTry.finalizer !== finalizer ||
+    lastStatement !== protectingTry
+  ) {
+    return null;
+  }
+  return finalizerGuard;
+};
+
 const hasClosedResetFirstStartup = (
   pair: NonNullable<ReturnType<typeof readPassiveLoadingPair>>,
   owner: EsTreeNode,
@@ -3621,25 +3657,7 @@ const hasClosedResetFirstStartup = (
       return false;
     }
   }
-  const resetStatement = reset.parent;
-  const finalizerGuard = resetStatement?.parent?.parent;
-  const finalizer = finalizerGuard?.parent;
-  const protectingTry = finalizer?.parent;
-  if (
-    !isNodeOfType(finalizerGuard, "IfStatement") ||
-    finalizerGuard.alternate ||
-    !isNodeOfType(finalizerGuard.consequent, "BlockStatement") ||
-    finalizerGuard.consequent.body.length !== 1 ||
-    finalizerGuard.consequent.body[0] !== resetStatement ||
-    !isNodeOfType(finalizer, "BlockStatement") ||
-    finalizer.body.length !== 1 ||
-    finalizer.body[0] !== finalizerGuard ||
-    !isNodeOfType(protectingTry, "TryStatement") ||
-    protectingTry.finalizer !== finalizer ||
-    body[body.length - 1] !== protectingTry
-  ) {
-    return false;
-  }
+  if (!readSoleDirectFinalizerGuard(reset, body[body.length - 1])) return false;
   const resetBody = pair.resetBody.body;
   const [invalidation] = resetBody;
   const disposal = resetBody[resetBody.length - 1];
@@ -3648,7 +3666,7 @@ const hasClosedResetFirstStartup = (
   if (
     !startValue?.value ||
     !getSetterBooleanValue(reset, context) ||
-    !hasClosedResetFirstGeneration({
+    !hasClosedLoadingGeneration({
       owner,
       request,
       token,
@@ -3683,6 +3701,166 @@ const hasClosedResetFirstStartup = (
   return !hasLexicalDynamicAccess(owner, context);
 };
 
+const readRenderPropSnapshot = (
+  comparison: EsTreeNode,
+  dispatch: EsTreeNodeOfType<"CallExpression"> | null,
+  owner: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  if (
+    !isNodeOfType(comparison, "BinaryExpression") ||
+    comparison.operator !== "!==" ||
+    !isNodeOfType(comparison.left, "Identifier") ||
+    !isNodeOfType(comparison.right, "Identifier") ||
+    !dispatch ||
+    !isNodeOfType(dispatch.callee, "Identifier") ||
+    !isNodeOfType(dispatch.arguments[0], "Identifier")
+  ) {
+    return null;
+  }
+  const prop = context.scopes.symbolFor(comparison.left);
+  const state = context.scopes.symbolFor(comparison.right);
+  const setter = context.scopes.symbolFor(dispatch.callee);
+  const declaration = state?.declarationNode;
+  if (
+    !prop ||
+    context.scopes.symbolFor(dispatch.arguments[0]) !== prop ||
+    state?.kind !== "const" ||
+    !setter ||
+    setter.declarationNode !== declaration ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    !isNodeOfType(declaration.id, "ArrayPattern") ||
+    declaration.id.elements[0] !== state.bindingIdentifier ||
+    !isNodeOfType(declaration.init, "CallExpression") ||
+    declaration.init.arguments.length !== 1 ||
+    !isNodeOfType(declaration.init.arguments[0], "Identifier") ||
+    context.scopes.symbolFor(declaration.init.arguments[0]) !== prop ||
+    !hasCompleteSymbolReferences(state, owner, context.scopes) ||
+    !hasCompleteSymbolReferences(setter, owner, context.scopes) ||
+    state.references.length !== 1 ||
+    state.references[0].identifier !== comparison.right ||
+    setter.references.length !== 1 ||
+    setter.references[0].identifier !== dispatch.callee
+  ) {
+    return null;
+  }
+  return prop;
+};
+
+const readDirectLogicalPair = (
+  test: EsTreeNode,
+  operator: "&&" | "||",
+): readonly [EsTreeNode, EsTreeNode] | null => {
+  const expression = stripParenExpression(test);
+  return isNodeOfType(expression, "LogicalExpression") && expression.operator === operator
+    ? [stripParenExpression(expression.left), stripParenExpression(expression.right)]
+    : null;
+};
+
+const hasClosedRenderAdjustmentStartup = (
+  pair: NonNullable<ReturnType<typeof readRenderLoadingPair>>,
+  owner: EsTreeNode,
+  request: EsTreeNodeOfType<"ArrowFunctionExpression">,
+  token: SymbolDescriptor,
+  update: EsTreeNodeOfType<"UpdateExpression">,
+  start: EsTreeNodeOfType<"CallExpression">,
+  reset: EsTreeNodeOfType<"CallExpression">,
+  extraSetter: EsTreeNode,
+  firstRiskyAwait: AwaitSite,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): boolean => {
+  const adjustment = pair.adjustment.consequent;
+  if (
+    !isNodeOfType(adjustment, "BlockStatement") ||
+    !isNodeOfType(request.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const changed = readDirectLogicalPair(pair.adjustment.test, "||");
+  const [firstDispatch, secondDispatch, ...resetStatements] = adjustment.body;
+  if (!changed || !firstDispatch || !secondDispatch) return false;
+  const firstProp = readRenderPropSnapshot(
+    changed[0],
+    getDirectReactSetter(firstDispatch, request, owner, context, importerProof),
+    owner,
+    context,
+  );
+  const secondProp = readRenderPropSnapshot(
+    changed[1],
+    getDirectReactSetter(secondDispatch, request, owner, context, importerProof),
+    owner,
+    context,
+  );
+  if (firstProp !== pair.viewBinding || secondProp !== pair.openBinding) return false;
+
+  const extraStatement = extraSetter.parent?.parent;
+  if (
+    !resetStatements.some((statement) => statement === extraStatement) ||
+    !resetStatements.every(
+      (statement) =>
+        statement === extraStatement ||
+        getDirectPrimitiveReactSetter(statement, request, owner, context, importerProof, true),
+    )
+  ) {
+    return false;
+  }
+  const body = request.body.body;
+  const [guard, alias, capture, startup] = body;
+  const exit =
+    isNodeOfType(guard, "IfStatement") &&
+    isNodeOfType(guard.consequent, "BlockStatement") &&
+    guard.consequent.body.length === 1
+      ? guard.consequent.body[0]
+      : null;
+  if (
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !isNodeOfType(exit, "ReturnStatement") ||
+    !isNodeOfType(exit.argument, "ArrayExpression") ||
+    exit.argument.elements.length !== 0 ||
+    !isNodeOfType(alias, "VariableDeclaration") ||
+    alias.kind !== "const" ||
+    alias.declarations.length !== 1 ||
+    !isNodeOfType(alias.declarations[0].id, "Identifier") ||
+    !isNodeOfType(alias.declarations[0].init, "Identifier") ||
+    context.scopes.symbolFor(alias.declarations[0].init) !== pair.viewBinding ||
+    !isNodeOfType(capture, "VariableDeclaration") ||
+    capture.kind !== "const" ||
+    capture.declarations.length !== 1 ||
+    capture.declarations[0] !== token.declarationNode ||
+    !startup ||
+    getDirectPrimitiveReactSetter(startup, request, owner, context, importerProof) !== start
+  ) {
+    return false;
+  }
+  const missing = readDirectLogicalPair(guard.test, "||")?.map((term) =>
+    isNodeOfType(term, "UnaryExpression") &&
+    term.operator === "!" &&
+    isNodeOfType(term.argument, "Identifier")
+      ? context.scopes.symbolFor(term.argument)
+      : null,
+  );
+  if (!missing?.includes(pair.viewBinding) || !missing.includes(pair.getterBinding)) return false;
+  const startValue = getSetterBooleanValue(start, context);
+  return (
+    startValue?.value === true &&
+    getSetterBooleanValue(reset, context)?.value === false &&
+    hasClosedLoadingGeneration({ owner, request, token, update, context }) &&
+    hasProtectedRequestStartup(
+      body.slice(4),
+      startValue.setterKey,
+      firstRiskyAwait,
+      reset,
+      request,
+      owner,
+      context,
+      importerProof,
+    ) &&
+    !hasLexicalDynamicAccess(owner, context)
+  );
+};
+
 const hasClosedCommittedOpenFinalizer = (
   positive: ReadonlyArray<EsTreeNode>,
   resetNode: EsTreeNode,
@@ -3698,13 +3876,15 @@ const hasClosedCommittedOpenFinalizer = (
   const generationCheck = stripParenExpression(onlyIfGeneration);
   const comparison = getAsyncOwnershipComparison(generationCheck, context);
   const openRef = onlyIfOpen ? getReactRefCurrent(stripParenExpression(onlyIfOpen), context) : null;
+  const openCapture = onlyIfOpen && stripParenExpression(onlyIfOpen);
+  const renderAdjusted = isNodeOfType(openCapture, "Identifier");
   const owner = getOwningFunction(functionNode);
   const start = truthySets[0].node;
   if (
     comparison?.mode !== "owns" ||
     !isNodeOfType(generationCheck, "BinaryExpression") ||
     generationCheck.operator !== "===" ||
-    (!resetBeforeRequest && !openRef) ||
+    (!resetBeforeRequest && !openRef && !renderAdjusted) ||
     !(
       isNodeOfType(owner, "ArrowFunctionExpression") || isNodeOfType(owner, "FunctionDeclaration")
     ) ||
@@ -3743,7 +3923,8 @@ const hasClosedCommittedOpenFinalizer = (
     setter.references.length !== 3 ||
     !setter.references.every(
       ({ flag, identifier }) =>
-        flag === "read" && (!resetBeforeRequest || !isWithinAssignmentTarget(identifier)),
+        flag === "read" &&
+        (!(resetBeforeRequest || renderAdjusted) || !isWithinAssignmentTarget(identifier)),
     )
   ) {
     return false;
@@ -3753,6 +3934,36 @@ const hasClosedCommittedOpenFinalizer = (
       reference.identifier !== start.callee && reference.identifier !== resetNode.callee,
   );
   if (extra.length !== 1) return false;
+  if (renderAdjusted) {
+    const finalizerGuard = readSoleDirectFinalizerGuard(resetNode, functionNode.body.body.at(-1));
+    const direct = finalizerGuard && readDirectLogicalPair(finalizerGuard.test, "&&");
+    if (direct?.[0] !== generationCheck || direct[1] !== openCapture) return false;
+    const pair = readRenderLoadingPair({
+      owner,
+      request: functionNode,
+      extraSetterIdentifier: extra[0].identifier,
+      firstAwait: firstRiskyAwait.node,
+      context,
+    });
+    return Boolean(
+      pair &&
+      context.scopes.symbolFor(openCapture) === pair.openBinding &&
+      hasClosedRenderAdjustmentStartup(
+        pair,
+        owner,
+        functionNode,
+        token,
+        initializer,
+        start,
+        resetNode,
+        extra[0].identifier,
+        firstRiskyAwait,
+        context,
+        importerProof,
+      ) &&
+      verifyMountedPassiveLoadingPair(pair, owner, context),
+    );
+  }
   const pair = readPassiveLoadingPair({
     owner,
     request: functionNode,

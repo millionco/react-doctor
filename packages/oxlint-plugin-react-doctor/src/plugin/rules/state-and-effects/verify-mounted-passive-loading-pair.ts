@@ -15,12 +15,10 @@ import { walkAst } from "../../utils/walk-ast.js";
 import { hasNoOtherMountedLoadingTests } from "./has-no-other-mounted-loading-tests.js";
 import { readLoadingAsyncOwnershipBrowserCaller } from "./read-loading-async-ownership-browser-caller.js";
 import { readLoadingAsyncOwnershipJest } from "./read-loading-async-ownership-jest.js";
-import type { readPassiveLoadingPair } from "./read-passive-loading-pair.js";
-
-type PassivePair = NonNullable<ReturnType<typeof readPassiveLoadingPair>>;
+import type { MountedLoadingScope } from "./read-passive-loading-pair.js";
 
 export const verifyMountedPassiveLoadingPair = (
-  pair: PassivePair,
+  pair: MountedLoadingScope,
   owner: EsTreeNode,
   context: RuleContext,
 ): boolean => {

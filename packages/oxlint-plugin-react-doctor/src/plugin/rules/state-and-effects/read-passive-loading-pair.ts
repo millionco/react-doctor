@@ -12,27 +12,41 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 type PassiveResetMode = "after-request" | "before-request" | "after-request-with-cleanup";
 
-interface PassiveLoadingPairInput {
+interface RenderLoadingPairInput {
   readonly owner: EsTreeNode;
   readonly request: EsTreeNode;
   readonly extraSetterIdentifier: EsTreeNode;
   readonly firstAwait: EsTreeNodeOfType<"AwaitExpression">;
   readonly context: RuleContext;
+}
+
+interface PassiveLoadingPairInput extends RenderLoadingPairInput {
   readonly resetMode?: PassiveResetMode;
 }
 
-interface PassiveLoadingPair {
+export interface MountedLoadingScope {
   readonly viewProperty: string;
   readonly openProperty: string;
   readonly openBinding: SymbolDescriptor;
   readonly viewBinding: SymbolDescriptor;
   readonly getterBinding: SymbolDescriptor;
+  readonly contextHookCall: EsTreeNodeOfType<"CallExpression">;
+  readonly contextField: string;
+}
+
+interface PassiveLoadingPair extends MountedLoadingScope {
   readonly requestEffect: EsTreeNode;
   readonly requestCleanup: EsTreeNode | null;
   readonly resetBody: EsTreeNodeOfType<"BlockStatement">;
   readonly stableReset: NonNullable<ReturnType<typeof readStableCallback>>;
-  readonly contextHookCall: EsTreeNodeOfType<"CallExpression">;
-  readonly contextField: string;
+}
+
+interface RenderLoadingPair extends MountedLoadingScope {
+  readonly adjustment: EsTreeNodeOfType<"IfStatement">;
+}
+
+interface LoadingPairInput extends RenderLoadingPairInput {
+  readonly resetMode?: PassiveResetMode | "render-adjustment";
 }
 
 const hasReadonlyReferences = (binding: SymbolDescriptor): boolean =>
@@ -260,14 +274,15 @@ const hasClosedRequestUses = (
 // The reset effect's changing dependencies must also schedule the
 // request effect. Provider identity, mounting, and generation
 // ownership are checked independently by the caller.
-export const readPassiveLoadingPair = ({
+const readLoadingPair = ({
   owner,
   request,
   extraSetterIdentifier,
   firstAwait,
   context,
   resetMode = "after-request",
-}: PassiveLoadingPairInput): PassiveLoadingPair | null => {
+}: LoadingPairInput): PassiveLoadingPair | RenderLoadingPair | null => {
+  const renderAdjustment = resetMode === "render-adjustment";
   const resetBeforeRequest = resetMode === "before-request";
   const requireRequestCleanup = resetMode === "after-request-with-cleanup";
   if (!isFunctionLike(owner) || !isNodeOfType(owner.body, "BlockStatement")) return null;
@@ -350,7 +365,7 @@ export const readPassiveLoadingPair = ({
     !requestHook ||
     requestHook.callback !== request ||
     !requestHook.callback.async ||
-    requestHook.dependencies.length !== 2 ||
+    requestHook.dependencies.length !== (renderAdjustment ? 3 : 2) ||
     !usesDependency(requestHook.dependencies, view, context) ||
     !usesDependency(requestHook.dependencies, getter, context) ||
     requestBinding?.kind !== "const" ||
@@ -370,13 +385,74 @@ export const readPassiveLoadingPair = ({
     return null;
   }
   const open = readOpenReset(setterCall.arguments[0], getter, requireRequestCleanup, context);
+  if (open?.kind !== "parameter" || open.scope.node !== owner) return null;
+  const [parameter] = owner.params;
+  if (!parameter) return null;
+  if (
+    !hasCompleteSymbolReferences(view, owner, context.scopes) ||
+    !hasCompleteSymbolReferences(open, owner, context.scopes) ||
+    !hasReadonlyReferences(view) ||
+    !hasReadonlyReferences(open)
+  ) {
+    return null;
+  }
+  const viewProperty = readPlainPropertyBinding(parameter, view);
+  const openProperty = readPlainPropertyBinding(parameter, open);
+  const getterDeclaration = getter.declarationNode;
+  if (
+    !viewProperty ||
+    !openProperty ||
+    getter.kind !== "const" ||
+    !isNodeOfType(getterDeclaration, "VariableDeclarator") ||
+    getterDeclaration.parent?.parent !== owner.body ||
+    !isNodeOfType(getterDeclaration.init, "CallExpression") ||
+    getterDeclaration.init.optional ||
+    getterDeclaration.init.arguments.length !== 0 ||
+    !hasCompleteSymbolReferences(getter, owner, context.scopes) ||
+    !hasReadonlyReferences(getter)
+  ) {
+    return null;
+  }
+  const contextField = readPlainPropertyBinding(getterDeclaration.id, getter);
+  if (!contextField) return null;
+  const scope: MountedLoadingScope = {
+    viewProperty,
+    openProperty,
+    openBinding: open,
+    viewBinding: view,
+    getterBinding: getter,
+    contextHookCall: getterDeclaration.init,
+    contextField,
+  };
+  if (renderAdjustment) {
+    const block = setterCall.parent.parent;
+    const adjustment = block?.parent;
+    if (
+      !usesDependency(requestHook.dependencies, open, context) ||
+      !isNodeOfType(block, "BlockStatement") ||
+      !isNodeOfType(adjustment, "IfStatement") ||
+      adjustment.consequent !== block ||
+      adjustment.alternate ||
+      adjustment.parent !== owner.body
+    ) {
+      return null;
+    }
+    const adjustmentIndex = owner.body.body.findIndex((statement) => statement === adjustment);
+    const requestIndex = owner.body.body.findIndex((statement) => statement === declaration.parent);
+    if (adjustmentIndex < 0 || requestIndex <= adjustmentIndex) return null;
+    const launch = owner.body.body
+      .slice(requestIndex + 1)
+      .map((statement) => readOpenRequestLaunch(statement, open, requestBinding, context))
+      .find((item) => item !== null);
+    return launch && hasClosedRequestUses(requestBinding, launch, owner, context)
+      ? { ...scope, adjustment }
+      : null;
+  }
   const effectBlock = setterCall.parent.parent;
   const effectCallback = effectBlock?.parent;
   const effectCall = effectCallback?.parent;
   const effectStatement = effectCall?.parent;
   if (
-    open?.kind !== "parameter" ||
-    open.scope.node !== owner ||
     !effectCall ||
     !isNodeOfType(effectBlock, "BlockStatement") ||
     !isNodeOfType(effectStatement, "ExpressionStatement") ||
@@ -424,47 +500,17 @@ export const readPassiveLoadingPair = ({
     if (!launch || !hasClosedRequestUses(requestBinding, launch, owner, context)) return null;
   }
 
-  const [parameter] = owner.params;
-  if (!parameter) return null;
-  if (
-    !hasCompleteSymbolReferences(view, owner, context.scopes) ||
-    !hasCompleteSymbolReferences(open, owner, context.scopes) ||
-    !hasReadonlyReferences(view) ||
-    !hasReadonlyReferences(open)
-  ) {
-    return null;
-  }
-  const viewProperty = readPlainPropertyBinding(parameter, view);
-  const openProperty = readPlainPropertyBinding(parameter, open);
-  const getterDeclaration = getter.declarationNode;
-  if (
-    !viewProperty ||
-    !openProperty ||
-    getter.kind !== "const" ||
-    !isNodeOfType(getterDeclaration, "VariableDeclarator") ||
-    getterDeclaration.parent?.parent !== owner.body ||
-    !isNodeOfType(getterDeclaration.init, "CallExpression") ||
-    getterDeclaration.init.optional ||
-    getterDeclaration.init.arguments.length !== 0 ||
-    !hasCompleteSymbolReferences(getter, owner, context.scopes) ||
-    !hasReadonlyReferences(getter)
-  ) {
-    return null;
-  }
-  const contextField = readPlainPropertyBinding(getterDeclaration.id, getter);
-  return contextField
-    ? {
-        viewProperty,
-        openProperty,
-        openBinding: open,
-        viewBinding: view,
-        getterBinding: getter,
-        requestEffect,
-        requestCleanup,
-        resetBody: effectBlock,
-        stableReset,
-        contextHookCall: getterDeclaration.init,
-        contextField,
-      }
-    : null;
+  return { ...scope, requestEffect, requestCleanup, resetBody: effectBlock, stableReset };
+};
+
+export const readPassiveLoadingPair = (
+  input: PassiveLoadingPairInput,
+): PassiveLoadingPair | null => {
+  const pair = readLoadingPair(input);
+  return pair && "stableReset" in pair ? pair : null;
+};
+
+export const readRenderLoadingPair = (input: RenderLoadingPairInput): RenderLoadingPair | null => {
+  const pair = readLoadingPair({ ...input, resetMode: "render-adjustment" });
+  return pair && "adjustment" in pair ? pair : null;
 };

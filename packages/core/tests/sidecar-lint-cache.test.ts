@@ -7,6 +7,7 @@ import {
   SIDECAR_LINT_CACHE_FILENAME,
   SIDECAR_LINT_CACHE_SCHEMA_VERSION,
 } from "../src/constants.js";
+import { createSidecarProbeAnswerResolver } from "../src/runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "../src/runners/oxlint/sidecar-lint-cache.js";
 import type {
   SidecarDependencyProbe,
@@ -66,6 +67,40 @@ const answerFromProbes =
     probes.find((probe) => probe.kind === kind && probe.path === probePath)?.answer ?? "absent";
 
 describe("createSidecarLintCache", () => {
+  it.skipIf(process.platform === "win32")(
+    "invalidates a launcher retargeted to identical bytes",
+    () => {
+      const root = makeCacheDir();
+      const first = path.join(root, "stock");
+      const second = path.join(root, "alternative");
+      const launcher = path.join(root, "launcher");
+      fs.writeFileSync(first, "same entry bytes");
+      fs.writeFileSync(second, "same entry bytes");
+      fs.symlinkSync(first, launcher);
+      const resolve = () =>
+        createSidecarProbeAnswerResolver({
+          rootDirectory: root,
+          contentHashByRelativePath: new Map(),
+        });
+      const cache = createSidecarLintCache(root, "launcher-test");
+      const probe = cache.internProbe(
+        "exists",
+        "launcher",
+        resolve().answerFor("exists", "launcher"),
+      );
+      const result = { probeIds: [probe], diagnostics: [] };
+      cache.store("source unchanged", result);
+      cache.persist();
+      const restored = createSidecarLintCache(root, "launcher-test");
+      const saved = restored.lookup("source unchanged")!;
+      expect(restored.isReplayable(saved, resolve().answerFor)).toBe(true);
+      fs.unlinkSync(launcher);
+      fs.symlinkSync(second, launcher);
+      const nextScan = createSidecarLintCache(root, "launcher-test");
+      const nextSaved = nextScan.lookup("source unchanged")!;
+      expect(nextScan.isReplayable(nextSaved, resolve().answerFor)).toBe(false);
+    },
+  );
   it("preserves explicit ownership through disk replay", () => {
     const cacheDirectory = makeCacheDir();
     const expected = diagnostic({ contextRanges: [{ offset: 12, length: 34 }] });

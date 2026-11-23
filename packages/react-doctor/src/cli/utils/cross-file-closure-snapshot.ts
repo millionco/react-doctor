@@ -38,10 +38,13 @@ const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): s
       return [filename, bytes === null ? "absent" : hash(bytes)];
     });
     const existence = snapshot.existencePaths.map((filename) => {
+      const lexical = fs.lstatSync(filename, { throwIfNoEntry: false });
+      const target = lexical?.isSymbolicLink() ? fs.realpathSync(filename) : null;
       const stat = fs.statSync(filename, { throwIfNoEntry: false });
       return [
         filename,
         !stat ? "missing" : stat.isFile() ? "file" : stat.isDirectory() ? "directory" : "other",
+        target,
       ];
     });
     const directories = snapshot.directoryPaths.map((filename) => {
@@ -96,6 +99,8 @@ export const createCrossFileClosureSnapshot = (
       )
         continue;
       const ruleIds = ["rules-of-hooks", "no-pass-live-state-to-parent"];
+      if (hasEscapedIdentifier || (sourceText.includes("for") && sourceText.includes("of")))
+        ruleIds.push("effect-needs-cleanup");
       if (
         hasEscapedIdentifier ||
         sourceText.includes("useEffect") ||

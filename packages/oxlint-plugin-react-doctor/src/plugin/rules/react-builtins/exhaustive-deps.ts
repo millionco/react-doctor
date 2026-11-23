@@ -59,7 +59,11 @@ import {
 } from "./exhaustive-deps-messages.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
-import { endsWithDisabledTerminalStateGuard } from "./exhaustive-deps-disabled-terminal-state.js";
+import {
+  endsWithDisabledTerminalStateGuard,
+  hasNeverArmedTerminalStateReset,
+  hasUnreachableRefGuardedStateWrite,
+} from "./exhaustive-deps-disabled-terminal-state.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
   getFunctionValueNode,
@@ -1730,7 +1734,9 @@ const findRenderChangingStateSetterName = (
       if (
         descriptor &&
         isProvablyRenderChangingSetterCall(current, scopes) &&
-        !endsWithDisabledTerminalStateGuard(node, current, scopes, filename)
+        !endsWithDisabledTerminalStateGuard(node, current, scopes, filename) &&
+        !hasUnreachableRefGuardedStateWrite(node, current, scopes, filename) &&
+        !hasNeverArmedTerminalStateReset(node, current, scopes, filename)
       ) {
         setterName = descriptor.setterSymbol.name;
         return;

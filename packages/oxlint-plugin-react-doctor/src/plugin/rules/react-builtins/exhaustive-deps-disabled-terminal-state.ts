@@ -77,13 +77,11 @@ const sameFunctionBody = (body: EsTreeNode, node: EsTreeNode): boolean => {
 // A callback declared under this early return cannot perform any of the
 // alternate writes when its owner received no value for the checked prop.
 const findWriterGate = (
-  reference: EsTreeNode,
+  write: EsTreeNode,
   component: EsTreeNode,
   scopes: ScopeAnalysis,
 ): SymbolDescriptor | null => {
-  const call = reference.parent;
-  if (!isNodeOfType(call, "CallExpression") || call.callee !== reference) return null;
-  let writer = findEnclosingFunction(call);
+  let writer = findEnclosingFunction(write);
   while (writer && writer !== component) {
     const parent = findEnclosingFunction(writer);
     if (parent === component) break;
@@ -91,7 +89,7 @@ const findWriterGate = (
   }
   if (!writer || writer === component || !isFunctionLike(writer)) return null;
   const body = writer.body;
-  if (!isNodeOfType(body, "BlockStatement") || !sameFunctionBody(body, call)) return null;
+  if (!isNodeOfType(body, "BlockStatement") || !sameFunctionBody(body, write)) return null;
   const [guard] = body.body;
   if (!isNodeOfType(guard, "IfStatement") || guard.alternate) return null;
   const consequent =
@@ -212,12 +210,346 @@ export const endsWithDisabledTerminalStateGuard = (
   for (const reference of pair.setterSymbol.references) {
     if (reference.identifier === setterReference) continue;
     if (reference.flag !== "read") return false;
-    const gate = findWriterGate(reference.identifier, component, scopes);
+    const call = reference.identifier.parent;
+    if (!isNodeOfType(call, "CallExpression") || call.callee !== reference.identifier) return false;
+    const gate = findWriterGate(call, component, scopes);
     if (!gate || (prop && gate !== prop)) return false;
     prop = gate;
   }
   if (!prop) return false;
   const propName = resolveSimplePropName(component, prop);
+  return (
+    propName !== null && isPropOmittedByPrivateJsxConsumers(component, scopes, filename, propName)
+  );
+};
+
+const isNullLiteral = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "Literal") && node.value === null;
+
+const resolveOmittedCallbackProp = (
+  gate: SymbolDescriptor,
+  component: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const direct = resolveSimplePropName(component, gate);
+  if (direct !== null) return direct;
+  const initializer = getDirectConstInitializer(gate);
+  if (
+    !initializer ||
+    findEnclosingFunction(initializer) !== component ||
+    !isNodeOfType(initializer, "LogicalExpression") ||
+    initializer.operator !== "??" ||
+    !isNodeOfType(initializer.left, "Identifier") ||
+    !isNullLiteral(initializer.right)
+  )
+    return null;
+  const prop = scopes.symbolFor(initializer.left);
+  return prop ? resolveSimplePropName(component, prop) : null;
+};
+
+const isCurrentMember = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.computed &&
+  getStaticPropertyName(node) === "current";
+
+const findDisabledRefProp = (
+  ref: SymbolDescriptor,
+  component: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
+  let propName: string | null = null;
+  for (const { flag, identifier } of ref.references) {
+    const member = identifier.parent;
+    if (
+      flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== identifier ||
+      !isCurrentMember(member)
+    )
+      return null;
+    if (!isWithinAssignmentTarget(member)) continue;
+    const write = member.parent;
+    if (
+      !isNodeOfType(write, "AssignmentExpression") ||
+      write.operator !== "=" ||
+      write.left !== member ||
+      member.optional
+    )
+      return null;
+    if (isNullLiteral(stripParenExpression(write.right))) continue;
+    const gate = findWriterGate(write, component, scopes);
+    const writtenBy = gate && resolveOmittedCallbackProp(gate, component, scopes);
+    if (writtenBy === null || (propName !== null && writtenBy !== propName)) return null;
+    propName = writtenBy;
+  }
+  return propName;
+};
+
+export const hasUnreachableRefGuardedStateWrite = (
+  callback: EsTreeNode,
+  setterReference: EsTreeNode,
+  scopes: ScopeAnalysis,
+  filename: string | undefined,
+): boolean => {
+  if (!filename || !/\.[jt]sx$/.test(filename)) return false;
+  const call = setterReference.parent;
+  const statement = call?.parent;
+  const branch = statement?.parent;
+  const guard = branch?.parent;
+  const body = guard?.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.callee !== setterReference ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    !isNodeOfType(branch, "BlockStatement") ||
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.consequent !== branch ||
+    !isNodeOfType(body, "BlockStatement") ||
+    body.parent !== callback ||
+    body.body[1] !== guard
+  )
+    return false;
+
+  let predicate = stripParenExpression(guard.test);
+  while (isNodeOfType(predicate, "LogicalExpression") && predicate.operator === "&&") {
+    predicate = stripParenExpression(predicate.left);
+  }
+  if (
+    !isNodeOfType(predicate, "BinaryExpression") ||
+    predicate.operator !== "!==" ||
+    !isNodeOfType(predicate.left, "Identifier") ||
+    !isNullLiteral(predicate.right)
+  )
+    return false;
+
+  const snapshot = scopes.symbolFor(predicate.left);
+  const read = snapshot && getDirectConstInitializer(snapshot);
+  const declaration = body.body[0];
+  if (
+    !read ||
+    !isNodeOfType(read, "MemberExpression") ||
+    !isCurrentMember(read) ||
+    !isNodeOfType(read.object, "Identifier") ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    declaration.declarations[0]?.init !== read
+  )
+    return false;
+
+  const component = findEnclosingFunction(callback);
+  const ref = scopes.symbolFor(read.object);
+  const initialized = ref && getDirectConstInitializer(ref);
+  if (
+    !component ||
+    !ref ||
+    !initialized ||
+    findEnclosingFunction(initialized) !== component ||
+    !isNodeOfType(initialized, "CallExpression") ||
+    !isReactApiCall(initialized, "useRef", scopes) ||
+    initialized.arguments.length !== 1 ||
+    !initialized.arguments[0] ||
+    !isNullLiteral(initialized.arguments[0]) ||
+    hasOpaqueLexicalAccess(component)
+  )
+    return false;
+
+  const propName = findDisabledRefProp(ref, component, scopes);
+  return (
+    propName !== null && isPropOmittedByPrivateJsxConsumers(component, scopes, filename, propName)
+  );
+};
+
+const isPrivateStateOrLocalViewRead = (state: SymbolDescriptor, scopes: ScopeAnalysis): boolean =>
+  state.references.every((reference) => {
+    const parent = reference.identifier.parent;
+    if (
+      reference.flag !== "read" ||
+      !isNodeOfType(parent, "VariableDeclarator") ||
+      parent.init !== reference.identifier ||
+      !isNodeOfType(parent.id, "Identifier")
+    )
+      return isPrivateStateRead({ ...state, references: [reference] }, scopes, false);
+    const local = scopes.symbolFor(parent.id);
+    return (
+      local?.kind === "let" &&
+      local.bindingIdentifier === parent.id &&
+      local.references.every((use) => {
+        const target = use.identifier.parent;
+        if (
+          isNodeOfType(target, "AssignmentExpression") &&
+          target.operator === "=" &&
+          target.left === use.identifier
+        )
+          return true;
+        // React stores this identity for comparison without exposing the state.
+        if (
+          use.flag === "read" &&
+          isNodeOfType(target, "ArrayExpression") &&
+          isNodeOfType(target.parent, "CallExpression") &&
+          target.parent.arguments.length === 2 &&
+          target.parent.arguments[1] === target &&
+          isReactApiCall(target.parent, "useCallback", scopes)
+        )
+          return true;
+        return isPrivateStateRead({ ...local, references: [use] }, scopes, false);
+      })
+    );
+  });
+
+const isTerminalResetArm = (
+  write: EsTreeNode,
+  component: EsTreeNode,
+  state: SymbolDescriptor,
+  member: string,
+  terminal: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const statement = write.parent;
+  const block = statement?.parent;
+  const guard = block?.parent;
+  if (
+    !isNodeOfType(block, "BlockStatement") ||
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.consequent !== block ||
+    findEnclosingFunction(write) !== component
+  )
+    return false;
+  const test = stripParenExpression(guard.test);
+  return (
+    isNodeOfType(test, "BinaryExpression") &&
+    test.operator === "!==" &&
+    isNodeOfType(test.left, "MemberExpression") &&
+    isNodeOfType(test.left.object, "Identifier") &&
+    scopes.symbolFor(test.left.object) === state &&
+    getStaticPropertyName(test.left) === member &&
+    isNodeOfType(test.right, "Literal") &&
+    test.right.value === terminal
+  );
+};
+
+export const hasNeverArmedTerminalStateReset = (
+  callback: EsTreeNode,
+  setterReference: EsTreeNode,
+  scopes: ScopeAnalysis,
+  filename: string | undefined,
+): boolean => {
+  if (!filename || !/\.[jt]sx$/.test(filename)) return false;
+  const call = setterReference.parent;
+  const statement = call?.parent;
+  const branch = statement?.parent;
+  const guard = branch?.parent;
+  const body = guard?.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.callee !== setterReference ||
+    call.arguments.length !== 1 ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    !isNodeOfType(branch, "BlockStatement") ||
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.consequent !== branch ||
+    !isNodeOfType(body, "BlockStatement") ||
+    body.parent !== callback ||
+    body.body.length !== 1
+  )
+    return false;
+  const test = stripParenExpression(guard.test);
+  if (
+    !isNodeOfType(test, "MemberExpression") ||
+    !isCurrentMember(test) ||
+    !isNodeOfType(test.object, "Identifier")
+  )
+    return false;
+
+  const component = findEnclosingFunction(callback);
+  const ref = scopes.symbolFor(test.object);
+  const refInit = ref && getDirectConstInitializer(ref);
+  const pair = resolveReactUseStatePair(setterReference, scopes);
+  const state = pair?.stateSymbol;
+  const stateInit = pair?.declarator.init;
+  if (
+    !component ||
+    !ref ||
+    !refInit ||
+    findEnclosingFunction(refInit) !== component ||
+    !isNodeOfType(refInit, "CallExpression") ||
+    !isReactApiCall(refInit, "useRef", scopes) ||
+    refInit.arguments.length !== 1 ||
+    !isNodeOfType(refInit.arguments[0], "Literal") ||
+    refInit.arguments[0].value !== false ||
+    !pair ||
+    !state ||
+    state.kind !== "const" ||
+    pair.setterSymbol.kind !== "const" ||
+    !isNodeOfType(stateInit, "CallExpression") ||
+    !isReactApiCall(stateInit, "useState", scopes) ||
+    findEnclosingFunction(stateInit) !== component ||
+    !isPrivateStateOrLocalViewRead(state, scopes) ||
+    hasOpaqueLexicalAccess(component)
+  )
+    return false;
+
+  let arm: EsTreeNode | undefined;
+  for (const { flag, identifier } of ref.references) {
+    const member = identifier.parent;
+    if (
+      flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== identifier ||
+      !isCurrentMember(member)
+    )
+      return false;
+    if (!isWithinAssignmentTarget(member)) continue;
+    const write = member.parent;
+    if (
+      !isNodeOfType(write, "AssignmentExpression") ||
+      write.operator !== "=" ||
+      write.left !== member ||
+      member.optional ||
+      !isNodeOfType(write.right, "Literal")
+    )
+      return false;
+    if (write.right.value === false) continue;
+    if (write.right.value !== true || arm) return false;
+    arm = write;
+  }
+
+  const armGuard = arm?.parent?.parent?.parent;
+  const armTest = isNodeOfType(armGuard, "IfStatement")
+    ? stripParenExpression(armGuard.test)
+    : null;
+  if (
+    !arm ||
+    !isNodeOfType(armTest, "BinaryExpression") ||
+    !isNodeOfType(armTest.left, "MemberExpression") ||
+    !isNodeOfType(armTest.right, "Literal") ||
+    typeof armTest.right.value !== "string"
+  )
+    return false;
+  const member = getStaticPropertyName(armTest.left);
+  const terminal = armTest.right.value;
+  const initial = stateInit.arguments[0];
+  const reset = call.arguments[0];
+  if (
+    !member ||
+    !initial ||
+    !reset ||
+    !isTerminalResetArm(arm, component, state, member, terminal, scopes) ||
+    !hasPlainTerminalValue(initial, member, terminal) ||
+    !hasPlainTerminalValue(reset, member, terminal)
+  )
+    return false;
+
+  let propName: string | null = null;
+  for (const { flag, identifier } of pair.setterSymbol.references) {
+    if (identifier === setterReference) continue;
+    const write = identifier.parent;
+    if (flag !== "read" || !isNodeOfType(write, "CallExpression") || write.callee !== identifier)
+      return false;
+    const gate = findWriterGate(write, component, scopes);
+    const writtenBy = gate && resolveOmittedCallbackProp(gate, component, scopes);
+    if (writtenBy === null || (propName !== null && writtenBy !== propName)) return false;
+    propName = writtenBy;
+  }
   return (
     propName !== null && isPropOmittedByPrivateJsxConsumers(component, scopes, filename, propName)
   );
@@ -241,15 +573,32 @@ export const collectDisabledTerminalGuardDependencies = (
     if (!argument) return;
     const callback = stripParenExpression(argument);
     if (!isFunctionLike(callback) || !isNodeOfType(callback.body, "BlockStatement")) return;
-    const [guard] = callback.body.body;
+    const [terminalGuard, refGuard] = callback.body.body;
     if (
-      !isNodeOfType(guard, "IfStatement") ||
-      !isNodeOfType(guard.consequent, "ExpressionStatement")
-    )
-      return;
-    const setter = guard.consequent.expression;
-    if (isNodeOfType(setter, "CallExpression") && isNodeOfType(setter.callee, "Identifier")) {
-      endsWithDisabledTerminalStateGuard(callback, setter.callee, scopes, filename);
+      isNodeOfType(terminalGuard, "IfStatement") &&
+      isNodeOfType(terminalGuard.consequent, "ExpressionStatement")
+    ) {
+      const setter = terminalGuard.consequent.expression;
+      if (isNodeOfType(setter, "CallExpression") && isNodeOfType(setter.callee, "Identifier")) {
+        endsWithDisabledTerminalStateGuard(callback, setter.callee, scopes, filename);
+      }
+    }
+    for (const [guard, prove] of [
+      [refGuard, hasUnreachableRefGuardedStateWrite],
+      [terminalGuard, hasNeverArmedTerminalStateReset],
+    ] as const) {
+      if (!isNodeOfType(guard, "IfStatement") || !isNodeOfType(guard.consequent, "BlockStatement"))
+        continue;
+      for (const statement of guard.consequent.body) {
+        if (!isNodeOfType(statement, "ExpressionStatement")) continue;
+        const setter = statement.expression;
+        if (
+          isNodeOfType(setter, "CallExpression") &&
+          isNodeOfType(setter.callee, "Identifier") &&
+          resolveReactUseStatePair(setter.callee, scopes)
+        )
+          prove(callback, setter.callee, scopes, filename);
+      }
     }
   });
 };

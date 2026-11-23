@@ -34,6 +34,8 @@ export interface CrossFileProbeTrace {
   /** Paths whose existence classification (file / dir / none) was consulted. */
   readonly existencePaths: Set<string>;
   readonly directoryPaths: Set<string>;
+  /** Paths whose resolved filesystem identity was consulted. */
+  readonly realpathPaths: Set<string>;
   /** Paths whose content (bytes, exports, parse) was consulted. */
   readonly contentPaths: Set<string>;
 }
@@ -57,6 +59,10 @@ export const recordDirectoryProbe = (absolutePath: string): void => {
   activeProbeTrace?.directoryPaths.add(absolutePath);
 };
 
+export const recordRealpathProbe = (absolutePath: string): void => {
+  activeProbeTrace?.realpathPaths.add(absolutePath);
+};
+
 export const isProbeRecorderActive = (): boolean => activeProbeTrace !== null;
 
 // Captures a helper's probes separately while preserving the complete outer
@@ -68,6 +74,7 @@ export const captureCrossFileProbes = <Value>(
   const trace: CrossFileProbeTrace = {
     existencePaths: new Set<string>(),
     directoryPaths: new Set<string>(),
+    realpathPaths: new Set<string>(),
     contentPaths: new Set<string>(),
   };
   activeProbeTrace = trace;
@@ -78,6 +85,7 @@ export const captureCrossFileProbes = <Value>(
     if (previousTrace !== null) {
       for (const directoryPath of trace.directoryPaths)
         previousTrace.directoryPaths.add(directoryPath);
+      for (const realpathPath of trace.realpathPaths) previousTrace.realpathPaths.add(realpathPath);
       for (const existencePath of trace.existencePaths) {
         previousTrace.existencePaths.add(existencePath);
       }
@@ -94,6 +102,7 @@ export const replayCrossFileProbes = (trace: CrossFileProbeTrace): void => {
   if (activeProbeTrace === null) return;
   for (const directoryPath of trace.directoryPaths)
     activeProbeTrace.directoryPaths.add(directoryPath);
+  for (const realpathPath of trace.realpathPaths) activeProbeTrace.realpathPaths.add(realpathPath);
   for (const existencePath of trace.existencePaths) {
     activeProbeTrace.existencePaths.add(existencePath);
   }

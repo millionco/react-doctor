@@ -12,11 +12,13 @@ export const collectFileProbeTrace = (
   ruleIds: ReadonlyArray<string>,
 ): ReturnType<CollectCrossFileDependencyProbes> | null => {
   try {
-    return collect({
+    const trace = collect({
       absoluteFilePath,
       sourceText: fs.readFileSync(absoluteFilePath, "utf8"),
       ruleIds,
     });
+    // A collector from an older plugin cannot certify this cache entry.
+    return trace?.realpathPaths instanceof Set ? trace : null;
   } catch {
     return null;
   }

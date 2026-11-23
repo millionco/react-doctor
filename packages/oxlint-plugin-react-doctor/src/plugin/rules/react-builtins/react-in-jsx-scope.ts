@@ -4,6 +4,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { hasAutomaticClassicRemixJsx } from "../../utils/has-automatic-classic-remix-jsx.js";
 import { hasAutomaticElectronRendererJsx } from "../../utils/has-automatic-electron-renderer-jsx.js";
 import { hasAutomaticStockCraJsx } from "../../utils/has-automatic-stock-cra-jsx.js";
+import { hasStockCraRawTextModule } from "../../utils/has-stock-cra-raw-text-module.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
@@ -37,6 +38,8 @@ export const reactInJsxScope = defineRule({
   recommendation:
     "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
   create: (context) => {
+    let rawTextModule: boolean | undefined;
+    const isRawTextModule = () => (rawTextModule ??= hasStockCraRawTextModule(context));
     let hasAutomaticFactory: boolean | undefined;
     const usesAutomaticFactory = () => {
       hasAutomaticFactory ??=
@@ -49,14 +52,16 @@ export const reactInJsxScope = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (
           findVariableInitializer(node, "React") ||
-          (!jsxTagEvaluatesReact(node.name) && usesAutomaticFactory())
+          (!jsxTagEvaluatesReact(node.name) && usesAutomaticFactory()) ||
+          isRawTextModule()
         ) {
           return;
         }
         context.report({ node: node.name, message: MESSAGE });
       },
       JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-        if (findVariableInitializer(node, "React") || usesAutomaticFactory()) return;
+        if (findVariableInitializer(node, "React") || usesAutomaticFactory() || isRawTextModule())
+          return;
         context.report({ node: node.openingFragment, message: MESSAGE });
       },
     };

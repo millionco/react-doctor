@@ -44,6 +44,28 @@ const hasVerifiedCraSnapshot = (root: string): boolean => {
   stockSnapshotByRoot.set(root, verified);
   return verified;
 };
+// Public CRA/Webpack/raw-loader release profile. No application bytes occur
+// in the catalogue; local runtime source links have a separate census.
+const RAW_TEXT_COMPILER_SNAPSHOT = {
+  packages: 1520,
+  members: 42_108,
+  contentDigest: "ec96ee98f8af6af7d4405404c0f31846405d956def7d948aa38ad5dacea83c2f",
+} as const;
+
+export const hasVerifiedCraRawSnapshot = (
+  root: string,
+  runtimeLinks: ReadonlyMap<string, string>,
+): boolean => {
+  const key = JSON.stringify(["raw-text", root, [...runtimeLinks].sort()]);
+  if (!useManagedSnapshotCache || isProbeRecorderActive())
+    return verifyStockNpmCompilerSnapshot(root, RAW_TEXT_COMPILER_SNAPSHOT, runtimeLinks);
+  const cached = stockSnapshotByRoot.get(key);
+  if (cached !== undefined) return cached;
+  const verified = verifyStockNpmCompilerSnapshot(root, RAW_TEXT_COMPILER_SNAPSHOT, runtimeLinks);
+  stockSnapshotByRoot.set(key, verified);
+  return verified;
+};
+
 const STOCK_SCRIPTS: Readonly<Record<string, string>> = {
   build: "react-scripts build",
   start: "react-scripts start",
@@ -84,7 +106,7 @@ const stat = (filename: string): fs.Stats | undefined =>
   fs.lstatSync(filename, { throwIfNoEntry: false });
 const exists = (filename: string): boolean => stat(filename) !== undefined;
 
-const hasLocalEslintConfig = (directory: string): boolean =>
+export const hasLocalEslintConfig = (directory: string): boolean =>
   ESLINT_CONFIG_NAMES.some((name) => exists(path.join(directory, name)));
 
 const hasUnambiguousParentConfiguration = (root: string): boolean => {
@@ -116,7 +138,7 @@ const jsonObject = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
-const readsStockProjectManifest = (root: string): boolean => {
+const readsStockProjectManifest = (root: string, rawText: boolean): boolean => {
   const bytes = readProviderMember(path.join(root, "package.json"));
   if (!bytes || bytes.length > 64 * 1024) return false;
   const manifest = jsonObject(JSON.parse(bytes.toString("utf8")));
@@ -139,8 +161,45 @@ const readsStockProjectManifest = (root: string): boolean => {
     !["browser", "workspaces", "jest", "svgr"].some((key) => Object.hasOwn(manifest, key)) &&
     (!Object.hasOwn(manifest, "eslintConfig") ||
       (eslintConfig &&
-        Object.keys(eslintConfig).length === 1 &&
+        (Object.keys(eslintConfig).length === 1 ||
+          (rawText && hasPassiveSnippetEslintOverrides(eslintConfig))) &&
         JSON.stringify(eslintConfig.extends) === '["react-app","react-app/jest"]')),
+  );
+};
+
+// These settings disable linter diagnostics only; they cannot add executable plugins.
+const hasPassiveSnippetEslintOverrides = (config: Record<string, unknown>): boolean => {
+  if (Object.keys(config).some((name) => !["extends", "rules", "overrides"].includes(name)))
+    return false;
+  const rules = jsonObject(config.rules);
+  if (
+    !rules ||
+    Object.keys(rules).length !== 1 ||
+    rules["import/no-webpack-loader-syntax"] !== "off"
+  )
+    return false;
+  if (!Array.isArray(config.overrides) || config.overrides.length !== 1) return false;
+  const override = jsonObject(config.overrides[0]);
+  if (!override || Object.keys(override).length !== 2) return false;
+  if (
+    !Array.isArray(override.files) ||
+    !override.files.length ||
+    override.files.length > 16 ||
+    !override.files.every(
+      (glob) =>
+        typeof glob === "string" &&
+        glob.length > 0 &&
+        glob.length <= 256 &&
+        /^[a-zA-Z0-9_./*?{},!-]+$/u.test(glob),
+    )
+  )
+    return false;
+  const disabled = jsonObject(override.rules);
+  return Boolean(
+    disabled &&
+    Object.keys(disabled).length === 2 &&
+    disabled["react/jsx-no-undef"] === "off" &&
+    disabled["no-undef"] === "off",
   );
 };
 
@@ -245,19 +304,27 @@ const hasStockSourceSelection = (
   });
 };
 
-export const hasAutomaticStockCraJsx = (context: RuleContext): boolean => {
+export interface StockCraCompilerRoute {
+  readonly root: string;
+  readonly filename: string;
+  readonly sourceDirectory: string;
+}
+
+export const readStockCraCompilerRoute = (
+  context: RuleContext,
+  rawText = false,
+): StockCraCompilerRoute | null => {
   const projectRoot = getReactDoctorStringSetting(context.settings, "rootDirectory");
-  if (!projectRoot || !path.isAbsolute(projectRoot) || !context.filename?.endsWith(".jsx")) {
-    return false;
-  }
+  if (!projectRoot || !path.isAbsolute(projectRoot) || !context.filename?.endsWith(".jsx"))
+    return null;
   const root = path.resolve(projectRoot);
   const filename = path.resolve(root, context.filename);
   const sourceDirectory = path.join(root, "src");
-  if (!isPathInside(filename, sourceDirectory)) return false;
+  if (!isPathInside(filename, sourceDirectory)) return null;
   try {
     if (
       fs.realpathSync(root) !== root ||
-      !readsStockProjectManifest(root) ||
+      !readsStockProjectManifest(root, rawText) ||
       !hasUnambiguousParentConfiguration(root) ||
       !hasPhysicalAppTemplate(root) ||
       PROJECT_OVERRIDES.some((name) => exists(path.join(root, name))) ||
@@ -266,12 +333,23 @@ export const hasAutomaticStockCraJsx = (context: RuleContext): boolean => {
       !hasExpectedNpmLauncher(
         path.join(root, "node_modules", ".bin", "react-scripts"),
         "../react-scripts/bin/react-scripts.js",
-      ) ||
-      !hasStockSourceSelection(sourceDirectory, filename, context)
-    ) {
-      return false;
-    }
-    return hasVerifiedCraSnapshot(root);
+      )
+    )
+      return null;
+    return { root, filename, sourceDirectory };
+  } catch {
+    return null;
+  }
+};
+
+export const hasAutomaticStockCraJsx = (context: RuleContext): boolean => {
+  const route = readStockCraCompilerRoute(context);
+  if (!route) return false;
+  try {
+    return (
+      hasStockSourceSelection(route.sourceDirectory, route.filename, context) &&
+      hasVerifiedCraSnapshot(route.root)
+    );
   } catch {
     return false;
   }

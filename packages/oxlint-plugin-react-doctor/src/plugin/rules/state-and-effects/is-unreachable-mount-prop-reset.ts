@@ -4,10 +4,17 @@ import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-settin
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPathInside } from "../../utils/is-path-inside.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { readNamedNegatedEffectProp } from "./find-negated-effect-prop.js";
+import {
+  readNamedNegatedEffectProp,
+  readNamedNegatedMountEffect,
+} from "./find-negated-effect-prop.js";
 import { hasOnlyTruthyVitePropConsumers } from "./has-only-truthy-vite-prop-consumers.js";
 
-export const createMountPropResetProof = (context: RuleContext) => {
+const createMountPropProof = (
+  context: RuleContext,
+  readGuard: typeof readNamedNegatedEffectProp,
+  requireCompleteMountCoverage: boolean,
+) => {
   const proofByProperty = new Map<string, boolean>();
   return (writer: EsTreeNode, effect: EsTreeNode): boolean => {
     const root = getReactDoctorStringSetting(context.settings, "rootDirectory");
@@ -17,7 +24,7 @@ export const createMountPropResetProof = (context: RuleContext) => {
     let program = writer;
     while (program.parent) program = program.parent;
     if (!isNodeOfType(program, "Program")) return false;
-    const proof = readNamedNegatedEffectProp(writer, program, context.scopes);
+    const proof = readGuard(writer, program, context.scopes);
     if (!proof || proof.effect !== effect) return false;
     const key = proof.name + "\u0000" + proof.property;
     let accepted = proofByProperty.get(key);
@@ -29,9 +36,18 @@ export const createMountPropResetProof = (context: RuleContext) => {
         property: proof.property,
         program,
         scopes: context.scopes,
+        requireCompleteMountCoverage,
       });
       proofByProperty.set(key, accepted);
     }
     return accepted;
   };
+};
+
+export const createMountPropResetProof = (context: RuleContext) =>
+  createMountPropProof(context, readNamedNegatedEffectProp, false);
+
+export const createUnreachableMountEffectProof = (context: RuleContext) => {
+  const verify = createMountPropProof(context, readNamedNegatedMountEffect, true);
+  return (effect: EsTreeNode): boolean => verify(effect, effect);
 };

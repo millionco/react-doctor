@@ -7,7 +7,6 @@ import {
 import { hasClosedResetFirstPreviewDisposal } from "./read-reset-first-preview-disposal.js";
 import {
   readDismissiveLoadingPair,
-  isDirectNamedReactHookCall,
   readLocallyCancelledLoadingPair,
   readPassiveLoadingPair,
   readRenderLoadingPair,
@@ -50,6 +49,7 @@ import {
   isPromiseResolveCall,
   subtreeContainsThrow,
 } from "../../utils/is-never-rejecting-expression.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
@@ -4431,7 +4431,7 @@ const hasProtectedCompanionLoadingWriter = (
     companion.params.length !== 0 ||
     !isNodeOfType(companion.body, "BlockStatement") ||
     !isNodeOfType(hook, "CallExpression") ||
-    !isDirectNamedReactHookCall(hook, "useCallback", context) ||
+    !isDirectNamedReactHookCall(hook, "useCallback", context.scopes) ||
     hook.arguments[0] !== companion ||
     !isNodeOfType(declaration, "VariableDeclarator") ||
     declaration.init !== hook ||

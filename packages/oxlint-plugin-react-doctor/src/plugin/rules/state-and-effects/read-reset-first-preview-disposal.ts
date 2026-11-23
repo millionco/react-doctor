@@ -2,14 +2,12 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import {
-  isDirectNamedReactHookCall,
-  type readPassiveLoadingPair,
-} from "./read-passive-loading-pair.js";
+import type { readPassiveLoadingPair } from "./read-passive-loading-pair.js";
 
 type StablePreviewDisposal = Pick<
   NonNullable<ReturnType<typeof readPassiveLoadingPair>>,
@@ -108,7 +106,7 @@ export const hasClosedResetFirstPreviewDisposal = (
     hook.optional ||
     hook.arguments.length !== 1 ||
     !isReactApiCall(hook, "useRef", context.scopes) ||
-    (requireNamedReact && !isDirectNamedReactHookCall(hook, "useRef", context)) ||
+    (requireNamedReact && !isDirectNamedReactHookCall(hook, "useRef", context.scopes)) ||
     !isNodeOfType(initializer, "NewExpression") ||
     !isNodeOfType(initializer.callee, "Identifier") ||
     initializer.callee.name !== "Map" ||

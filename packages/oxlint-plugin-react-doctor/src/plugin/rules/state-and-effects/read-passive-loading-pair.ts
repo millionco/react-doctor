@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
@@ -664,33 +665,6 @@ const readLoadingPair = ({
   return { ...scope, requestEffect, requestCleanup, resetBody: effectBlock, stableReset };
 };
 
-export const isDirectNamedReactHookCall = (
-  hook: EsTreeNode | null | undefined,
-  api: "useCallback" | "useEffect" | "useRef",
-  context: RuleContext,
-): boolean => {
-  if (
-    !isNodeOfType(hook, "CallExpression") ||
-    hook.optional ||
-    !isNodeOfType(hook.callee, "Identifier")
-  )
-    return false;
-  const symbol = context.scopes.symbolFor(hook.callee);
-  const specifier = symbol?.declarationNode;
-  const imported = specifier?.parent;
-  return Boolean(
-    isNodeOfType(specifier, "ImportSpecifier") &&
-    specifier.importKind !== "type" &&
-    isNodeOfType(specifier.imported, "Identifier") &&
-    specifier.imported.name === api &&
-    isNodeOfType(imported, "ImportDeclaration") &&
-    imported.importKind !== "type" &&
-    imported.source.value === "react" &&
-    imported.parent === context.scopes.rootScope.node &&
-    symbol === context.scopes.symbolFor(specifier.local),
-  );
-};
-
 interface LocalCancellationInput {
   readonly owner: EsTreeNode;
   readonly request: EsTreeNode;
@@ -740,7 +714,7 @@ export const readLocallyCancelledLoadingPair = ({
   const effect = readCallback(effectCall, "useEffect", context);
   if (
     !effect ||
-    !isDirectNamedReactHookCall(effectCall, "useEffect", context) ||
+    !isDirectNamedReactHookCall(effectCall, "useEffect", context.scopes) ||
     effect.callback !== effectCallback ||
     effect.callback.async ||
     effect.dependencies.length !== 4 ||
@@ -835,7 +809,7 @@ export const readLocallyCancelledLoadingPair = ({
   );
   const stableReset = cleaner && readStableCallback(cleaner, owner, context);
   return stableReset &&
-    isDirectNamedReactHookCall(stableReset.binding.initializer, "useCallback", context)
+    isDirectNamedReactHookCall(stableReset.binding.initializer, "useCallback", context.scopes)
     ? { ...scope, stableReset, disposal }
     : null;
 };

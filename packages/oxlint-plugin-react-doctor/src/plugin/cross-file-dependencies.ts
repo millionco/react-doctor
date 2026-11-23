@@ -1,3 +1,4 @@
+import { collectGuardedRecordCaptureDependencies } from "./rules/react-builtins/exhaustive-deps-guarded-record-capture.js";
 import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
 import {
   getStockNextPagesComponent,
@@ -422,10 +423,14 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
 
 const collectExhaustiveDepsDependencies: CrossFileDependencyCollector = (input) => {
   collectForwardedHookDependencies(input);
-  if (!input.sourceText.includes("useEffect") && !input.sourceText.includes("\\u")) return;
+  const couldUseEffect = input.sourceText.includes("useEffect") || input.sourceText.includes("\\u");
+  if (!couldUseEffect && !input.sourceText.includes("useCallback")) return;
   const program = input.getProgram();
   attachParentReferences(program);
-  collectDisabledTerminalGuardDependencies(program, analyzeScopes(program), input.absoluteFilePath);
+  const scopes = analyzeScopes(program);
+  if (couldUseEffect)
+    collectDisabledTerminalGuardDependencies(program, scopes, input.absoluteFilePath);
+  collectGuardedRecordCaptureDependencies(program, scopes, input.absoluteFilePath);
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({

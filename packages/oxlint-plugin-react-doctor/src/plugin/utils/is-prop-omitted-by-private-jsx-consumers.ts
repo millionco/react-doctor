@@ -10,6 +10,7 @@ import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
 import { isPathInside } from "./is-path-inside.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -664,6 +665,32 @@ const hasOpaqueCodeEvaluation = ({
   return invalid;
 };
 
+const SET_PROVIDER_INDIRECTIONS: ReadonlySet<string> = new Set([
+  "Set",
+  "__proto__",
+  "constructor",
+  "getPrototypeOf",
+  "setPrototypeOf",
+]);
+
+const hasUnknownSetProvider = ({ programNode, scopes }: SourceProjectModule): boolean => {
+  let unknown = false;
+  walkAst(programNode, (node) => {
+    if (unknown) return false;
+    if (isNodeOfType(node, "MemberExpression")) {
+      const property = getStaticPropertyName(node);
+      if (property && SET_PROVIDER_INDIRECTIONS.has(property)) unknown = true;
+      return;
+    }
+    if (!isNodeOfType(node, "Identifier") || node.name !== "Set" || !scopes.isGlobalReference(node))
+      return;
+    const constructor = findTransparentExpressionRoot(node);
+    const invocation = constructor.parent;
+    unknown = !isNodeOfType(invocation, "NewExpression") || invocation.callee !== constructor;
+  });
+  return unknown;
+};
+
 // Called by the rule and its cache probe collector under the same Next/React
 // renderer premise. This examines the runtime source graph, never the app.
 export const isPropOmittedByPrivateJsxConsumers = (
@@ -671,9 +698,16 @@ export const isPropOmittedByPrivateJsxConsumers = (
   scopes: ScopeAnalysis,
   filename: string | undefined,
   propName: string,
+  requireUnmodifiedSet = false,
 ): boolean => {
   // JSX body content can supply children without a JSX attribute.
-  if (propName === "children" || !filename || !path.isAbsolute(filename)) return false;
+  if (
+    propName === "children" ||
+    propName in Object.prototype ||
+    !filename ||
+    !path.isAbsolute(filename)
+  )
+    return false;
   const program = findProgramRoot(component);
   if (!program || !isClosedDefaultComponent(component, program, scopes)) return false;
   const appDirectory = findNearestPackageDirectory(filename);
@@ -710,7 +744,10 @@ export const isPropOmittedByPrivateJsxConsumers = (
     !index.modulesByFilePath.has(sourcePath) ||
     index.hasOpaqueRuntimeConsumerSurface ||
     index.hasOpaqueMdxConsumerSurface ||
-    [...index.modulesByFilePath.values()].some(hasOpaqueCodeEvaluation)
+    [...index.modulesByFilePath.values()].some(
+      (module) =>
+        hasOpaqueCodeEvaluation(module) || (requireUnmodifiedSet && hasUnknownSetProvider(module)),
+    )
   )
     return false;
   for (const source of index.unresolvedRuntimeSources) {

@@ -97,7 +97,9 @@ export const createCrossFileClosureSnapshot = (
         absoluteFilePath: filename,
         sourceText,
         ruleIds:
-          sourceText.includes("useEffect") || sourceText.includes("\\u")
+          sourceText.includes("useEffect") ||
+          sourceText.includes("useCallback") ||
+          sourceText.includes("\\u")
             ? ["rules-of-hooks", "no-pass-live-state-to-parent", "exhaustive-deps"]
             : ["rules-of-hooks", "no-pass-live-state-to-parent"],
       });

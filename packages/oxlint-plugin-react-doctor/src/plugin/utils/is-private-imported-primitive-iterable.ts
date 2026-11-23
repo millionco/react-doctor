@@ -6,8 +6,10 @@ import {
   type ScopeAnalysis,
   type SymbolDescriptor,
 } from "../semantic/scope-analysis.js";
+import type { SourceProjectIndex } from "./build-source-project-index.js";
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
@@ -454,10 +456,15 @@ const iteratorIndirections = new Set([
 ]);
 const opaqueGlobalNames = new Set(["eval", "Function", "Proxy", "Reflect", "Symbol"]);
 
-const reachesIteratorIntrinsics = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const reachesIteratorIntrinsics = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  allowedConstructors?: ReadonlySet<string>,
+): boolean => {
   if (isNodeOfType(node, "MemberExpression")) {
     const name = getResolvedStaticPropertyName(node, scopes);
-    if (name !== null && iteratorIndirections.has(name)) return true;
+    if (name !== null && (iteratorIndirections.has(name) || allowedConstructors?.has(name)))
+      return true;
     return (
       isProvenGlobalObjectReference(node.object, scopes) &&
       (name === null ||
@@ -477,6 +484,8 @@ const reachesIteratorIntrinsics = (node: EsTreeNode, scopes: ScopeAnalysis): boo
       getResolvedStaticPropertyName(use, scopes) !== "from"
     );
   }
+  if (allowedConstructors?.has(node.name))
+    return !isNodeOfType(use, "NewExpression") || use.callee !== node;
   if (!isProvenGlobalObjectReference(node, scopes)) return false;
   if (isNodeOfType(use, "MemberExpression") && use.object === node) return false;
   if (isNodeOfType(use, "UnaryExpression") && use.operator === "typeof") return false;
@@ -489,7 +498,12 @@ const reachesIteratorIntrinsics = (node: EsTreeNode, scopes: ScopeAnalysis): boo
   return use.id.properties.some((property) => {
     if (!isNodeOfType(property, "Property")) return true;
     const name = getStaticPropertyKeyName(property, { allowComputedString: true });
-    return name === null || iteratorIndirections.has(name) || opaqueGlobalNames.has(name);
+    return (
+      name === null ||
+      iteratorIndirections.has(name) ||
+      opaqueGlobalNames.has(name) ||
+      Boolean(allowedConstructors?.has(name))
+    );
   });
 };
 
@@ -560,7 +574,11 @@ const hasUnsafeExportOrUse = (
 
 // For an extensionless import, accept only if differing compiler extension
 // priorities would still select the one source used by the dependency index.
-const hasUniqueSourceResolution = (from: string, source: string, selected: string): boolean => {
+export const hasUniqueSourceResolution = (
+  from: string,
+  source: string,
+  selected: string,
+): boolean => {
   const base = path.resolve(path.dirname(from), source);
   const candidateNames = [
     base,
@@ -582,6 +600,65 @@ const hasUniqueSourceResolution = (from: string, source: string, selected: strin
   return existing.length === 1 && normalizeFilename(existing[0]!) === selected;
 };
 
+interface ClosedPackageRuntimeSource {
+  readonly root: string;
+  readonly entry: string;
+  readonly currentFile: string;
+  readonly index: SourceProjectIndex;
+}
+
+export const readClosedPackageRuntimeSource = (
+  program: EsTreeNodeOfType<"Program">,
+  filename: string,
+  scopes: ScopeAnalysis,
+): ClosedPackageRuntimeSource | null => {
+  if (!path.isAbsolute(filename)) return null;
+  const root = findNearestPackageDirectory(filename);
+  if (!root) return null;
+  const entry = readBuildEntry(root);
+  if (!entry || !hasScopedPackageExports(root, entry)) return null;
+  const currentFile = normalizeFilename(filename);
+  const index = buildSourceProjectIndex({
+    rootDirectory: root,
+    currentFilePath: currentFile,
+    currentProgramNode: program,
+    currentScopes: scopes,
+    includeTestlikeSources: true,
+    javascriptAllowsJsx: true,
+  });
+  if (
+    !index ||
+    index.hasOpaqueMdxConsumerSurface ||
+    index.hasOpaqueRuntimeConsumerSurface ||
+    !index.modulesByFilePath.has(entry) ||
+    [...index.unresolvedRuntimeSources].some(
+      (source) =>
+        source.startsWith(".") ||
+        source.startsWith("#") ||
+        source.startsWith("file:") ||
+        path.isAbsolute(source),
+    )
+  )
+    return null;
+  return { root, entry, currentFile, index };
+};
+
+const stockCollectionConstructors = new Set(["Map", "Set"]);
+
+export const hasUnmodifiedLocalCollections = (index: SourceProjectIndex): boolean => {
+  for (const module of index.modulesByFilePath.values()) {
+    let modified = false;
+    walkAst(module.programNode, (node) => {
+      if (modified) return false;
+      if (reachesIteratorIntrinsics(node, module.scopes, stockCollectionConstructors))
+        modified = true;
+      return !modified;
+    });
+    if (modified) return false;
+  }
+  return true;
+};
+
 export const isPrivateImportedPrimitiveIterable = (
   reference: EsTreeNode,
   context: Pick<RuleContext, "filename" | "scopes">,
@@ -601,38 +678,18 @@ export const isPrivateImportedPrimitiveIterable = (
     return false;
   const imported = resolveImportedApiReference(reference, context.scopes);
   if (!imported?.source.startsWith(".") || !imported.importedName) return false;
-  const root = findNearestPackageDirectory(context.filename);
   const program = findProgramRoot(reference);
-  if (!root || !program || !onlyIterates(binding, program, context.scopes)) return false;
-  const entry = readBuildEntry(root);
-  if (!entry || !hasScopedPackageExports(root, entry)) return false;
-  const currentFile = normalizeFilename(context.filename);
-  const index = buildSourceProjectIndex({
-    rootDirectory: root,
-    currentFilePath: currentFile,
-    currentProgramNode: program,
-    currentScopes: context.scopes,
-    includeTestlikeSources: true,
-    javascriptAllowsJsx: true,
-  });
+  if (!program || !onlyIterates(binding, program, context.scopes)) return false;
+  const graph = readClosedPackageRuntimeSource(program, context.filename, context.scopes);
+  if (!graph) return false;
+  const { root, entry, currentFile, index } = graph;
   const definitionFile =
     binding.declarationNode.parent &&
-    index?.resolvedSourcePathByNode.get(binding.declarationNode.parent);
+    index.resolvedSourcePathByNode.get(binding.declarationNode.parent);
   if (
-    !index ||
-    index.hasOpaqueMdxConsumerSurface ||
-    index.hasOpaqueRuntimeConsumerSurface ||
     !definitionFile ||
     !isPathInside(definitionFile, path.join(root, "src")) ||
-    !index.modulesByFilePath.has(entry) ||
-    definitionFile === entry ||
-    [...index.unresolvedRuntimeSources].some(
-      (source) =>
-        source.startsWith(".") ||
-        source.startsWith("#") ||
-        source.startsWith("file:") ||
-        path.isAbsolute(source),
-    )
+    definitionFile === entry
   )
     return false;
   const producer = index.modulesByFilePath.get(definitionFile);

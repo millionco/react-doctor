@@ -1,3 +1,4 @@
+import { collectPrivateFluentEventRegistrations } from "../../utils/collect-private-fluent-event-registrations.js";
 import { isPrivateImportedPrimitiveIterable } from "../../utils/is-private-imported-primitive-iterable.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
@@ -11925,7 +11926,14 @@ export const effectNeedsCleanup = defineRule({
         );
         if (usages.length === 0) return;
 
-        const firstUsage = findFirstUsageWithoutCleanup(callback, usages, context);
+        const coveredRegistrations = new Set(
+          collectPrivateFluentEventRegistrations(callback, context),
+        );
+        const unprovenUsages =
+          coveredRegistrations.size === 0
+            ? usages
+            : usages.filter((usage) => !coveredRegistrations.has(usage.node));
+        const firstUsage = findFirstUsageWithoutCleanup(callback, unprovenUsages, context);
         if (!firstUsage) return;
         const resourceNoun = RESOURCE_NOUN_BY_KIND[firstUsage.kind];
         const hookName = getCalleeName(node) ?? "effect";

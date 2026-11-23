@@ -40,6 +40,8 @@ export interface SourceProjectIndexInput {
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
   readonly includeTestlikeSources?: boolean;
+  readonly javascriptAllowsJsx?: boolean;
+  readonly includeGeneratedSourcesUnder?: string;
 }
 
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
@@ -80,6 +82,7 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
 const listProductionSourceFiles = (
   rootDirectory: string,
   includeTestlikeSources: boolean,
+  includeGeneratedSourcesUnder: string | undefined,
 ): {
   sourceFilePaths: ReadonlyArray<string>;
   htmlFilePaths: ReadonlyArray<string>;
@@ -100,10 +103,22 @@ const listProductionSourceFiles = (
     } catch {
       return null;
     }
+    const generatedSourceRelativePath =
+      includeGeneratedSourcesUnder === undefined
+        ? null
+        : path.relative(includeGeneratedSourcesUnder, currentDirectory);
+    const shouldIncludeGeneratedSources =
+      generatedSourceRelativePath !== null &&
+      generatedSourceRelativePath !== ".." &&
+      !generatedSourceRelativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(generatedSourceRelativePath);
     for (const entry of entries) {
       const absolutePath = path.join(currentDirectory, entry.name);
       const isIgnoredDirectoryName =
-        SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
+        (SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) &&
+          (!shouldIncludeGeneratedSources ||
+            entry.name === ".git" ||
+            entry.name === "node_modules")) ||
         (!includeTestlikeSources &&
           entry.name.startsWith(".") &&
           entry.name !== ".dumi" &&
@@ -417,6 +432,8 @@ export const buildSourceProjectIndex = ({
   requiredModuleSources = [],
   knownModuleSources,
   includeTestlikeSources = false,
+  javascriptAllowsJsx = false,
+  includeGeneratedSourcesUnder,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
   if (
     requiredModuleSources.length > 0 &&
@@ -425,7 +442,11 @@ export const buildSourceProjectIndex = ({
   ) {
     return null;
   }
-  const productionSourceFiles = listProductionSourceFiles(rootDirectory, includeTestlikeSources);
+  const productionSourceFiles = listProductionSourceFiles(
+    rootDirectory,
+    includeTestlikeSources,
+    includeGeneratedSourcesUnder,
+  );
   if (!productionSourceFiles) return null;
   if (
     requiredModuleSources.length > 0 &&
@@ -447,7 +468,10 @@ export const buildSourceProjectIndex = ({
       });
       continue;
     }
-    const parsedProgram = parseSourceFile(filePath);
+    const parsedProgram = parseSourceFile(
+      filePath,
+      javascriptAllowsJsx && path.extname(filePath).toLowerCase() === ".js" ? "jsx" : undefined,
+    );
     if (!parsedProgram || !isNodeOfType(parsedProgram, "Program")) return null;
     modulesByFilePath.set(filePath, {
       filePath,

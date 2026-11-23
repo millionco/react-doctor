@@ -2,6 +2,7 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -379,6 +380,61 @@ const readClosedRequestUses = (
 const hasClosedRequestUses = (...input: Parameters<typeof readClosedRequestUses>): boolean =>
   Boolean(readClosedRequestUses(...input));
 
+const readMountedLoadingScope = (
+  owner: EsTreeNode,
+  open: SymbolDescriptor,
+  view: SymbolDescriptor,
+  getter: SymbolDescriptor,
+  context: RuleContext,
+): MountedLoadingScope | null => {
+  if (
+    !isFunctionLike(owner) ||
+    open.kind !== "parameter" ||
+    open.scope.node !== owner ||
+    view.kind !== "parameter" ||
+    view.scope.node !== owner
+  )
+    return null;
+  const [parameter] = owner.params;
+  if (!parameter) return null;
+  if (
+    !hasCompleteSymbolReferences(view, owner, context.scopes) ||
+    !hasCompleteSymbolReferences(open, owner, context.scopes) ||
+    !hasReadonlyReferences(view) ||
+    !hasReadonlyReferences(open)
+  ) {
+    return null;
+  }
+  const viewProperty = readPlainPropertyBinding(parameter, view);
+  const openProperty = readPlainPropertyBinding(parameter, open);
+  const getterDeclaration = getter.declarationNode;
+  if (
+    !viewProperty ||
+    !openProperty ||
+    getter.kind !== "const" ||
+    !isNodeOfType(getterDeclaration, "VariableDeclarator") ||
+    getterDeclaration.parent?.parent !== owner.body ||
+    !isNodeOfType(getterDeclaration.init, "CallExpression") ||
+    getterDeclaration.init.optional ||
+    getterDeclaration.init.arguments.length !== 0 ||
+    !hasCompleteSymbolReferences(getter, owner, context.scopes) ||
+    !hasReadonlyReferences(getter)
+  ) {
+    return null;
+  }
+  const contextField = readPlainPropertyBinding(getterDeclaration.id, getter);
+  if (!contextField) return null;
+  return {
+    viewProperty,
+    openProperty,
+    openBinding: open,
+    viewBinding: view,
+    getterBinding: getter,
+    contextHookCall: getterDeclaration.init,
+    contextField,
+  };
+};
+
 // The reset effect's changing dependencies must also schedule the
 // request effect. Provider identity, mounting, and generation
 // ownership are checked independently by the caller.
@@ -499,44 +555,8 @@ const readLoadingPair = ({
     ? readUseOfOpenGuard(releaseGuard, context)
     : readOpenReset(setterCall.arguments[0], getter, requireRequestCleanup, context);
   if (open?.kind !== "parameter" || open.scope.node !== owner) return null;
-  const [parameter] = owner.params;
-  if (!parameter) return null;
-  if (
-    !hasCompleteSymbolReferences(view, owner, context.scopes) ||
-    !hasCompleteSymbolReferences(open, owner, context.scopes) ||
-    !hasReadonlyReferences(view) ||
-    !hasReadonlyReferences(open)
-  ) {
-    return null;
-  }
-  const viewProperty = readPlainPropertyBinding(parameter, view);
-  const openProperty = readPlainPropertyBinding(parameter, open);
-  const getterDeclaration = getter.declarationNode;
-  if (
-    !viewProperty ||
-    !openProperty ||
-    getter.kind !== "const" ||
-    !isNodeOfType(getterDeclaration, "VariableDeclarator") ||
-    getterDeclaration.parent?.parent !== owner.body ||
-    !isNodeOfType(getterDeclaration.init, "CallExpression") ||
-    getterDeclaration.init.optional ||
-    getterDeclaration.init.arguments.length !== 0 ||
-    !hasCompleteSymbolReferences(getter, owner, context.scopes) ||
-    !hasReadonlyReferences(getter)
-  ) {
-    return null;
-  }
-  const contextField = readPlainPropertyBinding(getterDeclaration.id, getter);
-  if (!contextField) return null;
-  const scope: MountedLoadingScope = {
-    viewProperty,
-    openProperty,
-    openBinding: open,
-    viewBinding: view,
-    getterBinding: getter,
-    contextHookCall: getterDeclaration.init,
-    contextField,
-  };
+  const scope = readMountedLoadingScope(owner, open, view, getter, context);
+  if (!scope) return null;
 
   if (releaseInLaunch) {
     const owningEffect = releaseGuard?.parent?.parent?.parent?.parent;
@@ -642,6 +662,182 @@ const readLoadingPair = ({
   }
 
   return { ...scope, requestEffect, requestCleanup, resetBody: effectBlock, stableReset };
+};
+
+export const isDirectNamedReactHookCall = (
+  hook: EsTreeNode | null | undefined,
+  api: "useCallback" | "useEffect" | "useRef",
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(hook, "CallExpression") ||
+    hook.optional ||
+    !isNodeOfType(hook.callee, "Identifier")
+  )
+    return false;
+  const symbol = context.scopes.symbolFor(hook.callee);
+  const specifier = symbol?.declarationNode;
+  const imported = specifier?.parent;
+  return Boolean(
+    isNodeOfType(specifier, "ImportSpecifier") &&
+    specifier.importKind !== "type" &&
+    isNodeOfType(specifier.imported, "Identifier") &&
+    specifier.imported.name === api &&
+    isNodeOfType(imported, "ImportDeclaration") &&
+    imported.importKind !== "type" &&
+    imported.source.value === "react" &&
+    imported.parent === context.scopes.rootScope.node &&
+    symbol === context.scopes.symbolFor(specifier.local),
+  );
+};
+
+interface LocalCancellationInput {
+  readonly owner: EsTreeNode;
+  readonly request: EsTreeNode;
+  readonly firstAwait: EsTreeNodeOfType<"AwaitExpression">;
+  readonly cancelled: SymbolDescriptor;
+  readonly context: RuleContext;
+}
+
+interface LocallyCancelledLoadingPair extends MountedLoadingScope {
+  readonly stableReset: StableResetCallback;
+  readonly disposal: EsTreeNode;
+}
+
+export const readLocallyCancelledLoadingPair = ({
+  owner,
+  request,
+  firstAwait,
+  cancelled,
+  context,
+}: LocalCancellationInput): LocallyCancelledLoadingPair | null => {
+  if (!isFunctionLike(owner)) return null;
+  const requestExpression = findTransparentExpressionRoot(request);
+  const launch = requestExpression.parent;
+  const discarded = launch?.parent;
+  const statement = discarded?.parent;
+  const effectBody = statement?.parent;
+  const effectCallback = effectBody?.parent;
+  const effectCall = effectCallback?.parent;
+  const effectStatement = effectCall?.parent;
+  if (
+    !isNodeOfType(request, "ArrowFunctionExpression") ||
+    !request.async ||
+    request.params.length !== 0 ||
+    !isNodeOfType(launch, "CallExpression") ||
+    launch.callee !== requestExpression ||
+    launch.optional ||
+    launch.arguments.length !== 0 ||
+    !isNodeOfType(discarded, "UnaryExpression") ||
+    discarded.operator !== "void" ||
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    !isNodeOfType(effectBody, "BlockStatement") ||
+    !isNodeOfType(effectStatement, "ExpressionStatement") ||
+    effectStatement.parent !== owner.body ||
+    !effectCall
+  )
+    return null;
+  const effect = readCallback(effectCall, "useEffect", context);
+  if (
+    !effect ||
+    !isDirectNamedReactHookCall(effectCall, "useEffect", context) ||
+    effect.callback !== effectCallback ||
+    effect.callback.async ||
+    effect.dependencies.length !== 4 ||
+    effectBody.body.length !== 4
+  )
+    return null;
+
+  const [closed, declaration, launchStatement, returned] = effectBody.body;
+  const open = readUseOfOpenGuard(closed, context);
+  const closedExit =
+    isNodeOfType(closed, "IfStatement") && isNodeOfType(closed.consequent, "BlockStatement")
+      ? closed.consequent.body.at(-1)
+      : null;
+  const cancelDeclaration = cancelled.declarationNode;
+  const cleanup = isNodeOfType(returned, "ReturnStatement") ? returned.argument : null;
+  if (
+    !open ||
+    !isNodeOfType(closedExit, "ReturnStatement") ||
+    closedExit.argument ||
+    declaration !== cancelDeclaration.parent ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "let" ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(cancelDeclaration, "VariableDeclarator") ||
+    cancelDeclaration.id !== cancelled.bindingIdentifier ||
+    !isNodeOfType(cancelDeclaration.init, "Literal") ||
+    cancelDeclaration.init.value !== false ||
+    !hasCompleteSymbolReferences(cancelled, effect.callback, context.scopes) ||
+    launchStatement !== statement ||
+    !isNodeOfType(cleanup, "ArrowFunctionExpression") ||
+    cleanup.async ||
+    cleanup.params.length !== 0 ||
+    !isNodeOfType(cleanup.body, "BlockStatement") ||
+    cleanup.body.body.length !== 2
+  )
+    return null;
+  const [retire, disposal] = cleanup.body.body;
+  const write = isNodeOfType(retire, "ExpressionStatement") ? retire.expression : null;
+  if (
+    !isNodeOfType(write, "AssignmentExpression") ||
+    write.operator !== "=" ||
+    !isNodeOfType(write.left, "Identifier") ||
+    context.scopes.symbolFor(write.left) !== cancelled ||
+    !isNodeOfType(write.right, "Literal") ||
+    write.right.value !== true ||
+    !cancelled.references.every(
+      ({ flag, identifier }) =>
+        identifier === write.left || (flag === "read" && !isWithinAssignmentTarget(identifier)),
+    )
+  )
+    return null;
+
+  const awaited = firstAwait.parent;
+  const awaitedStatement = awaited?.parent;
+  const requestBody = awaitedStatement?.parent;
+  const owningTry = requestBody?.parent;
+  if (
+    !isNodeOfType(awaited, "VariableDeclarator") ||
+    !isNodeOfType(awaited.id, "Identifier") ||
+    awaited.init !== firstAwait ||
+    !isNodeOfType(awaitedStatement, "VariableDeclaration") ||
+    awaitedStatement.kind !== "const" ||
+    awaitedStatement.declarations.length !== 1 ||
+    !isNodeOfType(requestBody, "BlockStatement") ||
+    requestBody.body[0] !== awaitedStatement ||
+    !isNodeOfType(owningTry, "TryStatement") ||
+    owningTry.block !== requestBody ||
+    owningTry.parent !== request.body
+  )
+    return null;
+  const call = firstAwait.argument;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.arguments.length !== 1 ||
+    !isNodeOfType(call.callee, "Identifier") ||
+    !isNodeOfType(call.arguments[0], "Identifier")
+  )
+    return null;
+  const getter = context.scopes.symbolFor(call.callee);
+  const view = context.scopes.symbolFor(call.arguments[0]);
+  if (!getter || !view) return null;
+  const scope = readMountedLoadingScope(owner, open, view, getter, context);
+  if (
+    !scope ||
+    ![open, getter, view].every((symbol) => usesDependency(effect.dependencies, symbol, context))
+  )
+    return null;
+  const cleaner = effect.dependencies.find(
+    (entry) =>
+      entry && ![open, getter, view].some((symbol) => context.scopes.symbolFor(entry) === symbol),
+  );
+  const stableReset = cleaner && readStableCallback(cleaner, owner, context);
+  return stableReset &&
+    isDirectNamedReactHookCall(stableReset.binding.initializer, "useCallback", context)
+    ? { ...scope, stableReset, disposal }
+    : null;
 };
 
 export const readPassiveLoadingPair = (

@@ -81,9 +81,14 @@ const getText = (element: DefaultTreeAdapterTypes.Element): string =>
     .map((node) => node.value)
     .join("");
 
+interface ReadProjectHtmlScriptsOptions {
+  readonly onlyLocalModuleScripts?: boolean;
+}
+
 export const readProjectHtmlScripts = (
   rootDirectory: string,
   filename: string,
+  options: ReadProjectHtmlScriptsOptions = {},
 ): ProjectHtmlScripts | null => {
   let root: DefaultTreeAdapterTypes.Document;
   try {
@@ -121,6 +126,17 @@ export const readProjectHtmlScripts = (
     const type = (attr("type") ?? "").trim().toLowerCase();
     const source = attr("src") ?? attr("href");
     const content = getText(current);
+    if (
+      options.onlyLocalModuleScripts &&
+      (attr("type") !== "module" ||
+        attr("src") === undefined ||
+        !source ||
+        source.includes("%") ||
+        content.trim() ||
+        isExternalHttpUrl(source))
+    ) {
+      return null;
+    }
     if (type === "importmap") return null;
     if (type === "systemjs-importmap") {
       // SystemJS maps do not change native module resolution. The project index
@@ -134,7 +150,7 @@ export const readProjectHtmlScripts = (
       if (content.trim()) inlinePrograms.push(content);
       continue;
     }
-    if (/(?:^|\/)system(?:js(?:[\/@]|$)|(?:\.min)?\.js(?:[?#]|$))/iu.test(source)) return null;
+    if (/(?:^|\/)system(?:js(?:[/@]|$)|(?:\.min)?\.js(?:[?#]|$))/iu.test(source)) return null;
     if (isExternalHttpUrl(source)) continue;
     const resolved = resolveHtmlScriptAddress(rootDirectory, filename, source);
     if (!resolved) return null;

@@ -118,6 +118,7 @@ export const runRuleOnParsedFixture = (
         return startIndex === -1 || endIndex === -1 ? code : code.slice(startIndex, endIndex);
       },
     },
+    getSourceText: () => code,
     get scopes() {
       scopes ??= analyzeScopes(parsed.program);
       return scopes;

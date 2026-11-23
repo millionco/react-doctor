@@ -34,6 +34,8 @@ export interface BaseRuleContext {
 // directly. `scopes` / `cfg` are guaranteed non-null because every rule is
 // wrapped at plugin load time. Tests pass a fully-built context via run-rule.ts.
 export interface RuleContext extends Omit<BaseRuleContext, "getFilename"> {
+  /** Source text from the active lint host, when available. */
+  readonly getSourceText?: () => string | undefined;
   readonly scopes: ScopeAnalysis;
   readonly cfg: ControlFlowAnalysis;
 }

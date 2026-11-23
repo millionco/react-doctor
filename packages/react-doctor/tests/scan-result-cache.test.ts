@@ -207,6 +207,15 @@ describe("scan result cache", () => {
     ).toBeNull();
   });
 
+  it("bypasses lint replay when a project can use the Stencil compiler", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "stencil-runtime-cache", {
+      files: { "stencil.config.ts": "export const config = {};" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
+  });
+
   it("bypasses replay when Electron can adopt external lint rules", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "electron-adopted-lint", {
       files: {

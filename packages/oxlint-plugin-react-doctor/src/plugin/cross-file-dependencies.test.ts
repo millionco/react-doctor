@@ -82,6 +82,25 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-unknown-property collector", () => {
+  it("tracks a missing Stencil marker and re-lints after it appears", () => {
+    const component = writeFixtureFile(
+      "src/components/card.tsx",
+      'import { h } from "@stencil/core"; export const Card = () => <main class="card" />;',
+    );
+    const trace = collectFor(component, ["no-unknown-property"]);
+    expect(trace?.existencePaths.has(fixturePath("stencil.config.ts"))).toBe(true);
+    writeFixtureFile("stencil.config.ts", "export const config = {};");
+    expect(collectFor(component, ["no-unknown-property"])).toBeNull();
+  });
+
+  it("keeps ordinary React source fingerprintable", () => {
+    writeFixtureFile("stencil.config.ts", "export const config = {};");
+    const component = writeFixtureFile("src/Card.tsx", "export const Card = () => <main />;");
+    expect(collectFor(component, ["no-unknown-property"])?.existencePaths.size).toBe(0);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

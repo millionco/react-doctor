@@ -97,3 +97,12 @@ export const hasStockNodeNpmCompilerEnvironment = (projectRoot: string): boolean
     hasStockNpmConfiguration(projectRoot)
   );
 };
+
+export const hasExpectedNpmLauncher = (launcher: string, relativeTarget: string): boolean => {
+  if (fs.lstatSync(launcher, { throwIfNoEntry: false })?.isSymbolicLink() !== true) return false;
+  const target = path.resolve(path.dirname(launcher), relativeTarget);
+  if (fs.readlinkSync(launcher) !== relativeTarget || fs.realpathSync(launcher) !== target)
+    return false;
+  const info = fs.lstatSync(target, { throwIfNoEntry: false });
+  return info?.isFile() === true && (info.mode & 0o111) !== 0;
+};

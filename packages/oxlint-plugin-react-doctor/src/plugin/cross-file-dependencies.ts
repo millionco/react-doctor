@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
 import {
   getStockNextPagesComponent,
@@ -29,7 +31,7 @@ import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
+import { collectCrossFileProbes, recordExistenceProbe } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { hasPotentialMountPropReset } from "./rules/state-and-effects/find-negated-effect-prop.js";
@@ -618,6 +620,39 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const getPossibleStencilConfigs = (filename: string, source: string): readonly string[] => {
+  if (!filename.endsWith(".tsx") || !source.includes("@stencil/core")) return [];
+  const configs: string[] = [];
+  for (
+    let directory = path.dirname(filename);
+    directory !== path.dirname(directory);
+    directory = path.dirname(directory)
+  ) {
+    if (path.basename(directory) === "src") {
+      configs.push(path.join(path.dirname(directory), "stencil.config.ts"));
+    }
+  }
+  return configs;
+};
+
+const collectMissingStencilConfigProbes: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  sourceText,
+}) => {
+  for (const candidate of getPossibleStencilConfigs(absoluteFilePath, sourceText))
+    recordExistenceProbe(candidate);
+};
+
+const hasPossibleStencilConfig = (filename: string, source: string): boolean => {
+  try {
+    return getPossibleStencilConfigs(filename, source).some(
+      (candidate) => fs.lstatSync(candidate, { throwIfNoEntry: false }) !== undefined,
+    );
+  } catch {
+    return true;
+  }
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -643,6 +678,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-unknown-property", collectMissingStencilConfigProbes],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
     ["no-derived-state", collectEffectValueHelperDependencies],
@@ -747,6 +783,15 @@ export const collectCrossFileDependencyProbes = (input: {
     ) {
       return null;
     }
+  }
+
+  // The stock compiler check consults live npm and toolchain state. Keep
+  // these files fresh and still record missing root markers elsewhere.
+  if (
+    input.ruleIds.includes("no-unknown-property") &&
+    hasPossibleStencilConfig(absoluteFilePath, input.sourceText)
+  ) {
+    return null;
   }
 
   const collectorInput: CrossFileDependencyCollectorInput = {

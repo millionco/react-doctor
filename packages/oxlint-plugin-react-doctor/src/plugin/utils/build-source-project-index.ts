@@ -22,6 +22,24 @@ export interface SourceProjectModule {
   readonly scopes: ScopeAnalysis;
 }
 
+export type TypedRuntimeEdge =
+  | { readonly kind: "file"; readonly filename: string }
+  | { readonly kind: "data"; readonly filenames: readonly string[] }
+  | { readonly kind: "external" | "erased" | "opaque" };
+
+export type SourceProjectTypedEdgeReader = (
+  module: SourceProjectModule,
+  node: EsTreeNode,
+  source: string | null,
+) => TypedRuntimeEdge | null;
+
+interface SourceProjectTypedEdges {
+  readonly read: SourceProjectTypedEdgeReader;
+  readonly outgoingByIssuer: Map<string, Set<string>>;
+  readonly externalByIssuer: Map<string, Set<string>>;
+  readonly opaqueIssuers: Set<string>;
+}
+
 export interface SourceProjectIndex {
   readonly modulesByFilePath: ReadonlyMap<string, SourceProjectModule>;
   readonly htmlFilePaths: ReadonlyArray<string>;
@@ -30,6 +48,7 @@ export interface SourceProjectIndex {
   readonly unresolvedRuntimeSources: ReadonlySet<string>;
   readonly hasOpaqueMdxConsumerSurface: boolean;
   readonly hasOpaqueRuntimeConsumerSurface: boolean;
+  readonly typedEdges?: Omit<SourceProjectTypedEdges, "read">;
 }
 
 export interface SourceProjectIndexInput {
@@ -42,6 +61,11 @@ export interface SourceProjectIndexInput {
   readonly includeTestlikeSources?: boolean;
   readonly javascriptAllowsJsx?: boolean;
   readonly includeGeneratedSourcesUnder?: string;
+  readonly resolveModuleSource?: (module: SourceProjectModule, source: string) => string | null;
+  readonly readTypedRuntimeEdge?: SourceProjectTypedEdgeReader;
+  // undefined selects the existing source parser; null declines the graph.
+  // The caller must track all inputs and emitted artifact probes.
+  readonly readEmittedSource?: (filePath: string) => string | null | undefined;
 }
 
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
@@ -368,6 +392,16 @@ const hasOpaqueHtmlExecution = (program: EsTreeNode, scopes: ScopeAnalysis): boo
   return opaque;
 };
 
+const addTypedProjectTargets = <Value>(
+  edges: Map<string, Set<Value>>,
+  issuer: string,
+  targets: readonly Value[],
+): void => {
+  const attached = edges.get(issuer) ?? new Set<Value>();
+  for (const target of targets) attached.add(target);
+  edges.set(issuer, attached);
+};
+
 const indexModuleSources = (
   module: SourceProjectModule,
   consumerModulesByFilePath: Map<string, Set<SourceProjectModule>>,
@@ -375,8 +409,23 @@ const indexModuleSources = (
   unresolvedRuntimeSources: Set<string>,
   includeTestlikeSources: boolean,
   indexedModules: ReadonlyMap<string, SourceProjectModule>,
+  resolveModuleSource: SourceProjectIndexInput["resolveModuleSource"],
+  typedEdges: SourceProjectTypedEdges | undefined,
 ): boolean => {
   let opaque = false;
+  const addFile = (node: EsTreeNode, filename: string): void => {
+    const normalizedSourcePath = normalizeFilename(filename);
+    if (
+      includeTestlikeSources &&
+      isRuntimeModuleFile(normalizedSourcePath) &&
+      !indexedModules.has(normalizedSourcePath)
+    )
+      opaque = true;
+    resolvedSourcePathByNode.set(node, normalizedSourcePath);
+    addTypedProjectTargets(consumerModulesByFilePath, normalizedSourcePath, [module]);
+    if (typedEdges)
+      addTypedProjectTargets(typedEdges.outgoingByIssuer, module.filePath, [normalizedSourcePath]);
+  };
   walkAst(module.programNode, (node) => {
     if (
       includeTestlikeSources &&
@@ -387,6 +436,30 @@ const indexModuleSources = (
     )
       opaque = true;
     const source = getRuntimeModuleSource(node, includeTestlikeSources);
+    const typed = typedEdges?.read(module, node, source);
+    if (typedEdges && typed) {
+      switch (typed.kind) {
+        case "file":
+          addFile(node, typed.filename);
+          break;
+        case "data":
+          addTypedProjectTargets(
+            typedEdges.outgoingByIssuer,
+            module.filePath,
+            typed.filenames.map(normalizeFilename),
+          );
+          break;
+        case "external":
+          if (source)
+            addTypedProjectTargets(typedEdges.externalByIssuer, module.filePath, [source]);
+          break;
+        case "opaque":
+          opaque = true;
+          if (source) unresolvedRuntimeSources.add(source);
+          break;
+      }
+      return;
+    }
     if (!source) {
       if (
         includeTestlikeSources &&
@@ -403,24 +476,22 @@ const indexModuleSources = (
         source.startsWith("systemjs/"))
     )
       opaque = true;
-    const resolvedSourcePath = resolveModulePath(module.filePath, source);
+    const resolvedSourcePath = resolveModuleSource
+      ? resolveModuleSource(module, source)
+      : resolveModulePath(module.filePath, source);
     if (!resolvedSourcePath) {
-      if (includeTestlikeSources && isUnresolvedDeclarationOnlyImport(node, module, source)) return;
+      if (
+        !resolveModuleSource &&
+        includeTestlikeSources &&
+        isUnresolvedDeclarationOnlyImport(node, module, source)
+      )
+        return;
       unresolvedRuntimeSources.add(source);
       return;
     }
-    const normalizedSourcePath = normalizeFilename(resolvedSourcePath);
-    if (
-      includeTestlikeSources &&
-      isRuntimeModuleFile(normalizedSourcePath) &&
-      !indexedModules.has(normalizedSourcePath)
-    )
-      opaque = true;
-    resolvedSourcePathByNode.set(node, normalizedSourcePath);
-    const consumerModules = consumerModulesByFilePath.get(normalizedSourcePath) ?? new Set();
-    consumerModules.add(module);
-    consumerModulesByFilePath.set(normalizedSourcePath, consumerModules);
+    addFile(node, resolvedSourcePath);
   });
+  if (opaque) typedEdges?.opaqueIssuers.add(module.filePath);
   return opaque;
 };
 
@@ -434,8 +505,12 @@ export const buildSourceProjectIndex = ({
   includeTestlikeSources = false,
   javascriptAllowsJsx = false,
   includeGeneratedSourcesUnder,
+  resolveModuleSource,
+  readTypedRuntimeEdge,
+  readEmittedSource,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
   if (
+    readEmittedSource === undefined &&
     requiredModuleSources.length > 0 &&
     knownModuleSources !== undefined &&
     !requiredModuleSources.some((moduleSource) => knownModuleSources.includes(moduleSource))
@@ -449,6 +524,7 @@ export const buildSourceProjectIndex = ({
   );
   if (!productionSourceFiles) return null;
   if (
+    readEmittedSource === undefined &&
     requiredModuleSources.length > 0 &&
     knownModuleSources === undefined &&
     !sourceFilesMayImportRequiredModule(
@@ -460,7 +536,9 @@ export const buildSourceProjectIndex = ({
   }
   const modulesByFilePath = new Map<string, SourceProjectModule>();
   for (const filePath of productionSourceFiles.sourceFilePaths) {
-    if (filePath === currentFilePath) {
+    const emitted = readEmittedSource?.(filePath);
+    if (emitted === null) return null;
+    if (emitted === undefined && filePath === currentFilePath) {
       modulesByFilePath.set(filePath, {
         filePath,
         programNode: currentProgramNode,
@@ -468,10 +546,12 @@ export const buildSourceProjectIndex = ({
       });
       continue;
     }
-    const parsedProgram = parseSourceFile(
-      filePath,
-      javascriptAllowsJsx && path.extname(filePath).toLowerCase() === ".js" ? "jsx" : undefined,
-    );
+    const language =
+      javascriptAllowsJsx && path.extname(filePath).toLowerCase() === ".js" ? "jsx" : undefined;
+    const parsedProgram =
+      emitted === undefined
+        ? parseSourceFile(filePath, language)
+        : parseSourceText({ filename: filePath, sourceText: emitted, language });
     if (!parsedProgram || !isNodeOfType(parsedProgram, "Program")) return null;
     modulesByFilePath.set(filePath, {
       filePath,
@@ -483,6 +563,14 @@ export const buildSourceProjectIndex = ({
   const consumerModulesByFilePath = new Map<string, Set<SourceProjectModule>>();
   const resolvedSourcePathByNode = new WeakMap<EsTreeNode, string>();
   const unresolvedRuntimeSources = new Set<string>();
+  const typedEdges: SourceProjectTypedEdges | undefined = readTypedRuntimeEdge
+    ? {
+        read: readTypedRuntimeEdge,
+        outgoingByIssuer: new Map(),
+        externalByIssuer: new Map(),
+        opaqueIssuers: new Set(),
+      }
+    : undefined;
   let hasOpaqueRuntimeConsumerSurface = false;
   for (const module of modulesByFilePath.values()) {
     const opaque = indexModuleSources(
@@ -492,6 +580,8 @@ export const buildSourceProjectIndex = ({
       unresolvedRuntimeSources,
       includeTestlikeSources,
       modulesByFilePath,
+      resolveModuleSource,
+      typedEdges,
     );
     hasOpaqueRuntimeConsumerSurface ||= opaque;
   }
@@ -501,16 +591,23 @@ export const buildSourceProjectIndex = ({
       const scripts = readProjectHtmlScripts(rootDirectory, filePath);
       if (!scripts || scripts.localEntrypoints.some((entry) => !modulesByFilePath.has(entry))) {
         hasOpaqueRuntimeConsumerSurface = true;
+        typedEdges?.opaqueIssuers.add(filePath);
         continue;
       }
+      if (typedEdges)
+        addTypedProjectTargets(typedEdges.outgoingByIssuer, filePath, scripts.localEntrypoints);
       for (const sourceText of scripts.inlinePrograms) {
         const programNode = parseSourceText({ filename: filePath + ".mjs", sourceText });
         if (!isNodeOfType(programNode, "Program")) {
           hasOpaqueRuntimeConsumerSurface = true;
+          typedEdges?.opaqueIssuers.add(filePath);
           continue;
         }
         const scopes = getSourceProjectModuleScopes(programNode);
-        if (hasOpaqueHtmlExecution(programNode, scopes)) hasOpaqueRuntimeConsumerSurface = true;
+        if (hasOpaqueHtmlExecution(programNode, scopes)) {
+          hasOpaqueRuntimeConsumerSurface = true;
+          typedEdges?.opaqueIssuers.add(filePath);
+        }
         const opaque = indexModuleSources(
           { filePath, programNode, scopes },
           consumerModulesByFilePath,
@@ -518,6 +615,8 @@ export const buildSourceProjectIndex = ({
           unresolvedRuntimeSources,
           true,
           modulesByFilePath,
+          resolveModuleSource,
+          typedEdges,
         );
         hasOpaqueRuntimeConsumerSurface ||= opaque;
       }
@@ -532,5 +631,39 @@ export const buildSourceProjectIndex = ({
     unresolvedRuntimeSources,
     hasOpaqueMdxConsumerSurface: productionSourceFiles.hasOpaqueMdxConsumerSurface,
     hasOpaqueRuntimeConsumerSurface,
+    ...(typedEdges
+      ? {
+          typedEdges: {
+            outgoingByIssuer: typedEdges.outgoingByIssuer,
+            externalByIssuer: typedEdges.externalByIssuer,
+            opaqueIssuers: typedEdges.opaqueIssuers,
+          },
+        }
+      : {}),
   };
+};
+
+export const readSelectedTypedSourceClosure = (
+  index: SourceProjectIndex,
+  selectedRoots: readonly string[],
+) => {
+  const graph = index.typedEdges;
+  if (!graph || !selectedRoots.length) return null;
+  const knownHtml = new Set(index.htmlFilePaths);
+  const roots = selectedRoots.map(normalizeFilename);
+  if (roots.some((root) => !index.modulesByFilePath.has(root) && !knownHtml.has(root))) return null;
+  const reachable = new Set<string>();
+  const opaqueIssuers = new Set<string>();
+  const externalRuntimeSources = new Set<string>();
+  const pending = [...roots];
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (reachable.has(current)) continue;
+    reachable.add(current);
+    if (graph.opaqueIssuers.has(current)) opaqueIssuers.add(current);
+    for (const source of graph.externalByIssuer.get(current) ?? [])
+      externalRuntimeSources.add(source);
+    for (const target of graph.outgoingByIssuer.get(current) ?? []) pending.push(target);
+  }
+  return { reachable, opaqueIssuers, externalRuntimeSources };
 };

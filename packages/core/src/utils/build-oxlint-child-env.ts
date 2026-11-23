@@ -24,6 +24,14 @@ export const buildOxlintChildEnv = (sourceEnv: NodeJS.ProcessEnv): NodeJS.Proces
     childEnv[name] = value;
   }
 
+  // Preserve the fact that a launcher override was supplied, without
+  // forwarding or interpreting its options in the lint child.
+  if (sourceEnv.NODE_OPTIONS === undefined) {
+    delete childEnv.REACT_DOCTOR_OXLINT_NODE_OPTIONS_PRESENT;
+  } else {
+    childEnv.REACT_DOCTOR_OXLINT_NODE_OPTIONS_PRESENT = "1";
+  }
+
   childEnv.BROWSERSLIST = "defaults";
   childEnv.BROWSERSLIST_IGNORE_OLD_DATA = "true";
   delete childEnv.BROWSERSLIST_CONFIG;

@@ -1,0 +1,3 @@
+{
+  "template": "#!/bin/sh\nbasedir=$(dirname \"$(echo \"$0\" | sed -e 's,\\\\,/,g')\")\n\ncase `uname` in\n    *CYGWIN*) basedir=`cygpath -w \"$basedir\"`;;\nesac\n\nif [ -z \"$NODE_PATH\" ]; then\n  export NODE_PATH=\"{{moduleSearchPath}}\"\nelse\n  export NODE_PATH=\"{{moduleSearchPath}}:$NODE_PATH\"\nfi\nif [ -x \"$basedir/node\" ]; then\n  exec \"$basedir/node\"  \"{{localEntrypoint}}\" \"$@\"\nelse\n  exec node  \"{{localEntrypoint}}\" \"$@\"\nfi\n"
+}

@@ -23,6 +23,7 @@ import { getEffectDepsRefs, hasCleanup, isProp, isState } from "./utils/effect/r
 import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-external-effect-work.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 
+import { createMountPropResetProof } from "./is-unreachable-mount-prop-reset.js";
 import { isPortalMountStateWrite } from "./utils/is-portal-mount-state-write.js";
 
 const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWriteFact): boolean => {
@@ -82,6 +83,7 @@ export const noAdjustStateOnPropChange = defineRule({
     "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => {
     const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
+    const isUnreachableMountPropReset = createMountPropResetProof(context);
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isReactHookCall(node, EFFECT_HOOK_NAMES, context.scopes)) return;
@@ -140,6 +142,7 @@ export const noAdjustStateOnPropChange = defineRule({
           if (writtenValueHasPropSource && !isEventOwnedPropDerivedAdjustment) {
             continue;
           }
+          if (isUnreachableMountPropReset(fact.writeSite.node, node)) continue;
           context.report({
             node: fact.writeSite.node,
             message: "Adjusting state in an effect after a prop changes costs an extra render.",

@@ -38,7 +38,19 @@ const poolsByKey = new Map<string, OxlintWorkerPool>();
 const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWorkerPool | null => {
   if (cachedRuntime === undefined) cachedRuntime = resolveOxlintWorkerRuntime();
   if (cachedRuntime === null) return null;
-  const poolKey = `${nodeBinaryPath}\u0000${maxWorkers}`;
+  const environment = buildOxlintChildEnv(process.env);
+  const hasDefaultViteEnvironment =
+    environment.REACT_DOCTOR_OXLINT_NODE_OPTIONS_PRESENT !== "1" &&
+    (environment.NODE_ENV === undefined || environment.NODE_ENV === "production") &&
+    ["NODE_PATH", "ESBUILD_BINARY_PATH", "COVERAGE", "ANALYZE_MODE", "PORT"].every(
+      (name) => environment[name] === undefined,
+    );
+  const poolKey = JSON.stringify([
+    nodeBinaryPath,
+    maxWorkers,
+    hasDefaultViteEnvironment,
+    environment.HOME,
+  ]);
   const existingPool = poolsByKey.get(poolKey);
   if (existingPool !== undefined) return existingPool;
   const pool = createOxlintWorkerPool({
@@ -47,7 +59,7 @@ const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWo
     oxlintPackageDirectory: cachedRuntime.oxlintPackageDirectory,
     pluginPath: cachedRuntime.pluginPath,
     maxWorkers,
-    environment: buildOxlintChildEnv(process.env),
+    environment,
   });
   poolsByKey.set(poolKey, pool);
   // Once the host's loop drains every worker is idle; reaping them here keeps

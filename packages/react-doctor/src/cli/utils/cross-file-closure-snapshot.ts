@@ -101,13 +101,16 @@ export const createCrossFileClosureSnapshot = (
         !sourceText.includes("React")
       )
         continue;
+      const ruleIds = ["rules-of-hooks", "no-pass-live-state-to-parent"];
+      if (sourceText.includes("useEffect") || sourceText.includes("\\u"))
+        ruleIds.push("exhaustive-deps");
+      if (sourceText.includes("!") && sourceText.includes("export")) {
+        ruleIds.push("no-adjust-state-on-prop-change");
+      }
       const trace = collectCrossFileDependencyProbes({
         absoluteFilePath: filename,
         sourceText,
-        ruleIds:
-          sourceText.includes("useEffect") || sourceText.includes("\\u")
-            ? ["rules-of-hooks", "no-pass-live-state-to-parent", "exhaustive-deps"]
-            : ["rules-of-hooks", "no-pass-live-state-to-parent"],
+        ruleIds,
       });
       if (trace === null) return null;
       contentPaths.add(filename);

@@ -1,0 +1,121 @@
+{
+  "@babel/core": {
+    "files": {
+      "lib/index.js": "48caf11a754844a01d28ce78d93ed0cc22c87c727bd564d078892844c1c22c63",
+      "package.json": "c74e3ac62c3af7759a2f79968de868c2c1841df8f91a93dfffde0753f98175c5"
+    },
+    "packageName": "@babel/core",
+    "version": "7.27.1"
+  },
+  "@svgr/core": {
+    "files": {
+      "dist/index.js": "b30b02db5ecdb36e6e61d42da91fc19056794a71dcf454cb07ecccec9aa5063a",
+      "package.json": "d2b96db8ea2a274e1c8dbc52fad992d6ff02ae3e2b917087678d9131292c0932"
+    },
+    "packageName": "@svgr/core",
+    "version": "8.1.0"
+  },
+  "@svgr/plugin-jsx": {
+    "files": {
+      "dist/index.js": "ac26e84ac382924dbb4f44f9b0e6deecccd713d5ed9a00f1c8cf0dbe9d5b3cbb",
+      "package.json": "4051e0267988940af5499185cf54d0cf5dcd4da7fc6f801046d356865d0e15a4"
+    },
+    "packageName": "@svgr/plugin-jsx",
+    "version": "8.1.0"
+  },
+  "@svgr/plugin-svgo": {
+    "files": {
+      "dist/index.js": "4a9a9511fdeee0ecf9ed25837b44f1c8b82b3a069bd9a34247077ff5034b9078",
+      "package.json": "31492e34b636250222efad5010097b13f11a389cb5cfdf7b380165fc8d1e65d5"
+    },
+    "packageName": "@svgr/plugin-svgo",
+    "version": "8.1.0"
+  },
+  "@vitejs/plugin-react": {
+    "files": {
+      "dist/index.cjs": "1b2c9da865157d2a7dd50ffdeeecc98a8d57b431a1e15bb0c1451c74c44ace6d",
+      "dist/index.mjs": "1b6abf13c902869c87435a8a8c714e91b62f12426798b3a2ead3a31234e525f2",
+      "package.json": "ed972d6d16df4ad23fb01af7444653ac5835f1e217a691b30c756011135e2671"
+    },
+    "packageName": "@vitejs/plugin-react",
+    "version": "4.4.1"
+  },
+  "cosmiconfig": {
+    "files": {
+      "dist/index.js": "84af47e6a17671bdd0fac2994a02e0239c2d331f8e25c08e4c86aff5fa3d1dc0",
+      "package.json": "97e9fadb3b5c16166e192d2efc030a49e855f79dbc1da59c49bb27699ac3a9de"
+    },
+    "packageName": "cosmiconfig",
+    "version": "8.3.6"
+  },
+  "esbuild": {
+    "files": {
+      "lib/main.js": "0d1241812c443111d39475dfc66836003e9ef8b87e54d990dd67df29d20010e1",
+      "package.json": "cb7d5b1fe478f8cbaae566a86031b6fdf5f7d444354f35d1cb3cba9adf6d2935"
+    },
+    "packageName": "esbuild",
+    "version": "0.25.12"
+  },
+  "rollup": {
+    "files": {
+      "dist/es/rollup.js": "7a027bfec829f2f0c344c898697f5882db6bc98a471da77a8911efb57644498b",
+      "dist/native.js": "93c3da450b25ba485bb3de20dded405aa9c105951e8d31964eeb49633c2b16ea",
+      "dist/rollup.js": "59b88cfbc73a91b071b19f11df9dce7180532bb9bcd52621a1352804b6af9fe2",
+      "package.json": "d2b8a7290987a7989c993f4f9adb2939de7d4030e7eb9ec252bc505fcb0b90f3"
+    },
+    "packageName": "rollup",
+    "version": "4.59.0"
+  },
+  "rollup-plugin-visualizer": {
+    "files": {
+      "dist/plugin/index.js": "258caa85dad0fcd0dae50437e0171383ff748691bfcbd0a2cb123fdbd68c1210",
+      "package.json": "e0de1fdb85cad7f9e50eef9d5959f7e8d645802fe526f2cb8052b20ef30f2d23"
+    },
+    "packageName": "rollup-plugin-visualizer",
+    "version": "5.14.0"
+  },
+  "svgo": {
+    "files": {
+      "lib/svgo-node.js": "462d86cfb7775cbde69629201abceb04256cff9b357dafd7047ad478810dd32e",
+      "package.json": "7d186620bfab3d7c4a357bb3910c4fbb67fab30f8a2227132b7db7cd5679774f"
+    },
+    "packageName": "svgo",
+    "version": "3.3.2"
+  },
+  "vite": {
+    "files": {
+      "bin/vite.js": "8498a58e0d311572c409038515df0e5d707bdc6ab5927153f487e36ef1c9052c",
+      "dist/node/chunks/dep-4-IQbZQm.js": "fcc9c6abb31f94cf301361f54bff07ffa66f740afbf6c2bd2d5b3e03773df545",
+      "dist/node/chunks/dep-Dq2t6Dq0.js": "62b768c2485cef903e0b4e93f31b4183fc741ee27c12784808ec0551d28a1df3",
+      "dist/node/constants.js": "58c1d17e5f8118fe278a620a1ca11bc2554d3c7fb899ac9d13ffeb5a15279e17",
+      "dist/node/index.js": "225ea4f7ef4d520adecac29001ccd80d433156347fd10cab31cb569362351aac",
+      "package.json": "5fc282b9be55507e1f487bbf0bc6d7621728c41ab1325c8111b353e4fe043a62"
+    },
+    "packageName": "vite",
+    "version": "6.4.2"
+  },
+  "vite-plugin-istanbul": {
+    "files": {
+      "dist/index.mjs": "d54583ff20358211e54da312f8577ffd3c97dc3094ea154ef45a967bda955aa9",
+      "package.json": "df1c996637d1bda2b4c8b49a13cc95f99392722c1d3d7a8aea530e94422baec8"
+    },
+    "packageName": "vite-plugin-istanbul",
+    "version": "6.0.2"
+  },
+  "vite-plugin-svgr": {
+    "files": {
+      "dist/index.js": "a8619302ac119f8e9f4b44bb9c0c80847aaeb565c7482e5d86ae4f5699b3b699",
+      "package.json": "c0c9c8000c1c0e5b04d621803c934602ba2316ac800e8ab080ca11b5c6e97f27"
+    },
+    "packageName": "vite-plugin-svgr",
+    "version": "3.3.0"
+  },
+  "vite-plugin-total-bundle-size": {
+    "files": {
+      "dist/index.mjs": "663818845cb5fcf1a387bfba6f6dcc8477002863f29b30a0a1744809c1d91d49",
+      "package.json": "7b715dd7b462ebeff87bd84170032e07708931bc3d08c46fc0bd32e84743758a"
+    },
+    "packageName": "vite-plugin-total-bundle-size",
+    "version": "1.0.8"
+  }
+}

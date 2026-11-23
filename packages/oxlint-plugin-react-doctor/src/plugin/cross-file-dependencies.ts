@@ -32,6 +32,7 @@ import { collectImportedJsxComponentDependencies } from "./utils/collect-importe
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
+import { hasPotentialMountPropReset } from "./rules/state-and-effects/find-negated-effect-prop.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
@@ -730,6 +731,21 @@ export const collectCrossFileDependencyProbes = (input: {
     };
   } catch {
     return null;
+  }
+
+  if (
+    input.ruleIds.includes("no-adjust-state-on-prop-change") &&
+    input.sourceText.includes("!") &&
+    input.sourceText.includes("export")
+  ) {
+    const program = getProgram();
+    attachParentReferences(program);
+    if (
+      isNodeOfType(program, "Program") &&
+      hasPotentialMountPropReset(program, analyzeScopes(program))
+    ) {
+      return null;
+    }
   }
 
   const collectorInput: CrossFileDependencyCollectorInput = {

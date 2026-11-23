@@ -1,3 +1,4 @@
+import { isPrivateImportedPrimitiveIterable } from "./utils/is-private-imported-primitive-iterable.js";
 import { isOmittedPrivateNullStateIdentityWrite } from "./rules/state-and-effects/utils/is-omitted-private-null-state-identity-write.js";
 import { collectGuardedRecordCaptureDependencies } from "./rules/react-builtins/exhaustive-deps-guarded-record-capture.js";
 import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
@@ -210,6 +211,19 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectEffectCleanupDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  if (!input.staticImports.some((entry) => entry.moduleRequest.value.startsWith("."))) return;
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  const context = { scopes, filename: input.absoluteFilePath };
+  walkAst(program, (node) => {
+    if (isNodeOfType(node, "ForOfStatement"))
+      isPrivateImportedPrimitiveIterable(stripParenExpression(node.right), context);
+  });
 };
 
 const collectPropChangeAdjustmentDependencies: CrossFileDependencyCollector = (input) => {
@@ -649,7 +663,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
-    ["effect-needs-cleanup", collectEffectValueHelperDependencies],
+    ["effect-needs-cleanup", collectEffectCleanupDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectExhaustiveDepsDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],

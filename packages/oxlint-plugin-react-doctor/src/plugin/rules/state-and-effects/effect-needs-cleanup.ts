@@ -1,3 +1,4 @@
+import { isPrivateImportedPrimitiveIterable } from "../../utils/is-private-imported-primitive-iterable.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -2403,14 +2404,15 @@ const resolvePrimitiveReplayableIteratorCollectionKey = (
 ): string | null => {
   if (!expression) return null;
   const unwrappedExpression = stripParenExpression(expression);
-  if (
-    !isNodeOfType(unwrappedExpression, "Identifier") ||
-    !isPrivatePlainConstIdentifier(unwrappedExpression, context)
-  ) {
-    return null;
-  }
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(unwrappedExpression);
   if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
+  if (symbol.kind === "import") {
+    return isPrivateImportedPrimitiveIterable(unwrappedExpression, context)
+      ? `symbol:${symbol.id}`
+      : null;
+  }
+  if (!isPrivatePlainConstIdentifier(unwrappedExpression, context)) return null;
   visitedSymbolIds.add(symbol.id);
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   const isPrimitiveArrayCollection = (collection: EsTreeNode | null): boolean => {

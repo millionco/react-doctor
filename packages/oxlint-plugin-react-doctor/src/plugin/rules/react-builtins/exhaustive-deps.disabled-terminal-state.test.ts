@@ -369,3 +369,94 @@ describe("exhaustive-deps omitted record integrity opponents", () => {
     expect(runRecord(source).diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+const PRIVATE_SNAPSHOT_CHILD = `
+  import { useEffect, useRef } from "react";
+
+  export default function Child({ onStart, value }: { onStart?: () => void; value?: number }) {
+    const pending = useRef(new Set<number>());
+    const record = { value };
+    const previousRef = useRef(record);
+    const holder = useRef(record);
+    holder.current = record;
+    const shown = holder.current;
+    const start = () => {
+      if (!onStart) return;
+      pending.current.add(1);
+      onStart();
+    };
+    useEffect(() => {
+      const previous = previousRef.current;
+      if (previous.value !== record.value) {
+        for (const item of pending.current) {
+          void record.value;
+          void item;
+        }
+      }
+      previousRef.current = record;
+    }, [value]);
+    return <button onClick={start}>{shown.value}</button>;
+  }
+`;
+
+describe("exhaustive-deps private snapshot updates with no subscribers", () => {
+  it("accepts a private snapshot in curated mode and tracks incoming callers", () => {
+    const caller = placePage("");
+    expect(runRecord(PRIVATE_SNAPSHOT_CHILD).diagnostics).toEqual([]);
+    expect(runRecord(PRIVATE_SNAPSHOT_CHILD, true).diagnostics).toHaveLength(1);
+    const trace = collectCrossFileDependencyProbes({
+      absoluteFilePath: filename,
+      sourceText: PRIVATE_SNAPSHOT_CHILD,
+      ruleIds: ["exhaustive-deps"],
+    });
+    expect(trace?.contentPaths.has(caller)).toBe(true);
+    expect(trace?.directoryPaths.has(dirname(caller))).toBe(true);
+  });
+
+  it("retains the snapshot capture when a caller supplies the callback", () => {
+    placePage("onStart={() => {}}");
+    expect(runRecord(PRIVATE_SNAPSHOT_CHILD).diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "holder value escapes",
+      "const shown = holder.current;",
+      "const shown = holder.current; console.log(holder.current);",
+    ],
+    [
+      "holder alias escapes",
+      "const shown = holder.current;",
+      "const shown = holder.current; console.log(shown);",
+    ],
+    [
+      "snapshot alias is reassigned",
+      "const shown = holder.current;",
+      "let shown = holder.current; [shown] = [{ value: 999 }];",
+    ],
+    ["holder receives a compound write", "holder.current = record;", "holder.current ||= record;"],
+    ["a compared dependency is missing", "}, [value]);", "}, []);"],
+    [
+      "a separate effect activates the Set",
+      "const previousRef = useRef(record);",
+      "const previousRef = useRef(record); useEffect(() => { pending.current.add(2); }, []);",
+    ],
+    [
+      "the primary holder is read elsewhere",
+      "const holder = useRef(record);",
+      "const holder = useRef(record); void previousRef.current.value;",
+    ],
+    [
+      "a field is deleted through the holder",
+      "holder.current = record;",
+      "holder.current = record; delete holder.current.value;",
+    ],
+  ])("retains the snapshot capture when %s", (_, before, after) => {
+    placePage("");
+    const source = PRIVATE_SNAPSHOT_CHILD.replace(before, after);
+    const curated = runRecord(source);
+    expect(curated.parseErrors).toEqual([]);
+    expect(curated.diagnostics).toHaveLength(1);
+    expect(curated.diagnostics).toEqual(runRecord(source, true).diagnostics);
+  });
+});

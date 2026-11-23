@@ -8,7 +8,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -20,25 +19,16 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import {
-  findWriterGate,
   hasOpaqueLexicalAccess,
-  resolveOmittedCallbackProp,
   resolveSimplePropName,
 } from "./exhaustive-deps-disabled-terminal-state.js";
-
-const isRefCurrentMember = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "MemberExpression") &&
-  !node.computed &&
-  !node.optional &&
-  getStaticPropertyName(node) === "current";
-
-const isInside = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  for (let parent: EsTreeNode | undefined = node; parent; parent = parent.parent ?? undefined) {
-    if (parent === ancestor) return true;
-  }
-  return false;
-};
+import {
+  isRefCurrentMember,
+  resolveDormantSetActivationProp,
+} from "./exhaustive-deps-dormant-set.js";
+import { resolvePrivateSnapshotCaptureKeys } from "./exhaustive-deps-private-snapshot-capture.js";
 
 const isPrivateRefSnapshot = (
   statement: EsTreeNode,
@@ -95,67 +85,6 @@ const isPrivateRefSnapshot = (
         consumer.left === target)
     );
   });
-};
-
-const resolveDormantSetActivationProp = (
-  ref: SymbolDescriptor,
-  component: EsTreeNode,
-  scopes: ScopeAnalysis,
-): string | null => {
-  const program = findProgramRoot(component);
-  const initializer = getDirectConstInitializer(ref);
-  if (
-    !program ||
-    !hasCompleteSymbolReferences(ref, program, scopes) ||
-    !isNodeOfType(initializer, "CallExpression") ||
-    findEnclosingFunction(initializer) !== component ||
-    !isReactApiCall(initializer, "useRef", scopes) ||
-    initializer.arguments.length !== 1
-  )
-    return null;
-  const emptySet = initializer.arguments[0];
-  if (
-    !isNodeOfType(emptySet, "NewExpression") ||
-    emptySet.arguments.length !== 0 ||
-    !isNodeOfType(emptySet.callee, "Identifier") ||
-    emptySet.callee.name !== "Set" ||
-    !isProvenUnmodifiedGlobalNamespaceReference(emptySet.callee, "Set", scopes, undefined, true)
-  )
-    return null;
-
-  let propertyName: string | null = null;
-  for (const { identifier, flag } of ref.references) {
-    const current = identifier.parent;
-    if (
-      flag !== "read" ||
-      !isNodeOfType(current, "MemberExpression") ||
-      current.object !== identifier ||
-      !isRefCurrentMember(current) ||
-      current.optional ||
-      isWithinAssignmentTarget(current)
-    )
-      return null;
-    const consumer = current.parent;
-    if (isNodeOfType(consumer, "ForOfStatement") && consumer.right === current && !consumer.await)
-      continue;
-    if (
-      !isNodeOfType(consumer, "MemberExpression") ||
-      consumer.object !== current ||
-      consumer.optional
-    )
-      return null;
-    const operation = getStaticPropertyName(consumer);
-    const call = consumer.parent;
-    if (!isNodeOfType(call, "CallExpression") || call.callee !== consumer || call.optional)
-      return null;
-    if (operation === "delete" || operation === "clear") continue;
-    if (operation !== "add" || call.arguments.length !== 1) return null;
-    const guard = findWriterGate(call, component, scopes);
-    const checked = guard && resolveOmittedCallbackProp(guard, component, scopes);
-    if (checked === null || (propertyName !== null && checked !== propertyName)) return null;
-    propertyName = checked;
-  }
-  return propertyName;
 };
 
 const collectDeclaredRecordFieldBindings = (
@@ -234,7 +163,7 @@ const findGuardedCallbackProp = (
     !prop ||
     references.some(
       ({ flag, identifier }) =>
-        flag !== "read" || !unreachable.some((root) => isInside(identifier, root)),
+        flag !== "read" || !unreachable.some((root) => isAstDescendant(identifier, root)),
     )
   )
     return null;
@@ -269,7 +198,7 @@ const findDormantCleanupProp = (
     !isNodeOfType(loop.right, "MemberExpression") ||
     !isRefCurrentMember(loop.right) ||
     !isNodeOfType(loop.right.object, "Identifier") ||
-    references.some(({ identifier }) => !isInside(identifier, loop.body))
+    references.some(({ identifier }) => !isAstDescendant(identifier, loop.body))
   )
     return null;
   const ref = scopes.symbolFor(loop.right.object);
@@ -290,8 +219,6 @@ export const resolveGuardedRecordCaptureKeys = (
     !isNodeOfType(call.arguments[1], "ArrayExpression")
   )
     return null;
-  const sources = collectDeclaredRecordFieldBindings(record, call.arguments[1], scopes);
-  if (!sources) return null;
   const component = findEnclosingFunction(callback);
   const program = findProgramRoot(callback);
   if (
@@ -302,10 +229,29 @@ export const resolveGuardedRecordCaptureKeys = (
   )
     return null;
   const dependencies = call.arguments[1];
-  if (record.references.some(({ identifier }) => isInside(identifier, dependencies))) return null;
-  const references = record.references.filter(({ identifier }) => isInside(identifier, callback));
+  if (record.references.some(({ identifier }) => isAstDescendant(identifier, dependencies)))
+    return null;
+  const references = record.references.filter(({ identifier }) =>
+    isAstDescendant(identifier, callback),
+  );
   if (!references.length) return null;
   const cleanupEffect = isReactApiCall(call, "useEffect", scopes);
+  if (cleanupEffect && !hasOpaqueLexicalAccess(component)) {
+    const snapshot = resolvePrivateSnapshotCaptureKeys(
+      callback,
+      record,
+      component,
+      dependencies,
+      scopes,
+    );
+    if (
+      snapshot &&
+      isPropOmittedByPrivateJsxConsumers(component, scopes, filename, snapshot.prop, true)
+    )
+      return snapshot.keys;
+  }
+  const sources = collectDeclaredRecordFieldBindings(record, dependencies, scopes);
+  if (!sources) return null;
   const prop = cleanupEffect
     ? findDormantCleanupProp(callback, component, references, scopes)
     : isReactApiCall(call, "useCallback", scopes)

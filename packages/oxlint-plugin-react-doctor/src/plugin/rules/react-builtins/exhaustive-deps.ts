@@ -16,6 +16,11 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -444,6 +449,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  allowFunctionalUpdaterForwarders = false,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -502,6 +508,9 @@ const collectCaptureDepKeys = (
       }
       const identitySourceKeys =
         resolveCalledArgumentPropertyKeys(reference, scopes) ??
+        (allowFunctionalUpdaterForwarders
+          ? resolveFunctionalUpdaterForwarderSourceKeys(reference, symbol, scopes, declaredKeys)
+          : null) ??
         resolvePureCalledFunctionSourceKeys(reference, symbol, scopes) ??
         resolveRenderDerivedMutableSourceKeys(reference, symbol, scopes) ??
         resolveReactiveIdentitySourceKeys(symbol, scopes);
@@ -753,6 +762,203 @@ const resolvePureCalledFunctionSourceKeys = (
     sourceKeys.add(capturedKey);
   }
   return sourceKeys.size > 0 ? sourceKeys : null;
+};
+
+const isFreshStateRecordFactory = (
+  fallback: EsTreeNode,
+  discriminator: EsTreeNode,
+  key: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(fallback, "CallExpression") ||
+    fallback.optional ||
+    !isNodeOfType(fallback.callee, "Identifier") ||
+    fallback.arguments.length !== 1 ||
+    !isNodeOfType(fallback.arguments[0], "Identifier") ||
+    scopes.symbolFor(fallback.arguments[0]) !== scopes.symbolFor(discriminator)
+  )
+    return false;
+  const symbol = scopes.symbolFor(fallback.callee);
+  const factory = symbol && getDirectConstInitializer(symbol);
+  if (
+    !symbol ||
+    !isOutsideAllFunctions(symbol) ||
+    !isNodeOfType(factory, "ArrowFunctionExpression") ||
+    factory.async ||
+    factory.params.length !== 1 ||
+    !isNodeOfType(factory.params[0], "Identifier")
+  )
+    return false;
+  const parameter = scopes.symbolFor(factory.params[0]);
+  const record = unwrapExpression(factory.body);
+  if (!parameter || !isNodeOfType(record, "ObjectExpression")) return false;
+  const keys = new Set<string>();
+  for (const property of record.properties) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.computed ||
+      property.kind !== "init" ||
+      property.method
+    )
+      return false;
+    const name = getStaticPropertyKeyName(property);
+    if (!name || name === "__proto__" || keys.has(name)) return false;
+    keys.add(name);
+    const value = unwrapExpression(property.value);
+    if (name === key) {
+      if (!isNodeOfType(value, "Identifier") || scopes.symbolFor(value) !== parameter) return false;
+      continue;
+    }
+    if (isNodeOfType(value, "Literal")) continue;
+    if (
+      !isNodeOfType(value, "NewExpression") ||
+      value.arguments.length !== 0 ||
+      !isNodeOfType(value.callee, "Identifier") ||
+      !["Map", "Set"].includes(value.callee.name) ||
+      !scopes.isGlobalReference(value.callee)
+    )
+      return false;
+  }
+  return keys.has(key);
+};
+
+const resolveFunctionalUpdaterForwarderSourceKeys = (
+  reference: ReferenceDescriptor,
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+  declaredKeys: ReadonlySet<string> | undefined,
+): Set<string> | null => {
+  const caller = reference.identifier.parent;
+  const forwarder = getDirectConstInitializer(symbol);
+  if (
+    reference.flag !== "read" ||
+    symbol.references.some(({ flag, identifier }) => {
+      const parent = identifier.parent;
+      return (
+        flag !== "read" ||
+        !isNodeOfType(parent, "CallExpression") ||
+        parent.callee !== identifier ||
+        parent.optional
+      );
+    }) ||
+    !isNodeOfType(caller, "CallExpression") ||
+    caller.callee !== reference.identifier ||
+    caller.optional ||
+    caller.arguments.length !== 1 ||
+    !isFunctionLike(caller.arguments[0]) ||
+    !isNodeOfType(forwarder, "ArrowFunctionExpression") ||
+    forwarder.async ||
+    forwarder.params.length !== 1 ||
+    !isNodeOfType(forwarder.params[0], "Identifier")
+  )
+    return null;
+  const owner = findEnclosingFunction(forwarder);
+  const transformParameter = scopes.symbolFor(forwarder.params[0]);
+  const write = unwrapExpression(forwarder.body);
+  if (
+    !owner ||
+    !transformParameter ||
+    !isNodeOfType(write, "CallExpression") ||
+    write.optional ||
+    !isNodeOfType(write.callee, "Identifier") ||
+    write.arguments.length !== 1
+  )
+    return null;
+  const pair = resolveReactUseStatePair(write.callee, scopes);
+  const hook = pair?.declarator.init;
+  const updater = write.arguments[0];
+  if (
+    !pair ||
+    !isNodeOfType(hook, "CallExpression") ||
+    !isReactApiCall(hook, "useState", scopes) ||
+    findEnclosingFunction(pair.declarator) !== owner ||
+    pair.setterSymbol !== scopes.symbolFor(write.callee) ||
+    pair.setterSymbol.references.some(({ flag }) => flag !== "read") ||
+    !isNodeOfType(updater, "ArrowFunctionExpression") ||
+    updater.async ||
+    updater.params.length !== 1 ||
+    !isNodeOfType(updater.params[0], "Identifier")
+  )
+    return null;
+  const previous = scopes.symbolFor(updater.params[0]);
+  const transform = unwrapExpression(updater.body);
+  if (
+    !previous ||
+    !isNodeOfType(transform, "CallExpression") ||
+    transform.optional ||
+    !isNodeOfType(transform.callee, "Identifier") ||
+    scopes.symbolFor(transform.callee) !== transformParameter ||
+    transform.arguments.length !== 1
+  )
+    return null;
+  const choice = transform.arguments[0];
+  if (
+    !isNodeOfType(choice, "ConditionalExpression") ||
+    !isNodeOfType(choice.test, "BinaryExpression") ||
+    choice.test.operator !== "===" ||
+    !isNodeOfType(choice.test.left, "MemberExpression") ||
+    choice.test.left.optional ||
+    choice.test.left.computed ||
+    !isNodeOfType(choice.test.left.object, "Identifier") ||
+    scopes.symbolFor(choice.test.left.object) !== previous ||
+    !isNodeOfType(choice.test.right, "Identifier") ||
+    !isNodeOfType(choice.consequent, "Identifier") ||
+    scopes.symbolFor(choice.consequent) !== previous
+  )
+    return null;
+  const key = getStaticPropertyName(choice.test.left);
+  const source = scopes.symbolFor(choice.test.right);
+  const callback = findEnclosingFunction(caller);
+  const program = findProgramRoot(forwarder);
+  const callbackRoot = callback && findTransparentExpressionRoot(callback);
+  const hookCall = callbackRoot?.parent;
+  if (
+    !key ||
+    !source ||
+    !declaredKeys?.has(source.name) ||
+    (source.kind !== "const" && source.kind !== "parameter") ||
+    !program ||
+    !hasCompleteSymbolReferences(source, program, scopes) ||
+    !hasCompleteSymbolReferences(symbol, program, scopes) ||
+    !hasCompleteSymbolReferences(pair.setterSymbol, program, scopes) ||
+    source.references.some(
+      ({ flag, identifier }) => flag !== "read" || isWithinAssignmentTarget(identifier),
+    ) ||
+    !callback ||
+    findEnclosingFunction(callback) !== owner ||
+    !isNodeOfType(hookCall, "CallExpression") ||
+    hookCall.arguments[0] !== callbackRoot ||
+    !isReactApiCall(hookCall, "useEffect", scopes) ||
+    !isNodeOfType(hookCall.arguments[1], "ArrayExpression") ||
+    !hookCall.arguments[1].elements.some(
+      (element) => isNodeOfType(element, "Identifier") && scopes.symbolFor(element) === source,
+    ) ||
+    !isFreshStateRecordFactory(choice.alternate, choice.test.right, key, scopes)
+  )
+    return null;
+  for (const capture of closureCaptures(callback, scopes)) {
+    const captured = capture.resolvedSymbol;
+    if (
+      !captured ||
+      captured.id === symbol.id ||
+      isOutsideAllFunctions(captured) ||
+      symbolHasStableValue(captured, scopes)
+    )
+      continue;
+    const capturedKey = computeDepKey(capture);
+    if (![...declaredKeys].some((declared) => isMatchingDepOrPrefix(declared, capturedKey)))
+      return null;
+  }
+  let opaque = false;
+  walkAst(owner, (node) => {
+    if (opaque) return false;
+    opaque =
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") && node.name === "eval");
+    return !opaque;
+  });
+  return opaque ? null : new Set([source.name]);
 };
 
 const mergeDerivedExpressionSourceKeys = (
@@ -2450,6 +2656,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          shouldUseCuratedBehavior && isReactApiCall(node, "useEffect", context.scopes),
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

@@ -1,10 +1,15 @@
 import {
   hasClosedCommittedLoadingMirror,
+  hasClosedDismissiveViewMirrors,
   hasClosedLoadingGenerationCleanup,
   hasClosedLoadingGeneration,
 } from "./read-committed-open-loading-mirror.js";
 import { hasClosedResetFirstPreviewDisposal } from "./read-reset-first-preview-disposal.js";
-import { readPassiveLoadingPair, readRenderLoadingPair } from "./read-passive-loading-pair.js";
+import {
+  readDismissiveLoadingPair,
+  readPassiveLoadingPair,
+  readRenderLoadingPair,
+} from "./read-passive-loading-pair.js";
 import { verifyMountedPassiveLoadingPair } from "./verify-mounted-passive-loading-pair.js";
 import {
   createSplitGenerationReactImporterProof,
@@ -4153,6 +4158,245 @@ const hasPairedCleanupGenerationFinalizer = (
   );
 };
 
+const directLogicalOperands = (expression: EsTreeNode, operator: "&&" | "||"): EsTreeNode[] => {
+  const node = stripParenExpression(expression);
+  return isNodeOfType(node, "LogicalExpression") && node.operator === operator
+    ? [
+        ...directLogicalOperands(node.left, operator),
+        ...directLogicalOperands(node.right, operator),
+      ]
+    : [node];
+};
+
+const isDirectEmptyReturn = (entry: EsTreeNode): boolean =>
+  isNodeOfType(entry, "ReturnStatement") &&
+  isNodeOfType(entry.argument, "ArrayExpression") &&
+  entry.argument.elements.length === 0;
+
+const ownsDismissiveView = (
+  input: EsTreeNode,
+  view: SymbolDescriptor,
+  context: RuleContext,
+): EsTreeNode | null => {
+  if (!isNodeOfType(input, "BinaryExpression") || input.operator !== "===") return null;
+  for (const [left, right] of [
+    [input.left, input.right],
+    [input.right, input.left],
+  ]) {
+    if (
+      isNodeOfType(right, "Identifier") &&
+      resolveConstIdentifierAlias(right, context.scopes) === view
+    ) {
+      const ref = getReactRefCurrent(left, context);
+      if (ref) return ref;
+    }
+  }
+  return null;
+};
+
+const hasDirectStaleReturn = (
+  guard: EsTreeNode | undefined,
+  live: readonly EsTreeNode[],
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !isNodeOfType(guard.consequent, "BlockStatement") ||
+    guard.consequent.body.length !== 1 ||
+    !isDirectEmptyReturn(guard.consequent.body[0])
+  )
+    return false;
+  const terms = directLogicalOperands(guard.test, "||");
+  if (terms.length !== live.length) return false;
+  const matches = (left: EsTreeNode, right: EsTreeNode) => {
+    const key = serializeReferenceKey({ node: left, scopes: context.scopes });
+    return key !== null && key === serializeReferenceKey({ node: right, scopes: context.scopes });
+  };
+  return live.every((entry) =>
+    terms.some((term) => {
+      if (isNodeOfType(entry, "BinaryExpression") && entry.operator === "===") {
+        return (
+          isNodeOfType(term, "BinaryExpression") &&
+          term.operator === "!==" &&
+          ((matches(entry.left, term.left) && matches(entry.right, term.right)) ||
+            (matches(entry.left, term.right) && matches(entry.right, term.left)))
+        );
+      }
+      return (
+        isNodeOfType(term, "UnaryExpression") &&
+        term.operator === "!" &&
+        matches(entry, term.argument)
+      );
+    }),
+  );
+};
+
+const hasClosedDismissiveViewFinalizer = (
+  resetNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  firstRiskyAwait: AwaitSite,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): boolean => {
+  if (
+    truthySets.length !== 1 ||
+    !isNodeOfType(functionNode, "ArrowFunctionExpression") ||
+    !isNodeOfType(functionNode.body, "BlockStatement") ||
+    !isNodeOfType(resetNode, "CallExpression")
+  )
+    return false;
+  const owner = getOwningFunction(functionNode);
+  if (!isFunctionLike(owner)) return false;
+  const start = truthySets[0].node;
+  if (!isNodeOfType(start, "CallExpression") || !start.parent) return false;
+  const setter = context.scopes.symbolFor(start.callee);
+  const initialState = setter?.initializer;
+  if (
+    !setter ||
+    !isNodeOfType(initialState, "CallExpression") ||
+    initialState.arguments.length !== 1 ||
+    !isNodeOfType(initialState.arguments[0], "Literal") ||
+    initialState.arguments[0].value !== false ||
+    !hasCompleteSymbolReferences(setter, owner, context.scopes) ||
+    context.scopes.symbolFor(resetNode.callee) !== setter ||
+    setter.references.length !== 3 ||
+    setter.references.some(
+      ({ flag, identifier }) => flag !== "read" || isWithinAssignmentTarget(identifier),
+    )
+  )
+    return false;
+  const outside = setter.references.find(
+    ({ identifier }) => identifier !== start.callee && identifier !== resetNode.callee,
+  );
+  if (!outside) return false;
+  const pair = readDismissiveLoadingPair({
+    owner,
+    request: functionNode,
+    extraSetterIdentifier: outside.identifier,
+    firstAwait: firstRiskyAwait.node,
+    context,
+  });
+  if (!pair || hasLexicalDynamicAccess(owner, context)) return false;
+  const body = functionNode.body.body;
+  const final = readSoleDirectFinalizerGuard(resetNode, body.at(-1));
+  if (!final) return false;
+  const guardTerms = directLogicalOperands(final.test, "&&");
+  const owningTry = body.at(-1);
+  if (
+    guardTerms.length !== (pair.releaseInLaunch ? 3 : 2) ||
+    !isNodeOfType(owningTry, "TryStatement") ||
+    !owningTry.handler ||
+    !hasDirectStaleReturn(owningTry.block.body[1], guardTerms, context) ||
+    !hasDirectStaleReturn(owningTry.handler.body.body[0], guardTerms, context)
+  )
+    return false;
+
+  const viewCheck = guardTerms.find((term) => ownsDismissiveView(term, pair.viewBinding, context));
+  const viewRead = viewCheck && ownsDismissiveView(viewCheck, pair.viewBinding, context);
+  const ownershipChecks = guardTerms.filter((term) => term !== viewCheck);
+  const other = ownershipChecks.at(-1);
+  if (!viewCheck || !viewRead || !other) return false;
+  const openRead = getReactRefCurrent(other, context);
+  const mountedRead = pair.releaseInLaunch && getReactRefCurrent(ownershipChecks[0], context);
+  if (pair.releaseInLaunch && (!openRead || !mountedRead)) return false;
+  const generation = openRead ? null : getAsyncOwnershipComparison(other, context);
+  const token = generation && context.scopes.symbolFor(generation.token);
+  const capture = token?.initializer;
+  if (
+    !openRead &&
+    (generation?.mode !== "owns" ||
+      !isNodeOfType(other, "BinaryExpression") ||
+      other.operator !== "===" ||
+      !token ||
+      token.kind !== "const" ||
+      !hasCompleteSymbolReferences(token, functionNode, context.scopes) ||
+      !isNodeOfType(capture, "UpdateExpression"))
+  )
+    return false;
+
+  const [missing, viewCapture] = body;
+  if (
+    !isNodeOfType(missing, "IfStatement") ||
+    missing.alternate ||
+    !isNodeOfType(missing.consequent, "BlockStatement") ||
+    missing.consequent.body.length !== 1 ||
+    !isDirectEmptyReturn(missing.consequent.body[0]) ||
+    !isNodeOfType(viewCapture, "VariableDeclaration") ||
+    viewCapture.kind !== "const" ||
+    viewCapture.declarations.length !== 1 ||
+    !isNodeOfType(viewCapture.declarations[0].init, "Identifier") ||
+    context.scopes.symbolFor(viewCapture.declarations[0].init) !== pair.viewBinding
+  )
+    return false;
+  const missingInputs = directLogicalOperands(missing.test, "||");
+  const absent = new Set(
+    missingInputs.map((term) =>
+      isNodeOfType(term, "UnaryExpression") &&
+      term.operator === "!" &&
+      isNodeOfType(term.argument, "Identifier")
+        ? context.scopes.symbolFor(term.argument)
+        : null,
+    ),
+  );
+  const startIndex = capture ? 3 : 2;
+  if (
+    missingInputs.length !== 2 ||
+    !absent.has(pair.viewBinding) ||
+    !absent.has(pair.getterBinding) ||
+    (capture && (!token || token.declarationNode.parent !== body[2])) ||
+    body[startIndex] !== start.parent ||
+    getDirectPrimitiveReactSetter(start.parent, functionNode, owner, context, importerProof) !==
+      start ||
+    !getSetterBooleanValue(start, context)?.value ||
+    !hasProtectedRequestStartup(
+      body.slice(startIndex + 1),
+      resolveExpressionKey(start.callee, context),
+      firstRiskyAwait,
+      resetNode,
+      functionNode,
+      owner,
+      context,
+      importerProof,
+    )
+  )
+    return false;
+  let hasUnexpectedAwait = false;
+  walkOwnFunctionScope(functionNode, (node) => {
+    if (isNodeOfType(node, "AwaitExpression") && node !== firstRiskyAwait.node) {
+      hasUnexpectedAwait = true;
+    }
+  });
+  if (hasUnexpectedAwait) return false;
+
+  const mirrorInput = {
+    owner,
+    requestEffect: pair.requestEffect,
+    expectedView: pair.viewBinding,
+    expectedOpen: pair.openBinding,
+    viewRead,
+    stableCleanup: pair.stableReset.binding,
+    context,
+  };
+  const ownedMirrors = openRead
+    ? hasClosedDismissiveViewMirrors({
+        ...mirrorInput,
+        openRead,
+        ...(mountedRead ? { mountedRead } : {}),
+      })
+    : Boolean(
+        generation &&
+        isNodeOfType(capture, "UpdateExpression") &&
+        hasClosedDismissiveViewMirrors({
+          ...mirrorInput,
+          generationUpdate: capture,
+          generationRead: generation.refCurrent,
+        }),
+      );
+  return ownedMirrors && verifyMountedPassiveLoadingPair(pair, owner, context);
+};
+
 const isFinalizerResetProvablyGuarded = (
   resetNode: EsTreeNode,
   protectingTry: EsTreeNodeOfType<"TryStatement">,
@@ -4166,8 +4410,7 @@ const isFinalizerResetProvablyGuarded = (
   if (
     guards &&
     guards.negative.length === 0 &&
-    (hasPairedCleanupGenerationFinalizer(
-      guards.positive,
+    (hasClosedDismissiveViewFinalizer(
       resetNode,
       functionNode,
       truthySets,
@@ -4175,6 +4418,15 @@ const isFinalizerResetProvablyGuarded = (
       context,
       importerProof,
     ) ||
+      hasPairedCleanupGenerationFinalizer(
+        guards.positive,
+        resetNode,
+        functionNode,
+        truthySets,
+        firstRiskyAwait,
+        context,
+        importerProof,
+      ) ||
       hasClosedCommittedOpenFinalizer(
         guards.positive,
         resetNode,

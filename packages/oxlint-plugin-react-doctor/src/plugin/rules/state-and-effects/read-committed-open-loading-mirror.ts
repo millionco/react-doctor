@@ -277,3 +277,306 @@ export const hasClosedLoadingGenerationCleanup = (
     release && writers?.size === 2 && writers.has(capture.argument) && writers.has(release),
   );
 };
+
+type OwnerBody = EsTreeNodeOfType<"BlockStatement">;
+type MirrorPhase = "useEffect" | "useLayoutEffect";
+
+const readOwnerEffect = (
+  statement: EsTreeNode,
+  api: MirrorPhase,
+  context: RuleContext,
+  allowEveryCommit = false,
+) => {
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+  const call = statement.expression;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    (call.arguments.length !== 2 && !(allowEveryCommit && call.arguments.length === 1)) ||
+    !isReactApiCall(call, api, context.scopes)
+  )
+    return null;
+  const [effect, deps] = call.arguments;
+  const dependencies = isNodeOfType(deps, "ArrayExpression")
+    ? deps.elements
+    : allowEveryCommit && !deps
+      ? []
+      : null;
+  return isNodeOfType(effect, "ArrowFunctionExpression") &&
+    !effect.async &&
+    effect.params.length === 0 &&
+    isNodeOfType(effect.body, "BlockStatement") &&
+    dependencies
+    ? { body: effect.body, dependencies, everyCommit: !deps }
+    : null;
+};
+
+const hasDependency = (
+  dependencies: readonly (EsTreeNode | null)[],
+  binding: SymbolDescriptor,
+  context: RuleContext,
+) =>
+  dependencies.some(
+    (item) => isNodeOfType(item, "Identifier") && context.scopes.symbolFor(item) === binding,
+  );
+
+const readCommittedMirrorSetup = (
+  body: OwnerBody,
+  index: number,
+  phase: MirrorPhase,
+  property: SymbolDescriptor,
+  member: EsTreeNode,
+  context: RuleContext,
+  layoutEveryCommit = false,
+) => {
+  const ref = readBindingFromCurrent(member, context);
+  const owner = body.parent;
+  if (!ref || !isFunctionLike(owner)) return null;
+  const initial = readRefInitializer(ref, owner, context);
+  if (!isNodeOfType(initial, "Identifier") || context.scopes.symbolFor(initial) !== property) {
+    return null;
+  }
+  const writes = readBindingWrites(ref, context);
+  if (!writes) return null;
+  for (const statement of body.body.slice(0, index)) {
+    const effect = readOwnerEffect(statement, phase, context, layoutEveryCommit);
+    if (
+      !effect ||
+      (layoutEveryCommit
+        ? !effect.everyCommit
+        : !hasDependency(effect.dependencies, property, context))
+    )
+      continue;
+    const assignments = effect.body.body.map((item) => {
+      if (
+        !isNodeOfType(item, "ExpressionStatement") ||
+        !isNodeOfType(item.expression, "AssignmentExpression") ||
+        !isNodeOfType(item.expression.right, "Identifier")
+      )
+        return null;
+      const receiver = readBindingFromCurrent(item.expression.left, context);
+      const source = context.scopes.symbolFor(item.expression.right);
+      return receiver &&
+        source &&
+        readRefInitializer(receiver, owner, context) &&
+        readBindingWrites(receiver, context)
+        ? readAssignment(item, receiver, context)
+        : null;
+    });
+    if (assignments.some((item) => item === null)) continue;
+    const assignment = assignments.find(
+      (item) => item && context.scopes.symbolFor(item.right) === property && writes.has(item.left),
+    );
+    if (assignment) return { ref, setup: statement, assignment, writes };
+  }
+  return null;
+};
+
+const readScalarRelease = (
+  body: OwnerBody,
+  stableCleanup: SymbolDescriptor,
+  context: RuleContext,
+) => {
+  for (const statement of body.body) {
+    const effect = readOwnerEffect(statement, "useEffect", context);
+    if (
+      !effect ||
+      effect.dependencies.length !== 1 ||
+      !hasDependency(effect.dependencies, stableCleanup, context) ||
+      effect.body.body.length !== 1
+    )
+      continue;
+    const returned = effect.body.body[0];
+    if (
+      !isNodeOfType(returned, "ReturnStatement") ||
+      !isNodeOfType(returned.argument, "ArrowFunctionExpression") ||
+      returned.argument.async ||
+      returned.argument.params.length !== 0 ||
+      !isNodeOfType(returned.argument.body, "BlockStatement") ||
+      returned.argument.body.body.length !== 2
+    )
+      continue;
+    const [release, cleanup] = returned.argument.body.body;
+    if (!isNodeOfType(cleanup, "ExpressionStatement")) continue;
+    const call = cleanup.expression;
+    if (
+      isNodeOfType(call, "CallExpression") &&
+      !call.optional &&
+      call.arguments.length === 0 &&
+      isNodeOfType(call.callee, "Identifier") &&
+      context.scopes.symbolFor(call.callee) === stableCleanup
+    )
+      return release;
+  }
+  return null;
+};
+
+const hasClosedMountedFlag = (
+  body: OwnerBody,
+  beforeLaunch: number,
+  member: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const owner = body.parent;
+  const ref = readBindingFromCurrent(member, context);
+  if (!ref || !isFunctionLike(owner)) return false;
+  const initial = readRefInitializer(ref, owner, context);
+  const writes = readBindingWrites(ref, context);
+  if (!isNodeOfType(initial, "Literal") || initial.value !== true || writes?.size !== 2)
+    return false;
+
+  return body.body.slice(0, beforeLaunch).some((statement) => {
+    const effect = readOwnerEffect(statement, "useEffect", context);
+    if (!effect || effect.dependencies.length !== 0 || effect.body.body.length !== 2) {
+      return false;
+    }
+    const [start, cleanup] = effect.body.body;
+    const commit = readAssignment(start, ref, context);
+    if (
+      !commit ||
+      !isNodeOfType(commit.right, "Literal") ||
+      commit.right.value !== true ||
+      !writes.has(commit.left) ||
+      !isNodeOfType(cleanup, "ReturnStatement") ||
+      !isNodeOfType(cleanup.argument, "ArrowFunctionExpression") ||
+      cleanup.argument.async ||
+      cleanup.argument.params.length !== 0 ||
+      !isNodeOfType(cleanup.argument.body, "BlockStatement") ||
+      cleanup.argument.body.body.length !== 1
+    )
+      return false;
+    const release = readAssignment(cleanup.argument.body.body[0], ref, context);
+    return Boolean(
+      release &&
+      writes.has(release.left) &&
+      isNodeOfType(release.right, "Literal") &&
+      release.right.value === false,
+    );
+  });
+};
+
+interface ViewMirrorInput {
+  readonly owner: EsTreeNode;
+  readonly requestEffect: EsTreeNode;
+  readonly expectedView: SymbolDescriptor;
+  readonly expectedOpen: SymbolDescriptor;
+  readonly stableCleanup: SymbolDescriptor;
+  readonly viewRead: EsTreeNode;
+  readonly context: RuleContext;
+}
+
+type CommittedViewGuard =
+  | {
+      readonly openRead: EsTreeNode;
+      readonly mountedRead?: EsTreeNode;
+      readonly generationUpdate?: never;
+    }
+  | {
+      readonly openRead?: never;
+      readonly mountedRead?: never;
+      readonly generationUpdate: EsTreeNodeOfType<"UpdateExpression">;
+      readonly generationRead: EsTreeNode;
+    };
+
+// Select one exact commit-time view release. All writes to the scalar refs
+// must be either the proven setup, the selected request, or its paired teardown.
+export const hasClosedDismissiveViewMirrors = ({
+  owner,
+  requestEffect,
+  expectedView,
+  expectedOpen,
+  stableCleanup,
+  viewRead,
+  openRead,
+  mountedRead,
+  generationUpdate,
+  context,
+  ...guard
+}: ViewMirrorInput & CommittedViewGuard): boolean => {
+  if (!isFunctionLike(owner) || !isNodeOfType(owner.body, "BlockStatement")) return false;
+  const body = owner.body;
+  const index = body.body.findIndex((statement) => statement === requestEffect);
+  if (index < 1) return false;
+  const phase = generationUpdate || mountedRead ? "useLayoutEffect" : "useEffect";
+  const view = readCommittedMirrorSetup(
+    body,
+    index,
+    phase,
+    expectedView,
+    viewRead,
+    context,
+    Boolean(mountedRead),
+  );
+  if (!view || view.writes.size !== 1) return false;
+  if (mountedRead && openRead) {
+    const open = readCommittedMirrorSetup(
+      body,
+      index,
+      phase,
+      expectedOpen,
+      openRead,
+      context,
+      true,
+    );
+    return Boolean(
+      open &&
+      open.ref !== view.ref &&
+      open.setup === view.setup &&
+      open.writes.size === 1 &&
+      hasClosedMountedFlag(body, index, mountedRead, context),
+    );
+  }
+  const release = readScalarRelease(body, stableCleanup, context);
+  if (!release) return false;
+  if (!generationUpdate) {
+    if (!openRead) return false;
+    const open = readCommittedMirrorSetup(body, index, phase, expectedOpen, openRead, context);
+    const cleanup = open && readAssignment(release, open.ref, context);
+    return Boolean(
+      open &&
+      open.ref !== view.ref &&
+      open.setup === view.setup &&
+      open.writes.size === 2 &&
+      cleanup &&
+      open.writes.has(cleanup.left) &&
+      isNodeOfType(cleanup.right, "Literal") &&
+      cleanup.right.value === false,
+    );
+  }
+
+  if (!("generationRead" in guard)) return false;
+  const generation = readBindingFromCurrent(generationUpdate.argument, context);
+  if (
+    !generation ||
+    generation === view.ref ||
+    readBindingFromCurrent(guard.generationRead, context) !== generation ||
+    generationUpdate.operator !== "++" ||
+    !generationUpdate.prefix
+  )
+    return false;
+  const initial = readRefInitializer(generation, owner, context);
+  const writes = readBindingWrites(generation, context);
+  const cleanup = readUnitIncrement(release, generation, context);
+  if (
+    !isNodeOfType(initial, "Literal") ||
+    initial.value !== 0 ||
+    !cleanup ||
+    writes?.size !== 3 ||
+    !writes.has(cleanup) ||
+    !writes.has(generationUpdate.argument)
+  )
+    return false;
+  return body.body.slice(0, index).some((statement) => {
+    const setup = readOwnerEffect(statement, "useLayoutEffect", context);
+    if (
+      !setup ||
+      setup.body.body.length !== 1 ||
+      setup.dependencies.length !== 2 ||
+      !hasDependency(setup.dependencies, expectedOpen, context) ||
+      !hasDependency(setup.dependencies, expectedView, context)
+    )
+      return false;
+    const invalidation = readUnitIncrement(setup.body.body[0], generation, context);
+    return invalidation !== null && writes.has(invalidation);
+  });
+};

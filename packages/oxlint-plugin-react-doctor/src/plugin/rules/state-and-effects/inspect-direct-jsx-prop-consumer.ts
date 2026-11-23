@@ -107,6 +107,7 @@ const getOpeningCount = (
   scopes: ScopeAnalysis,
   property: string,
   checkPlacement: (element: EsTreeNode) => boolean,
+  checkOpening?: (element: EsTreeNodeOfType<"JSXOpeningElement">) => boolean,
 ): number | null => {
   const symbol = scopes.symbolFor(binding);
   if (!symbol || !hasCompleteSymbolReferences(symbol, program, scopes)) return null;
@@ -120,7 +121,7 @@ const getOpeningCount = (
       tag.name !== identifier ||
       !isNodeOfType(tag.parent, "JSXElement") ||
       !checkPlacement(tag.parent) ||
-      !isTruthyJsxProperty(tag, property, program, scopes)
+      !(checkOpening ? checkOpening(tag) : isTruthyJsxProperty(tag, property, program, scopes))
     )
       return null;
     openings++;
@@ -134,12 +135,14 @@ interface ConsumerInput {
   readonly property: string;
   readonly specifier: string;
   readonly route: "lazy" | "named";
+  readonly checkOpening?: (opening: EsTreeNodeOfType<"JSXOpeningElement">) => boolean;
 }
 
-export const inspectConsumer = (sourceText: string, input: ConsumerInput): number | null => {
-  const program = parseSourceText({ filename: "Input.tsx", sourceText });
-  if (!program) return null;
-  const scopes = analyzeScopes(program);
+export const inspectConsumerModule = (
+  program: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
+  input: ConsumerInput,
+): number | null => {
   const directBindings: EsTreeNode[] = [];
   let unsupported = false;
   walkAst(program, (node) => {
@@ -172,14 +175,28 @@ export const inspectConsumer = (sourceText: string, input: ConsumerInput): numbe
   });
   if (unsupported || directBindings.length !== 1) return null;
   const [binding] = directBindings;
-  return getOpeningCount(binding, program, scopes, input.property, (element) => {
-    if (input.route === "lazy") return isReturnedInTransparentJsx(element, scopes);
-    const call = element.parent;
-    return (
-      isNodeOfType(call, "CallExpression") &&
-      !call.optional &&
-      call.arguments[0] === element &&
-      isNamedImport(call.callee, "@testing-library/react", "render", scopes)
-    );
-  });
+  return getOpeningCount(
+    binding,
+    program,
+    scopes,
+    input.property,
+    (element) => {
+      if (input.route === "lazy") return isReturnedInTransparentJsx(element, scopes);
+      const call = element.parent;
+      return (
+        isNodeOfType(call, "CallExpression") &&
+        !call.optional &&
+        call.arguments[0] === element &&
+        isNamedImport(call.callee, "@testing-library/react", "render", scopes)
+      );
+    },
+    input.checkOpening,
+  );
+};
+
+export const inspectConsumer = (sourceText: string, input: ConsumerInput): number | null => {
+  const program = parseSourceText({ filename: "Input.tsx", sourceText });
+  return isNodeOfType(program, "Program")
+    ? inspectConsumerModule(program, analyzeScopes(program), input)
+    : null;
 };

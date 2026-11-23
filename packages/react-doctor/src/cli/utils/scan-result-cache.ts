@@ -439,9 +439,21 @@ export const resolveScanResultToolchainFingerprint = (
   return fingerprints;
 };
 
-const mayUseProjectJsxRuntimeProof = (input: ScanResultCacheKeyInput): boolean => {
+const mayReadInstalledCompiler = (input: ScanResultCacheKeyInput): boolean => {
   if (!input.options.lint) return false;
   if (fs.existsSync(path.join(input.projectDirectory, "stencil.config.ts"))) return true;
+  // Loading ownership can depend on the stock Vite and Jest providers and
+  // their selected files, which are outside the tracked worktree snapshot.
+  if (
+    fs.existsSync(path.join(input.projectDirectory, "node_modules", "vite")) &&
+    fs.existsSync(path.join(input.projectDirectory, "jest.config.cjs")) &&
+    ["js", "ts", "mjs", "mts"].some((extension) =>
+      fs.existsSync(path.join(input.projectDirectory, "vite.config." + extension)),
+    )
+  ) {
+    return true;
+  }
+
   if (
     !["electron.vite.config.mjs", "remix.config.js", "node_modules/react-scripts"].some(
       (filename) => fs.existsSync(path.join(input.projectDirectory, filename)),
@@ -472,7 +484,7 @@ export const buildScanResultCacheKey = async (
   if (
     isCacheGloballyDisabled() ||
     input.options.baselineReport ||
-    mayUseProjectJsxRuntimeProof(input)
+    mayReadInstalledCompiler(input)
   ) {
     return null;
   }

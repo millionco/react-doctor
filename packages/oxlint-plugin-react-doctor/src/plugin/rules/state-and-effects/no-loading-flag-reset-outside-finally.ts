@@ -1,3 +1,6 @@
+import { hasClosedCommittedLoadingMirror } from "./read-committed-open-loading-mirror.js";
+import { readPassiveLoadingPair } from "./read-passive-loading-pair.js";
+import { verifyMountedPassiveLoadingPair } from "./verify-mounted-passive-loading-pair.js";
 import {
   createSplitGenerationReactImporterProof,
   type SplitGenerationReactImporterProof,
@@ -33,6 +36,7 @@ import {
 } from "../../utils/is-never-rejecting-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -2610,12 +2614,16 @@ const findOwnershipClaim = (
   return didFindOtherWrite ? null : claim;
 };
 
+type PublishedNextGenerationComparison = AsyncOwnershipComparison & {
+  readonly adjacentCapture: EsTreeNodeOfType<"VariableDeclarator"> | null;
+};
+
 const getPublishedNextGenerationComparison = (
   expression: EsTreeNode,
   functionNode: EsTreeNode,
   context: RuleContext,
   importerProof: SplitGenerationReactImporterProof,
-): AsyncOwnershipComparison | null => {
+): PublishedNextGenerationComparison | null => {
   const test = stripParenExpression(expression);
   if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return null;
   const leftRef = getReactRefCurrent(test.left, context);
@@ -2649,7 +2657,14 @@ const getPublishedNextGenerationComparison = (
     refImport.source.value !== "react" ||
     !isReactApiCall(refInitializer, USE_REF_HOOK_NAMES, context.scopes) ||
     !isNodeOfType(initialValue, "Literal") ||
-    initialValue.value !== 0
+    initialValue.value !== 0 ||
+    !importerProof({
+      context,
+      owner,
+      hookCall: refInitializer,
+      importDeclaration: refImport,
+      importSpecifier: refHook,
+    })
   ) {
     return null;
   }
@@ -2662,16 +2677,20 @@ const getPublishedNextGenerationComparison = (
     tokenBinding.references.some((reference) => reference.flag !== "read") ||
     !isNodeOfType(tokenDeclaration, "VariableDeclarator") ||
     tokenDeclaration.id !== tokenBinding.bindingIdentifier ||
-    !isNodeOfType(initializer, "BinaryExpression") ||
-    initializer.operator !== "+" ||
-    !isNodeOfType(initializer.right, "Literal") ||
-    initializer.right.value !== 1
+    !initializer
   ) {
     return null;
   }
 
+  const adjacent = Boolean(getReactRefCurrent(initializer, context));
+  const isSplitAddition =
+    isNodeOfType(initializer, "BinaryExpression") &&
+    initializer.operator === "+" &&
+    isNodeOfType(initializer.right, "Literal") &&
+    initializer.right.value === 1;
+  if (!adjacent && !isSplitAddition) return null;
   const refKey = serializeReferenceKey({ node: refCurrent, scopes: context.scopes });
-  const currentRead = stripParenExpression(initializer.left);
+  const currentRead = isSplitAddition ? stripParenExpression(initializer.left) : initializer;
   if (
     !refKey ||
     !getReactRefCurrent(currentRead, context) ||
@@ -2690,15 +2709,64 @@ const getPublishedNextGenerationComparison = (
   ) {
     return null;
   }
-  const publication = block.body[block.body.findIndex((entry) => entry === declaration) + 1];
+  const captureIndex = block.body.findIndex((entry) => entry === declaration);
+  if (captureIndex === -1) return null;
+  const publication = block.body[captureIndex + (adjacent ? -1 : 1)];
   const assignment = isNodeOfType(publication, "ExpressionStatement")
     ? stripParenExpression(publication.expression)
     : null;
   if (
     !isNodeOfType(assignment, "AssignmentExpression") ||
-    assignment.operator !== "=" ||
     !getReactRefCurrent(assignment.left, context) ||
-    serializeReferenceKey({ node: assignment.left, scopes: context.scopes }) !== refKey ||
+    serializeReferenceKey({ node: assignment.left, scopes: context.scopes }) !== refKey
+  ) {
+    return null;
+  }
+  if (adjacent) {
+    const refDeclaration = refBinding.declarationNode;
+    const increment = stripParenExpression(assignment.right);
+    if (
+      assignment.operator !== "+=" ||
+      !isNodeOfType(increment, "Literal") ||
+      increment.value !== 1 ||
+      !isFunctionLike(owner) ||
+      !isNodeOfType(refDeclaration, "VariableDeclarator") ||
+      refDeclaration.id !== refBinding.bindingIdentifier ||
+      refDeclaration.parent?.parent !== owner.body ||
+      (getNodeEnd(refDeclaration) ?? Infinity) >= (getNodeStart(functionNode) ?? -Infinity) ||
+      !hasCompleteSymbolReferences(refBinding, owner, context.scopes) ||
+      !hasCompleteSymbolReferences(tokenBinding, functionNode, context.scopes) ||
+      !block.body.slice(0, captureIndex - 1).every((statement) => {
+        if (
+          !isNodeOfType(statement, "IfStatement") ||
+          statement.alternate ||
+          !isInitializedRequestGuard(statement.test, functionNode, owner, context) ||
+          !isNodeOfType(statement.consequent, "BlockStatement") ||
+          statement.consequent.body.length !== 1
+        )
+          return false;
+        const exit = statement.consequent.body[0];
+        return (
+          isNodeOfType(exit, "ReturnStatement") &&
+          isNodeOfType(exit.argument, "ArrayExpression") &&
+          exit.argument.elements.length === 0
+        );
+      }) ||
+      tokenBinding.references.some((reference) => {
+        const use = findTransparentExpressionRoot(reference.identifier);
+        const test = use.parent;
+        if (
+          !isNodeOfType(test, "BinaryExpression") ||
+          (test.operator !== "===" && test.operator !== "!==")
+        )
+          return true;
+        const peer = stripParenExpression(test.left === use ? test.right : test.left);
+        return serializeReferenceKey({ node: peer, scopes: context.scopes }) !== refKey;
+      })
+    )
+      return null;
+  } else if (
+    assignment.operator !== "=" ||
     context.scopes.symbolFor(stripParenExpression(assignment.right)) !== tokenBinding
   ) {
     return null;
@@ -2747,19 +2815,15 @@ const getPublishedNextGenerationComparison = (
       return false;
     }
   });
-  if (
-    lexicalAccess ||
-    !importerProof({
-      context,
-      owner,
-      hookCall: refInitializer,
-      importDeclaration: refImport,
-      importSpecifier: refHook,
-    })
-  ) {
-    return null;
-  }
-  return { refCurrent, token, mode: "owns", isOrdered: false };
+  return lexicalAccess
+    ? null
+    : {
+        refCurrent,
+        token,
+        mode: "owns",
+        isOrdered: false,
+        adjacentCapture: adjacent ? tokenDeclaration : null,
+      };
 };
 
 const getDirectPrimitiveReactSetter = (
@@ -2951,32 +3015,88 @@ const isClaimedOwnershipComparison = (
   importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
   const ordinaryComparison = getAsyncOwnershipComparison(test, context);
-  const comparison =
-    ordinaryComparison ??
-    (expectedMode === "owns"
-      ? getPublishedNextGenerationComparison(test, functionNode, context, importerProof)
-      : null);
-  if (!comparison || comparison.mode !== expectedMode) return false;
-  const claim = findOwnershipClaim(
-    comparison,
+  if (
+    ordinaryComparison?.mode === expectedMode &&
+    findOwnershipClaim(
+      ordinaryComparison,
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      resetNode,
+      context,
+    )
+  )
+    return true;
+  if (expectedMode !== "owns") return false;
+
+  const comparison = getPublishedNextGenerationComparison(
+    test,
+    functionNode,
+    context,
+    importerProof,
+  );
+  if (!comparison) return false;
+  const claim =
+    comparison.adjacentCapture ??
+    findOwnershipClaim(comparison, functionNode, truthySets, firstRiskyAwait, resetNode, context);
+  if (!claim) return false;
+  if (comparison.adjacentCapture) {
+    const start = truthySets[0];
+    const block = claim.parent?.parent;
+    if (
+      !start ||
+      !isNodeOfType(start.node, "CallExpression") ||
+      !isNodeOfType(start.node.callee, "Identifier") ||
+      !isNodeOfType(resetNode, "CallExpression") ||
+      !isNodeOfType(resetNode.callee, "Identifier") ||
+      !isNodeOfType(block, "BlockStatement") ||
+      block.body[block.body.findIndex((entry) => entry === claim.parent) + 1] !==
+        start.node.parent ||
+      !claimPrecedesTruthySet(claim, start, firstRiskyAwait, functionNode, context)
+    )
+      return false;
+
+    // An early return before the claim leaves the current request in control.
+    // Another writer could independently arm the flag without any request.
+    const startCallee = start.node.callee;
+    const resetCallee = resetNode.callee;
+    const setter = context.scopes.symbolFor(startCallee);
+    if (
+      !setter ||
+      context.scopes.symbolFor(resetCallee) !== setter ||
+      !hasCompleteSymbolReferences(setter, getOwningFunction(functionNode), context.scopes) ||
+      !setter.references.every((reference) => reference.flag === "read")
+    )
+      return false;
+    const extra = setter.references.filter(
+      (reference) => reference.identifier !== startCallee && reference.identifier !== resetCallee,
+    );
+    if (setter.references.length < 2 || extra.length !== setter.references.length - 2) return false;
+    if (extra.length !== 0) {
+      if (extra.length !== 1) return false;
+      const pair = readPassiveLoadingPair({
+        owner: getOwningFunction(functionNode),
+        request: functionNode,
+        extraSetterIdentifier: extra[0].identifier,
+        firstAwait: firstRiskyAwait.node,
+        context,
+      });
+      if (
+        !pair ||
+        !verifyMountedPassiveLoadingPair(pair, getOwningFunction(functionNode), context)
+      ) {
+        return false;
+      }
+    }
+  }
+  return hasClosedSplitRequestStartup(
+    claim,
     functionNode,
     truthySets,
     firstRiskyAwait,
     resetNode,
     context,
-  );
-  return Boolean(
-    claim &&
-    (ordinaryComparison ||
-      hasClosedSplitRequestStartup(
-        claim,
-        functionNode,
-        truthySets,
-        firstRiskyAwait,
-        resetNode,
-        context,
-        importerProof,
-      )),
+    importerProof,
   );
 };
 
@@ -3399,6 +3519,148 @@ const isNegativeFinalizerGuard = (
   );
 };
 
+const hasClosedCommittedOpenFinalizer = (
+  positive: ReadonlyArray<EsTreeNode>,
+  resetNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  firstRiskyAwait: AwaitSite,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): boolean => {
+  if (positive.length !== 2 || truthySets.length !== 1) return false;
+  const [onlyIfGeneration, onlyIfOpen] = positive;
+  const generationCheck = stripParenExpression(onlyIfGeneration);
+  const comparison = getAsyncOwnershipComparison(generationCheck, context);
+  const openRef = getReactRefCurrent(stripParenExpression(onlyIfOpen), context);
+  const owner = getOwningFunction(functionNode);
+  const start = truthySets[0].node;
+  if (
+    comparison?.mode !== "owns" ||
+    !isNodeOfType(generationCheck, "BinaryExpression") ||
+    generationCheck.operator !== "===" ||
+    !openRef ||
+    !(
+      isNodeOfType(owner, "ArrowFunctionExpression") || isNodeOfType(owner, "FunctionDeclaration")
+    ) ||
+    !isNodeOfType(functionNode, "ArrowFunctionExpression") ||
+    !isNodeOfType(functionNode.body, "BlockStatement") ||
+    !isNodeOfType(start, "CallExpression") ||
+    !isNodeOfType(resetNode, "CallExpression")
+  ) {
+    return false;
+  }
+  const token = context.scopes.symbolFor(comparison.token);
+  const tokenDeclaration = token?.declarationNode;
+  const initializer = token?.initializer;
+  const finalizerGeneration = context.scopes.symbolFor(
+    stripParenExpression(comparison.refCurrent.object),
+  );
+  if (
+    token?.kind !== "const" ||
+    !isNodeOfType(tokenDeclaration, "VariableDeclarator") ||
+    tokenDeclaration.id !== token.bindingIdentifier ||
+    !isNodeOfType(initializer, "UpdateExpression") ||
+    !initializer.prefix ||
+    initializer.operator !== "++" ||
+    !isNodeOfType(initializer.argument, "MemberExpression") ||
+    !finalizerGeneration ||
+    context.scopes.symbolFor(initializer.argument.object) !== finalizerGeneration ||
+    !hasCompleteSymbolReferences(token, functionNode, context.scopes)
+  ) {
+    return false;
+  }
+  const setter = context.scopes.symbolFor(start.callee);
+  if (
+    !setter ||
+    context.scopes.symbolFor(resetNode.callee) !== setter ||
+    !hasCompleteSymbolReferences(setter, owner, context.scopes) ||
+    setter.references.length !== 3 ||
+    !setter.references.every((reference) => reference.flag === "read")
+  ) {
+    return false;
+  }
+  const extra = setter.references.filter(
+    (reference) =>
+      reference.identifier !== start.callee && reference.identifier !== resetNode.callee,
+  );
+  if (extra.length !== 1) return false;
+  const pair = readPassiveLoadingPair({
+    owner,
+    request: functionNode,
+    extraSetterIdentifier: extra[0].identifier,
+    firstAwait: firstRiskyAwait.node,
+    context,
+  });
+  if (!pair) return false;
+
+  const body = functionNode.body.body;
+  const first = body[0];
+  const capture = body.findIndex((statement) => statement === tokenDeclaration.parent);
+  if (
+    (capture !== 1 && capture !== 2) ||
+    !isNodeOfType(first, "IfStatement") ||
+    first.alternate ||
+    !isNodeOfType(first.consequent, "BlockStatement") ||
+    first.consequent.body.length !== 1 ||
+    !isNodeOfType(first.consequent.body[0], "ReturnStatement") ||
+    !isNodeOfType(first.consequent.body[0].argument, "ArrayExpression") ||
+    first.consequent.body[0].argument.elements.length !== 0
+  ) {
+    return false;
+  }
+  if (capture === 2) {
+    const alias = body[1];
+    if (
+      !isNodeOfType(alias, "VariableDeclaration") ||
+      alias.kind !== "const" ||
+      alias.declarations.length !== 1 ||
+      !isNodeOfType(alias.declarations[0].id, "Identifier") ||
+      !isNodeOfType(alias.declarations[0].init, "Identifier") ||
+      context.scopes.symbolFor(alias.declarations[0].init) !== pair.viewBinding
+    ) {
+      return false;
+    }
+  }
+  const tests = collectLogicalOperands(first.test, "||", context);
+  const compared = new Set(
+    tests.map((term) => {
+      if (!isNodeOfType(term, "UnaryExpression") || term.operator !== "!") return null;
+      if (isNodeOfType(term.argument, "Identifier")) {
+        return context.scopes.symbolFor(term.argument);
+      }
+      return serializeReferenceKey({ node: term.argument, scopes: context.scopes }) ===
+        serializeReferenceKey({ node: openRef, scopes: context.scopes })
+        ? openRef
+        : null;
+    }),
+  );
+  return (
+    tests.length === 3 &&
+    compared.has(pair.viewBinding) &&
+    compared.has(pair.getterBinding) &&
+    compared.has(openRef) &&
+    hasClosedCommittedLoadingMirror({
+      owner,
+      openRead: openRef,
+      expectedOpen: pair.openBinding,
+      generationUpdate: initializer,
+      earlierRequestEffect: pair.earlierEffect,
+      context,
+    }) &&
+    hasClosedSplitRequestStartup(
+      tokenDeclaration,
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      resetNode,
+      context,
+      importerProof,
+    ) &&
+    verifyMountedPassiveLoadingPair(pair, owner, context)
+  );
+};
+
 const isFinalizerResetProvablyGuarded = (
   resetNode: EsTreeNode,
   protectingTry: EsTreeNodeOfType<"TryStatement">,
@@ -3409,6 +3671,21 @@ const isFinalizerResetProvablyGuarded = (
   importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
   const guards = collectFinalizerGuardExpressions(resetNode, protectingTry, context);
+  if (
+    guards &&
+    guards.negative.length === 0 &&
+    hasClosedCommittedOpenFinalizer(
+      guards.positive,
+      resetNode,
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      context,
+      importerProof,
+    )
+  ) {
+    return true;
+  }
   return Boolean(
     guards &&
     guards.positive.every((guard) =>

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { readRealpathIdentity } from "@react-doctor/core";
 import {
   collectCrossFileDependencyProbes,
+  hasPotentialSplitGenerationReactSource,
   resetManifestCaches,
 } from "oxlint-plugin-react-doctor/core";
 import { SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES } from "./constants.js";
@@ -38,6 +39,11 @@ const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): s
   try {
     const content = snapshot.contentPaths.map((filename) => {
       const bytes = readSource(filename);
+      if (
+        bytes !== null &&
+        hasPotentialSplitGenerationReactSource(filename, bytes.toString("utf8"))
+      )
+        throw new Error("Unbounded loading ownership proof");
       return [filename, bytes === null ? "absent" : hash(bytes)];
     });
     const existence = snapshot.existencePaths.map((filename) => {
@@ -92,6 +98,7 @@ export const createCrossFileClosureSnapshot = (
       const bytes = readSource(filename);
       if (bytes === null) return null;
       const sourceText = bytes.toString("utf8");
+      if (hasPotentialSplitGenerationReactSource(filename, sourceText)) return null;
       // Conservative cheap filter; source edits remain pinned by the ordinary
       // scan key. Literal import and class keywords also occur in comments.
       if (

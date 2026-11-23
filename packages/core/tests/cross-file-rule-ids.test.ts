@@ -190,6 +190,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
+      "no-pass-live-state-to-parent",
       "no-reset-all-state-on-prop-change",
       "no-set-state-after-await-in-effect",
       "no-side-effect-in-state-updater-function",

@@ -255,7 +255,7 @@ describe("scan result cache", () => {
     });
     createScanResultCache(projectDirectory).store(key, payload);
     const lookup = () => createScanResultCache(projectDirectory).lookup(key);
-    expect(lookup()?.serviceHookClosureSnapshot?.directoryPaths).toContain(ignoredDirectory);
+    expect(lookup()?.crossFileClosureSnapshot?.directoryPaths).toContain(ignoredDirectory);
 
     const caller = path.join(ignoredDirectory, "caller.ts");
     fs.writeFileSync(caller, 'import { service } from "../slots"; service.useSlots();');
@@ -268,7 +268,7 @@ describe("scan result cache", () => {
     fs.writeFileSync(html, "<div>quiet</div>");
     createScanResultCache(projectDirectory).store(key, payload);
     expect(
-      lookup()?.serviceHookClosureSnapshot?.contentPaths.map((contentPath) =>
+      lookup()?.crossFileClosureSnapshot?.contentPaths.map((contentPath) =>
         path.normalize(contentPath),
       ),
     ).toContain(html);
@@ -277,6 +277,60 @@ describe("scan result cache", () => {
       '<script type=module>import { service } from "../slots"; service.useSlots();</script>',
     );
     expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(lookup()).toBeNull();
+  });
+
+  it("invalidates unchanged source when an ignored imperative-handle provider changes", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "imperative-handle-closure", {
+      packageJsonExtras: { private: true },
+      files: {
+        ".gitignore": "src/ignored/\n",
+        "src/App.tsx": `import { forwardRef, useEffect } from "react";
+import { useEditor } from "./useEditor";
+export const App = forwardRef(function App({ enabled }, ref) {
+  const cell = useEditor(enabled);
+  useEffect(() => {
+    if (typeof ref === "function") { ref(cell.current); } else if (ref) { ref.current = cell.current; }
+    return () => { if (typeof ref === "function") { ref(null); } else if (ref) { ref.current = null; } };
+  }, []);
+  return null;
+});`,
+        "src/useEditor.ts": `import { useEffect, useRef } from "react";
+import { configure } from "./ignored/provider";
+class Handle { update() {} destroy() {} }
+export function useEditor(enabled) {
+  const cell = useRef(null);
+  useEffect(() => { if (!cell.current) { cell.current = new Handle(); } if (enabled) configure(cell); }, []);
+  useEffect(() => () => { if (cell.current) { cell.current.destroy(); cell.current = null; } }, []);
+  return cell;
+}`,
+      },
+    });
+    const ignoredDirectory = path.join(projectDirectory, "src", "ignored");
+    fs.mkdirSync(ignoredDirectory);
+    const provider = path.join(ignoredDirectory, "provider.ts");
+    const stock = "export function configure(cell) { cell.current.update(); }";
+    fs.writeFileSync(provider, stock);
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    const key = await cacheKey(projectDirectory, options);
+    if (key === null) throw new Error("missing fixture key");
+    createScanResultCache(projectDirectory).store(
+      key,
+      basePayload(projectDirectory, {
+        analyzedFiles: ["src/App.tsx"],
+      }),
+    );
+    const lookup = () => createScanResultCache(projectDirectory).lookup(key);
+    expect(
+      lookup()?.crossFileClosureSnapshot?.contentPaths.map((filename) => path.normalize(filename)),
+    ).toContain(path.normalize(provider));
+    fs.writeFileSync(provider, "export function configure(cell) { cell.current = 7; }");
+    expect(await cacheKey(projectDirectory, options)).toBe(key);
+    expect(lookup()).toBeNull();
+    fs.writeFileSync(provider, stock);
+    expect(lookup()).not.toBeNull();
+    fs.unlinkSync(provider);
     expect(lookup()).toBeNull();
   });
 

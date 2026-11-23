@@ -1091,3 +1091,67 @@ describe("local loaders that read props", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("balanced forwarded handles", () => {
+  it.each([
+    ["mount-only handle", "slot.current?.refresh();", "[]", 0],
+    ["config replaces the handle", "slot.current = value;", "[]", 1],
+    [
+      "config replaces the handle through arguments",
+      "slot.current?.refresh(); arguments[0].current = value;",
+      "[]",
+      1,
+    ],
+    ["the attachment reruns with state", "slot.current?.refresh();", "[value]", 1],
+  ])("checks %s", (_name, configBody, attachDependencies, expectedCount) => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `
+      import { forwardRef, useEffect, useRef } from "react";
+      class View {
+        refresh() {}
+        destroy() {}
+      }
+      function configure(slot, value) {
+        ${configBody}
+      }
+      function useView(value) {
+        const slot = useRef(null);
+        useEffect(() => {
+          if (!slot.current) {
+            slot.current = new View();
+          }
+        }, []);
+        configure(slot, value);
+        useEffect(() => () => {
+          if (slot.current) {
+            slot.current.destroy();
+            slot.current = null;
+          }
+        }, []);
+        return slot;
+      }
+      export const Panel = forwardRef(function Panel({ value }, ref) {
+        const view = useView(value);
+        useEffect(() => {
+          if (typeof ref === "function") {
+            ref(view.current);
+          } else if (ref) {
+            ref.current = view.current;
+          }
+          return () => {
+            if (typeof ref === "function") {
+              ref(null);
+            } else if (ref) {
+              ref.current = null;
+            }
+          };
+        }, ${attachDependencies});
+        return <div />;
+      });
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

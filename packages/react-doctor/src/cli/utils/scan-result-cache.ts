@@ -1,7 +1,7 @@
 import {
-  createServiceHookClosureSnapshot,
-  isCurrentServiceHookClosureSnapshot,
-} from "./service-hook-closure-snapshot.js";
+  createCrossFileClosureSnapshot,
+  isCurrentCrossFileClosureSnapshot,
+} from "./cross-file-closure-snapshot.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -547,24 +547,24 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
         resolveProjectIdentity(payload.directory) === resolveProjectIdentity(projectDirectory) &&
         (payload.manifestContentHash ?? null) === resolveManifestContentHash(projectDirectory);
       return describesThisProject &&
-        payload.serviceHookClosureSnapshot &&
-        isCurrentServiceHookClosureSnapshot(payload.serviceHookClosureSnapshot)
+        payload.crossFileClosureSnapshot &&
+        isCurrentCrossFileClosureSnapshot(payload.crossFileClosureSnapshot)
         ? payload
         : null;
     },
     store: (key, payload) => {
-      const serviceHookClosureSnapshot = createServiceHookClosureSnapshot(
+      const crossFileClosureSnapshot = createCrossFileClosureSnapshot(
         projectDirectory,
         payload.analyzedFiles ?? payload.scannedFilePaths,
       );
-      if (serviceHookClosureSnapshot === null) return;
+      if (crossFileClosureSnapshot === null) return;
       entries.set(key, {
         key,
         createdAtMs: Date.now(),
         payload: {
           ...payload,
           manifestContentHash: resolveManifestContentHash(projectDirectory),
-          serviceHookClosureSnapshot,
+          crossFileClosureSnapshot,
         },
       });
       persist();

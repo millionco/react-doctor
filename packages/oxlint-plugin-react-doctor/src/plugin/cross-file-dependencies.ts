@@ -1,3 +1,6 @@
+import { isReactHookCall } from "./utils/is-react-hook-call.js";
+import { readBalancedForwardedRefEffect } from "./rules/state-and-effects/utils/read-balanced-forwarded-ref-effect.js";
+import { isOwnedImperativeRefHandle } from "./rules/state-and-effects/utils/is-owned-imperative-ref-handle.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import {
   getServiceHookFieldName,
@@ -218,6 +221,25 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
     const imported = resolveImportedApiReference(node.callee, scopes);
     if (!imported?.importedName || !imported.source.startsWith(".")) return;
     resolveCrossFileFunctionExport(absoluteFilePath, imported.source, imported.importedName);
+  });
+};
+
+// Mirror the precise rule gate even for a rejected or missing provider.
+const collectForwardedImperativeHandleDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  getProgram,
+}) => {
+  const program = getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "CallExpression") || !isReactHookCall(node, "useEffect", scopes))
+      return;
+    const callback = node.arguments[0];
+    if (!callback || isNodeOfType(callback, "SpreadElement")) return;
+    const protocol = readBalancedForwardedRefEffect(node, stripParenExpression(callback), scopes);
+    if (!protocol) return;
+    isOwnedImperativeRefHandle(protocol.handleValue, { filename: absoluteFilePath, scopes });
   });
 };
 
@@ -593,6 +615,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["no-pass-live-state-to-parent", collectForwardedImperativeHandleDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],

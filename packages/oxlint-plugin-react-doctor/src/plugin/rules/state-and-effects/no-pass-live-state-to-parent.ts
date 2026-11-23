@@ -12,6 +12,8 @@ import {
   STRING_READ_METHOD_NAMES,
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
+import { isOwnedImperativeRefHandle } from "./utils/is-owned-imperative-ref-handle.js";
+import { readBalancedForwardedRefEffect } from "./utils/read-balanced-forwarded-ref-effect.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
@@ -467,6 +469,7 @@ export const noPassLiveStateToParent = defineRule({
       if (!effectFnRefs) return;
       const effectFn = getEffectFn(analysis, node);
       if (!effectFn) return;
+      const balancedRefEffect = readBalancedForwardedRefEffect(node, effectFn, context.scopes);
       const effectFunctionBody =
         isNodeOfType(effectFn, "ArrowFunctionExpression") ||
         isNodeOfType(effectFn, "FunctionExpression") ||
@@ -477,6 +480,12 @@ export const noPassLiveStateToParent = defineRule({
       for (const ref of effectFnRefs) {
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        if (
+          balancedRefEffect?.callback === callExpr &&
+          isOwnedImperativeRefHandle(balancedRefEffect.handleValue, context)
+        ) {
+          continue;
+        }
         const directLocalEffectHelper = getDirectLocalEffectHelper(callExpr, effectFn, context);
         const discardedDirectLocalEffectHelper =
           directLocalEffectHelper && !isCallResultCapturedToLocal(callExpr)

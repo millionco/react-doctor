@@ -8,7 +8,7 @@ import {
 import { SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES } from "./constants.js";
 import { isRecord } from "./git-hook-shared.js";
 
-export interface ServiceHookClosureSnapshot {
+export interface CrossFileClosureSnapshot {
   readonly contentPaths: ReadonlyArray<string>;
   readonly existencePaths: ReadonlyArray<string>;
   readonly directoryPaths: ReadonlyArray<string>;
@@ -17,7 +17,7 @@ export interface ServiceHookClosureSnapshot {
 const absolutePaths = (value: unknown): value is string[] =>
   Array.isArray(value) &&
   value.every((entry) => typeof entry === "string" && path.isAbsolute(entry));
-export const isServiceHookClosureSnapshot = (value: unknown): value is ServiceHookClosureSnapshot =>
+export const isCrossFileClosureSnapshot = (value: unknown): value is CrossFileClosureSnapshot =>
   isRecord(value) &&
   absolutePaths(value.contentPaths) &&
   absolutePaths(value.existencePaths) &&
@@ -31,7 +31,7 @@ const readSource = (filename: string): Buffer | null => {
     throw new Error("Oversized closure source");
   return fs.readFileSync(filename);
 };
-const fingerprint = (snapshot: Omit<ServiceHookClosureSnapshot, "fingerprint">): string | null => {
+const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): string | null => {
   try {
     const content = snapshot.contentPaths.map((filename) => {
       const bytes = readSource(filename);
@@ -64,16 +64,15 @@ const fingerprint = (snapshot: Omit<ServiceHookClosureSnapshot, "fingerprint">):
     return null;
   }
 };
-export const isCurrentServiceHookClosureSnapshot = (
-  snapshot: ServiceHookClosureSnapshot,
-): boolean => fingerprint(snapshot) === snapshot.fingerprint;
+export const isCurrentCrossFileClosureSnapshot = (snapshot: CrossFileClosureSnapshot): boolean =>
+  fingerprint(snapshot) === snapshot.fingerprint;
 
-// The selected service Hook collector must invoke the strict source-project
-// index and record its complete content + directory membership dependencies.
-export const createServiceHookClosureSnapshot = (
+// Collect both source-project Hook closure and owned imperative-handle providers.
+// Reuse identical rule collectors so negative resolutions remain fingerprinted.
+export const createCrossFileClosureSnapshot = (
   directory: string,
   analyzedPaths: ReadonlyArray<string>,
-): ServiceHookClosureSnapshot | null => {
+): CrossFileClosureSnapshot | null => {
   try {
     resetManifestCaches();
     const contentPaths = new Set<string>();
@@ -87,11 +86,17 @@ export const createServiceHookClosureSnapshot = (
       const sourceText = bytes.toString("utf8");
       // Conservative cheap filter; source edits remain pinned by the ordinary
       // scan key. Literal import and class keywords also occur in comments.
-      if (!sourceText.includes("class") && !sourceText.includes("import")) continue;
+      if (
+        !sourceText.includes("class") &&
+        !sourceText.includes("import") &&
+        !sourceText.includes("require") &&
+        !sourceText.includes("React")
+      )
+        continue;
       const trace = collectCrossFileDependencyProbes({
         absoluteFilePath: filename,
         sourceText,
-        ruleIds: ["rules-of-hooks"],
+        ruleIds: ["rules-of-hooks", "no-pass-live-state-to-parent"],
       });
       if (trace === null) return null;
       contentPaths.add(filename);

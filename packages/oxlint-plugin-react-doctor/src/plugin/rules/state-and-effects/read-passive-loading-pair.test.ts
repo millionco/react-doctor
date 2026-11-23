@@ -41,7 +41,10 @@ export default function Panel({ visible, recordKey }: { visible: boolean; record
 }
 `;
 
-const inspect = (sourceText: string) => {
+const inspect = (
+  sourceText: string,
+  resetMode?: Parameters<typeof readPassiveLoadingPair>[0]["resetMode"],
+) => {
   const program = parseSourceText({ filename: "Panel.tsx", sourceText });
   if (!program || !isNodeOfType(program, "Program")) throw new Error("Invalid authored source");
   const context = { scopes: analyzeScopes(program) } as RuleContext;
@@ -53,7 +56,7 @@ const inspect = (sourceText: string) => {
       isNodeOfType(node, "CallExpression") &&
       isNodeOfType(node.callee, "Identifier") &&
       node.callee.name === "setLoading" &&
-      isNodeOfType(node.arguments[0], "Identifier")
+      !isNodeOfType(node.arguments[0], "Literal")
     ) {
       extraSetterIdentifier = node.callee;
     }
@@ -62,7 +65,14 @@ const inspect = (sourceText: string) => {
   const request = findEnclosingFunction(firstAwait);
   const owner = request && findEnclosingFunction(request);
   if (!request || !owner) throw new Error("Missing authored owner");
-  return readPassiveLoadingPair({ owner, request, extraSetterIdentifier, firstAwait, context });
+  return readPassiveLoadingPair({
+    owner,
+    request,
+    extraSetterIdentifier,
+    firstAwait,
+    context,
+    resetMode,
+  });
 };
 
 describe("passive loading writer pairing", () => {
@@ -128,5 +138,67 @@ describe("passive loading writer pairing", () => {
     const source = implicitPair.replace(original, replacement);
     expect(source).not.toBe(implicitPair);
     expect(inspect(source)).toBeNull();
+  });
+});
+
+const requestEffect = `  useEffect(() => {
+    if (!visible) { return; }
+    void refresh();
+  }, [visible, refresh]);
+`;
+const resetEffect = `  useEffect(() => {
+    setLoading(visible);
+    clearSelection();
+  }, [recordKey, visible, clearSelection]);
+`;
+
+const firstReset = implicitPair.replace(requestEffect + resetEffect, resetEffect + requestEffect);
+const pairedCleanup = implicitPair
+  .replace(
+    "    void refresh();",
+    "    void refresh();\n    return () => { revision.current += 1; };",
+  )
+  .replace("setLoading(visible)", "setLoading(Boolean(visible && readRecords))")
+  .replace(
+    "[recordKey, visible, clearSelection]",
+    "[recordKey, visible, readRecords, clearSelection]",
+  );
+
+describe("passive reset ordering and request cleanup", () => {
+  it("finds a reset immediately followed by a request", () => {
+    expect(firstReset).not.toBe(implicitPair);
+    expect(inspect(firstReset, "before-request")).toMatchObject({ openProperty: "visible" });
+    expect(inspect(firstReset)).toBeNull();
+  });
+
+  it("refuses an unmodeled step between the first reset and request", () => {
+    const different = firstReset.replace(resetEffect, resetEffect + "  advanceCursor();\n");
+    expect(inspect(different, "before-request")).toBeNull();
+  });
+
+  it("passes the paired request cleanup to the generation check", () => {
+    expect(inspect(pairedCleanup, "after-request-with-cleanup")).toMatchObject({
+      contextField: "readRecords",
+      requestCleanup: { type: "ExpressionStatement" },
+    });
+    expect(inspect(pairedCleanup)).toBeNull();
+  });
+
+  it("refuses a standalone reset dependency and a missing release", () => {
+    expect(
+      inspect(
+        pairedCleanup.replace(
+          "readRecords, clearSelection]",
+          "readRecords, clearSelection, loading]",
+        ),
+        "after-request-with-cleanup",
+      ),
+    ).toBeNull();
+    expect(
+      inspect(
+        pairedCleanup.replace("return () => { revision.current += 1; };", "return () => {};"),
+        "after-request-with-cleanup",
+      ),
+    ).toBeNull();
   });
 });

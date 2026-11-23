@@ -1,6 +1,7 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -200,4 +201,74 @@ export const hasClosedCommittedLoadingMirror = ({
       generationWrites.has(generationUpdate.argument),
     );
   });
+};
+
+interface ResetFirstGenerationInput {
+  readonly owner: EsTreeNode;
+  readonly request: EsTreeNode;
+  readonly token: SymbolDescriptor;
+  readonly update: EsTreeNodeOfType<"UpdateExpression">;
+  readonly resetStatement: EsTreeNode;
+  readonly context: RuleContext;
+}
+
+export const hasClosedResetFirstGeneration = ({
+  owner,
+  request,
+  token,
+  update,
+  resetStatement,
+  context,
+}: ResetFirstGenerationInput): boolean => {
+  const generation = readBindingFromCurrent(update.argument, context);
+  if (!generation || !hasCompleteSymbolReferences(token, request, context.scopes)) return false;
+  const initial = readRefInitializer(generation, owner, context);
+  const invalidation = readUnitIncrement(resetStatement, generation, context);
+  if (
+    !isNodeOfType(initial, "Literal") ||
+    initial.value !== 0 ||
+    !invalidation ||
+    !token.references.every(
+      ({ flag, identifier }) => flag === "read" && !isWithinAssignmentTarget(identifier),
+    )
+  ) {
+    return false;
+  }
+
+  const writes = readBindingWrites(generation, context);
+  if (!writes || writes.size !== 2 || !writes.has(invalidation) || !writes.has(update.argument)) {
+    return false;
+  }
+  return generation.references.every(({ identifier }) => {
+    const member = identifier.parent;
+    if (!member) return false;
+    if (writes.has(member)) return true;
+    const comparison = member.parent;
+    if (
+      !isNodeOfType(comparison, "BinaryExpression") ||
+      (comparison.operator !== "===" && comparison.operator !== "!==") ||
+      findEnclosingFunction(comparison) !== request
+    ) {
+      return false;
+    }
+    const other = comparison.left === member ? comparison.right : comparison.left;
+    return isNodeOfType(other, "Identifier") && context.scopes.symbolFor(other) === token;
+  });
+};
+
+export const hasClosedLoadingGenerationCleanup = (
+  owner: EsTreeNode,
+  capture: EsTreeNodeOfType<"UpdateExpression">,
+  cleanup: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const generation = readBindingFromCurrent(capture.argument, context);
+  if (!generation || capture.operator !== "++" || !capture.prefix) return false;
+  const initial = readRefInitializer(generation, owner, context);
+  if (!isNodeOfType(initial, "Literal") || initial.value !== 0) return false;
+  const release = readUnitIncrement(cleanup, generation, context);
+  const writers = readBindingWrites(generation, context);
+  return Boolean(
+    release && writers?.size === 2 && writers.has(capture.argument) && writers.has(release),
+  );
 };

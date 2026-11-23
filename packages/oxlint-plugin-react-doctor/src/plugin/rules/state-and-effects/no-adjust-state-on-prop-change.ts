@@ -1,3 +1,5 @@
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { isOmittedPrivateNullStateIdentityWrite } from "./utils/is-omitted-private-null-state-identity-write.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
@@ -103,6 +105,8 @@ export const noAdjustStateOnPropChange = defineRule({
         for (const fact of facts) {
           if (
             fact.isDeferred ||
+            (shouldUseCuratedPortBehavior(context.settings) &&
+              isOmittedPrivateNullStateIdentityWrite(fact.writeSite.node, context)) ||
             isOwnedRequestMapReset(fact.writeSite, context) ||
             isPortalMountStateWrite(fact.writeSite, context) ||
             isReleasedObjectUrlStateWrite(fact.writeSite, context) ||

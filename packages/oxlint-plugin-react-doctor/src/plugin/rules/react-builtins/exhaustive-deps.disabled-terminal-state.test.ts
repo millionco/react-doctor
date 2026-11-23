@@ -132,3 +132,107 @@ describe("exhaustive-deps terminal state with a gated writer", () => {
     expect(trace?.directoryPaths.has(dirname(consumer))).toBe(true);
   });
 });
+
+const NULL_REF_CHILD = `
+  import { useEffect, useLayoutEffect, useRef, useState } from "react";
+  export default function Child({ onStart }: { onStart?: () => void }) {
+    const attemptRef = useRef<object | null>(null);
+    const [, setTick] = useState(0);
+    const callback = onStart ?? null;
+    const start = () => {
+      if (!callback || attemptRef.current !== null) return;
+      attemptRef.current = {};
+      callback();
+    };
+    useEffect(() => {
+      const attempt = attemptRef.current;
+      if (attempt !== null) {
+        attemptRef.current = null;
+        setTick((tick) => tick + 1);
+      }
+    });
+    return <button onClick={start}>Start</button>;
+  }
+`;
+
+const RESET_REF_CHILD = `
+  import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+  export default function Child({ onStart }: { onStart?: () => void }) {
+    const [phase, setPhase] = useState({ kind: "idle" });
+    const resetRef = useRef(false);
+    let shown = phase;
+    if (phase.kind !== "idle") {
+      shown = { kind: "idle" };
+      resetRef.current = true;
+    }
+    useEffect(() => {
+      if (resetRef.current) {
+        resetRef.current = false;
+        setPhase({ kind: "idle" });
+      }
+    });
+    const start = useCallback(() => {
+      if (!onStart) return;
+      if (shown.kind !== "idle") return;
+      onStart();
+      setPhase({ kind: "running" });
+    }, [onStart, shown]);
+    return <button onClick={start}>{shown.kind}</button>;
+  }
+`;
+
+describe("exhaustive-deps ref-guarded state writes", () => {
+  it.each([NULL_REF_CHILD, RESET_REF_CHILD])(
+    "skips the unreachable curated warning with an omitted prop",
+    (source) => {
+      place("components/Child.tsx", source);
+      placePage("");
+      const result = runRule(exhaustiveDeps, source, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+      expect(
+        runRule(exhaustiveDeps, source, {
+          filename,
+          settings: { "react-doctor": { portedRuleMode: "upstream" } },
+        }).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each([NULL_REF_CHILD, RESET_REF_CHILD])(
+    "retains the warning when a direct caller supplies the prop",
+    (source) => {
+      place("components/Child.tsx", source);
+      placePage("onStart={() => {}}");
+      expect(runRule(exhaustiveDeps, source, { filename }).diagnostics).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    [NULL_REF_CHILD, "attemptRef.current = {};"],
+    [RESET_REF_CHILD, "resetRef.current = true;"],
+  ])("retains the warning when a layout effect rearms the ref", (source, rearm) => {
+    const changed = source.replace(
+      "useEffect(() => {",
+      `useLayoutEffect(() => { ${rearm} }); useEffect(() => {`,
+    );
+    place("components/Child.tsx", changed);
+    placePage("");
+    expect(runRule(exhaustiveDeps, changed, { filename }).diagnostics).toHaveLength(1);
+  });
+
+  it.each([NULL_REF_CHILD, RESET_REF_CHILD])(
+    "tracks incoming source paths so an omitted caller can become a supplied caller",
+    (source) => {
+      place("components/Child.tsx", source);
+      const consumer = placePage("");
+      const trace = collectCrossFileDependencyProbes({
+        absoluteFilePath: filename,
+        sourceText: source,
+        ruleIds: ["exhaustive-deps"],
+      });
+      expect(trace?.contentPaths.has(consumer)).toBe(true);
+      expect(trace?.directoryPaths.has(dirname(consumer))).toBe(true);
+    },
+  );
+});

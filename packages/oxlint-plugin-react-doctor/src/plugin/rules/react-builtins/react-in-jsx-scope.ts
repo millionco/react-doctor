@@ -1,8 +1,16 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { hasAutomaticElectronRendererJsx } from "../../utils/has-automatic-electron-renderer-jsx.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
+
+const jsxTagEvaluatesReact = (tag: EsTreeNodeOfType<"JSXOpeningElement">["name"]): boolean => {
+  let component = tag;
+  while (isNodeOfType(component, "JSXMemberExpression")) component = component.object;
+  return isNodeOfType(component, "JSXIdentifier") && component.name === "React";
+};
 
 // Port of `oxc_linter::rules::react::react_in_jsx_scope`. Only relevant
 // for the legacy classic JSX runtime; tsconfig `jsx: "react-jsx"` (or
@@ -26,14 +34,26 @@ export const reactInJsxScope = defineRule({
   defaultEnabled: false,
   recommendation:
     "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (findVariableInitializer(node, "React")) return;
-      context.report({ node: node.name, message: MESSAGE });
-    },
-    JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-      if (findVariableInitializer(node, "React")) return;
-      context.report({ node: node.openingFragment, message: MESSAGE });
-    },
-  }),
+  create: (context) => {
+    let hasAutomaticFactory: boolean | undefined;
+    const usesAutomaticFactory = () => {
+      hasAutomaticFactory ??= hasAutomaticElectronRendererJsx(context);
+      return hasAutomaticFactory;
+    };
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (
+          findVariableInitializer(node, "React") ||
+          (!jsxTagEvaluatesReact(node.name) && usesAutomaticFactory())
+        ) {
+          return;
+        }
+        context.report({ node: node.name, message: MESSAGE });
+      },
+      JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
+        if (findVariableInitializer(node, "React") || usesAutomaticFactory()) return;
+        context.report({ node: node.openingFragment, message: MESSAGE });
+      },
+    };
+  },
 });

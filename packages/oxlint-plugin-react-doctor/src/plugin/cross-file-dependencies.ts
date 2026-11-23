@@ -683,6 +683,7 @@ export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-img-without-dimensions",
   "no-loading-flag-reset-outside-finally",
   "only-export-components",
+  "react-in-jsx-scope",
   "remotion-calculate-metadata-fetch-signal",
   "remotion-deterministic-randomness",
   "remotion-no-css-animation",

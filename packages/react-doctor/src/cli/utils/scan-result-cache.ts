@@ -8,7 +8,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import {
   atomicWriteJson,
+  canonicalizeUserRuleKey,
   computeConfigFingerprint,
+  detectUserLintConfigPaths,
   hashFileContents,
   resolveLintBatchOrdering,
   resolveReactDoctorCacheDir,
@@ -437,10 +439,40 @@ export const resolveScanResultToolchainFingerprint = (
   return fingerprints;
 };
 
+const mayUseElectronRendererJsxProof = (input: ScanResultCacheKeyInput): boolean => {
+  if (
+    !input.options.lint ||
+    !fs.existsSync(path.join(input.projectDirectory, "electron.vite.config.mjs"))
+  ) {
+    return false;
+  }
+  if (
+    Object.entries(input.userConfig?.rules ?? {}).some(
+      ([ruleKey, override]) =>
+        override !== "off" &&
+        canonicalizeUserRuleKey(ruleKey) === "react-doctor/react-in-jsx-scope",
+    ) ||
+    (input.options.includeTagDefaults && input.options.includedTags.size > 0)
+  ) {
+    return true;
+  }
+  return (
+    input.options.adoptExistingLintConfig &&
+    !input.options.customRulesOnly &&
+    detectUserLintConfigPaths(input.projectDirectory).length > 0
+  );
+};
+
 export const buildScanResultCacheKey = async (
   input: ScanResultCacheKeyInput,
 ): Promise<string | null> => {
-  if (isCacheGloballyDisabled() || input.options.baselineReport) return null;
+  if (
+    isCacheGloballyDisabled() ||
+    input.options.baselineReport ||
+    mayUseElectronRendererJsxProof(input)
+  ) {
+    return null;
+  }
   const isTrustworthyPromise = isGitIdentityTrustworthy(input.projectDirectory);
   const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
     input.projectDirectory,

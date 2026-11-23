@@ -3,7 +3,12 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { clearConfigCache, resolveReactDoctorCacheDir, type Diagnostic } from "@react-doctor/core";
+import {
+  clearConfigCache,
+  resolveReactDoctorCacheDir,
+  type Diagnostic,
+  type ReactDoctorConfig,
+} from "@react-doctor/core";
 import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
 import {
   buildScanResultCacheKey,
@@ -64,13 +69,14 @@ const cacheKey = (
   version = VERSION,
   nodeBinaryPath: string | null = null,
   invocationState = createScanResultCacheInvocationState(),
+  userConfig: ReactDoctorConfig | null = null,
 ): Promise<string | null> =>
   buildScanResultCacheKey({
     projectDirectory,
     version,
     nodeBinaryPath,
     options,
-    userConfig: null,
+    userConfig,
     hasConfigOverride: false,
     configSourceDirectory: null,
     invocationState,
@@ -150,6 +156,67 @@ afterEach(() => {
 });
 
 describe("scan result cache", () => {
+  it.each(["react-doctor/react-in-jsx-scope", "react/react-in-jsx-scope", "react-in-jsx-scope"])(
+    "bypasses whole-scan replay for Electron renderer compiler reads with %s enabled",
+    async (ruleKey) => {
+      const projectDirectory = setupReactProject(tempDirectory, "electron-renderer-cache", {
+        files: {
+          "src/renderer/src/App.jsx": "export const App = () => <main />;",
+          "electron.vite.config.mjs": "export default {};",
+        },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      const options = baseOptions({ lint: true, adoptExistingLintConfig: false });
+      expect(await cacheKey(projectDirectory, options)).not.toBeNull();
+      expect(
+        await cacheKey(
+          projectDirectory,
+          options,
+          VERSION,
+          null,
+          createScanResultCacheInvocationState(),
+          {
+            rules: { [ruleKey]: "warn" },
+          },
+        ),
+      ).toBeNull();
+    },
+  );
+
+  it("bypasses replay when Electron can adopt external lint rules", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "electron-adopted-lint", {
+      files: {
+        "src/renderer/src/App.jsx": "export const App = () => <main />;",
+        "electron.vite.config.mjs": "export default {};",
+        ".oxlintrc.json": "{}",
+      },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).toBeNull();
+    expect(
+      await cacheKey(projectDirectory, baseOptions({ lint: true, adoptExistingLintConfig: false })),
+    ).not.toBeNull();
+  });
+
+  it("keeps ordinary projects cacheable with the JSX scope rule enabled", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "ordinary-jsx-scope-cache", {
+      files: { "src/App.jsx": "export const App = () => <main />;" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    expect(
+      await cacheKey(
+        projectDirectory,
+        baseOptions({ lint: true }),
+        VERSION,
+        null,
+        createScanResultCacheInvocationState(),
+        {
+          rules: { "react-doctor/react-in-jsx-scope": "warn" },
+        },
+      ),
+    ).not.toBeNull();
+  });
+
   it("separates contextual, line, and deletion-only scopes", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "contextual-cache", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

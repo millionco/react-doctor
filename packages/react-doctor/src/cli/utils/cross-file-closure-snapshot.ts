@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readRealpathIdentity } from "@react-doctor/core";
 import {
   collectCrossFileDependencyProbes,
   resetManifestCaches,
@@ -63,7 +64,7 @@ const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): s
     });
     const realpaths = snapshot.realpathPaths.map((filename) => [
       filename,
-      fs.realpathSync(filename),
+      readRealpathIdentity(filename),
     ]);
     return hash(JSON.stringify([content, existence, directories, realpaths]));
   } catch {

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { classifyExistenceAnswer } from "../../utils/classify-existence-answer.js";
 import { hashFileContents } from "../../utils/hash-file-contents.js";
 import { isErrnoException } from "../../utils/is-errno-exception.js";
+import { readRealpathIdentity } from "../../utils/read-realpath-identity.js";
 import type { SidecarDependencyProbe } from "./sidecar-lint-cache.js";
 
 const ABSENT_CONTENT_ANSWER = "absent";
@@ -107,7 +108,7 @@ export const createSidecarProbeAnswerResolver = (input: {
     if (cached !== undefined) return cached;
     let answer: string;
     try {
-      const resolved = fs.realpathSync(path.resolve(input.rootDirectory, relativePath));
+      const resolved = readRealpathIdentity(path.resolve(input.rootDirectory, relativePath));
       answer = createHash("sha256").update(resolved).digest("hex");
     } catch (error) {
       const code = isErrnoException(error) ? error.code : undefined;

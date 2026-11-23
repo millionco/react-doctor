@@ -115,6 +115,48 @@ describe("createSidecarLintCache", () => {
     fs.symlinkSync(original, link, "junction");
     expect(isReplayable()).toBe(true);
   });
+  it.skipIf(process.platform === "win32")(
+    "invalidates a cached launcher after an executable-only mode change",
+    () => {
+      const project = makeCacheDir();
+      const launcher = path.join(project, "launcher");
+      const link = path.join(project, "provider");
+      fs.writeFileSync(launcher, "fixture launcher", { mode: 0o755 });
+      fs.symlinkSync(launcher, link);
+      const readAnswers = () =>
+        createSidecarProbeAnswerResolver({
+          rootDirectory: project,
+          contentHashByRelativePath: new Map(),
+        });
+      const initial = readAnswers();
+      const initialBytes = initial.answerFor("content", "provider");
+      const cacheDirectory = makeCacheDir();
+      const writer = createSidecarLintCache(cacheDirectory, "launcher-mode");
+      writer.store(
+        "src/app.tsx hash",
+        entry(writer, {
+          probeIds: [
+            writer.internProbe("realpath", "provider", initial.answerFor("realpath", "provider")),
+          ],
+        }),
+      );
+      writer.persist();
+      const isReplayable = () => {
+        const reader = createSidecarLintCache(cacheDirectory, "launcher-mode");
+        const stored = reader.lookup("src/app.tsx hash");
+        return stored !== null && reader.isReplayable(stored, readAnswers().answerFor);
+      };
+      expect(isReplayable()).toBe(true);
+
+      fs.chmodSync(launcher, 0o644);
+      expect(readAnswers().answerFor("content", "provider")).toBe(initialBytes);
+      expect(isReplayable()).toBe(false);
+
+      fs.chmodSync(launcher, 0o755);
+      expect(isReplayable()).toBe(true);
+    },
+  );
+
   it("preserves explicit ownership through disk replay", () => {
     const cacheDirectory = makeCacheDir();
     const expected = diagnostic({ contextRanges: [{ offset: 12, length: 34 }] });

@@ -1,26 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import { withProjectAnalysisWorkerSlot } from "../src/project-analysis/project-analysis-worker-slots.js";
+import { createDeferred } from "../src/utils/create-deferred.js";
 import { resolveProjectAnalysisConcurrency } from "../src/utils/resolve-project-analysis-concurrency.js";
-
-interface Deferred {
-  readonly promise: Promise<void>;
-  readonly resolve: () => void;
-}
-
-const createDeferred = (): Deferred => {
-  let resolvePromise = (): void => {};
-  const promise = new Promise<void>((resolve) => {
-    resolvePromise = resolve;
-  });
-  return { promise, resolve: resolvePromise };
-};
-
-const flushTasks = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+import { yieldToEventLoop } from "../src/utils/yield-to-event-loop.js";
 
 describe("withProjectAnalysisWorkerSlot", () => {
   it("bounds concurrent project analysis workers", async () => {
     const concurrency = resolveProjectAnalysisConcurrency();
-    const releases = Array.from({ length: concurrency + 1 }, createDeferred);
+    const releases = Array.from({ length: concurrency + 1 }, () => createDeferred<void>());
     let runningTaskCount = 0;
     let peakRunningTaskCount = 0;
     const tasks = releases.map((release) =>
@@ -32,7 +19,7 @@ describe("withProjectAnalysisWorkerSlot", () => {
       }),
     );
 
-    await flushTasks();
+    await yieldToEventLoop();
     expect(peakRunningTaskCount).toBe(concurrency);
     releases.forEach((release) => release.resolve());
     await Promise.all(tasks);
@@ -59,11 +46,11 @@ describe("withProjectAnalysisWorkerSlot", () => {
 
   it("removes a caller cancelled while waiting without leaking a slot", async () => {
     const concurrency = resolveProjectAnalysisConcurrency();
-    const heldRelease = createDeferred();
+    const heldRelease = createDeferred<void>();
     const heldTasks = Array.from({ length: concurrency }, () =>
       withProjectAnalysisWorkerSlot(() => heldRelease.promise),
     );
-    await flushTasks();
+    await yieldToEventLoop();
 
     const abortController = new AbortController();
     let didRunCancelledTask = false;

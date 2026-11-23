@@ -2,8 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getParentComponent } from "../../utils/get-parent-component.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const UNSAFE_PREFIXED = new Set([
   "UNSAFE_componentWillMount",
@@ -61,18 +61,10 @@ const isReactVersionAtLeast = (
   return reactVersion.minor >= minor;
 };
 
-const getStaticKeyName = (key: EsTreeNode): string | null => {
-  if (isNodeOfType(key, "Identifier")) return key.name;
-  if (isNodeOfType(key, "Literal") && typeof key.value === "string") return key.value;
-  return null;
-};
-
 // Port of `oxc_linter::rules::react::no_unsafe`. Reports the
 // `UNSAFE_*` lifecycle methods (`componentWillMount`, `…WillReceiveProps`,
 // `…WillUpdate`) on React class components, plus the non-prefixed
-// aliases when `checkAliases: true`. Does NOT gate on React version
-// (OXC's port does — we always assume modern React, where the prefixes
-// are valid).
+// aliases when `checkAliases: true`.
 export const noUnsafe = defineRule({
   id: "no-unsafe",
   title: "Unsafe legacy lifecycle method",
@@ -94,14 +86,14 @@ export const noUnsafe = defineRule({
 
     return {
       MethodDefinition(node: EsTreeNodeOfType<"MethodDefinition">) {
-        const name = getStaticKeyName(node.key);
+        const name = getStaticPropertyKeyName(node, { allowComputedString: true });
         if (!name || !matchesActiveUnsafe(name)) return;
         const enclosing = getParentComponent(node);
         if (!enclosing) return;
         context.report({ node: node.key, message: buildMessage(name) });
       },
       Property(node: EsTreeNodeOfType<"Property">) {
-        const name = getStaticKeyName(node.key);
+        const name = getStaticPropertyKeyName(node, { allowComputedString: true });
         if (!name || !matchesActiveUnsafe(name)) return;
         let ancestor: EsTreeNode | null | undefined = node.parent;
         while (ancestor) {

@@ -1,8 +1,8 @@
-import { getUnknownBundledRuleKeys } from "@react-doctor/core";
 import {
   buildRuleSeverityControls,
   countOptInProjectRuleSelections,
   filterDiagnosticsForSurface,
+  getUnknownBundledRuleKeys,
   HTML_FILE_PATTERN,
   isReactDoctorError,
   JSX_FILE_PATTERN,

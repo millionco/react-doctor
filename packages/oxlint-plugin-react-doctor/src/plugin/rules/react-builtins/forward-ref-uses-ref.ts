@@ -1,5 +1,4 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -30,22 +29,19 @@ export const forwardRefUsesRef = defineRule({
       }
       const firstArgument = node.arguments[0];
       if (!firstArgument) return;
-      let inner: EsTreeNode | null = null;
       if (
-        isNodeOfType(firstArgument, "ArrowFunctionExpression") ||
-        isNodeOfType(firstArgument, "FunctionExpression")
+        !isNodeOfType(firstArgument, "ArrowFunctionExpression") &&
+        !isNodeOfType(firstArgument, "FunctionExpression")
       ) {
-        inner = firstArgument;
-      } else {
         return;
       }
-      if (!("params" in inner) || !Array.isArray(inner.params)) return;
+      const inner = firstArgument;
       // forwardRef expects exactly two parameters; flag arity-1 (no rest).
       if (inner.params.length !== 1) return;
       // Accept rest params: skip if last param is RestElement (means
       // multiple/dynamic args — can't be sure).
       const onlyParam = inner.params[0];
-      if (isNodeOfType(onlyParam as EsTreeNode, "RestElement")) return;
+      if (isNodeOfType(onlyParam, "RestElement")) return;
       context.report({ node: inner, message: MESSAGE });
     },
   }),

@@ -16,7 +16,7 @@ export interface GitLayerSnapshot {
   readonly refContent?: ReadonlyMap<string, string>;
   readonly diffSelection?: GitDiffSelection | null;
   readonly grepMatches?: ReadonlyArray<string> | null;
-  readonly changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>;
+  readonly changedLineRanges?: ReadonlyArray<ChangedFileLineRanges> | null;
 }
 
 export interface GitInvocationResult {

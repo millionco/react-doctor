@@ -1,20 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { createWorkerSlots } from "../src/utils/create-worker-slots.js";
-
-interface Deferred {
-  readonly promise: Promise<void>;
-  readonly resolve: () => void;
-}
-
-const createDeferred = (): Deferred => {
-  let resolvePromise = (): void => {};
-  const promise = new Promise<void>((resolve) => {
-    resolvePromise = resolve;
-  });
-  return { promise, resolve: resolvePromise };
-};
-
-const flushTasks = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+import { createDeferred, type Deferred } from "../src/utils/create-deferred.js";
+import { yieldToEventLoop } from "../src/utils/yield-to-event-loop.js";
 
 const createTestWorkerSlots = (slotCount: number) =>
   createWorkerSlots({
@@ -25,15 +12,15 @@ const createTestWorkerSlots = (slotCount: number) =>
 describe("createWorkerSlots", () => {
   it("enforces the peak slot count and admits queued tasks in FIFO order", async () => {
     const workerSlots = createTestWorkerSlots(2);
-    const firstRelease = createDeferred();
-    const secondRelease = createDeferred();
-    const thirdRelease = createDeferred();
-    const fourthRelease = createDeferred();
+    const firstRelease = createDeferred<void>();
+    const secondRelease = createDeferred<void>();
+    const thirdRelease = createDeferred<void>();
+    const fourthRelease = createDeferred<void>();
     const startedTasks: string[] = [];
     let runningTaskCount = 0;
     let peakRunningTaskCount = 0;
 
-    const runTask = (name: string, release: Deferred): Promise<string> =>
+    const runTask = (name: string, release: Deferred<void>): Promise<string> =>
       workerSlots.run(async () => {
         startedTasks.push(name);
         runningTaskCount += 1;
@@ -49,15 +36,15 @@ describe("createWorkerSlots", () => {
       runTask("third", thirdRelease),
       runTask("fourth", fourthRelease),
     ]);
-    await flushTasks();
+    await yieldToEventLoop();
     expect(startedTasks).toEqual(["first", "second"]);
 
     secondRelease.resolve();
-    await flushTasks();
+    await yieldToEventLoop();
     expect(startedTasks).toEqual(["first", "second", "third"]);
 
     firstRelease.resolve();
-    await flushTasks();
+    await yieldToEventLoop();
     expect(startedTasks).toEqual(["first", "second", "third", "fourth"]);
 
     thirdRelease.resolve();
@@ -78,9 +65,9 @@ describe("createWorkerSlots", () => {
 
   it("removes an aborted waiter without running it or leaking a slot", async () => {
     const workerSlots = createTestWorkerSlots(1);
-    const heldRelease = createDeferred();
+    const heldRelease = createDeferred<void>();
     const heldTask = workerSlots.run(() => heldRelease.promise);
-    await flushTasks();
+    await yieldToEventLoop();
 
     const abortController = new AbortController();
     let didRunAbortedTask = false;

@@ -162,6 +162,13 @@ describe("parseEvaluationArguments", () => {
         "/tmp/other-corpus.json",
       ]),
     ).toThrow("descriptor-driven matrix evaluation");
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--repositories=/tmp/other-corpus.json",
+      ]),
+    ).toThrow("descriptor-driven matrix evaluation");
   });
 
   it("rejects unsafe paired output, execution, and rule arguments", () => {

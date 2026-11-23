@@ -103,5 +103,3 @@ if (silentResults.length > 0) {
       "\nRead the rule source before filing anything.",
   );
 }
-
-process.exitCode = 0;

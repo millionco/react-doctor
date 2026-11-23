@@ -13,7 +13,7 @@ const ROW_GROUPS = new Set(["thead", "tbody", "tfoot"]);
 const buildMessage = (childTag: string, expectedParent: string, actualParent: string): string =>
   `Your users see a rearranged table because \`<${childTag}>\` must sit directly inside ${expectedParent}, not \`<${actualParent}>\`, so the browser fixes the markup for you. Put it in the right parent.`;
 
-const buildNestedTableMessage = (): string =>
+const NESTED_TABLE_MESSAGE =
   "Your users see a broken table because a `<table>` can't sit directly inside another table element. To nest a table, put it inside a `<td>` or `<th>` cell.";
 
 const getHostTagName = (jsxElement: EsTreeNode): string | null => {
@@ -178,7 +178,7 @@ export const htmlNoInvalidTableNesting = defineRule({
       if (tagName === "table") {
         const enclosingTable = findEnclosingTable(node);
         if (enclosingTable) {
-          context.report({ node: node.openingElement.name, message: buildNestedTableMessage() });
+          context.report({ node: node.openingElement.name, message: NESTED_TABLE_MESSAGE });
         }
         return;
       }

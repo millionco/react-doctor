@@ -1,4 +1,6 @@
 import { TAILWIND_DISPLAY_TOKENS } from "../../constants/design.js";
+import { createStockGatsbyImageThemeResolver } from "../../utils/create-stock-gatsby-image-theme-resolver.js";
+import { hasReservedStyledParentImageBox } from "./utils/has-reserved-styled-parent-image-box.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
@@ -817,6 +819,10 @@ export const noImgWithoutDimensions = defineRule({
     "Add width and height attributes, or reserve the image's aspect ratio with an explicit CSS box before it loads.",
   create: (context: RuleContext) => {
     const staticCssStyleResolver = createStaticCssStyleResolver(context.filename);
+    const resolveStockGatsbyImageTheme = createStockGatsbyImageThemeResolver(
+      context.filename,
+      () => context.scopes,
+    );
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (
@@ -832,7 +838,8 @@ export const noImgWithoutDimensions = defineRule({
         if (
           hasReservedImageBox(node, context, hasTailwind) ||
           hasReservedParentBox(node, context, hasTailwind) ||
-          hasReservedExternalCssBox(node, context, staticCssStyleResolver)
+          hasReservedExternalCssBox(node, context, staticCssStyleResolver) ||
+          hasReservedStyledParentImageBox(node, context, resolveStockGatsbyImageTheme)
         ) {
           return;
         }

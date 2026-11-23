@@ -355,3 +355,9 @@ export const TAILWIND_DISPLAY_TOKENS = new Set([
 export const SPACE_AXIS_PATTERN = /(?:^|\s)(?:-)?space-(x|y)-(\d+(?:\.\d+)?|\[[^\]]+\])(?=$|[\s:])/;
 
 export const TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN = /[\p{L}\p{N}]\.\.\./u;
+
+export const STYLED_SCREEN_BOX_MAX_MEDIA_QUERY_COUNT = 32;
+
+export const STOCK_GATSBY_MAX_CONFIG_BYTES = 1_000_000;
+export const STOCK_GATSBY_MAX_STYLESHEET_BYTES = 100_000;
+export const STOCK_GATSBY_MAX_STYLESHEET_FILES = 16;

@@ -7,7 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseSourceText } from "../../utils/parse-source-file.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { readPassiveLoadingPair } from "./read-passive-loading-pair.js";
+import { readPassiveLoadingPair, readRenderLoadingPair } from "./read-passive-loading-pair.js";
 
 const implicitPair = `
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -43,7 +43,7 @@ export default function Panel({ visible, recordKey }: { visible: boolean; record
 
 const inspect = (
   sourceText: string,
-  resetMode?: Parameters<typeof readPassiveLoadingPair>[0]["resetMode"],
+  resetMode?: Parameters<typeof readPassiveLoadingPair>[0]["resetMode"] | "render-adjustment",
 ) => {
   const program = parseSourceText({ filename: "Panel.tsx", sourceText });
   if (!program || !isNodeOfType(program, "Program")) throw new Error("Invalid authored source");
@@ -65,14 +65,16 @@ const inspect = (
   const request = findEnclosingFunction(firstAwait);
   const owner = request && findEnclosingFunction(request);
   if (!request || !owner) throw new Error("Missing authored owner");
-  return readPassiveLoadingPair({
+  const input = {
     owner,
     request,
     extraSetterIdentifier,
     firstAwait,
     context,
-    resetMode,
-  });
+  };
+  return resetMode === "render-adjustment"
+    ? readRenderLoadingPair(input)
+    : readPassiveLoadingPair({ ...input, resetMode });
 };
 
 describe("passive loading writer pairing", () => {
@@ -200,5 +202,51 @@ describe("passive reset ordering and request cleanup", () => {
         "after-request-with-cleanup",
       ),
     ).toBeNull();
+  });
+});
+
+const renderAdjustment = `  const [previousKey, setPreviousKey] = useState(recordKey);
+  const [previousVisibility, setPreviousVisibility] = useState(visible);
+  if (recordKey !== previousKey || visible !== previousVisibility) {
+    setPreviousKey(recordKey);
+    setPreviousVisibility(visible);
+    setLoading(visible);
+  }
+`;
+const renderAdjusted = implicitPair
+  .replace("  const refresh = useCallback", renderAdjustment + "  const refresh = useCallback")
+  .replace("[recordKey, readRecords]);", "[recordKey, visible, readRecords]);")
+  .replace(resetEffect, "");
+
+describe("render-adjusted loading writer pairing", () => {
+  it("connects the render adjustment to the request with matching dependencies", () => {
+    expect(inspect(renderAdjusted, "render-adjustment")).toMatchObject({
+      openProperty: "visible",
+      viewProperty: "recordKey",
+      adjustment: { type: "IfStatement" },
+    });
+    expect(inspect(renderAdjusted)).toBeNull();
+  });
+
+  it.each([
+    [
+      "a missing visibility dependency",
+      "[recordKey, visible, readRecords]);",
+      "[recordKey, readRecords]);",
+    ],
+    [
+      "an additional launch condition",
+      "    void refresh();",
+      "    if (recordKey !== 'pending') void refresh();",
+    ],
+    [
+      "a reassigned request key",
+      "  const { readRecords } = useRecords();",
+      "  [recordKey] = ['different'];\n  const { readRecords } = useRecords();",
+    ],
+  ])("declines %s", (_name, original, replacement) => {
+    const source = renderAdjusted.replace(original, replacement);
+    expect(source).not.toBe(renderAdjusted);
+    expect(inspect(source, "render-adjustment")).toBeNull();
   });
 });

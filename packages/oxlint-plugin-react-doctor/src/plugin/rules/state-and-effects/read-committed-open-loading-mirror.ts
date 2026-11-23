@@ -203,31 +203,31 @@ export const hasClosedCommittedLoadingMirror = ({
   });
 };
 
-interface ResetFirstGenerationInput {
+interface ClosedLoadingGenerationInput {
   readonly owner: EsTreeNode;
   readonly request: EsTreeNode;
   readonly token: SymbolDescriptor;
   readonly update: EsTreeNodeOfType<"UpdateExpression">;
-  readonly resetStatement: EsTreeNode;
+  readonly resetStatement?: EsTreeNode;
   readonly context: RuleContext;
 }
 
-export const hasClosedResetFirstGeneration = ({
+export const hasClosedLoadingGeneration = ({
   owner,
   request,
   token,
   update,
   resetStatement,
   context,
-}: ResetFirstGenerationInput): boolean => {
+}: ClosedLoadingGenerationInput): boolean => {
   const generation = readBindingFromCurrent(update.argument, context);
   if (!generation || !hasCompleteSymbolReferences(token, request, context.scopes)) return false;
   const initial = readRefInitializer(generation, owner, context);
-  const invalidation = readUnitIncrement(resetStatement, generation, context);
+  const invalidation = resetStatement && readUnitIncrement(resetStatement, generation, context);
   if (
     !isNodeOfType(initial, "Literal") ||
     initial.value !== 0 ||
-    !invalidation ||
+    (resetStatement && !invalidation) ||
     !token.references.every(
       ({ flag, identifier }) => flag === "read" && !isWithinAssignmentTarget(identifier),
     )
@@ -236,7 +236,12 @@ export const hasClosedResetFirstGeneration = ({
   }
 
   const writes = readBindingWrites(generation, context);
-  if (!writes || writes.size !== 2 || !writes.has(invalidation) || !writes.has(update.argument)) {
+  if (
+    !writes ||
+    writes.size !== (invalidation ? 2 : 1) ||
+    (invalidation && !writes.has(invalidation)) ||
+    !writes.has(update.argument)
+  ) {
     return false;
   }
   return generation.references.every(({ identifier }) => {

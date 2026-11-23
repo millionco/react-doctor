@@ -72,7 +72,18 @@ const stripJsonComments = (text: string): string => {
     }
     output += character;
   }
-  return output.replace(/,(\s*[}\]])/g, "$1");
+  return output.replace(/"(?:\\[\s\S]|[^"\\])*"|,(?=\s*[}\]])/g, (match) =>
+    match.startsWith('"') ? match : "",
+  );
+};
+
+export const parseTsconfigJson = (sourceText: string): Record<string, unknown> | null => {
+  try {
+    const parsed: unknown = JSON.parse(stripJsonComments(sourceText.replace(/^\uFEFF/u, "")));
+    return isObjectRecord(parsed) && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 };
 
 const parseTsconfigFile = (
@@ -87,12 +98,7 @@ const parseTsconfigFile = (
   } catch {
     return null;
   }
-  try {
-    const parsed: unknown = JSON.parse(stripJsonComments(sourceText));
-    return isObjectRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return parseTsconfigJson(sourceText);
 };
 
 const resolveExtendsPath = (extendsValue: string, fromConfigDirectory: string): string | null => {

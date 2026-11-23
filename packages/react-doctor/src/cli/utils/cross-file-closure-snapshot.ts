@@ -67,7 +67,7 @@ const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): s
 export const isCurrentCrossFileClosureSnapshot = (snapshot: CrossFileClosureSnapshot): boolean =>
   fingerprint(snapshot) === snapshot.fingerprint;
 
-// Collect both source-project Hook closure and owned imperative-handle providers.
+// Collect source and consumer dependencies for package-scoped Hook analysis.
 // Reuse identical rule collectors so negative resolutions remain fingerprinted.
 export const createCrossFileClosureSnapshot = (
   directory: string,
@@ -96,7 +96,10 @@ export const createCrossFileClosureSnapshot = (
       const trace = collectCrossFileDependencyProbes({
         absoluteFilePath: filename,
         sourceText,
-        ruleIds: ["rules-of-hooks", "no-pass-live-state-to-parent"],
+        ruleIds:
+          sourceText.includes("useEffect") || sourceText.includes("\\u")
+            ? ["rules-of-hooks", "no-pass-live-state-to-parent", "exhaustive-deps"]
+            : ["rules-of-hooks", "no-pass-live-state-to-parent"],
       });
       if (trace === null) return null;
       contentPaths.add(filename);

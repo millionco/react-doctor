@@ -1,0 +1,134 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { collectCrossFileDependencyProbes } from "../../cross-file-dependencies.js";
+import { resetManifestCaches } from "../../utils/read-nearest-package-manifest.js";
+import { exhaustiveDeps } from "./exhaustive-deps.js";
+
+const CHILD = `
+  import { useEffect, useState } from "react";
+  export default function Child({ onStart }: { onStart?: () => void }) {
+    const [phase, setPhase] = useState({ kind: "idle" });
+    useEffect(() => {
+      if (phase.kind !== "idle") setPhase({ kind: "idle" });
+    });
+    const start = () => {
+      if (!onStart) return;
+      setPhase({ kind: "running" });
+      onStart();
+    };
+    return <button onClick={start}>{phase.kind}</button>;
+  }
+`;
+
+let project: string;
+let filename: string;
+
+const place = (relative: string, contents: string): string => {
+  const target = join(project, relative);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, contents);
+  return target;
+};
+
+const placePage = (attributes: string) =>
+  place(
+    "app/page.tsx",
+    `import Child from "../components/Child";
+     export default function Page() { return <Child ${attributes} />; }`,
+  );
+
+beforeEach(() => {
+  project = mkdtempSync(join(tmpdir(), "rd-disabled-terminal-state-"));
+  place(
+    "package.json",
+    JSON.stringify({
+      private: true,
+      scripts: { build: "next build" },
+      dependencies: { next: "15.1.0", react: "19.2.0", "react-dom": "19.2.0" },
+    }),
+  );
+  place("tsconfig.json", JSON.stringify({ compilerOptions: { jsx: "preserve" } }));
+  filename = place("components/Child.tsx", CHILD);
+  resetManifestCaches();
+});
+
+afterEach(() => {
+  rmSync(project, { recursive: true, force: true });
+  resetManifestCaches();
+});
+
+describe("exhaustive-deps terminal state with a gated writer", () => {
+  it("allows the gated terminal write when the only caller omits the prop", () => {
+    placePage("");
+    const curated = runRule(exhaustiveDeps, CHILD, { filename });
+    expect(curated.parseErrors).toEqual([]);
+    expect(curated.diagnostics).toEqual([]);
+    const upstream = runRule(exhaustiveDeps, CHILD, {
+      filename,
+      settings: { "react-doctor": { portedRuleMode: "upstream" } },
+    });
+    expect(upstream.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["onStart={() => {}}", "{...{ onStart: () => {} }}"])(
+    "retains the warning for a caller that may provide the prop",
+    (attributes) => {
+      placePage(attributes);
+      expect(runRule(exhaustiveDeps, CHILD, { filename }).diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("retains the warning when JSX body content supplies children", () => {
+    const childWithChildren = CHILD.replaceAll("onStart", "children");
+    place("components/Child.tsx", childWithChildren);
+    place(
+      "app/page.tsx",
+      `import Child from "../components/Child";
+       export default function Page() { return <Child>{() => {}}</Child>; }`,
+    );
+    expect(runRule(exhaustiveDeps, childWithChildren, { filename }).diagnostics).toHaveLength(1);
+  });
+
+  it.each(["app/child/page", "pages/child", "src/app/child/page", "src/pages/child"])(
+    "retains the warning when Next owns the route entry %s",
+    (route) => {
+      const routeSource = CHILD.replaceAll("onStart", "params").replace(
+        "params();",
+        "void params;",
+      );
+      const routeFile = place(`${route}.tsx`, routeSource);
+      place(
+        "components/Caller.tsx",
+        `import Child from "../${route}";
+         export default function Caller() { return <Child />; }`,
+      );
+      expect(
+        runRule(exhaustiveDeps, routeSource, { filename: routeFile }).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+
+  it("retains the warning when the selected JSX compiler is inherited", () => {
+    placePage("");
+    place(
+      "tsconfig.base.json",
+      JSON.stringify({ compilerOptions: { jsx: "react", jsxFactory: "createCustomElement" } }),
+    );
+    place("tsconfig.json", JSON.stringify({ extends: "./tsconfig.base.json" }));
+    expect(runRule(exhaustiveDeps, CHILD, { filename }).diagnostics).toHaveLength(1);
+  });
+
+  it("records the consumer file and containing directory for cache replay", () => {
+    const consumer = placePage("");
+    const trace = collectCrossFileDependencyProbes({
+      absoluteFilePath: filename,
+      sourceText: CHILD,
+      ruleIds: ["exhaustive-deps"],
+    });
+    expect(trace?.contentPaths.has(consumer)).toBe(true);
+    expect(trace?.directoryPaths.has(dirname(consumer))).toBe(true);
+  });
+});

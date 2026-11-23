@@ -1,3 +1,4 @@
+import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
 import {
   getStockNextPagesComponent,
   isNextPagesJavaScriptFile,
@@ -419,6 +420,14 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
   resolvePackageVersion(input.absoluteFilePath, "@xstate/react");
 };
 
+const collectExhaustiveDepsDependencies: CrossFileDependencyCollector = (input) => {
+  collectForwardedHookDependencies(input);
+  if (!input.sourceText.includes("useEffect") && !input.sourceText.includes("\\u")) return;
+  const program = input.getProgram();
+  attachParentReferences(program);
+  collectDisabledTerminalGuardDependencies(program, analyzeScopes(program), input.absoluteFilePath);
+};
+
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   sourceText,
@@ -618,7 +627,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
-    ["exhaustive-deps", collectForwardedHookDependencies],
+    ["exhaustive-deps", collectExhaustiveDepsDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-pass-live-state-to-parent", collectForwardedImperativeHandleDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],

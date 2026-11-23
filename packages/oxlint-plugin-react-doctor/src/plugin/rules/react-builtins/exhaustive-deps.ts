@@ -59,6 +59,7 @@ import {
 } from "./exhaustive-deps-messages.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
+import { endsWithDisabledTerminalStateGuard } from "./exhaustive-deps-disabled-terminal-state.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
   getFunctionValueNode,
@@ -1711,6 +1712,7 @@ const isProvablyRenderChangingSetterCall = (
 const findRenderChangingStateSetterName = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  filename: string | undefined,
 ): string | null => {
   let setterName: string | null = null;
   const visit = (current: EsTreeNode): void => {
@@ -1725,7 +1727,11 @@ const findRenderChangingStateSetterName = (
     }
     if (isNodeOfType(current, "Identifier")) {
       const descriptor = getStateSetterDescriptor(current, scopes);
-      if (descriptor && isProvablyRenderChangingSetterCall(current, scopes)) {
+      if (
+        descriptor &&
+        isProvablyRenderChangingSetterCall(current, scopes) &&
+        !endsWithDisabledTerminalStateGuard(node, current, scopes, filename)
+      ) {
         setterName = descriptor.setterSymbol.name;
         return;
       }
@@ -2244,7 +2250,11 @@ If the missing value is recreated every render, move it inside the hook or stabi
         if (!depsArgumentRaw) {
           if (callbackToAnalyze && EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS.has(hookName)) {
             const setterName = shouldUseCuratedBehavior
-              ? findRenderChangingStateSetterName(callbackToAnalyze, context.scopes)
+              ? findRenderChangingStateSetterName(
+                  callbackToAnalyze,
+                  context.scopes,
+                  isReactApiCall(node, "useEffect", context.scopes) ? context.filename : undefined,
+                )
               : findStateSetterReferenceName(callbackToAnalyze, context.scopes);
             if (setterName) {
               report({

@@ -1,11 +1,9 @@
-import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import { homedir } from "node:os";
 import * as path from "node:path";
 import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import { hasStockNodeNpmCompilerEnvironment } from "./has-stock-node-npm-compiler-environment.js";
 import { isPathInside } from "./is-path-inside.js";
 import {
-  haveNoPhysicalPackageCandidates,
   readProviderMember,
   resolveStockPhysicalEntry,
 } from "./stock-vite-providers/resolve-stock-physical-entry.js";
@@ -14,7 +12,7 @@ import type {
   StockPhysicalEntry,
 } from "./stock-vite-providers/resolve-stock-physical-entry.js";
 import { STOCK_ELECTRON_RENDERER_PROFILE } from "./stock-electron-renderer-profile.js";
-import type { ElectronCompilerPackageProfile } from "./stock-electron-renderer-profile.js";
+import { verifyStockNpmCompilerPackages } from "./verify-stock-npm-compiler-packages.js";
 
 export interface VerifiedElectronRendererCompiler {
   readonly electronVite: StockPhysicalEntry;
@@ -32,61 +30,6 @@ const stat = (filename: string): fs.Stats | undefined => {
   return fs.lstatSync(filename, { throwIfNoEntry: false });
 };
 const CONFIG_NAMES = ["js", "ts", "cjs", "mts", "cts"];
-const ENVIRONMENT_OVERRIDES = new Set([
-  "NODE_OPTIONS",
-  "NODE_PATH",
-  "NODE_EXTRA_CA_CERTS",
-  "ESBUILD_BINARY_PATH",
-  "ESBUILD_WORKER_THREADS",
-  "npm_config_script_shell",
-  "npm_config_node_options",
-  "npm_config_prefix",
-  "PREFIX",
-]);
-const hasStockEnvironment = (): boolean =>
-  process.platform === "linux" &&
-  process.arch === "x64" &&
-  process.release.name === "node" &&
-  !process.versions.bun &&
-  !process.versions.electron &&
-  process.versions.node.startsWith("24.") &&
-  process.execArgv.length === 0 &&
-  (process.env.NODE_ENV === undefined || process.env.NODE_ENV === "production") &&
-  Object.entries(process.env).every(
-    ([key, value]) =>
-      !value ||
-      (!ENVIRONMENT_OVERRIDES.has(key) &&
-        !ENVIRONMENT_OVERRIDES.has(key.toLowerCase()) &&
-        !/^(?:ELECTRON_|VITE_|BABEL_)/u.test(key)),
-  );
-
-const isEmptyOrMissingConfig = (filename: string): boolean => {
-  if (!path.isAbsolute(filename)) return false;
-  const info = stat(filename);
-  return !info || (info.isFile() && info.size === 0 && fs.realpathSync(filename) === filename);
-};
-
-const hasStockNpmConfiguration = (root: string): boolean => {
-  // A selected npm config can change the build script shell. Inspect only
-  // candidate file metadata because npm config may contain credentials.
-  for (let directory = root; ; directory = path.dirname(directory)) {
-    if (!isEmptyOrMissingConfig(path.join(directory, ".npmrc"))) return false;
-    if (path.dirname(directory) === directory) break;
-  }
-  const defaults = [
-    ["npm_config_userconfig", path.join(homedir(), ".npmrc")],
-    ["npm_config_globalconfig", path.resolve(path.dirname(process.execPath), "../etc/npmrc")],
-  ] as const;
-  for (const [variable, fallback] of defaults) {
-    const configured = Object.entries(process.env)
-      .filter(([key, value]) => key.toLowerCase() === variable && value)
-      .map(([, value]) => value!);
-    if (!(configured.length > 0 ? configured : [fallback]).every(isEmptyOrMissingConfig))
-      return false;
-  }
-  return true;
-};
-
 const nearestPackageDirectory = (filename: string): string | null => {
   for (let directory = path.dirname(filename); ; directory = path.dirname(directory)) {
     if (stat(path.join(directory, "package.json"))) return directory;
@@ -97,83 +40,6 @@ const readManifest = (directory: string): Record<string, unknown> | null => {
   const bytes = readProviderMember(path.join(directory, "package.json"));
   return bytes ? object(JSON.parse(bytes.toString("utf8"))) : null;
 };
-const stockNodeShebang = (root: string): boolean => {
-  // npm prepends ancestor node_modules/.bin directories before PATH. Refuse
-  // their node shadows, then require the first ordinary PATH node to be the
-  // same trusted runtime that is evaluating this proof.
-  for (let directory = root; ; directory = path.dirname(directory)) {
-    if (stat(path.join(directory, "node_modules", ".bin", "node"))) return false;
-    if (path.dirname(directory) === directory) break;
-  }
-  const runtime = fs.realpathSync(process.execPath);
-  const npmRuntime = process.env.npm_node_execpath;
-  if (npmRuntime && fs.realpathSync(npmRuntime) !== runtime) return false;
-  const entries = process.env.PATH?.split(path.delimiter);
-  if (!entries?.length) return false;
-  for (const entry of entries) {
-    if (!entry || !path.isAbsolute(entry)) return false;
-    const candidate = path.join(entry, "node");
-    if (!stat(candidate)) continue;
-    const selected = fs.realpathSync(candidate);
-    const target = stat(selected);
-    return selected === runtime && Boolean(target?.isFile() && target.mode & 0o111);
-  }
-  return false;
-};
-
-// Close the regular npm package layout, including extensionless require
-// shadows and nested package candidates. No package code is loaded.
-const packageCandidate = (issuer: string, name: string): string | null => {
-  for (let directory = issuer; ; directory = path.dirname(directory)) {
-    const candidate = path.join(directory, "node_modules", name);
-    for (const extension of [".js", ".json", ".node"]) {
-      if (stat(candidate + extension)) return null;
-    }
-    const info = stat(candidate);
-    if (info)
-      return info.isDirectory() && fs.realpathSync(candidate) === candidate ? candidate : null;
-    if (path.dirname(directory) === directory) return null;
-  }
-};
-const verifyPackage = (
-  root: string,
-  profile: ElectronCompilerPackageProfile,
-  expectedPackages: ReadonlySet<string>,
-): boolean => {
-  const directory = path.join(root, profile.directory);
-  if (fs.realpathSync(directory) !== directory || !stat(directory)?.isDirectory()) return false;
-  const discovered: Array<[string, number, string]> = [];
-  const pending = [directory];
-  while (pending.length) {
-    const current = pending.pop()!;
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const filename = path.join(current, entry.name);
-      if (entry.isSymbolicLink()) return false;
-      if (entry.isDirectory()) {
-        if (entry.name === "node_modules") {
-          if (![...expectedPackages].some((candidate) => isPathInside(candidate, filename)))
-            return false;
-          continue;
-        }
-        pending.push(filename);
-      } else if (entry.isFile()) {
-        const member = path.relative(directory, filename).split(path.sep).join("/");
-        const bytes = readProviderMember(filename);
-        if (!bytes) return false;
-        discovered.push([member, bytes.length, createHash("sha256").update(bytes).digest("hex")]);
-      } else return false;
-    }
-  }
-  discovered.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  if (
-    discovered.length !== profile.memberCount ||
-    createHash("sha256").update(JSON.stringify(discovered)).digest("hex") !== profile.contentDigest
-  )
-    return false;
-  const manifest = readManifest(directory);
-  return manifest?.name === profile.name && manifest.version === profile.version;
-};
-
 /**
  * Verifies only the stock compiler installation for a separately proved
  * renderer route. The caller owns config AST, renderer-only reachability,
@@ -185,9 +51,6 @@ export const readVerifiedElectronRendererCompiler = (input: {
   readonly configFile: string;
 }): VerifiedElectronRendererCompiler | null => {
   try {
-    if (!hasStockEnvironment()) return null;
-    const report = object(process.report?.getReport());
-    if (typeof object(report?.header)?.glibcVersionRuntime !== "string") return null;
     const root = path.resolve(input.projectRoot);
     const filename = path.resolve(input.filename);
     const config = path.resolve(input.configFile);
@@ -201,8 +64,7 @@ export const readVerifiedElectronRendererCompiler = (input: {
       !isPathInside(filename, root) ||
       nearestPackageDirectory(filename) !== root ||
       config !== path.join(root, "electron.vite.config.mjs") ||
-      !stockNodeShebang(root) ||
-      !hasStockNpmConfiguration(root)
+      !hasStockNodeNpmCompilerEnvironment(root)
     )
       return null;
     const manifest = readManifest(root);
@@ -223,26 +85,13 @@ export const readVerifiedElectronRendererCompiler = (input: {
         if (path.dirname(directory) === directory) break;
       }
     }
+    if (!verifyStockNpmCompilerPackages(root, STOCK_ELECTRON_RENDERER_PROFILE)) return null;
     const packages = STOCK_ELECTRON_RENDERER_PROFILE.packages;
     const byName = new Map(
       packages
         .filter((item) => item.directory === `node_modules/${item.name}`)
         .map((item) => [item.name, item]),
     );
-    const expectedPackages = new Set(packages.map((item) => path.join(root, item.directory)));
-    for (const profile of packages)
-      if (!verifyPackage(root, profile, expectedPackages)) return null;
-    for (const edge of STOCK_ELECTRON_RENDERER_PROFILE.edges) {
-      if (
-        packageCandidate(path.join(root, edge.issuer), edge.specifier) !==
-        path.join(root, edge.target)
-      )
-        return null;
-    }
-    for (const missing of STOCK_ELECTRON_RENDERER_PROFILE.missing) {
-      if (!haveNoPhysicalPackageCandidates([path.join(root, missing.issuer)], missing.specifier))
-        return null;
-    }
     const resolve = (
       name: string,
       issuer: string,

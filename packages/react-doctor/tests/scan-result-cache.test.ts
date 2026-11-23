@@ -183,6 +183,30 @@ describe("scan result cache", () => {
     },
   );
 
+  it("bypasses whole-scan replay for classic Remix compiler reads with JSX scope enabled", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "classic-remix-cache", {
+      files: {
+        "app/routes/settings.tsx": "export const Settings = () => <main />;",
+        "remix.config.js": "module.exports = {};",
+      },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true, adoptExistingLintConfig: false });
+    expect(await cacheKey(projectDirectory, options)).not.toBeNull();
+    expect(
+      await cacheKey(
+        projectDirectory,
+        options,
+        VERSION,
+        null,
+        createScanResultCacheInvocationState(),
+        {
+          rules: { "react-doctor/react-in-jsx-scope": "warn" },
+        },
+      ),
+    ).toBeNull();
+  });
+
   it("bypasses replay when Electron can adopt external lint rules", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "electron-adopted-lint", {
       files: {

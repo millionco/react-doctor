@@ -439,10 +439,12 @@ export const resolveScanResultToolchainFingerprint = (
   return fingerprints;
 };
 
-const mayUseElectronRendererJsxProof = (input: ScanResultCacheKeyInput): boolean => {
+const mayUseProjectJsxRuntimeProof = (input: ScanResultCacheKeyInput): boolean => {
   if (
     !input.options.lint ||
-    !fs.existsSync(path.join(input.projectDirectory, "electron.vite.config.mjs"))
+    !["electron.vite.config.mjs", "remix.config.js"].some((filename) =>
+      fs.existsSync(path.join(input.projectDirectory, filename)),
+    )
   ) {
     return false;
   }
@@ -469,7 +471,7 @@ export const buildScanResultCacheKey = async (
   if (
     isCacheGloballyDisabled() ||
     input.options.baselineReport ||
-    mayUseElectronRendererJsxProof(input)
+    mayUseProjectJsxRuntimeProof(input)
   ) {
     return null;
   }

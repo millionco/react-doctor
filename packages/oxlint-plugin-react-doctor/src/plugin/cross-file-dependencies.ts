@@ -1,3 +1,7 @@
+import {
+  getStockNextPagesComponent,
+  isNextPagesJavaScriptFile,
+} from "./rules/react-builtins/utils/is-stock-next-pages.js";
 import { isReactHookCall } from "./utils/is-react-hook-call.js";
 import { readBalancedForwardedRefEffect } from "./rules/state-and-effects/utils/read-balanced-forwarded-ref-effect.js";
 import { isOwnedImperativeRefHandle } from "./rules/state-and-effects/utils/is-owned-imperative-ref-handle.js";
@@ -212,6 +216,7 @@ const collectImportedHookDependencies: CrossFileDependencyCollector = ({
   const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
+  getStockNextPagesComponent(program, scopes, absoluteFilePath);
   walkAst(program, (node) => {
     if (isNodeOfType(node, "ArrowFunctionExpression")) {
       getServiceHookFieldName(node, scopes, absoluteFilePath);
@@ -702,7 +707,11 @@ export const collectCrossFileDependencyProbes = (input: {
   let staticImports: ReadonlyArray<StaticImport>;
   let getProgram: () => EsTreeNode;
   try {
-    const parseResult = parseCrossFileSource(absoluteFilePath, input.sourceText);
+    const language =
+      input.ruleIds.includes("rules-of-hooks") && isNextPagesJavaScriptFile(absoluteFilePath)
+        ? "jsx"
+        : undefined;
+    const parseResult = parseCrossFileSource(absoluteFilePath, input.sourceText, language);
     if (parseResult.errors.some((parseError) => parseError.severity === "Error")) return null;
     staticImports = parseResult.module.staticImports;
     let program: EsTreeNode | undefined;

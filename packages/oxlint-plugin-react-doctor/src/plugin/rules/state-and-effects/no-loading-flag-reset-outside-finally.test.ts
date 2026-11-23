@@ -654,6 +654,37 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each(["curated", "upstream"])(
+    "requires a verified React provider for a split request generation in %s mode",
+    (portedRuleMode) => {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `import { useRef, useState } from "react";
+         const Preview = ({ ready }) => {
+           const [, setLoading] = useState(false);
+           const generation = useRef(0);
+           const load = async () => {
+             const token = generation.current + 1;
+             generation.current = token;
+             if (!ready) {
+               setLoading(false);
+               return;
+             }
+             setLoading(true);
+             try { await fetchFeed(); }
+             finally {
+               if (generation.current === token) setLoading(false);
+             }
+           };
+           return <button onClick={load}>Reload</button>;
+         };`,
+        { settings: { "react-doctor": { portedRuleMode } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("accepts a ref snapshot backed by a synchronous single-flight claim", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

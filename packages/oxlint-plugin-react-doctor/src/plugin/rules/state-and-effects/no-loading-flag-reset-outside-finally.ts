@@ -1,3 +1,7 @@
+import {
+  createSplitGenerationReactImporterProof,
+  type SplitGenerationReactImporterProof,
+} from "../../utils/create-split-generation-react-importer-proof.js";
 import { collectLoadingLifecycleResets } from "../../utils/collect-loading-lifecycle-resets.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
@@ -2606,6 +2610,336 @@ const findOwnershipClaim = (
   return didFindOtherWrite ? null : claim;
 };
 
+const getPublishedNextGenerationComparison = (
+  expression: EsTreeNode,
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): AsyncOwnershipComparison | null => {
+  const test = stripParenExpression(expression);
+  if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return null;
+  const leftRef = getReactRefCurrent(test.left, context);
+  const refCurrent = leftRef ?? getReactRefCurrent(test.right, context);
+  if (!refCurrent) return null;
+  const ref = stripParenExpression(refCurrent.object);
+  const token = stripParenExpression(leftRef ? test.right : test.left);
+  if (!isNodeOfType(ref, "Identifier") || !isNodeOfType(token, "Identifier")) return null;
+
+  const owner = getOwningFunction(functionNode);
+  const refBinding = context.scopes.symbolFor(ref);
+  const refInitializer = refBinding?.initializer && stripParenExpression(refBinding.initializer);
+  if (
+    refBinding?.kind !== "const" ||
+    findEnclosingFunction(refBinding.declarationNode) !== owner ||
+    !isNodeOfType(refInitializer, "CallExpression") ||
+    refInitializer.optional ||
+    !isNodeOfType(refInitializer.callee, "Identifier") ||
+    refInitializer.arguments.length !== 1
+  ) {
+    return null;
+  }
+  const refHook = context.scopes.symbolFor(refInitializer.callee)?.declarationNode;
+  const refImport = refHook?.parent;
+  const initialValue = refInitializer.arguments[0];
+  if (
+    !isNodeOfType(refHook, "ImportSpecifier") ||
+    refHook.importKind === "type" ||
+    !isNodeOfType(refImport, "ImportDeclaration") ||
+    refImport.importKind === "type" ||
+    refImport.source.value !== "react" ||
+    !isReactApiCall(refInitializer, USE_REF_HOOK_NAMES, context.scopes) ||
+    !isNodeOfType(initialValue, "Literal") ||
+    initialValue.value !== 0
+  ) {
+    return null;
+  }
+
+  const tokenBinding = context.scopes.symbolFor(token);
+  const tokenDeclaration = tokenBinding?.declarationNode;
+  const initializer = tokenBinding?.initializer && stripParenExpression(tokenBinding.initializer);
+  if (
+    tokenBinding?.kind !== "const" ||
+    tokenBinding.references.some((reference) => reference.flag !== "read") ||
+    !isNodeOfType(tokenDeclaration, "VariableDeclarator") ||
+    tokenDeclaration.id !== tokenBinding.bindingIdentifier ||
+    !isNodeOfType(initializer, "BinaryExpression") ||
+    initializer.operator !== "+" ||
+    !isNodeOfType(initializer.right, "Literal") ||
+    initializer.right.value !== 1
+  ) {
+    return null;
+  }
+
+  const refKey = serializeReferenceKey({ node: refCurrent, scopes: context.scopes });
+  const currentRead = stripParenExpression(initializer.left);
+  if (
+    !refKey ||
+    !getReactRefCurrent(currentRead, context) ||
+    serializeReferenceKey({ node: currentRead, scopes: context.scopes }) !== refKey
+  ) {
+    return null;
+  }
+  const declaration = tokenDeclaration.parent;
+  const block = declaration?.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(block, "BlockStatement") ||
+    !isFunctionLike(functionNode) ||
+    block !== functionNode.body
+  ) {
+    return null;
+  }
+  const publication = block.body[block.body.findIndex((entry) => entry === declaration) + 1];
+  const assignment = isNodeOfType(publication, "ExpressionStatement")
+    ? stripParenExpression(publication.expression)
+    : null;
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.operator !== "=" ||
+    !getReactRefCurrent(assignment.left, context) ||
+    serializeReferenceKey({ node: assignment.left, scopes: context.scopes }) !== refKey ||
+    context.scopes.symbolFor(stripParenExpression(assignment.right)) !== tokenBinding
+  ) {
+    return null;
+  }
+
+  // Apart from the capture and publication, this private ref only participates
+  // in identity tests for this request. A bare escape or another writer
+  // could replace the value independently of the loading flag.
+  const exposed = refBinding.references.some((reference) => {
+    const member = reference.identifier.parent;
+    if (
+      reference.flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== reference.identifier ||
+      member.computed ||
+      member.optional ||
+      getStaticPropertyName(member) !== "current" ||
+      findEnclosingFunction(member) !== functionNode
+    ) {
+      return true;
+    }
+    if (member === currentRead || member === assignment.left) return false;
+    const outer = findTransparentExpressionRoot(member);
+    const use = outer.parent;
+    if (
+      !isNodeOfType(use, "BinaryExpression") ||
+      (use.operator !== "===" && use.operator !== "!==")
+    ) {
+      return true;
+    }
+    const other = stripParenExpression(use.left === outer ? use.right : use.left);
+    return !isNodeOfType(other, "Identifier") || context.scopes.symbolFor(other) !== tokenBinding;
+  });
+  if (exposed) return null;
+
+  let lexicalAccess = false;
+  walkAst(owner, (node) => {
+    if (lexicalAccess) return false;
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") &&
+        node.name === "eval" &&
+        context.scopes.isGlobalReference(node))
+    ) {
+      lexicalAccess = true;
+      return false;
+    }
+  });
+  if (
+    lexicalAccess ||
+    !importerProof({
+      context,
+      owner,
+      hookCall: refInitializer,
+      importDeclaration: refImport,
+      importSpecifier: refHook,
+    })
+  ) {
+    return null;
+  }
+  return { refCurrent, token, mode: "owns", isOrdered: false };
+};
+
+const getDirectPrimitiveReactSetter = (
+  statement: EsTreeNode,
+  functionNode: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (!isNodeOfType(statement, "ExpressionStatement") || !isFunctionLike(owner)) return null;
+  const call = stripParenExpression(statement.expression);
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    !isNodeOfType(call.callee, "Identifier") ||
+    call.arguments.length !== 1
+  )
+    return null;
+  const argument = stripParenExpression(call.arguments[0]);
+  if (
+    !isNodeOfType(argument, "Literal") ||
+    (argument.value !== null &&
+      typeof argument.value !== "string" &&
+      typeof argument.value !== "boolean" &&
+      typeof argument.value !== "number" &&
+      typeof argument.value !== "bigint")
+  )
+    return null;
+
+  const setter = context.scopes.symbolFor(call.callee);
+  const declaration = setter?.declarationNode;
+  if (
+    setter?.kind !== "const" ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.parent?.parent !== owner.body ||
+    !isNodeOfType(declaration.id, "ArrayPattern") ||
+    declaration.id.elements.length !== 2 ||
+    declaration.id.elements[1] !== setter.bindingIdentifier ||
+    (getNodeEnd(declaration) ?? Infinity) >= (getNodeStart(functionNode) ?? -Infinity) ||
+    !declaration.init
+  )
+    return null;
+  const hook = stripParenExpression(declaration.init);
+  if (
+    !isNodeOfType(hook, "CallExpression") ||
+    hook.optional ||
+    !isNodeOfType(hook.callee, "Identifier")
+  )
+    return null;
+  const specifier = context.scopes.symbolFor(hook.callee)?.declarationNode;
+  const importDeclaration = specifier?.parent;
+  return isNodeOfType(specifier, "ImportSpecifier") &&
+    specifier.importKind !== "type" &&
+    isNodeOfType(importDeclaration, "ImportDeclaration") &&
+    importDeclaration.importKind !== "type" &&
+    importDeclaration.source.value === "react" &&
+    isReactApiCall(hook, "useState", context.scopes) &&
+    importerProof({
+      context,
+      owner,
+      hookCall: hook,
+      importDeclaration,
+      importSpecifier: specifier,
+    })
+    ? call
+    : null;
+};
+
+const isInitializedRequestGuard = (
+  expression: EsTreeNode,
+  functionNode: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!")
+    return isInitializedRequestGuard(node.argument, functionNode, owner, context);
+  if (isNodeOfType(node, "LogicalExpression") && (node.operator === "&&" || node.operator === "||"))
+    return (
+      isInitializedRequestGuard(node.left, functionNode, owner, context) &&
+      isInitializedRequestGuard(node.right, functionNode, owner, context)
+    );
+  if (!isNodeOfType(node, "Identifier") || !isFunctionLike(owner)) return false;
+  const symbol = context.scopes.symbolFor(node);
+  if (!symbol) return false;
+  if (symbol.kind === "parameter")
+    return symbol.scope.node === owner || symbol.scope.node === functionNode;
+  const declaration = symbol.declarationNode;
+  return (
+    symbol.kind === "const" &&
+    isNodeOfType(declaration, "VariableDeclarator") &&
+    declaration.parent?.parent === owner.body &&
+    Boolean(declaration.init) &&
+    (getNodeEnd(declaration) ?? Infinity) < (getNodeStart(functionNode) ?? -Infinity)
+  );
+};
+
+const hasClosedSplitRequestStartup = (
+  publication: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  firstRiskyAwait: AwaitSite,
+  resetNode: EsTreeNode,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): boolean => {
+  if (
+    !isNodeOfType(functionNode, "ArrowFunctionExpression") ||
+    !isNodeOfType(functionNode.body, "BlockStatement") ||
+    truthySets.length !== 1
+  )
+    return false;
+  const body = functionNode.body.body;
+  const owner = getOwningFunction(functionNode);
+  const publicationStatement = publication.parent;
+  const startCall = truthySets[0].node;
+  const startStatement = startCall.parent;
+  const publicationIndex = body.findIndex((entry) => entry === publicationStatement);
+  const startIndex = body.findIndex((entry) => entry === startStatement);
+  if (
+    publicationIndex === -1 ||
+    startIndex <= publicationIndex ||
+    !startStatement ||
+    getDirectPrimitiveReactSetter(startStatement, functionNode, owner, context, importerProof) !==
+      startCall ||
+    !isNodeOfType(startCall, "CallExpression")
+  )
+    return false;
+  const start = getSetterBooleanValue(startCall, context);
+  if (!start?.value) return false;
+
+  for (const entry of body.slice(publicationIndex + 1, startIndex)) {
+    if (
+      !isNodeOfType(entry, "IfStatement") ||
+      entry.alternate ||
+      !isInitializedRequestGuard(entry.test, functionNode, owner, context) ||
+      !isNodeOfType(entry.consequent, "BlockStatement") ||
+      entry.consequent.body.length !== 2
+    )
+      return false;
+    const [resetStatement, exit] = entry.consequent.body;
+    const earlyCall = getDirectPrimitiveReactSetter(
+      resetStatement,
+      functionNode,
+      owner,
+      context,
+      importerProof,
+    );
+    const earlyReset = earlyCall ? getSetterBooleanValue(earlyCall, context) : null;
+    if (
+      earlyReset?.setterKey !== start.setterKey ||
+      earlyReset.value ||
+      !isNodeOfType(exit, "ReturnStatement") ||
+      (exit.argument &&
+        (!isNodeOfType(exit.argument, "ArrayExpression") || exit.argument.elements.length !== 0))
+    )
+      return false;
+  }
+
+  for (const entry of body.slice(startIndex + 1)) {
+    if (isNodeOfType(entry, "TryStatement")) {
+      return Boolean(
+        entry.finalizer &&
+        isAstDescendant(firstRiskyAwait.node, entry.block) &&
+        isAstDescendant(resetNode, entry.finalizer),
+      );
+    }
+    const otherSetter = getDirectPrimitiveReactSetter(
+      entry,
+      functionNode,
+      owner,
+      context,
+      importerProof,
+    );
+    if (!otherSetter || resolveExpressionKey(otherSetter.callee, context) === start.setterKey)
+      return false;
+  }
+  return false;
+};
+
 const isClaimedOwnershipComparison = (
   test: EsTreeNode,
   expectedMode: AsyncOwnershipComparison["mode"],
@@ -2614,12 +2948,35 @@ const isClaimedOwnershipComparison = (
   firstRiskyAwait: AwaitSite,
   resetNode: EsTreeNode,
   context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
-  const comparison = getAsyncOwnershipComparison(test, context);
+  const ordinaryComparison = getAsyncOwnershipComparison(test, context);
+  const comparison =
+    ordinaryComparison ??
+    (expectedMode === "owns"
+      ? getPublishedNextGenerationComparison(test, functionNode, context, importerProof)
+      : null);
+  if (!comparison || comparison.mode !== expectedMode) return false;
+  const claim = findOwnershipClaim(
+    comparison,
+    functionNode,
+    truthySets,
+    firstRiskyAwait,
+    resetNode,
+    context,
+  );
   return Boolean(
-    comparison &&
-    comparison.mode === expectedMode &&
-    findOwnershipClaim(comparison, functionNode, truthySets, firstRiskyAwait, resetNode, context),
+    claim &&
+    (ordinaryComparison ||
+      hasClosedSplitRequestStartup(
+        claim,
+        functionNode,
+        truthySets,
+        firstRiskyAwait,
+        resetNode,
+        context,
+        importerProof,
+      )),
   );
 };
 
@@ -2965,6 +3322,7 @@ const isPositiveFinalizerGuard = (
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
   visitedGuards = new Set<EsTreeNode>(),
+  importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
   if (visitedGuards.has(expression)) return false;
   visitedGuards.add(expression);
@@ -2979,6 +3337,7 @@ const isPositiveFinalizerGuard = (
         firstRiskyAwait,
         context,
         new Set(visitedGuards),
+        importerProof,
       ),
     );
   }
@@ -2994,6 +3353,7 @@ const isPositiveFinalizerGuard = (
       firstRiskyAwait,
       resetNode,
       context,
+      importerProof,
     )
   );
 };
@@ -3006,6 +3366,7 @@ const isNegativeFinalizerGuard = (
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
   visitedGuards = new Set<EsTreeNode>(),
+  importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
   if (visitedGuards.has(expression)) return false;
   visitedGuards.add(expression);
@@ -3020,6 +3381,7 @@ const isNegativeFinalizerGuard = (
         firstRiskyAwait,
         context,
         new Set(visitedGuards),
+        importerProof,
       ),
     );
   }
@@ -3032,6 +3394,7 @@ const isNegativeFinalizerGuard = (
       firstRiskyAwait,
       resetNode,
       context,
+      importerProof,
     ) || isStableAsyncOwnershipGuard(stripped, "lost", functionNode, context)
   );
 };
@@ -3043,6 +3406,7 @@ const isFinalizerResetProvablyGuarded = (
   truthySets: ReadonlyArray<SetterCall>,
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
   const guards = collectFinalizerGuardExpressions(resetNode, protectingTry, context);
   return Boolean(
@@ -3055,6 +3419,8 @@ const isFinalizerResetProvablyGuarded = (
         truthySets,
         firstRiskyAwait,
         context,
+        undefined,
+        importerProof,
       ),
     ) &&
     guards.negative.every((guard) =>
@@ -3065,6 +3431,8 @@ const isFinalizerResetProvablyGuarded = (
         truthySets,
         firstRiskyAwait,
         context,
+        undefined,
+        importerProof,
       ),
     ),
   );
@@ -3125,7 +3493,11 @@ const findFirstAwaitAfter = (awaitSites: ReadonlyArray<AwaitSite>, start: number
   return low;
 };
 
-const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void => {
+const analyzeFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): void => {
   if (!isFunctionLike(functionNode) || !functionNode.async) return;
   const awaitSites: AwaitSite[] = [];
   const settersByKey = new Map<string, SetterCall[]>();
@@ -3230,6 +3602,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
           truthySets,
           firstRiskyAwait,
           context,
+          importerProof,
         )
       );
     });
@@ -3295,6 +3668,7 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
     "A trailing `setLoading(false)` after an `await` never runs if the awaited call rejects, so the flag stays stuck truthy; reset it in a `finally` block (or mirror the reset on every catch) so it clears on both paths.",
   create: (context: RuleContext): RuleVisitors => {
     if (isTestFileFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    const importerProof = createSplitGenerationReactImporterProof(context);
     currentLintedFilename = context.filename;
     crossFileResolutionsRemaining = CROSS_FILE_RESOLUTION_BUDGET_PER_FILE;
     crossFileResolutionMemo.clear();
@@ -3302,13 +3676,13 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
     isAnalyzingForeignHelperBody = false;
     return {
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        analyzeFunction(node, context);
+        analyzeFunction(node, context, importerProof);
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
-        analyzeFunction(node, context);
+        analyzeFunction(node, context, importerProof);
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        analyzeFunction(node, context);
+        analyzeFunction(node, context, importerProof);
       },
     };
   },

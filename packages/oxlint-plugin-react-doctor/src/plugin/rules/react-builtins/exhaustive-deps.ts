@@ -1,5 +1,6 @@
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -57,6 +58,7 @@ import {
   buildUnnecessaryDepMessage,
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
+import { resolveImportedForwarderSourceKeys } from "./exhaustive-deps-imported-forwarder.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { endsWithDisabledTerminalStateGuard } from "./exhaustive-deps-disabled-terminal-state.js";
@@ -440,6 +442,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  declaredImportedForwarderDeps?: ReadonlyMap<string, EsTreeNode>,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -499,6 +502,14 @@ const collectCaptureDepKeys = (
       const identitySourceKeys =
         resolveCalledArgumentPropertyKeys(reference, scopes) ??
         resolvePureCalledFunctionSourceKeys(reference, symbol, scopes) ??
+        (declaredImportedForwarderDeps
+          ? resolveImportedForwarderSourceKeys(
+              reference,
+              symbol,
+              scopes,
+              declaredImportedForwarderDeps,
+            )
+          : null) ??
         resolveRenderDerivedMutableSourceKeys(reference, symbol, scopes) ??
         resolveReactiveIdentitySourceKeys(symbol, scopes);
       if (identitySourceKeys) {
@@ -2444,6 +2455,9 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
           context.filename,
+          shouldUseCuratedBehavior && isDirectNamedReactHookCall(node, "useEffect", context.scopes)
+            ? declaredKeyToReportNode
+            : undefined,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

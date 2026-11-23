@@ -1,0 +1,140 @@
+{
+  "releases": {
+    "date-fns": ["1.29.0", "12e609cdcb935127311d04d33334e2960a2a54e6"],
+    "gatsby": ["1.9.270", "9a0635c588618dbc11a34bb530c4390c26ef840f"],
+    "gatsby-link": ["1.6.44", "31912e66d3b21632ce27e5b7310ec88d9a75eac3"],
+    "gatsby-plugin-catch-links": ["1.0.22", "a51f525afcdf9a1050e284f93f72fc33694c9789"],
+    "gatsby-plugin-react-helmet": ["2.0.11", "a2db81755f5b41d54e0e535ca1d9a008d3ccff0a"],
+    "gatsby-plugin-styled-components": ["2.0.11", "c3d3438c7970bbcc116e821fb966687098bdaf57"],
+    "gatsby-remark-copy-linked-files": ["1.5.35", "398cad86328309a57077e7a3e8c95d951756ab80"],
+    "gatsby-remark-images": ["1.5.66", "f852bca527676079cf679e0cd8b9299d9942acce"],
+    "gatsby-remark-prismjs": ["2.0.3", "0a3414e3c2c822b3010807acd9ac190546113c23"],
+    "gatsby-source-filesystem": ["1.5.38", "9bf74c7bab280f552b074c72aff99f7bca45f927"],
+    "gatsby-transformer-remark": ["1.7.42", "c7446dd1d1d98a799e1019476ea05fa170c6afe7"],
+    "gatsby-transformer-yaml": ["1.5.17", "1187a5b4e7ebd9a170541bdf91f0497b8ab77ab0"],
+    "lodash": ["4.17.10", "1b7793cf7259ea38fb3661d4d38b3260af8ae4e7"],
+    "prismjs": ["1.14.0", "bbccfdb8be5d850d26453933cb50122ca0362ae0"],
+    "prop-types": ["15.6.1", "36644453564255ddda391191fb3a125cbdf654ca"],
+    "react-helmet": ["5.2.0", "a81811df21313a6d55c5f058c4aeba5d6f3d97a7"],
+    "react-icons": ["2.2.7", "d7860826b258557510dac10680abea5ca23cf650"],
+    "styled-components": ["3.3.2", "087b96830ee3d60d9a8b5ef17c132b4f29cc71df"],
+    "babel-core": ["6.26.3", "b2e2f09e342d0f0c88e2f02e067794125e75c207"],
+    "babel-loader": ["6.4.1", "0b34112d5b0748a8dcdbf51acf6f9bd42d50b8ca"],
+    "babel-plugin-add-module-exports": ["0.2.1", "9ae9a1f4a8dc67f0cdec4f4aeda1e43a5ff65e25"],
+    "babel-plugin-transform-object-assign": ["6.22.0", "f99d2f66f1a0b0d498e346c5359684740caa20ba"],
+    "babel-preset-env": ["1.7.0", "dea79fa4ebeb883cd35dab07e260c1c9c04df77a"],
+    "babel-preset-es2015": ["6.24.1", "d44050d6bc2c9feea702aaf38d727a0210538939"],
+    "babel-preset-react": ["6.24.1", "ba69dfaea45fc3ec639b6a4ecea6e17702c91380"],
+    "babel-preset-stage-0": ["6.24.1", "5642d15042f91384d7e5af8bc88b1db95b039e6a"],
+    "css-loader": ["0.26.4", "b61e9e30db94303e6ffc892f10ecd09ad025a1fd"],
+    "gatsby-1-config-css-modules": ["1.0.11", "5a102c6b11f9a6963b3892ecc959511e1688e525"],
+    "gatsby-1-config-extract-plugin": ["1.0.3", "9e2c962d4563c95fa29da83e3d93017129af0115"],
+    "gatsby-cli": ["1.1.58", "5dda246b9877ab925f6a512f723c20557af22d57"],
+    "graphql": ["0.11.7", "e5abaa9cb7b7cccb84e9f0836bf4370d268750c6"],
+    "gray-matter": ["3.1.1", "101f80d9e69eeca6765cdce437705b18f40876ac"],
+    "mime": ["1.6.0", "32cd9e5c64553bd58d19a568af452acff04981b1"],
+    "parse-filepath": ["1.0.2", "a632127f53aaf3d15876f5872f3ffac763d6c891"],
+    "postcss-import": ["8.2.0", "f92fd2454e21ef4efb1e75c00c47ac03f4d1397c"],
+    "postcss-loader": ["0.13.0", "72fdaf0d29444df77d3751ce4e69dc40bc99ed85"],
+    "react": ["15.6.2", "dba0434ab439cfe82f108f0f511663908179aa72"],
+    "react-dom": ["15.6.2", "41cfadf693b757faf2708443a1d1fd5a02bef730"],
+    "slash": ["1.0.0", "c41f2f6c39fc16d1cd17ad4b5d896114ae470d55"],
+    "style-loader": ["0.13.2", "74533384cf698c7104c7951150b49717adc2f3bb"],
+    "webpack": ["1.15.0", "4ff31f53db03339e55164a9d468ee0324968fe98"]
+  },
+  "dependencyParents": {
+    "babel-core": {
+      "name": "gatsby",
+      "range": "^6.24.1"
+    },
+    "babel-loader": {
+      "name": "gatsby",
+      "range": "^6.0.0"
+    },
+    "babel-plugin-add-module-exports": {
+      "name": "gatsby",
+      "range": "^0.2.1"
+    },
+    "babel-plugin-transform-object-assign": {
+      "name": "gatsby",
+      "range": "^6.8.0"
+    },
+    "babel-preset-env": {
+      "name": "gatsby",
+      "range": "^1.6.0"
+    },
+    "babel-preset-es2015": {
+      "name": "gatsby",
+      "range": "^6.24.1"
+    },
+    "babel-preset-react": {
+      "name": "gatsby",
+      "range": "^6.24.1"
+    },
+    "babel-preset-stage-0": {
+      "name": "gatsby",
+      "range": "^6.24.1"
+    },
+    "css-loader": {
+      "name": "gatsby",
+      "range": "^0.26.1"
+    },
+    "gatsby-1-config-css-modules": {
+      "name": "gatsby",
+      "range": "^1.0.11"
+    },
+    "gatsby-1-config-extract-plugin": {
+      "name": "gatsby",
+      "range": "^1.0.3"
+    },
+    "gatsby-cli": {
+      "name": "gatsby",
+      "range": "^1.1.58"
+    },
+    "graphql": {
+      "name": "gatsby",
+      "range": "^0.11.7"
+    },
+    "gray-matter": {
+      "name": "gatsby-transformer-remark",
+      "range": "^3.0.0"
+    },
+    "mime": {
+      "name": "gatsby-source-filesystem",
+      "range": "^1.3.6"
+    },
+    "parse-filepath": {
+      "name": "gatsby",
+      "range": "^1.0.1"
+    },
+    "postcss-import": {
+      "name": "gatsby",
+      "range": "^8.2.0"
+    },
+    "postcss-loader": {
+      "name": "gatsby",
+      "range": "^0.13.0"
+    },
+    "react": {
+      "name": "gatsby",
+      "range": "^15.6.0"
+    },
+    "react-dom": {
+      "name": "gatsby",
+      "range": "^15.6.0"
+    },
+    "slash": {
+      "name": "gatsby-source-filesystem",
+      "range": "^1.0.0"
+    },
+    "style-loader": {
+      "name": "gatsby",
+      "range": "^0.13.0"
+    },
+    "webpack": {
+      "name": "gatsby",
+      "range": "^1.13.3"
+    }
+  },
+  "supplementalBabelPlugin": "babel-plugin-styled-components"
+}

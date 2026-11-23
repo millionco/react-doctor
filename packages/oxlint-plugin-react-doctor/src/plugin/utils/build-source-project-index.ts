@@ -34,6 +34,9 @@ export interface SourceProjectIndexInput {
   readonly currentScopes: ScopeAnalysis;
   readonly requiredModuleSources?: ReadonlyArray<string>;
   readonly knownModuleSources?: ReadonlyArray<string>;
+  readonly includeTestlikeSources?: boolean;
+  readonly javascriptAllowsJsx?: boolean;
+  readonly includeOutputFoldersUnder?: string;
 }
 
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
@@ -73,6 +76,8 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
 
 const listProductionSourceFiles = (
   rootDirectory: string,
+  includeTestlikeSources: boolean,
+  includeOutputFoldersUnder: string | undefined,
 ): {
   sourceFilePaths: ReadonlyArray<string>;
   htmlFilePaths: ReadonlyArray<string>;
@@ -94,8 +99,16 @@ const listProductionSourceFiles = (
     }
     for (const entry of entries) {
       const absolutePath = path.join(currentDirectory, entry.name);
+      const relativeToIncludedTree = includeOutputFoldersUnder
+        ? path.relative(includeOutputFoldersUnder, absolutePath)
+        : "..";
+      const isInIncludedTree =
+        relativeToIncludedTree !== ".." &&
+        !relativeToIncludedTree.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relativeToIncludedTree);
       const isIgnoredDirectoryName =
-        SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
+        (SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) &&
+          (!isInIncludedTree || entry.name === "node_modules")) ||
         (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook");
       if (entry.isSymbolicLink() && isIgnoredDirectoryName) continue;
       if (entry.isSymbolicLink()) return null;
@@ -104,7 +117,8 @@ const listProductionSourceFiles = (
         pendingDirectories.push(absolutePath);
         continue;
       }
-      if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
+      if (!entry.isFile() || (!includeTestlikeSources && isTestlikeFilename(absolutePath)))
+        continue;
       if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
         hasOpaqueMdxConsumerSurface = true;
         continue;
@@ -208,6 +222,9 @@ export const buildSourceProjectIndex = ({
   currentScopes,
   requiredModuleSources = [],
   knownModuleSources,
+  includeTestlikeSources = false,
+  javascriptAllowsJsx = false,
+  includeOutputFoldersUnder,
 }: SourceProjectIndexInput): SourceProjectIndex | null => {
   if (
     requiredModuleSources.length > 0 &&
@@ -216,7 +233,11 @@ export const buildSourceProjectIndex = ({
   ) {
     return null;
   }
-  const productionSourceFiles = listProductionSourceFiles(rootDirectory);
+  const productionSourceFiles = listProductionSourceFiles(
+    rootDirectory,
+    includeTestlikeSources,
+    includeOutputFoldersUnder,
+  );
   if (!productionSourceFiles) return null;
   if (
     requiredModuleSources.length > 0 &&
@@ -238,7 +259,10 @@ export const buildSourceProjectIndex = ({
       });
       continue;
     }
-    const parsedProgram = parseSourceFile(filePath);
+    const parsedProgram = parseSourceFile(
+      filePath,
+      javascriptAllowsJsx && path.extname(filePath).toLowerCase() === ".js" ? "jsx" : undefined,
+    );
     if (!parsedProgram || !isNodeOfType(parsedProgram, "Program")) return null;
     modulesByFilePath.set(filePath, {
       filePath,

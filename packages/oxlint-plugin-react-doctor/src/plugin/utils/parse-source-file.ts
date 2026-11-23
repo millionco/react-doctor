@@ -49,11 +49,11 @@ interface CrossFileParseOptions extends ParserOptions {
 }
 
 const buildCrossFileParseOptions = (
-  filename: string,
+  lang: ReturnType<typeof resolveLang>,
   useRawTransfer: boolean,
 ): CrossFileParseOptions => ({
   astType: "ts",
-  lang: resolveLang(filename),
+  lang,
   experimentalRawTransfer: useRawTransfer,
 });
 
@@ -62,15 +62,16 @@ const buildCrossFileParseOptions = (
 export const parseCrossFileSource = (
   filename: string,
   sourceText: string,
+  language: ReturnType<typeof resolveLang> = resolveLang(filename),
 ): ReturnType<typeof parseSync> => {
   if (shouldUseRawTransfer) {
     try {
-      return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, true));
+      return parseSync(filename, sourceText, buildCrossFileParseOptions(language, true));
     } catch {
       shouldUseRawTransfer = false;
     }
   }
-  return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, false));
+  return parseSync(filename, sourceText, buildCrossFileParseOptions(language, false));
 };
 
 interface CacheEntry {
@@ -83,15 +84,17 @@ export interface ParseSourceTextInput {
   readonly filename: string;
   readonly sourceText: string;
   readonly shouldAttachParentReferences?: boolean;
+  readonly language?: ReturnType<typeof resolveLang>;
 }
 
 export const parseSourceText = ({
   filename,
   sourceText,
   shouldAttachParentReferences = true,
+  language,
 }: ParseSourceTextInput): EsTreeNode | null => {
   try {
-    const result = parseCrossFileSource(filename, sourceText);
+    const result = parseCrossFileSource(filename, sourceText, language);
     const hasFatalError = result.errors.some((parseError) => parseError.severity === "Error");
     if (hasFatalError) return null;
     const parsedProgram = result.program as unknown as EsTreeNode;
@@ -102,7 +105,7 @@ export const parseSourceText = ({
   }
 };
 
-// Module-level cache of parsed Programs keyed by absolute file path.
+// Module-level cache of parsed Programs keyed by absolute file path and language.
 // Each entry stores the file's mtime + byte size at parse time so a
 // changed file invalidates the cache automatically. Storing `null`
 // for known-broken files prevents re-parsing the same .d.ts /
@@ -129,11 +132,15 @@ const rememberParsedFile = (absoluteFilePath: string, entry: CacheEntry): void =
 // with parent references attached, or null when the file is missing
 // / too large / .d.ts-only / fails to parse.
 //
-// Cached by (absolute path, mtime, size). Re-parsing only happens
+// Cached by (absolute path, language, mtime, size). Re-parsing only happens
 // when one of those changes. Cache lives for the lifetime of the
 // Node process, which matches the way oxlint runs a single batch
 // of files per process.
-export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => {
+export const parseSourceFile = (
+  absoluteFilePath: string,
+  language: ReturnType<typeof resolveLang> = resolveLang(absoluteFilePath),
+): EsTreeNode | null => {
+  const cacheKey = `${absoluteFilePath}\u0000${language}`;
   // Declaration files are constant-null regardless of the filesystem (absent,
   // present, any size — every branch below lands on `null`), so they are not
   // a dependency and record no probe. Everything else records its content
@@ -154,9 +161,9 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   if (!fileStat?.isFile()) return null;
   if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) return null;
 
-  const cached = parseCache.get(absoluteFilePath);
+  const cached = parseCache.get(cacheKey);
   if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
-    rememberParsedFile(absoluteFilePath, cached);
+    rememberParsedFile(cacheKey, cached);
     return cached.program;
   }
 
@@ -170,7 +177,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     absoluteFilePath.endsWith(".d.mts") ||
     absoluteFilePath.endsWith(".d.cts")
   ) {
-    rememberParsedFile(absoluteFilePath, {
+    rememberParsedFile(cacheKey, {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
       program: null,
@@ -182,7 +189,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   try {
     sourceText = fs.readFileSync(absoluteFilePath, "utf8");
   } catch {
-    rememberParsedFile(absoluteFilePath, {
+    rememberParsedFile(cacheKey, {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
       program: null,
@@ -193,9 +200,10 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   const parsedProgram = parseSourceText({
     filename: absoluteFilePath,
     sourceText,
+    language,
   });
 
-  rememberParsedFile(absoluteFilePath, {
+  rememberParsedFile(cacheKey, {
     mtimeMs: fileStat.mtimeMs,
     size: fileStat.size,
     program: parsedProgram,

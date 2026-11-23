@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { recordRealpathProbe } from "./cross-file-probe-recorder.js";
 import { normalizeFilename } from "./normalize-filename.js";
 
 const cachedRealDirectoryByDirectory = new Map<string, string>();
@@ -8,6 +9,7 @@ export const resetRealDirectoryCache = (): void => {
 };
 
 const resolveRealDirectory = (directory: string): string => {
+  recordRealpathProbe(directory);
   const cached = cachedRealDirectoryByDirectory.get(directory);
   if (cached !== undefined) return cached;
   let realDirectory: string;

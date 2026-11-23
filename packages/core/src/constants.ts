@@ -941,7 +941,7 @@ export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 // unchanged file. Shares the file cache's bucket/file caps.
 // Bumped to 3 with the same parser-diagnostic compatibility change, and to 4
 // when probes became an interned per-bucket table referenced by id.
-export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 5;
+export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 6;
 
 export const SIDECAR_LINT_CACHE_FILENAME = "sidecar-lint-cache.json";
 

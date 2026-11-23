@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import * as path from "node:path";
 import { classifyExistenceAnswer } from "../../utils/classify-existence-answer.js";
 import { hashFileContents } from "../../utils/hash-file-contents.js";
+import { isErrnoException } from "../../utils/is-errno-exception.js";
 import type { SidecarDependencyProbe } from "./sidecar-lint-cache.js";
 
 const ABSENT_CONTENT_ANSWER = "absent";
@@ -40,6 +41,7 @@ export const createSidecarProbeAnswerResolver = (input: {
   const contentAnswerByPath = new Map<string, string>();
   const existsAnswerByPath = new Map<string, string>();
   const directoryAnswerByPath = new Map<string, string>();
+  const realpathAnswerByPath = new Map<string, string>();
   // The same dependency paths recur across most files' probe sets (a shared
   // barrel, the tsconfig chain, every node_modules candidate), so the
   // relative form is computed once per absolute path.
@@ -100,13 +102,28 @@ export const createSidecarProbeAnswerResolver = (input: {
     return answer;
   };
 
+  const realpathAnswer = (relativePath: string): string => {
+    const cached = realpathAnswerByPath.get(relativePath);
+    if (cached !== undefined) return cached;
+    let answer: string;
+    try {
+      const resolved = fs.realpathSync(path.resolve(input.rootDirectory, relativePath));
+      answer = createHash("sha256").update(resolved).digest("hex");
+    } catch (error) {
+      const code = isErrnoException(error) ? error.code : undefined;
+      answer = code === "ENOENT" || code === "ENOTDIR" ? "absent" : `unreadable:${randomUUID()}`;
+    }
+    realpathAnswerByPath.set(relativePath, answer);
+    return answer;
+  };
+  const resolveAnswer = {
+    content: contentAnswer,
+    exists: existsAnswer,
+    directory: directoryAnswer,
+    realpath: realpathAnswer,
+  };
   return {
-    answerFor: (kind, relativePath) =>
-      kind === "directory"
-        ? directoryAnswer(relativePath)
-        : kind === "content"
-          ? contentAnswer(relativePath)
-          : existsAnswer(relativePath),
+    answerFor: (kind, relativePath) => resolveAnswer[kind](relativePath),
     toRelativePath,
   };
 };

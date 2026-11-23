@@ -12,6 +12,7 @@ export interface CrossFileClosureSnapshot {
   readonly contentPaths: ReadonlyArray<string>;
   readonly existencePaths: ReadonlyArray<string>;
   readonly directoryPaths: ReadonlyArray<string>;
+  readonly realpathPaths: ReadonlyArray<string>;
   readonly fingerprint: string;
 }
 const absolutePaths = (value: unknown): value is string[] =>
@@ -22,6 +23,7 @@ export const isCrossFileClosureSnapshot = (value: unknown): value is CrossFileCl
   absolutePaths(value.contentPaths) &&
   absolutePaths(value.existencePaths) &&
   absolutePaths(value.directoryPaths) &&
+  absolutePaths(value.realpathPaths) &&
   typeof value.fingerprint === "string";
 const hash = (bytes: string | Buffer): string => createHash("sha256").update(bytes).digest("hex");
 const readSource = (filename: string): Buffer | null => {
@@ -59,7 +61,11 @@ const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): s
       members.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
       return [filename, hash(JSON.stringify(members))];
     });
-    return hash(JSON.stringify([content, existence, directories]));
+    const realpaths = snapshot.realpathPaths.map((filename) => [
+      filename,
+      fs.realpathSync(filename),
+    ]);
+    return hash(JSON.stringify([content, existence, directories, realpaths]));
   } catch {
     return null;
   }
@@ -78,6 +84,7 @@ export const createCrossFileClosureSnapshot = (
     const contentPaths = new Set<string>();
     const existencePaths = new Set<string>();
     const directoryPaths = new Set<string>();
+    const realpathPaths = new Set<string>();
     for (const relativePath of analyzedPaths) {
       if (!/\.[cm]?[jt]sx?$/i.test(relativePath)) continue;
       const filename = path.resolve(directory, relativePath);
@@ -106,11 +113,13 @@ export const createCrossFileClosureSnapshot = (
       for (const item of trace.contentPaths) contentPaths.add(item);
       for (const item of trace.existencePaths) existencePaths.add(item);
       for (const item of trace.directoryPaths) directoryPaths.add(item);
+      for (const item of trace.realpathPaths) realpathPaths.add(item);
     }
     const paths = {
       contentPaths: [...contentPaths].sort(),
       existencePaths: [...existencePaths].sort(),
       directoryPaths: [...directoryPaths].sort(),
+      realpathPaths: [...realpathPaths].sort(),
     };
     const result = fingerprint(paths);
     return result === null ? null : { ...paths, fingerprint: result };

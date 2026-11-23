@@ -152,7 +152,7 @@ const collectSidecarProbesForFiles = async (input: {
   pooled: PooledProbeCollection | null;
 }): Promise<Map<string, ReadonlyArray<number> | null>> => {
   const internRelativeProbe = (
-    kind: "content" | "exists" | "directory",
+    kind: "content" | "exists" | "directory" | "realpath",
     relativePath: string,
     knownAnswer: string | null,
   ): number =>
@@ -161,8 +161,10 @@ const collectSidecarProbesForFiles = async (input: {
       relativePath,
       knownAnswer ?? input.probeAnswers.answerFor(kind, relativePath),
     );
-  const internProbe = (kind: "content" | "exists" | "directory", absolutePath: string): number =>
-    internRelativeProbe(kind, input.probeAnswers.toRelativePath(absolutePath), null);
+  const internProbe = (
+    kind: "content" | "exists" | "directory" | "realpath",
+    absolutePath: string,
+  ): number => internRelativeProbe(kind, input.probeAnswers.toRelativePath(absolutePath), null);
   const buildProbeIds = (file: string): number[] | null => {
     const trace = collectFileProbeTrace(
       collectCrossFileDependencyProbes,
@@ -183,6 +185,9 @@ const collectSidecarProbesForFiles = async (input: {
     }
     for (const directoryPath of trace.directoryPaths) {
       probeIds.push(internProbe("directory", directoryPath));
+    }
+    for (const realpathPath of trace.realpathPaths) {
+      probeIds.push(internProbe("realpath", realpathPath));
     }
     return probeIds;
   };
@@ -252,6 +257,9 @@ const collectSidecarProbesForFiles = async (input: {
       }
       for (const pathIndex of trace.directory) {
         probeIds.push(internRelativeProbe("directory", result.paths[pathIndex], null));
+      }
+      for (const pathIndex of trace.realpath) {
+        probeIds.push(internRelativeProbe("realpath", result.paths[pathIndex], null));
       }
       probeIdsByFile.set(file, probeIds);
     }

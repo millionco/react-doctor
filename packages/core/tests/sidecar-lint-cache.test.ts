@@ -7,6 +7,7 @@ import {
   SIDECAR_LINT_CACHE_FILENAME,
   SIDECAR_LINT_CACHE_SCHEMA_VERSION,
 } from "../src/constants.js";
+import { createSidecarProbeAnswerResolver } from "../src/runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "../src/runners/oxlint/sidecar-lint-cache.js";
 import type {
   SidecarDependencyProbe,
@@ -66,6 +67,54 @@ const answerFromProbes =
     probes.find((probe) => probe.kind === kind && probe.path === probePath)?.answer ?? "absent";
 
 describe("createSidecarLintCache", () => {
+  it("invalidates a persisted entry when a provider link moves between identical packages", () => {
+    const project = makeCacheDir();
+    const cacheDirectory = makeCacheDir();
+    const original = path.join(project, "original");
+    const alternate = path.join(project, "alternate");
+    const link = path.join(project, "provider");
+    for (const directory of [original, alternate]) {
+      fs.mkdirSync(directory);
+      fs.writeFileSync(path.join(directory, "package.json"), '{"name":"provider"}');
+    }
+    fs.symlinkSync(original, link, "junction");
+    const readAnswers = () =>
+      createSidecarProbeAnswerResolver({
+        rootDirectory: project,
+        contentHashByRelativePath: new Map(),
+      });
+    const initialAnswers = readAnswers();
+    const manifest = "provider/package.json";
+    const initialExistence = initialAnswers.answerFor("exists", "provider");
+    const initialContent = initialAnswers.answerFor("content", manifest);
+    const writer = createSidecarLintCache(cacheDirectory, "realpath");
+    const providerProbeId = writer.internProbe(
+      "realpath",
+      "provider",
+      initialAnswers.answerFor("realpath", "provider"),
+    );
+    writer.store("src/app.tsx hash", {
+      probeIds: [providerProbeId],
+      diagnostics: [diagnostic()],
+    });
+    writer.persist();
+    const isReplayable = () => {
+      const reader = createSidecarLintCache(cacheDirectory, "realpath");
+      const cached = reader.lookup("src/app.tsx hash");
+      expect(cached?.diagnostics).toEqual([diagnostic()]);
+      return cached !== null && reader.isReplayable(cached, readAnswers().answerFor);
+    };
+    expect(isReplayable()).toBe(true);
+    fs.unlinkSync(link);
+    fs.symlinkSync(alternate, link, "junction");
+    const afterRetarget = readAnswers();
+    expect(afterRetarget.answerFor("exists", "provider")).toBe(initialExistence);
+    expect(afterRetarget.answerFor("content", manifest)).toBe(initialContent);
+    expect(isReplayable()).toBe(false);
+    fs.unlinkSync(link);
+    fs.symlinkSync(original, link, "junction");
+    expect(isReplayable()).toBe(true);
+  });
   it("preserves explicit ownership through disk replay", () => {
     const cacheDirectory = makeCacheDir();
     const expected = diagnostic({ contextRanges: [{ offset: 12, length: 34 }] });

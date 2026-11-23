@@ -42,6 +42,7 @@ export interface OxlintWorkerProbeTrace {
   readonly content: ReadonlyArray<number>;
   readonly existence: ReadonlyArray<number>;
   readonly directory: ReadonlyArray<number>;
+  readonly realpath: ReadonlyArray<number>;
 }
 
 /**
@@ -320,6 +321,7 @@ const collectProbeTraces = (
       content: [...trace.contentPaths].map((contentPath) => internPath(contentPath, false)),
       existence: [...trace.existencePaths].map((existencePath) => internPath(existencePath, true)),
       directory: [...trace.directoryPaths].map((directoryPath) => internPath(directoryPath, false)),
+      realpath: [...trace.realpathPaths].map((realpathPath) => internPath(realpathPath, false)),
     };
   });
   return { paths, existenceAnswers, traces };

@@ -141,7 +141,7 @@ const isProbeResult = (value: unknown): value is OxlintWorkerProbeResult => {
   return value.traces.every((trace) => {
     if (trace === null) return true;
     if (!isRecord(trace) || typeof trace.file !== "string") return false;
-    return [trace.content, trace.existence, trace.directory].every(
+    return [trace.content, trace.existence, trace.directory, trace.realpath].every(
       (indexes) =>
         Array.isArray(indexes) &&
         indexes.every(

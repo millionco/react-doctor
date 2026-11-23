@@ -1,3 +1,4 @@
+import { collectPrivateFluentEventRegistrations } from "./utils/collect-private-fluent-event-registrations.js";
 import { isPrivateImportedPrimitiveIterable } from "./utils/is-private-imported-primitive-iterable.js";
 import { isOmittedPrivateNullStateIdentityWrite } from "./rules/state-and-effects/utils/is-omitted-private-null-state-identity-write.js";
 import { collectGuardedRecordCaptureDependencies } from "./rules/react-builtins/exhaustive-deps-guarded-record-capture.js";
@@ -223,6 +224,8 @@ const collectEffectCleanupDependencies: CrossFileDependencyCollector = (input) =
   walkAst(program, (node) => {
     if (isNodeOfType(node, "ForOfStatement"))
       isPrivateImportedPrimitiveIterable(stripParenExpression(node.right), context);
+    if (isNodeOfType(node, "ArrowFunctionExpression"))
+      collectPrivateFluentEventRegistrations(node, context);
   });
 };
 

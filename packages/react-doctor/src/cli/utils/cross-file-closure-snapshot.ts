@@ -99,7 +99,11 @@ export const createCrossFileClosureSnapshot = (
       )
         continue;
       const ruleIds = ["rules-of-hooks", "no-pass-live-state-to-parent"];
-      if (hasEscapedIdentifier || (sourceText.includes("for") && sourceText.includes("of")))
+      if (
+        hasEscapedIdentifier ||
+        (sourceText.includes("for") && sourceText.includes("of")) ||
+        (sourceText.includes("on") && sourceText.includes("off"))
+      )
         ruleIds.push("effect-needs-cleanup");
       if (
         hasEscapedIdentifier ||

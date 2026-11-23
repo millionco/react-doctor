@@ -3,12 +3,14 @@ import type { SourceProjectModule } from "../../utils/build-source-project-index
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findExportedValue } from "../../utils/find-exported-value.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { StockViteBrowserInspection } from "../../utils/read-verified-stock-vite-browser-project.js";
@@ -346,16 +348,80 @@ const guaranteesBooleanCallbackProp = (focal: Module, owner: EsTreeNode, name: s
   );
 };
 
+const hasViewBoundDismissal = (
+  caller: Module,
+  opening: Opening,
+  setter: SymbolDescriptor,
+  dismissalProperty: string,
+  viewProperty: string,
+): boolean => {
+  const dismiss = jsxValue(opening, dismissalProperty);
+  const view = jsxValue(opening, viewProperty);
+  const owner = findEnclosingFunction(opening);
+  const viewBinding = isNodeOfType(view, "Identifier") && caller.scopes.symbolFor(view);
+  if (
+    !isNodeOfType(dismiss, "Identifier") ||
+    caller.scopes.symbolFor(dismiss) !== setter ||
+    !viewBinding ||
+    !isFunctionLike(owner) ||
+    !isNodeOfType(owner.body, "BlockStatement")
+  ) {
+    return false;
+  }
+
+  let returned: EsTreeNode = opening;
+  while (returned.parent && returned.parent !== owner.body) returned = returned.parent;
+  if (!isNodeOfType(returned, "ReturnStatement") || returned.parent !== owner.body) return false;
+  const returnIndex = owner.body.body.findIndex((statement) => statement === returned);
+  if (returnIndex < 1) return false;
+
+  return owner.body.body.slice(0, returnIndex).some((statement) => {
+    if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+    const call = statement.expression;
+    if (!react(caller, call, "useEffect") || call.arguments.length !== 2) return false;
+    const [effect, dependencies] = call.arguments;
+    if (
+      !isNodeOfType(effect, "ArrowFunctionExpression") ||
+      effect.async ||
+      effect.params.length !== 0 ||
+      !isNodeOfType(effect.body, "BlockStatement") ||
+      effect.body.body.length !== 1 ||
+      !isNodeOfType(dependencies, "ArrayExpression") ||
+      dependencies.elements.length !== 1 ||
+      !isNodeOfType(dependencies.elements[0], "Identifier") ||
+      caller.scopes.symbolFor(dependencies.elements[0]) !== viewBinding
+    ) {
+      return false;
+    }
+    const [close] = effect.body.body;
+    if (!isNodeOfType(close, "ExpressionStatement")) return false;
+    const expression = close.expression;
+    return (
+      isNodeOfType(expression, "CallExpression") &&
+      !expression.optional &&
+      isNodeOfType(expression.callee, "Identifier") &&
+      caller.scopes.symbolFor(expression.callee) === setter &&
+      expression.arguments.length === 1 &&
+      isNodeOfType(expression.arguments[0], "Literal") &&
+      expression.arguments[0].value === false
+    );
+  });
+};
+
 const hasKnownBooleanOpen = (
   caller: Module,
   opening: Opening,
   field: string,
   focal: Module,
   owner: EsTreeNode,
+  viewProperty: string,
+  dismissalProperty?: string,
 ): boolean => {
   if (!isTruthyJsxProperty(opening, field, caller.programNode, caller.scopes)) return false;
   const value = jsxValue(opening, field);
-  if (!value || isNodeOfType(value, "Literal")) return value === null || value.value === true;
+  if (!value || isNodeOfType(value, "Literal")) {
+    return !dismissalProperty && (value === null || value.value === true);
+  }
   const state = readConst(caller, value);
   const decl = state?.declarationNode;
   if (
@@ -373,7 +439,13 @@ const hasKnownBooleanOpen = (
     return false;
   const setterNode = decl.id.elements[1];
   const setter = readConst(caller, setterNode);
-  if (!setter) return false;
+  if (
+    !setter ||
+    (dismissalProperty &&
+      !hasViewBoundDismissal(caller, opening, setter, dismissalProperty, viewProperty))
+  ) {
+    return false;
+  }
   return setter.references.every(({ identifier }) => {
     if (callsBoolean(identifier, false, caller)) return true;
     const wrapper = identifier.parent;
@@ -400,6 +472,7 @@ interface LoadingBrowserInput {
   readonly owner: EsTreeNode;
   readonly viewProperty: string;
   readonly openProperty: string;
+  readonly dismissalProperty?: string;
 }
 
 export const readLoadingAsyncOwnershipBrowserCaller = ({
@@ -408,6 +481,7 @@ export const readLoadingAsyncOwnershipBrowserCaller = ({
   owner,
   viewProperty,
   openProperty,
+  dismissalProperty,
 }: LoadingBrowserInput) => {
   if (
     !isNodeOfType(owner, "FunctionDeclaration") ||
@@ -451,8 +525,15 @@ export const readLoadingAsyncOwnershipBrowserCaller = ({
       property: openProperty,
       specifier,
       checkOpening: (opening) =>
-        hasKnownBooleanOpen(caller, opening, openProperty, focal, owner) &&
-        hasTruthyForwardedView(project, caller, opening, viewProperty),
+        hasKnownBooleanOpen(
+          caller,
+          opening,
+          openProperty,
+          focal,
+          owner,
+          viewProperty,
+          dismissalProperty,
+        ) && hasTruthyForwardedView(project, caller, opening, viewProperty),
     }) !== 1
   )
     return null;

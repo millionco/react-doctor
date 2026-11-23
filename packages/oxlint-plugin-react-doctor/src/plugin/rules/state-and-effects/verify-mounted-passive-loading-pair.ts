@@ -69,6 +69,7 @@ export const verifyMountedPassiveLoadingPair = (
         owner: exported,
         openProperty: pair.openProperty,
         viewProperty: pair.viewProperty,
+        ...(pair.dismissalProperty ? { dismissalProperty: pair.dismissalProperty } : {}),
       });
       if (!caller || caller.directNamedTestCandidates.length !== 1) return null;
 

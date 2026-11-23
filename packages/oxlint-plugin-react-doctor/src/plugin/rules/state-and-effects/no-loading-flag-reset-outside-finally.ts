@@ -7,6 +7,8 @@ import {
 import { hasClosedResetFirstPreviewDisposal } from "./read-reset-first-preview-disposal.js";
 import {
   readDismissiveLoadingPair,
+  isDirectNamedReactHookCall,
+  readLocallyCancelledLoadingPair,
   readPassiveLoadingPair,
   readRenderLoadingPair,
 } from "./read-passive-loading-pair.js";
@@ -4397,6 +4399,177 @@ const hasClosedDismissiveViewFinalizer = (
   return ownedMirrors && verifyMountedPassiveLoadingPair(pair, owner, context);
 };
 
+const hasProtectedCompanionLoadingWriter = (
+  setter: SymbolDescriptor,
+  start: EsTreeNodeOfType<"CallExpression">,
+  reset: EsTreeNodeOfType<"CallExpression">,
+  owner: EsTreeNode,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): boolean => {
+  const companions = setter.references.filter(
+    ({ identifier }) => identifier !== start.callee && identifier !== reset.callee,
+  );
+  if (companions.length === 0) return true;
+  if (companions.length !== 2 || !isFunctionLike(owner)) return false;
+
+  const nextStart = companions.find(({ identifier }) => {
+    const call = identifier.parent;
+    return (
+      isNodeOfType(call, "CallExpression") &&
+      call.callee === identifier &&
+      getSetterBooleanValue(call, context)?.value === true
+    );
+  })?.identifier.parent;
+  const companion = nextStart && findEnclosingFunction(nextStart);
+  const hook = companion?.parent;
+  const declaration = hook?.parent;
+  if (
+    !isNodeOfType(nextStart, "CallExpression") ||
+    !isNodeOfType(companion, "ArrowFunctionExpression") ||
+    !companion.async ||
+    companion.params.length !== 0 ||
+    !isNodeOfType(companion.body, "BlockStatement") ||
+    !isNodeOfType(hook, "CallExpression") ||
+    !isDirectNamedReactHookCall(hook, "useCallback", context) ||
+    hook.arguments[0] !== companion ||
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    declaration.init !== hook ||
+    declaration.parent?.parent !== owner.body
+  )
+    return false;
+
+  const body = companion.body.body;
+  const startIndex = body.findIndex((entry) => entry === nextStart.parent);
+  const protectedTry = body.at(-1);
+  if (
+    startIndex < 0 ||
+    getDirectPrimitiveReactSetter(body[startIndex], companion, owner, context, importerProof) !==
+      nextStart ||
+    !isNodeOfType(protectedTry, "TryStatement") ||
+    !protectedTry.finalizer ||
+    protectedTry.finalizer.body.length !== 1
+  )
+    return false;
+  const release = getDirectPrimitiveReactSetter(
+    protectedTry.finalizer.body[0],
+    companion,
+    owner,
+    context,
+    importerProof,
+  );
+  if (
+    !release ||
+    context.scopes.symbolFor(release.callee) !== setter ||
+    getSetterBooleanValue(release, context)?.value !== false ||
+    !companions.some(({ identifier }) => identifier === release.callee)
+  )
+    return false;
+
+  return body
+    .slice(startIndex + 1, -1)
+    .every((entry) =>
+      Boolean(getDirectPrimitiveReactSetter(entry, companion, owner, context, importerProof)),
+    );
+};
+
+const hasCommittedLocalCancellationFinalizer = (
+  reset: EsTreeNode,
+  request: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  firstRiskyAwait: AwaitSite,
+  context: RuleContext,
+  importerProof: SplitGenerationReactImporterProof,
+): boolean => {
+  if (
+    !isNodeOfType(request, "ArrowFunctionExpression") ||
+    !isNodeOfType(request.body, "BlockStatement") ||
+    !isNodeOfType(reset, "CallExpression") ||
+    truthySets.length !== 1
+  )
+    return false;
+  const owner = getOwningFunction(request);
+  const body = request.body.body;
+  const guard = readSoleDirectFinalizerGuard(reset, body.at(-1));
+  const condition = guard?.test;
+  const start = truthySets[0].node;
+  if (
+    !isNodeOfType(condition, "UnaryExpression") ||
+    condition.operator !== "!" ||
+    !isNodeOfType(condition.argument, "Identifier") ||
+    !isNodeOfType(start, "CallExpression") ||
+    !isNodeOfType(reset.callee, "Identifier") ||
+    !isNodeOfType(start.callee, "Identifier")
+  )
+    return false;
+  const cancelled = context.scopes.symbolFor(condition.argument);
+  const setter = context.scopes.symbolFor(start.callee);
+  if (
+    !cancelled ||
+    !setter ||
+    context.scopes.symbolFor(reset.callee) !== setter ||
+    !hasCompleteSymbolReferences(setter, owner, context.scopes) ||
+    !setter.references.every(
+      ({ flag, identifier }) => flag === "read" && !isWithinAssignmentTarget(identifier),
+    )
+  )
+    return false;
+  const pair = readLocallyCancelledLoadingPair({
+    owner,
+    request,
+    firstAwait: firstRiskyAwait.node,
+    cancelled,
+    context,
+  });
+  if (!pair || hasLexicalDynamicAccess(owner, context)) return false;
+
+  const missing = body[0];
+  const exit =
+    isNodeOfType(missing, "IfStatement") &&
+    isNodeOfType(missing.consequent, "BlockStatement") &&
+    missing.consequent.body.length === 1
+      ? missing.consequent.body[0]
+      : null;
+  if (
+    !isNodeOfType(missing, "IfStatement") ||
+    missing.alternate ||
+    !isNodeOfType(exit, "ReturnStatement") ||
+    exit.argument ||
+    getDirectPrimitiveReactSetter(body[1], request, owner, context, importerProof) !== start ||
+    getSetterBooleanValue(start, context)?.value !== true ||
+    !reset.parent ||
+    getDirectPrimitiveReactSetter(reset.parent, request, owner, context, importerProof) !== reset ||
+    getSetterBooleanValue(reset, context)?.value !== false
+  )
+    return false;
+
+  const absent = readDirectLogicalPair(missing.test, "||")?.map((term) =>
+    isNodeOfType(term, "UnaryExpression") &&
+    term.operator === "!" &&
+    isNodeOfType(term.argument, "Identifier")
+      ? context.scopes.symbolFor(term.argument)
+      : null,
+  );
+  // Certified mounts stay open until removal, so a committed replacement can start.
+  return Boolean(
+    absent?.includes(pair.viewBinding) &&
+    absent.includes(pair.getterBinding) &&
+    hasProtectedRequestStartup(
+      body.slice(2),
+      resolveExpressionKey(start.callee, context),
+      firstRiskyAwait,
+      reset,
+      request,
+      owner,
+      context,
+      importerProof,
+    ) &&
+    hasProtectedCompanionLoadingWriter(setter, start, reset, owner, context, importerProof) &&
+    hasClosedResetFirstPreviewDisposal(pair.disposal, pair, owner, context, true) &&
+    verifyMountedPassiveLoadingPair(pair, owner, context),
+  );
+};
+
 const isFinalizerResetProvablyGuarded = (
   resetNode: EsTreeNode,
   protectingTry: EsTreeNodeOfType<"TryStatement">,
@@ -4407,6 +4580,19 @@ const isFinalizerResetProvablyGuarded = (
   importerProof: SplitGenerationReactImporterProof,
 ): boolean => {
   const guards = collectFinalizerGuardExpressions(resetNode, protectingTry, context);
+  if (
+    guards?.positive.length === 1 &&
+    guards.negative.length === 0 &&
+    hasCommittedLocalCancellationFinalizer(
+      resetNode,
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      context,
+      importerProof,
+    )
+  )
+    return true;
   if (
     guards &&
     guards.negative.length === 0 &&

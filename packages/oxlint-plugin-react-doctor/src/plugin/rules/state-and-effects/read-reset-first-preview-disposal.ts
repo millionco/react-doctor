@@ -6,9 +6,15 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { readPassiveLoadingPair } from "./read-passive-loading-pair.js";
+import {
+  isDirectNamedReactHookCall,
+  type readPassiveLoadingPair,
+} from "./read-passive-loading-pair.js";
 
-type PassiveLoadingPair = NonNullable<ReturnType<typeof readPassiveLoadingPair>>;
+type StablePreviewDisposal = Pick<
+  NonNullable<ReturnType<typeof readPassiveLoadingPair>>,
+  "stableReset"
+>;
 
 const readMemberCall = (statement: EsTreeNode | undefined) => {
   if (!isNodeOfType(statement, "ExpressionStatement")) return null;
@@ -41,9 +47,10 @@ const readCurrentReceiver = (node: EsTreeNode) =>
 // effect either proceeds to the adjacent launch or handles a commit error.
 export const hasClosedResetFirstPreviewDisposal = (
   statement: EsTreeNode,
-  pair: PassiveLoadingPair,
+  pair: StablePreviewDisposal,
   owner: EsTreeNode,
   context: RuleContext,
+  requireNamedReact = false,
 ): boolean => {
   if (!isNodeOfType(statement, "ExpressionStatement") || !isFunctionLike(owner)) return false;
   const disposal = statement.expression;
@@ -101,6 +108,7 @@ export const hasClosedResetFirstPreviewDisposal = (
     hook.optional ||
     hook.arguments.length !== 1 ||
     !isReactApiCall(hook, "useRef", context.scopes) ||
+    (requireNamedReact && !isDirectNamedReactHookCall(hook, "useRef", context)) ||
     !isNodeOfType(initializer, "NewExpression") ||
     !isNodeOfType(initializer.callee, "Identifier") ||
     initializer.callee.name !== "Map" ||

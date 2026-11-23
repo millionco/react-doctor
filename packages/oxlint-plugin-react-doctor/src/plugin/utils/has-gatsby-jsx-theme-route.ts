@@ -373,9 +373,9 @@ const readExactIndexModule = (
   packageDirectory: string,
   subdirectory: "pages" | "layouts",
 ): SourceProjectModule | null => {
-  const base = path.join(packageDirectory, "src", subdirectory, "index");
+  const base = normalizeFilename(path.join(packageDirectory, "src", subdirectory, "index"));
   const matches = [...project.modulesByFilePath.entries()].filter(
-    ([filePath]) => filePath.startsWith(base + ".") || filePath.startsWith(base + path.sep),
+    ([filePath]) => filePath.startsWith(base + ".") || filePath.startsWith(base + "/"),
   );
   const [match] = matches;
   return matches.length === 1 && match && (match[0] === base + ".js" || match[0] === base + ".jsx")

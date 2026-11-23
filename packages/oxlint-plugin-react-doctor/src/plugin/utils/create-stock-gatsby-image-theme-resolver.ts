@@ -6,6 +6,7 @@ import type { SourceProjectIndex } from "./build-source-project-index.js";
 import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
 import { walkAst } from "./walk-ast.js";
@@ -43,7 +44,7 @@ const readOwnStylesheet = (root: string, filename: string): string | null => {
     const stat = fs.lstatSync(filename);
     return stat.isFile() &&
       stat.size <= STOCK_GATSBY_MAX_STYLESHEET_BYTES &&
-      fs.realpathSync(filename) === filename
+      normalizeFilename(fs.realpathSync.native(filename)) === normalizeFilename(filename)
       ? fs.readFileSync(filename, "utf8")
       : null;
   } catch {
@@ -91,8 +92,9 @@ const readStockGatsbyImageThemeContext = (
 ): StockGatsbyImageThemeContext | null => {
   const program = scopes.rootScope.node;
   if (!filename || !isNodeOfType(program, "Program")) return null;
-  const root = findNearestPackageDirectory(filename);
-  if (!root) return null;
+  const packageDirectory = findNearestPackageDirectory(filename);
+  if (!packageDirectory) return null;
+  const root = path.resolve(packageDirectory);
   const declaredRoute = readDeclaredGatsbyV1StyledSsrRoute(root);
   if (!declaredRoute || !hasUnshadowedStockGatsbyV1Entries(root, declaredRoute.pluginNames))
     return null;
@@ -153,13 +155,15 @@ export const createStockGatsbyImageThemeResolver = (
   let context: StockGatsbyImageThemeContext | null | undefined;
   return (image: EsTreeNodeOfType<"JSXOpeningElement">): ReadonlyMap<string, string> | null => {
     if (!filename) return null;
-    if (context === undefined) context = readStockGatsbyImageThemeContext(filename, getScopes());
+    const currentFilePath = normalizeFilename(filename);
+    if (context === undefined)
+      context = readStockGatsbyImageThemeContext(currentFilePath, getScopes());
     if (!context) return null;
     const { project, root, theme } = context;
     return hasGatsbyJsxThemeRoute({
       project,
       packageDirectory: root,
-      currentFilePath: filename,
+      currentFilePath,
       currentImage: image,
       providerModule: theme.provider.module,
       providerOpening: theme.provider.node,

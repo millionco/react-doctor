@@ -137,6 +137,12 @@ describe("Gatsby v1 styled image reservation in an offline source scan", () => {
         expect(fs.existsSync(path.join(website, "node_modules"))).toBe(false);
         expect(inspect(filename)).toEqual([]);
 
+        const lockfile = path.join(website, "yarn.lock");
+        const lock = fs.readFileSync(lockfile, "utf8");
+        write(lockfile, lock.replaceAll("\n", "\r\n"));
+        expect(inspect(filename)).toEqual([]);
+        write(lockfile, lock);
+
         const commonCss = path.join(website, cssPath);
         write(commonCss, "img { width: auto; height: auto; max-width: none; }\n");
         expect(inspect(filename)).toEqual(warning);

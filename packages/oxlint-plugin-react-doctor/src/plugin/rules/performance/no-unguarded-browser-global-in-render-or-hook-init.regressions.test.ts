@@ -634,3 +634,93 @@ describe("helpers defined inside an effect", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("a private child rendered after its parent mounts", () => {
+  const child = "const RoomTitle = () => <h2>{document.title}</h2>;";
+  const fixture = ({
+    initializer = "false",
+    beforeMount = "",
+    beforeReturn = "",
+    render = "<main>{mounted && <RoomTitle />}</main>",
+    afterParent = "",
+    effect = "useEffect",
+  } = {}) => `
+    import { useEffect, useRef, useState } from "react";
+    ${child}
+    export const Page = () => {
+      ${beforeMount}
+      const [mounted, setMounted] = useState(${initializer});
+      ${effect}(() => {
+        setMounted(true);
+        return () => setMounted(false);
+      }, []);
+      ${beforeReturn}
+      return ${render};
+    };
+    ${afterParent}
+  `;
+
+  it("keeps a parent-owned false mount gate quiet across cleanup and event writes", () => {
+    const result = run(
+      fixture({
+        beforeMount: "const anchor = useRef(null); const [page, setPage] = useState(false);",
+        render:
+          "<main><button onClick={() => setMounted(false)}>Hide</button>{mounted && <RoomTitle />}</main>",
+      }),
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["true during initialization", fixture({ initializer: "true" })],
+    ["a render-phase true write", fixture({ beforeReturn: "if (!mounted) setMounted(true);" })],
+    [
+      "a conditional hook before the mount flag",
+      fixture({
+        beforeMount: "const [skip, setSkip] = useState(false); if (!skip) useState(true);",
+        beforeReturn: "if (!skip) setSkip(true);",
+      }),
+    ],
+    ["an escaping setter", fixture({ beforeReturn: "publish(setMounted);" })],
+    [
+      "an eager local effect",
+      fixture({
+        effect: "register",
+        afterParent: "const register = (callback) => callback();",
+      }),
+    ],
+    ["a second entry as an exported value", fixture({ afterParent: "export { RoomTitle };" })],
+    [
+      "a same-file caller invoking the parent as a function",
+      fixture({
+        afterParent: "export const Outer = () => Page();",
+      }),
+    ],
+    [
+      "a second unguarded element",
+      fixture({ render: "<main>{mounted && <RoomTitle />}<RoomTitle /></main>" }),
+    ],
+    [
+      "a same-named true flag in an inner scope",
+      fixture({
+        render:
+          "<main>{(() => { const mounted = true; return mounted && <RoomTitle />; })()}</main>",
+      }),
+    ],
+    [
+      "a callback executed during render",
+      fixture({
+        beforeReturn: "[true].forEach((value) => setMounted(value));",
+      }),
+    ],
+    [
+      "a truthy branch before the gate",
+      fixture({ render: "<main>{mounted || <RoomTitle />}</main>" }),
+    ],
+  ])("reports a child that can render through %s", (_pattern, source) => {
+    const result = run(source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

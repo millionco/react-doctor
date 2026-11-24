@@ -15,11 +15,13 @@ import { isEffectCallbackReference } from "../../utils/is-effect-callback-refere
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGatedByFalsyServerSnapshot } from "../../utils/is-gated-by-falsy-server-snapshot.js";
+import { isPrivateChildBehindPassiveMount } from "../../utils/is-private-child-behind-passive-mount.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
+import { someAst } from "../../utils/some-ast.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -284,6 +286,24 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
     let moduleExitsOnServer = false;
     let clientOnlyDynamicTargets: ReadonlySet<EsTreeNode> = new Set();
     const reportedNodes = new Set<EsTreeNode>();
+    const privateChildMountGates = new WeakMap<EsTreeNode, boolean>();
+    let hasDynamicScope: boolean | undefined;
+    const isBehindPrivateMountGate = (component: EsTreeNode): boolean => {
+      const cached = privateChildMountGates.get(component);
+      if (cached !== undefined) return cached;
+      let gated = isPrivateChildBehindPassiveMount(component, context.scopes);
+      if (gated) {
+        hasDynamicScope ??= someAst(
+          context.scopes.rootScope.node,
+          (candidate) =>
+            isNodeOfType(candidate, "WithStatement") ||
+            (isNodeOfType(candidate, "Identifier") && candidate.name === "eval"),
+        );
+        gated = !hasDynamicScope;
+      }
+      privateChildMountGates.set(component, gated);
+      return gated;
+    };
 
     const reportBrowserRead = (node: EsTreeNode, browserGlobalName: string): void => {
       if (reportedNodes.has(node) || isTypeofProbe(node)) return;
@@ -302,6 +322,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       if (isGatedByFalsyInitialState(node, context.scopes)) return;
       if (isGatedByFalsyServerSnapshot(node, context.scopes, context.filename)) return;
       if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode, context.scopes)) return;
+      if (isBehindPrivateMountGate(componentOrHookNode)) return;
       if (
         isAfterFalsyServerSnapshotEarlyReturn(
           node,

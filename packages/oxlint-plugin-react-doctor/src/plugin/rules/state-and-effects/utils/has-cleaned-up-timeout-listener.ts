@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getDirectConstInitializer } from "../../../utils/get-direct-const-initializer.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
@@ -124,6 +125,51 @@ const isPairedNativeReceiver = (
   );
 };
 
+const readGuardedListenerRelease = (
+  releaseGuard: EsTreeNode,
+  activationStatement: EsTreeNode,
+  effectBody: EsTreeNodeOfType<"BlockStatement">,
+  scheduler: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+) => {
+  if (!isNodeOfType(releaseGuard, "IfStatement") || releaseGuard.alternate) return null;
+  const activation = isNodeOfType(activationStatement, "ExpressionStatement")
+    ? stripParenExpression(activationStatement.expression)
+    : null;
+  const guard = stripParenExpression(releaseGuard.test);
+  if (
+    !isNodeOfType(activation, "AssignmentExpression") ||
+    activation.operator !== "=" ||
+    !isNodeOfType(activation.left, "Identifier") ||
+    !isNodeOfType(activation.right, "Literal") ||
+    activation.right.value !== true ||
+    !isNodeOfType(guard, "Identifier")
+  ) {
+    return null;
+  }
+  const flag = context.scopes.symbolFor(guard);
+  if (
+    flag?.kind !== "let" ||
+    context.scopes.symbolFor(activation.left) !== flag ||
+    !isDirectEffectDeclaration(flag.declarationNode, effectBody, scheduler) ||
+    !isNodeOfType(flag.initializer, "Literal") ||
+    flag.initializer.value !== false ||
+    flag.references.length !== 2 ||
+    !flag.references.some(
+      ({ identifier, flag }) => identifier === activation.left && flag === "write",
+    ) ||
+    !flag.references.some(({ identifier, flag }) => identifier === guard && flag === "read")
+  ) {
+    return null;
+  }
+  const releaseBranch = releaseGuard.consequent;
+  return readStatementCall(
+    isNodeOfType(releaseBranch, "BlockStatement") && releaseBranch.body.length === 1
+      ? releaseBranch.body[0]
+      : releaseBranch,
+  );
+};
+
 export const hasCleanedUpTimeoutListener = (
   effectBody: EsTreeNodeOfType<"BlockStatement">,
   registration: EsTreeNodeOfType<"CallExpression">,
@@ -131,27 +177,35 @@ export const hasCleanedUpTimeoutListener = (
 ): boolean => {
   const registrationCallee = stripParenExpression(registration.callee);
   const registrationExpression = findTransparentExpressionRoot(registration);
-  const registrationStatement = registrationExpression.parent;
-  const timerBody = registrationStatement?.parent;
-  const timerCallback = timerBody?.parent;
+  const timerCallback = findEnclosingFunction(registration);
   if (
     registration.optional ||
     registration.arguments.length !== 2 ||
     !isNodeOfType(registrationCallee, "MemberExpression") ||
     registrationCallee.optional ||
     getStaticPropertyName(registrationCallee) !== "addEventListener" ||
-    !isNodeOfType(timerBody, "BlockStatement") ||
     !isFunctionLike(timerCallback) ||
-    timerCallback.body !== timerBody ||
     timerCallback.async ||
     timerCallback.generator ||
-    timerCallback.params.length !== 0 ||
-    timerBody.body.length !== 2 ||
-    timerBody.body[1] !== registrationStatement ||
-    readStatementCall(registrationStatement) !== registration
+    timerCallback.params.length !== 0
   ) {
     return false;
   }
+  const timerBody = timerCallback.body;
+  let activationStatement: EsTreeNode | null = null;
+  if (isNodeOfType(timerBody, "BlockStatement")) {
+    const statements = timerBody.body;
+    if (
+      (statements.length !== 1 && statements.length !== 2) ||
+      readStatementCall(statements.at(-1)) !== registration
+    ) {
+      return false;
+    }
+    if (statements.length === 2) activationStatement = statements[0];
+  } else if (timerBody !== registrationExpression) {
+    return false;
+  }
+
   const timerExpression = findTransparentExpressionRoot(timerCallback);
   const scheduler = timerExpression.parent;
   if (
@@ -194,7 +248,7 @@ export const hasCleanedUpTimeoutListener = (
   ) {
     return false;
   }
-  const [cancelStatement, releaseGuard] = cleanup.body.body;
+  const [cancelStatement, releaseStatement] = cleanup.body.body;
   const cancel = readStatementCall(cancelStatement);
   const timerSymbol = context.scopes.symbolFor(timerDeclarator.id);
   if (
@@ -204,48 +258,19 @@ export const hasCleanedUpTimeoutListener = (
     !timerSymbol ||
     context.scopes.symbolFor(stripParenExpression(cancel.arguments[0])) !== timerSymbol ||
     timerSymbol.references.length !== 1 ||
-    timerSymbol.references[0].flag !== "read" ||
-    !isNodeOfType(releaseGuard, "IfStatement") ||
-    releaseGuard.alternate
+    timerSymbol.references[0].flag !== "read"
   ) {
     return false;
   }
-  const [activationStatement] = timerBody.body;
-  const activation = isNodeOfType(activationStatement, "ExpressionStatement")
-    ? stripParenExpression(activationStatement.expression)
-    : null;
-  const guard = stripParenExpression(releaseGuard.test);
-  if (
-    !isNodeOfType(activation, "AssignmentExpression") ||
-    activation.operator !== "=" ||
-    !isNodeOfType(activation.left, "Identifier") ||
-    !isNodeOfType(activation.right, "Literal") ||
-    activation.right.value !== true ||
-    !isNodeOfType(guard, "Identifier")
-  ) {
-    return false;
-  }
-  const flag = context.scopes.symbolFor(guard);
-  if (
-    flag?.kind !== "let" ||
-    context.scopes.symbolFor(activation.left) !== flag ||
-    !isDirectEffectDeclaration(flag.declarationNode, effectBody, scheduler) ||
-    !isNodeOfType(flag.initializer, "Literal") ||
-    flag.initializer.value !== false ||
-    flag.references.length !== 2 ||
-    !flag.references.some(
-      ({ identifier, flag }) => identifier === activation.left && flag === "write",
-    ) ||
-    !flag.references.some(({ identifier, flag }) => identifier === guard && flag === "read")
-  ) {
-    return false;
-  }
-  const releaseBranch = releaseGuard.consequent;
-  const release = readStatementCall(
-    isNodeOfType(releaseBranch, "BlockStatement") && releaseBranch.body.length === 1
-      ? releaseBranch.body[0]
-      : releaseBranch,
-  );
+  const release = activationStatement
+    ? readGuardedListenerRelease(
+        releaseStatement,
+        activationStatement,
+        effectBody,
+        scheduler,
+        context,
+      )
+    : readStatementCall(releaseStatement);
   const releaseCallee = release ? stripParenExpression(release.callee) : null;
   if (
     !release ||

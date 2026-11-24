@@ -23,6 +23,78 @@ const buildEditableReset = (helper: string, write: string, effectHook = "useEffe
 `;
 
 describe("no-adjust-state-on-prop-change forwarded setters", () => {
+  it("reports a single write reached from two effects once", () => {
+    const source = `
+      import { useCallback, useState, useEffect, useLayoutEffect } from "react";
+      const Field = ({ folderId, sectionId }) => {
+        const [draft, setDraft] = useState("");
+        const clearDraft = useCallback(() => {
+          setDraft("");
+        }, []);
+        useEffect(() => {
+          if (folderId) clearDraft();
+        }, [folderId, clearDraft]);
+        useLayoutEffect(() => {
+          if (sectionId) clearDraft();
+        }, [sectionId, clearDraft]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };
+    `;
+    expect(getDiagnosticLines(source)).toEqual([6]);
+  });
+
+  it("keeps separate state writes from two effects", () => {
+    const source = `
+      import { useState, useEffect, useLayoutEffect } from "react";
+      const Field = ({ folderId, sectionId }) => {
+        const [draft, setDraft] = useState("");
+        useEffect(() => {
+          if (folderId) setDraft("");
+        }, [folderId]);
+        useLayoutEffect(() => {
+          if (sectionId) setDraft("");
+        }, [sectionId]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };
+    `;
+    expect(getDiagnosticLines(source)).toEqual([6, 9]);
+  });
+
+  it("keeps separate invocations of a forwarded setter", () => {
+    const source = `
+      import { useState, useEffect, useLayoutEffect } from "react";
+      ${ASSIGN_HELPER}
+      const Field = ({ folderId, sectionId }) => {
+        const [draft, setDraft] = useState("");
+        useEffect(() => { if (folderId) assign(setDraft, ""); }, [folderId]);
+        useLayoutEffect(() => { if (sectionId) assign(setDraft, ""); }, [sectionId]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };
+    `;
+    expect(getDiagnosticLines(source)).toEqual([6, 7]);
+  });
+
+  it("reports a shared write when a later effect qualifies", () => {
+    const source = `
+      import { useCallback, useState, useEffect } from "react";
+      const Field = ({ folderId, sectionId }) => {
+        const [draft, setDraft] = useState("");
+        const clearDraft = useCallback(() => {
+          setDraft("");
+        }, []);
+        useEffect(() => {
+          if (folderId) clearDraft();
+          return () => console.log("closed");
+        }, [folderId, clearDraft]);
+        useEffect(() => {
+          if (sectionId) clearDraft();
+        }, [sectionId, clearDraft]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };
+    `;
+    expect(getDiagnosticLines(source)).toEqual([6]);
+  });
+
   it.each([
     ["an expression helper", ASSIGN_HELPER, 'assign(setValue, "")'],
     [

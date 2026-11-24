@@ -83,6 +83,7 @@ export const noAdjustStateOnPropChange = defineRule({
     "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => {
     const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
+    const reportedSetterCalls = new WeakSet<EsTreeNode>();
     const isUnreachableMountPropReset = createMountPropResetProof(context);
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -143,8 +144,13 @@ export const noAdjustStateOnPropChange = defineRule({
             continue;
           }
           if (isUnreachableMountPropReset(fact.writeSite.node, node)) continue;
+          const reportNode = fact.writeSite.node;
+          if (reportNode === fact.callExpression) {
+            if (reportedSetterCalls.has(reportNode)) continue;
+            reportedSetterCalls.add(reportNode);
+          }
           context.report({
-            node: fact.writeSite.node,
+            node: reportNode,
             message: "Adjusting state in an effect after a prop changes costs an extra render.",
           });
         }

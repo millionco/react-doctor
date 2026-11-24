@@ -441,7 +441,13 @@ export const resolveScanResultToolchainFingerprint = (
 
 const mayReadInstalledCompiler = (input: ScanResultCacheKeyInput): boolean => {
   if (!input.options.lint) return false;
-  if (fs.existsSync(path.join(input.projectDirectory, "stencil.config.ts"))) return true;
+  if (
+    ["stencil.config.ts", "tsup.config.ts"].some((configuration) =>
+      fs.existsSync(path.join(input.projectDirectory, configuration)),
+    )
+  ) {
+    return true;
+  }
   // Loading ownership can depend on the stock Vite and Jest providers and
   // their selected files, which are outside the tracked worktree snapshot.
   if (

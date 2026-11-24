@@ -1,3 +1,5 @@
+import { hasVerifiedStockTsupMemoFactory } from "../../utils/read-verified-stock-tsup-memo-factory.js";
+import { readDeferredMemoCaptureShape } from "./exhaustive-deps-deferred-memo-capture.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
@@ -443,6 +445,7 @@ const collectCaptureDepKeys = (
   allowSoleWriterEffectGuards = false,
   filename?: string,
   declaredImportedForwarderDeps?: ReadonlyMap<string, EsTreeNode>,
+  omittedMemoGuard?: EsTreeNode,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -453,6 +456,7 @@ const collectCaptureDepKeys = (
     ? scopes.ownScopeFor(componentOrHookFunction)
     : null;
   for (const reference of closureCaptures(callback, scopes)) {
+    if (reference.identifier === omittedMemoGuard) continue;
     const symbol = reference.resolvedSymbol;
     if (!symbol) continue;
     if (isRecursiveInitializerCapture(symbol, callback)) continue;
@@ -2443,6 +2447,14 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (isNodeOfType(stripped, "Identifier")) declaredExactBindingKeys.add(key);
           declaredKeyToReportNode.set(key, elementNode);
         }
+        const memoShape =
+          shouldUseCuratedBehavior && hookName === "useMemo"
+            ? readDeferredMemoCaptureShape(node, callbackArgument, depsArgument, context.scopes)
+            : null;
+        const omittedMemoGuard =
+          memoShape && hasVerifiedStockTsupMemoFactory(memoShape.factory, hostContext)
+            ? memoShape.guard
+            : undefined;
         const {
           keys: captureKeys,
           stableCapturedNames,
@@ -2458,6 +2470,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           shouldUseCuratedBehavior && isDirectNamedReactHookCall(node, "useEffect", context.scopes)
             ? declaredKeyToReportNode
             : undefined,
+          omittedMemoGuard,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

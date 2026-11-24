@@ -74,17 +74,12 @@ const listJsxSourceFiles = async (
   return [...sizeByRelativePath].map(([path, sizeBytes]) => ({ path, sizeBytes }));
 };
 
-const allOccurrences = (family: DuplicateJsxSubtreeFamily): DuplicateJsxSubtreeOccurrence[] => [
-  family.primaryOccurrence,
-  ...family.relatedOccurrences,
-];
-
 const focusFamily = (
   family: DuplicateJsxSubtreeFamily,
   focusPaths: ReadonlySet<string> | null,
   changedLineRangesByPath: ReadonlyMap<string, ReadonlyArray<readonly [number, number]>> | null,
 ): DuplicateJsxSubtreeOccurrence[] | null => {
-  const occurrences = allOccurrences(family);
+  const occurrences = [family.primaryOccurrence, ...family.relatedOccurrences];
   if (focusPaths === null && changedLineRangesByPath === null) return occurrences;
   const primaryOccurrence = occurrences.find((occurrence) => {
     if (focusPaths !== null && !focusPaths.has(occurrence.path)) return false;
@@ -143,12 +138,6 @@ const buildDuplicateJsxDiagnostic = (
     value: `${family.fingerprint}\0occurrences:${family.occurrenceCount}`,
   });
   return diagnostic;
-};
-
-const formatIncompleteReason = (reason: JsxDuplicationIncompleteReason): string => {
-  if (reason.kind === "aborted") return "analysis was cancelled";
-  const pathSuffix = reason.path === undefined ? "" : ` while scanning ${reason.path}`;
-  return `${reason.kind} (${reason.observed} observed, limit ${reason.limit})${pathSuffix}`;
 };
 
 const runDuplicateJsxAnalysis = async (input: MaintainabilityInput): Promise<Diagnostic[]> => {
@@ -210,8 +199,14 @@ const runMaintainability = async (input: MaintainabilityInput): Promise<Diagnost
 
 export const describeMaintainabilityIncompleteness = (
   reasons: ReadonlyArray<JsxDuplicationIncompleteReason>,
-): string =>
-  `Maintainability analysis was incomplete: ${reasons.map(formatIncompleteReason).join("; ")}.`;
+): string => {
+  const formattedReasons = reasons.map((reason) => {
+    if (reason.kind === "aborted") return "analysis was cancelled";
+    const pathSuffix = reason.path === undefined ? "" : ` while scanning ${reason.path}`;
+    return `${reason.kind} (${reason.observed} observed, limit ${reason.limit})${pathSuffix}`;
+  });
+  return `Maintainability analysis was incomplete: ${formattedReasons.join("; ")}.`;
+};
 
 export class Maintainability extends Context.Service<
   Maintainability,

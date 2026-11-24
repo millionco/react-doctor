@@ -75,6 +75,8 @@ export class Files extends Context.Service<
       }
       return entries;
     };
+    const listInMemorySourceFilePaths = (rootDirectory: string): string[] =>
+      listEntriesUnderRoot(rootDirectory).map((entry) => entry.path);
 
     return Layer.succeed(
       Files,
@@ -86,9 +88,9 @@ export class Files extends Context.Service<
             return content === undefined ? null : content.split("\n");
           }),
         listSourceFiles: (rootDirectory) =>
-          Effect.sync(() => listEntriesUnderRoot(rootDirectory).map((entry) => entry.path)),
+          Effect.sync(() => listInMemorySourceFilePaths(rootDirectory)),
         listSourceFilesCooperative: (input) =>
-          Effect.sync(() => listEntriesUnderRoot(input.rootDirectory).map((entry) => entry.path)),
+          Effect.sync(() => listInMemorySourceFilePaths(input.rootDirectory)),
         listSourceFilesWithSizeCooperative: (input) =>
           Effect.sync(() => listEntriesUnderRoot(input.rootDirectory)),
         isFile: (filePath) => Effect.sync(() => tree.has(filePath)),

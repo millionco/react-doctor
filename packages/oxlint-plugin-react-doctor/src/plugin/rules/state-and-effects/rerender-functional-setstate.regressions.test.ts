@@ -440,3 +440,50 @@ describe("rerender-functional-setstate — numeric state-name shadows", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("rerender-functional-setstate — distinct setters with the same name", () => {
+  it.each([
+    [
+      "independent direct React state",
+      'import { useState } from "react";',
+      "const [inner, setCount] = useState(0); return <button onClick={() => setCount(inner + 1)} />;",
+      0,
+    ],
+    [
+      "unproven state provider",
+      'import { useState } from "./external.js";',
+      "const [inner, setCount] = useState(0); return <button onClick={() => setCount(inner + 1)} />;",
+      1,
+    ],
+    [
+      "alias of the parent setter",
+      'import { useState } from "react";',
+      "const setCount = parentSetter; return <button onClick={() => setCount(count + 1)} />;",
+      1,
+    ],
+    [
+      "nested callback using the same binding",
+      'import { useState } from "react";',
+      "return <button onClick={() => setCount(count + 1)} />;",
+      1,
+    ],
+  ])("handles %s", (_name, declaration, childBody, count) => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `
+      ${declaration}
+      function Parent({ show }) {
+        const [count, setCount] = useState(0);
+        const parentSetter = setCount;
+        return <button onClick={() => {
+          setCount(count + 1);
+          function Child() { ${childBody} }
+          show(Child);
+        }}>{count}</button>;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+});

@@ -3,12 +3,17 @@ import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cl
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { findContainingBlock } from "../../utils/find-containing-block.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isLiteralVoidExpression } from "../../utils/is-literal-void-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenPromiseExpression } from "../../utils/is-proven-promise-expression.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -379,9 +384,166 @@ const cleanupCallsMethodOnKey = (
   return didFindCleanup;
 };
 
+const directTimeoutRealm = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  method: "setTimeout" | "clearTimeout",
+  context: RuleContext,
+): string | null => {
+  if (call.optional) return null;
+  const callee = stripParenExpression(call.callee);
+  if (isGlobalIdentifier(callee, method, context)) return "bare";
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.optional ||
+    getStaticPropertyName(callee) !== method
+  ) {
+    return null;
+  }
+  const receiver = stripParenExpression(callee.object);
+  return isNodeOfType(receiver, "Identifier") &&
+    isGlobalObjectIdentifier(receiver, context) &&
+    isProvenUnmodifiedGlobalNamespaceReference(receiver, null, context.scopes, undefined, true)
+    ? receiver.name
+    : null;
+};
+
+const hasOpaqueTimeoutAccess = (context: RuleContext): boolean => {
+  let opaque = false;
+  walkAst(context.scopes.rootScope.node, (node) => {
+    if (opaque) return false;
+    const propertyName =
+      isNodeOfType(node, "MemberExpression") || isNodeOfType(node, "Property")
+        ? getResolvedStaticPropertyName(node, context.scopes)
+        : null;
+    const use = node.parent;
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") &&
+        (node.name === "eval" ||
+          node.name === "Function" ||
+          node.name === "Window" ||
+          node.name === "frames" ||
+          node.name === "top" ||
+          node.name === "parent") &&
+        context.scopes.isGlobalReference(node)) ||
+      (isGlobalIdentifier(node, "document", context) &&
+        (!isNodeOfType(use, "MemberExpression") ||
+          use.object !== node ||
+          getResolvedStaticPropertyName(use, context.scopes) === null)) ||
+      propertyName === "defaultView" ||
+      (isNodeOfType(node, "MemberExpression") &&
+        (propertyName === "setTimeout" || propertyName === "clearTimeout") &&
+        isWithinAssignmentTarget(node))
+    ) {
+      opaque = true;
+      return false;
+    }
+  });
+  return opaque;
+};
+
+const isSynchronousArrowWithOnlyCall = (
+  expression: EsTreeNode | null,
+  expectedCall: EsTreeNode,
+): boolean => {
+  if (
+    !isNodeOfType(expression, "ArrowFunctionExpression") ||
+    expression.async ||
+    expression.params.length !== 0
+  ) {
+    return false;
+  }
+  const body = expression.body;
+  if (!isNodeOfType(body, "BlockStatement")) return stripParenExpression(body) === expectedCall;
+  const [statement] = body.body;
+  return (
+    body.body.length === 1 &&
+    isNodeOfType(statement, "ExpressionStatement") &&
+    stripParenExpression(statement.expression) === expectedCall
+  );
+};
+
+const hasEquivalentNullishTimeoutCleanup = (
+  registration: EsTreeNodeOfType<"CallExpression">,
+  cleanupCall: EsTreeNodeOfType<"CallExpression">,
+  effect: EsTreeNode,
+  toggleCall: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (cleanupCall.arguments.length !== 1 || registration.arguments.length !== 2) return false;
+  const argument = stripParenExpression(cleanupCall.arguments[0]);
+  if (!isNodeOfType(argument, "LogicalExpression") || argument.operator !== "??") return false;
+  const handle = stripParenExpression(argument.left);
+  const fallback = stripParenExpression(argument.right);
+  if (
+    !isNodeOfType(handle, "Identifier") ||
+    (!isGlobalIdentifier(fallback, "undefined", context) && !isLiteralVoidExpression(fallback))
+  ) {
+    return false;
+  }
+  const callback = stripParenExpression(registration.arguments[0]);
+  const delay = stripParenExpression(registration.arguments[1]);
+  if (
+    !isSynchronousArrowWithOnlyCall(callback, toggleCall) ||
+    !isNodeOfType(delay, "Literal") ||
+    typeof delay.value !== "number" ||
+    !Number.isFinite(delay.value)
+  ) {
+    return false;
+  }
+
+  const symbol = context.scopes.symbolFor(handle);
+  const declaration = registration.parent?.parent;
+  if (
+    !symbol ||
+    getDirectConstInitializer(symbol) !== registration ||
+    symbol.references.length !== 1 ||
+    symbol.references[0].identifier !== handle ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.declarations.length !== 1 ||
+    !isFunctionLike(effect) ||
+    effect.async ||
+    effect.generator ||
+    effect.params.length !== 0 ||
+    !isNodeOfType(effect.body, "BlockStatement") ||
+    effect.body.body.length !== 2 ||
+    effect.body.body[0] !== declaration
+  ) {
+    return false;
+  }
+  const returned = effect.body.body[1];
+  const cleanup =
+    isNodeOfType(returned, "ReturnStatement") && returned.argument
+      ? stripParenExpression(returned.argument)
+      : null;
+  if (!isSynchronousArrowWithOnlyCall(cleanup, cleanupCall)) return false;
+
+  const registrationRealm = directTimeoutRealm(registration, "setTimeout", context);
+  return (
+    registrationRealm !== null &&
+    directTimeoutRealm(cleanupCall, "clearTimeout", context) === registrationRealm &&
+    isProvenUnmodifiedGlobalNamespaceReference(
+      registration.callee,
+      "setTimeout",
+      context.scopes,
+      undefined,
+      true,
+    ) &&
+    isProvenUnmodifiedGlobalNamespaceReference(
+      cleanupCall.callee,
+      "clearTimeout",
+      context.scopes,
+      undefined,
+      true,
+    ) &&
+    !hasOpaqueTimeoutAccess(context)
+  );
+};
+
 const registrationHasCleanup = (
   registrationCall: EsTreeNodeOfType<"CallExpression">,
   effectCallback: EsTreeNode,
+  directToggleCall: EsTreeNode | null,
   context: RuleContext,
 ): boolean => {
   const returnedCleanupFunctions = new Set(
@@ -421,7 +583,16 @@ const registrationHasCleanup = (
           : null;
       if (
         cleanupMethodName === clearMethodName &&
-        resolveExpressionKey(child.arguments?.[0], context) === resultKey
+        (resolveExpressionKey(child.arguments?.[0], context) === resultKey ||
+          (timerMethodName === "setTimeout" &&
+            directToggleCall &&
+            hasEquivalentNullishTimeoutCleanup(
+              registrationCall,
+              child,
+              effectCallback,
+              directToggleCall,
+              context,
+            )))
       ) {
         didFindCleanup = true;
         return false;
@@ -516,6 +687,7 @@ const registrationHasCleanup = (
 const effectResubscribesWithCleanup = (
   node: EsTreeNode,
   stateSymbolId: number,
+  setterSymbol: ReactUseStatePair["setterSymbol"],
   deferredFunctions: ReadonlySet<EsTreeNode>,
   registrationCallsByCallback: ReadonlyMap<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>,
   context: RuleContext,
@@ -537,6 +709,15 @@ const effectResubscribesWithCleanup = (
     );
   });
   if (!hasStateDependency) return false;
+  const directToggleCall =
+    isNodeOfType(node, "CallExpression") &&
+    !node.optional &&
+    node.arguments.length === 1 &&
+    setterSymbol.kind === "const" &&
+    setterSymbol.references.length === 1 &&
+    setterSymbol.references[0].identifier === stripParenExpression(node.callee)
+      ? node
+      : null;
   const registrationCalls = callbackRegistrationCalls(
     deferredFunction,
     registrationCallsByCallback,
@@ -546,7 +727,7 @@ const effectResubscribesWithCleanup = (
     registrationCalls.every(
       (registrationCall) =>
         context.cfg.enclosingFunction(registrationCall) === effectCallback &&
-        registrationHasCleanup(registrationCall, effectCallback, context),
+        registrationHasCleanup(registrationCall, effectCallback, directToggleCall, context),
     )
   );
 };
@@ -799,6 +980,7 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
           effectResubscribesWithCleanup(
             node,
             pair.stateSymbol.id,
+            pair.setterSymbol,
             currentDeferredFunctions,
             registrationCallsByCallback,
             context,

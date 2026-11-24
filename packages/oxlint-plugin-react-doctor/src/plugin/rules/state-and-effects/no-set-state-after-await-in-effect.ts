@@ -10,6 +10,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { getDeferredEffectCallbackCall } from "../../utils/get-deferred-effect-callback-call.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -19,6 +20,7 @@ import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -1066,10 +1068,135 @@ const collectOrderedAsyncEvents = (root: EsTreeNode, context: RuleContext): EsTr
   );
 };
 
+const isGuardedLoopSetter = (
+  setter: EsTreeNodeOfType<"CallExpression">,
+  cleanupWrites: ReadonlyMap<string, boolean>,
+  context: RuleContext,
+): boolean => {
+  if (setter.optional || !isStateDispatcherReference(setter.callee, context)) return false;
+  const [argument] = setter.arguments;
+  if (
+    setter.arguments.length !== 1 ||
+    (!isNodeOfType(argument, "Identifier") && !isNodeOfType(argument, "Literal"))
+  ) {
+    return false;
+  }
+  const setterBinding = context.scopes.symbolFor(setter.callee);
+  if (
+    setterBinding?.kind !== "const" ||
+    setterBinding.references.length !== 1 ||
+    !hasCompleteSymbolReferences(setterBinding, context.scopes.rootScope.node, context.scopes)
+  ) {
+    return false;
+  }
+  const statement = setter.parent;
+  const body = statement?.parent;
+  const loop = body?.parent;
+  if (
+    !isNodeOfType(statement, "ExpressionStatement") ||
+    statement.expression !== setter ||
+    !isNodeOfType(body, "BlockStatement") ||
+    body.body.length !== 3 ||
+    !isNodeOfType(loop, "ForOfStatement") ||
+    loop.await ||
+    loop.body !== body
+  ) {
+    return false;
+  }
+  const [precedingAwait, guard, guardedStatement] = body.body;
+  if (guardedStatement !== statement) return false;
+  if (
+    !isNodeOfType(precedingAwait, "ExpressionStatement") ||
+    !isNodeOfType(precedingAwait.expression, "AwaitExpression") ||
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !isNodeOfType(guard.test, "Identifier")
+  ) {
+    return false;
+  }
+  const awaited = precedingAwait.expression.argument;
+  const loopDeclarations = loop.left;
+  if (
+    !isNodeOfType(loopDeclarations, "VariableDeclaration") ||
+    loopDeclarations.kind !== "const" ||
+    loopDeclarations.declarations.length !== 1 ||
+    !isNodeOfType(loopDeclarations.declarations[0]?.id, "Identifier") ||
+    (!isNodeOfType(loop.right, "Identifier") &&
+      (!isNodeOfType(loop.right, "ArrayExpression") ||
+        !loop.right.elements.every(
+          (item) => isNodeOfType(item, "Identifier") || isNodeOfType(item, "Literal"),
+        ))) ||
+    !isNodeOfType(awaited, "CallExpression") ||
+    awaited.optional ||
+    !isNodeOfType(awaited.callee, "MemberExpression") ||
+    awaited.callee.optional ||
+    getStaticPropertyName(awaited.callee) !== "resolve" ||
+    awaited.arguments.length !== 1 ||
+    !isNodeOfType(awaited.arguments[0], "Identifier")
+  ) {
+    return false;
+  }
+  const iterationValue = context.scopes.symbolFor(loopDeclarations.declarations[0].id);
+  if (
+    !iterationValue ||
+    context.scopes.symbolFor(awaited.arguments[0]) !== iterationValue ||
+    (isNodeOfType(argument, "Identifier") &&
+      context.scopes.symbolFor(argument) !== iterationValue) ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      awaited.callee.object,
+      "Promise",
+      context.scopes,
+      "resolve",
+      true,
+    )
+  ) {
+    return false;
+  }
+  const exit = isNodeOfType(guard.consequent, "BlockStatement")
+    ? guard.consequent.body.length === 1 && guard.consequent.body[0]
+    : guard.consequent;
+  if (
+    !(isNodeOfType(exit, "ContinueStatement") && !exit.label) &&
+    !(isNodeOfType(exit, "ReturnStatement") && !exit.argument)
+  ) {
+    return false;
+  }
+  const flag = context.scopes.symbolFor(guard.test);
+  if (
+    flag?.kind !== "let" ||
+    !isNodeOfType(flag.declarationNode, "VariableDeclarator") ||
+    flag.declarationNode.id !== flag.bindingIdentifier ||
+    !isNodeOfType(flag.initializer, "Literal") ||
+    flag.initializer.value !== false ||
+    !doesCleanupForceGuardValue(guard.test, true, cleanupWrites, context)
+  ) {
+    return false;
+  }
+  const writes = flag.references.filter((reference) => reference.flag !== "read");
+  const owner = findEnclosingFunction(flag.declarationNode);
+  if (writes.length !== 1 || !owner || !hasCompleteSymbolReferences(flag, owner, context.scopes)) {
+    return false;
+  }
+
+  let hasDynamicBindingAccess = false;
+  walkAst(owner, (child) => {
+    if (hasDynamicBindingAccess) return false;
+    if (
+      isNodeOfType(child, "WithStatement") ||
+      (isNodeOfType(child, "Identifier") && child.name === "eval")
+    ) {
+      hasDynamicBindingAccess = true;
+      return false;
+    }
+  });
+  return !hasDynamicBindingAccess;
+};
+
 const analyzeAsyncEvents = (
   root: EsTreeNode,
   initialStates: AsyncPathState[],
   context: RuleContext,
+  cleanupWrites: ReadonlyMap<string, boolean>,
   abortProtectedControllers: ReadonlySet<string>,
 ): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
   let states = initialStates;
@@ -1109,7 +1236,8 @@ const analyzeAsyncEvents = (
           (!state.suspensionNode ||
             (!areNodesOnExclusiveConditionalBranches(state.suspensionNode, event, root) &&
               !areNodesOnContradictoryGuardBranches(state.suspensionNode, event, context.scopes))),
-      )
+      ) &&
+      !isGuardedLoopSetter(event, cleanupWrites, context)
     ) {
       return { states, hasUnsafeSetter: true };
     }
@@ -1134,6 +1262,7 @@ const analyzeAsyncStatements = (
           statement.argument,
           states,
           context,
+          cleanupWrites,
           abortProtectedControllers,
         );
         if (returned.hasUnsafeSetter) return returned;
@@ -1155,7 +1284,13 @@ const analyzeAsyncStatements = (
       continue;
     }
     if (isNodeOfType(statement, "IfStatement")) {
-      const tested = analyzeAsyncEvents(statement.test, states, context, abortProtectedControllers);
+      const tested = analyzeAsyncEvents(
+        statement.test,
+        states,
+        context,
+        cleanupWrites,
+        abortProtectedControllers,
+      );
       if (tested.hasUnsafeSetter) return tested;
       states = tested.states;
       if (!statement.alternate && isEarlyExitStatement(statement.consequent)) {
@@ -1231,6 +1366,7 @@ const analyzeAsyncStatements = (
         statement.discriminant,
         states,
         context,
+        cleanupWrites,
         abortProtectedControllers,
       );
       if (discriminated.hasUnsafeSetter) return discriminated;
@@ -1331,6 +1467,7 @@ const analyzeAsyncStatements = (
       statement,
       states,
       context,
+      cleanupWrites,
       abortProtectedControllers,
     );
     if (analyzedEvents.hasUnsafeSetter) return analyzedEvents;

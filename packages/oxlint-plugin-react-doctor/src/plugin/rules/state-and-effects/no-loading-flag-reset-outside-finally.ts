@@ -73,6 +73,8 @@ import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callba
 
 const MESSAGE =
   "This resets a loading/busy flag only on the success path: if the awaited call rejects the reset never runs and the flag stays stuck truthy (a spinner that never stops, a button disabled forever). Move the reset into a `finally` block, or mirror it on every catch, so it clears on rejection too.";
+const EXCEPTIONAL_RESET_MESSAGE =
+  "A failure can bypass this loading reset and leave the flag set. Clear the flag on every failure path for the active request.";
 const TEST_FILE_BASENAME_SUFFIXES: ReadonlyArray<string> = [".test.", ".spec.", ".cy."];
 
 const TEST_FILE_PATH_SEGMENTS: ReadonlyArray<string> = [
@@ -4836,7 +4838,7 @@ const analyzeFunction = (
           isAwaitInsideProtectedTry(awaitSite.node, reset.protectingTry),
       );
       if (riskyAwait) {
-        context.report({ node: reset.node, message: MESSAGE });
+        context.report({ node: reset.node, message: EXCEPTIONAL_RESET_MESSAGE });
         return;
       }
     }

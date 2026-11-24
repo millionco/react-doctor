@@ -1,10 +1,14 @@
 import { LOOP_TYPES } from "../../constants/js.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -226,6 +230,25 @@ export const rerenderFunctionalSetstate = defineRule({
             : null;
 
         if (isNodeOfType(stateIdentifier, "Identifier")) {
+          const otherOperand = stripParenExpression(
+            stateIdentifier === argument.left ? argument.right : argument.left,
+          );
+          if (isNodeOfType(otherOperand, "Literal") && typeof otherOperand.value === "number") {
+            const shadow = context.scopes.symbolFor(stateIdentifier);
+            const initializer = shadow && getDirectConstInitializer(shadow);
+            const value = initializer && stripParenExpression(initializer);
+            if (isNodeOfType(value, "Literal") && typeof value.value === "number") {
+              const pair = resolveReactUseStatePair(node.callee, context.scopes);
+              if (
+                pair?.stateSymbol?.name === expectedStateName &&
+                pair.stateSymbol !== shadow &&
+                pair.setterSymbol === context.scopes.symbolFor(node.callee) &&
+                isDirectNamedReactHookCall(pair.declarator.init, "useState", context.scopes)
+              ) {
+                return;
+              }
+            }
+          }
           context.report({
             node,
             message: `You can lose this update because ${calleeName}(${stateIdentifier.name} ${argument.operator} ...) reads a stale value.`,

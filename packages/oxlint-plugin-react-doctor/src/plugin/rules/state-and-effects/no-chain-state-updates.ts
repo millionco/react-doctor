@@ -20,6 +20,7 @@ import {
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
+import { isStableProjectedEffectDependency } from "./utils/is-stable-projected-effect-dependency.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
@@ -172,9 +173,20 @@ export const noChainStateUpdates = defineRule({
       const effectFn = getEffectFn(analysis, node);
       if (!effectFn) return;
 
-      const stateDeps = depsRefs.flatMap((reference) =>
-        getDependencyStateRefs(analysis, context, reference),
-      );
+      const stateDeps = depsRefs.flatMap((reference) => {
+        const upstreamState = getDependencyStateRefs(analysis, context, reference);
+        if (
+          upstreamState.length > 0 &&
+          isStableProjectedEffectDependency(
+            reference.identifier as unknown as EsTreeNode,
+            node,
+            context.scopes,
+          )
+        ) {
+          return [];
+        }
+        return upstreamState;
+      });
       if (stateDeps.length === 0) return;
       // Every triggering state dep is driven by a timer / listener / observer
       // / subscription — there is no single event handler to set all the

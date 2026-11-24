@@ -18,6 +18,40 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
   }
 };
 
+describe("no-chain-state-updates — projected effect dependencies", () => {
+  it.each([
+    { name: "stable field", action: "callback", dependencies: "action", warnings: 0 },
+    { name: "changing field", action: "() => callback(step)", dependencies: "action", warnings: 1 },
+    {
+      name: "direct state dependency",
+      action: "callback",
+      dependencies: "action, step",
+      warnings: 1,
+    },
+  ])("traces a $name", ({ action, dependencies, warnings }) => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { useEffect, useState } from "react";
+      const stableAction = () => {};
+      const project = ({ step, callback }) => ({ step, action: ${action} });
+      const Panel = () => {
+        const [step, setStep] = useState(0);
+        const [ready, setReady] = useState(false);
+        const { action } = project({ step, callback: stableAction });
+        useEffect(() => {
+          action();
+          setReady(true);
+        }, [${dependencies}]);
+        return <button onClick={() => setStep(step + 1)}>{String(ready)}</button>;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(warnings);
+  });
+});
+
 describe("no-chain-state-updates — must-detect regressions", () => {
   it("reports a state update through an immutable setter alias", () => {
     expectFiresAtLeast(

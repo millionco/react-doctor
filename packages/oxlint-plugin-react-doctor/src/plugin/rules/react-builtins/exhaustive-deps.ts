@@ -1,4 +1,5 @@
 import { hasVerifiedStockTsupMemoFactory } from "../../utils/read-verified-stock-tsup-memo-factory.js";
+import { isRenderRetryStateFallback } from "./is-render-retry-state-fallback.js";
 import { readDeferredMemoCaptureShape } from "./exhaustive-deps-deferred-memo-capture.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
@@ -2571,7 +2572,10 @@ If the missing value is recreated every render, move it inside the hook or stabi
             !rootSymbol ||
             !hasDirectIdentifierDeclarator(rootSymbol) ||
             symbolHasStableValue(rootSymbol, context.scopes) ||
-            !isUnstableInitializer(rootSymbol.initializer, context.scopes)
+            !isUnstableInitializer(rootSymbol.initializer, context.scopes) ||
+            (shouldUseCuratedBehavior &&
+              hookName === "useMemo" &&
+              isRenderRetryStateFallback(rootSymbol, node, context.scopes))
           ) {
             continue;
           }

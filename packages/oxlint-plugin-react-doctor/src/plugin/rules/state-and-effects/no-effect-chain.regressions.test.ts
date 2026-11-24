@@ -114,6 +114,14 @@ describe("no-effect-chain — regressions", () => {
       return ready;
     };`;
 
+  it("reports the possible dependency trigger without promising a render count", () => {
+    const result = runRule(noEffectChain, buildChain(""));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      'An update to "step" in another effect can trigger this effect after a render.',
+    ]);
+  });
+
   it.each([
     ["an empty arrow", "return () => {};"],
     ["an arrow that only reads a binding", "return () => { source; };"],
@@ -676,7 +684,7 @@ describe("no-effect-chain — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain('changes "error"');
+    expect(result.diagnostics[0].message).toContain('An update to "error" in another effect');
   });
 
   it("keeps a state write on the object URL lifecycle path quiet", () => {

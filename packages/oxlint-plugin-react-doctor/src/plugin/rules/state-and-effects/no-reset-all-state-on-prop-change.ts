@@ -44,6 +44,7 @@ import {
   resolveStateWriteSite,
   type ResolvedStateWriteSite,
 } from "./utils/collect-effect-state-write-facts.js";
+import { hasIndependentVisibleReducer } from "./utils/has-independent-visible-reducer.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
@@ -1347,13 +1348,14 @@ const findPropUsedToResetAllState = (
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
   if (
     componentFunctionNode &&
-    areAllResetStateReadsHiddenUntilReset(
-      analysis,
-      context,
-      componentFunctionNode,
-      stateSetterRefs,
-      depsRefs,
-    )
+    (hasIndependentVisibleReducer(componentFunctionNode, useEffectNode, effectFn, context.scopes) ||
+      areAllResetStateReadsHiddenUntilReset(
+        analysis,
+        context,
+        componentFunctionNode,
+        stateSetterRefs,
+        depsRefs,
+      ))
   ) {
     return null;
   }

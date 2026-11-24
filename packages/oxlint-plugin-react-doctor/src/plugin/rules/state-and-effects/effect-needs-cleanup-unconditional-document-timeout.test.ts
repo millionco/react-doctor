@@ -21,9 +21,31 @@ const Panel = ({ enabled }) => {
 };
 `;
 
+const withCapture = (registration: string, release: string): string =>
+  source
+    .replace(
+      'addEventListener("resize", onResize)',
+      `addEventListener("resize", onResize${registration})`,
+    )
+    .replace(
+      'removeEventListener("resize", onResize)',
+      `removeEventListener("resize", onResize${release})`,
+    );
+
 describe("unconditional cleanup of deferred Document listeners", () => {
   it.each([
     ["direct receiver", source],
+    ["equal explicit capture", withCapture(", true", ", true")],
+    ["equal explicit non-capture", withCapture(", false", ", false")],
+    ["default registration capture", withCapture("", ", false")],
+    ["default removal capture", withCapture(", false", "")],
+    [
+      "guarded explicit capture",
+      withCapture(", true", ", true")
+        .replace("const timeout", "let attached = false; const timeout")
+        .replace("document.addEventListener", "attached = true; document.addEventListener")
+        .replace("document.removeEventListener", "if (attached) document.removeEventListener"),
+    ],
     [
       "immutable receiver alias",
       source
@@ -46,6 +68,10 @@ describe("unconditional cleanup of deferred Document listeners", () => {
 
   it.each([
     ["missing cancellation", source.replace("clearTimeout(timeout);", "")],
+    ["opposite explicit capture", withCapture(", true", ", false")],
+    ["unverified options object", withCapture(", { capture: true }", ", true")],
+    ["capture from a parameter", withCapture(", enabled", ", enabled")],
+    ["extra argument evaluation", withCapture(", true, mightThrow()", ", true")],
     ["incorrect cancellation", source.replace("clearTimeout(timeout)", "clearTimeout(other)")],
     ["wrong realm", source.replace("clearTimeout(timeout)", "frame.clearTimeout(timeout)")],
     [

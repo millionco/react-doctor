@@ -1374,7 +1374,7 @@ export const noResetAllStateOnPropChange = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in an effect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
+    "Use a prop-derived `key` when the change should remount this component and restart its effects. To preserve ongoing work, keep the reset local or move the resettable state into a keyed child. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
   create: (context: RuleContext) => {
     const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
     return {

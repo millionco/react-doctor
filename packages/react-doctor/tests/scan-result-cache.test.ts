@@ -255,6 +255,23 @@ describe("scan result cache", () => {
     expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
   });
 
+  it("bypasses lint replay when an ignored TSup config appears", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "tsup-runtime-cache", {
+      files: {
+        ".gitignore": "tsup.config.ts\n",
+        "src/App.tsx":
+          'import { useMemo } from "react"; export const App = () => useMemo(() => <main />, []);',
+      },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const lint = baseOptions({ lint: true });
+    expect(await cacheKey(projectDirectory, lint)).not.toBeNull();
+
+    fs.writeFileSync(path.join(projectDirectory, "tsup.config.ts"), "export default {};");
+    expect(await cacheKey(projectDirectory, lint)).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
+  });
+
   it("bypasses replay when Electron can adopt external lint rules", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "electron-adopted-lint", {
       files: {

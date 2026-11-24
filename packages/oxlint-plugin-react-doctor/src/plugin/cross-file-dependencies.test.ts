@@ -139,6 +139,31 @@ describe("no-unknown-property collector", () => {
   });
 });
 
+describe("exhaustive-deps TSup collector", () => {
+  it.each([
+    'import { useMemo as memo } from "react";',
+    String.raw`import { useM\u0065mo as memo } from "react";`,
+  ])("records the missing TSup config for %s", (importSource) => {
+    const component = writeFixtureFile(
+      "src/components/Panel.tsx",
+      `${importSource}\nexport const Panel = () => memo(() => <main />, []);`,
+    );
+
+    const trace = collectFor(component, ["exhaustive-deps"]);
+    expect(trace?.existencePaths.has(fixturePath("tsup.config.ts"))).toBe(true);
+
+    writeFixtureFile("tsup.config.ts", "export default {};");
+    expect(collectFor(component, ["exhaustive-deps"])).toBeNull();
+  });
+
+  it("keeps source without a memo eligible for replay", () => {
+    writeFixtureFile("tsup.config.ts", "export default {};");
+    const component = writeFixtureFile("src/Panel.tsx", "export const Panel = () => <main />;");
+
+    expect(collectFor(component, ["exhaustive-deps"])).not.toBeNull();
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

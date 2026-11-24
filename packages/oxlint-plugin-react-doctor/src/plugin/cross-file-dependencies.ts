@@ -428,6 +428,9 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) =
 
 const collectExhaustiveDepsDependencies: CrossFileDependencyCollector = (input) => {
   collectForwardedHookDependencies(input);
+  for (const candidate of getPossibleTsupMemoConfigs(input.absoluteFilePath, input.sourceText)) {
+    recordExistenceProbe(candidate);
+  }
   if (!input.sourceText.includes("useEffect") && !input.sourceText.includes("\\u")) return;
   const program = input.getProgram();
   attachParentReferences(program);
@@ -623,8 +626,7 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
-const getPossibleStencilConfigs = (filename: string, source: string): readonly string[] => {
-  if (!filename.endsWith(".tsx") || !source.includes("@stencil/core")) return [];
+const getSourceRootCompilerConfigs = (filename: string, configName: string): readonly string[] => {
   const configs: string[] = [];
   for (
     let directory = path.dirname(filename);
@@ -632,11 +634,21 @@ const getPossibleStencilConfigs = (filename: string, source: string): readonly s
     directory = path.dirname(directory)
   ) {
     if (path.basename(directory) === "src") {
-      configs.push(path.join(path.dirname(directory), "stencil.config.ts"));
+      configs.push(path.join(path.dirname(directory), configName));
     }
   }
   return configs;
 };
+
+const getPossibleStencilConfigs = (filename: string, source: string): readonly string[] =>
+  filename.endsWith(".tsx") && source.includes("@stencil/core")
+    ? getSourceRootCompilerConfigs(filename, "stencil.config.ts")
+    : [];
+
+const getPossibleTsupMemoConfigs = (filename: string, source: string): readonly string[] =>
+  filename.endsWith(".tsx") && (source.includes("useMemo") || source.includes("\\u"))
+    ? getSourceRootCompilerConfigs(filename, "tsup.config.ts")
+    : [];
 
 const collectMissingStencilConfigProbes: CrossFileDependencyCollector = ({
   absoluteFilePath,
@@ -646,9 +658,9 @@ const collectMissingStencilConfigProbes: CrossFileDependencyCollector = ({
     recordExistenceProbe(candidate);
 };
 
-const hasPossibleStencilConfig = (filename: string, source: string): boolean => {
+const hasCompilerConfig = (candidates: readonly string[]): boolean => {
   try {
-    return getPossibleStencilConfigs(filename, source).some(
+    return candidates.some(
       (candidate) => fs.lstatSync(candidate, { throwIfNoEntry: false }) !== undefined,
     );
   } catch {
@@ -798,8 +810,10 @@ export const collectCrossFileDependencyProbes = (input: {
   // The stock compiler check consults live npm and toolchain state. Keep
   // these files fresh and still record missing root markers elsewhere.
   if (
-    input.ruleIds.includes("no-unknown-property") &&
-    hasPossibleStencilConfig(absoluteFilePath, input.sourceText)
+    (input.ruleIds.includes("no-unknown-property") &&
+      hasCompilerConfig(getPossibleStencilConfigs(absoluteFilePath, input.sourceText))) ||
+    (input.ruleIds.includes("exhaustive-deps") &&
+      hasCompilerConfig(getPossibleTsupMemoConfigs(absoluteFilePath, input.sourceText)))
   ) {
     return null;
   }

@@ -84,6 +84,7 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { hasCleanedUpTimeoutListener } from "./utils/has-cleaned-up-timeout-listener.js";
+import { hasSingleLayoutOwnedMutationObserver } from "./utils/has-single-layout-owned-mutation-observer.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -10625,6 +10626,12 @@ const hasGuaranteedRefOwnedUnmountCleanup = (
       effectStatement.parent !== componentFunction.body
     ) {
       continue;
+    }
+    if (
+      usage.registrationVerbName === "observe" &&
+      hasSingleLayoutOwnedMutationObserver(effectCall, retainedFunction, usage.node, context)
+    ) {
+      return true;
     }
     const effectCallback = getEffectCallback(effectCall);
     if (

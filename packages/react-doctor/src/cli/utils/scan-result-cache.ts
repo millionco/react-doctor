@@ -450,6 +450,15 @@ const mayReadInstalledCompiler = (input: ScanResultCacheKeyInput): boolean => {
   }
   // Loading ownership can depend on the stock Vite and Jest providers and
   // their selected files, which are outside the tracked worktree snapshot.
+  const workspaceRoot = path.resolve(input.projectDirectory, "../..");
+  if (
+    /^packages\/[\w-]+$/u.test(path.relative(workspaceRoot, input.projectDirectory)) &&
+    fs.existsSync(path.join(input.projectDirectory, "vite.config.mts")) &&
+    fs.existsSync(path.join(workspaceRoot, "node_modules", "hotkeys-js", "package.json"))
+  ) {
+    return true;
+  }
+
   if (
     fs.existsSync(path.join(input.projectDirectory, "node_modules", "vite")) &&
     fs.existsSync(path.join(input.projectDirectory, "jest.config.cjs")) &&

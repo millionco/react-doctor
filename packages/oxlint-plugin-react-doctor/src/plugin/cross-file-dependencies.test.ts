@@ -164,6 +164,20 @@ describe("exhaustive-deps TSup collector", () => {
   });
 });
 
+describe("no-pass-live-state-to-parent Vite keyboard collector", () => {
+  it("records the absent build config and keeps configured effects fresh", () => {
+    const component = writeFixtureFile(
+      "packages/ui/src/hooks.ts",
+      'import { useEffect } from "react"; export const usePicker = () => useEffect(() => {}, []);',
+    );
+    const rules = ["no-pass-live-state-to-parent"];
+    const trace = collectFor(component, rules);
+    expect(trace?.existencePaths.has(fixturePath("packages/ui/vite.config.mts"))).toBe(true);
+    writeFixtureFile("packages/ui/vite.config.mts", "export default {};");
+    expect(collectFor(component, rules)).toBeNull();
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

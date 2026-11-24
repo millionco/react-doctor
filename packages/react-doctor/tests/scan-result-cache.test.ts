@@ -272,6 +272,26 @@ describe("scan result cache", () => {
     expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
   });
 
+  it("bypasses a workspace Vite lint cache when the hotkeys provider appears", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "packages/ui", {
+      files: {
+        "vite.config.mts": "export default {};",
+        "src/hooks.ts":
+          'import { useEffect } from "react"; export const usePicker = () => useEffect(() => {}, []);',
+      },
+    });
+    fs.writeFileSync(path.join(tempDirectory, ".gitignore"), "node_modules/\n");
+    initGitRepo(tempDirectory, { commit: true });
+    const options = baseOptions({ lint: true });
+    expect(await cacheKey(projectDirectory, options)).not.toBeNull();
+
+    const supplier = path.join(tempDirectory, "node_modules", "hotkeys-js");
+    fs.mkdirSync(supplier, { recursive: true });
+    fs.writeFileSync(path.join(supplier, "package.json"), "{}");
+    expect(await cacheKey(projectDirectory, options)).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
+  });
+
   it("bypasses replay when Electron can adopt external lint rules", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "electron-adopted-lint", {
       files: {

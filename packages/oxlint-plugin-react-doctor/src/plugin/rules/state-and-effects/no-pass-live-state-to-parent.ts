@@ -1,3 +1,6 @@
+import { hasVerifiedViteKeyboardRegistration } from "../../utils/has-verified-vite-keyboard-registration.js";
+import { readTerminalKeyboardRegistration } from "./read-terminal-keyboard-registration.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -294,7 +297,7 @@ const getTransparentWrapperPropReference = (
   analysis: ProgramAnalysis,
   reference: Reference,
   context: RuleContext,
-  discardedHelperFunction: EsTreeNode | null,
+  isSetupNotification: (reference: Reference) => boolean,
 ): Reference | null => {
   for (const definition of reference.resolved?.defs ?? []) {
     const declarator = definition.node as unknown as EsTreeNode;
@@ -313,14 +316,7 @@ const getTransparentWrapperPropReference = (
     );
     if (!callbackArgument) continue;
     const callbackReferences = getDownstreamRefs(analysis, callbackArgument);
-    const callbackReference = callbackReferences.find((candidateReference) =>
-      isParentNotificationCallbackRef(
-        analysis,
-        candidateReference,
-        context,
-        discardedHelperFunction,
-      ),
-    );
+    const callbackReference = callbackReferences.find(isSetupNotification);
     if (callbackReference) return callbackReference;
     if (isFunctionLike(stripParenExpression(callbackArgument))) continue;
     const propReference = callbackReferences.find(
@@ -491,6 +487,28 @@ export const noPassLiveStateToParent = defineRule({
           directLocalEffectHelper && !isCallResultCapturedToLocal(callExpr)
             ? directLocalEffectHelper
             : null;
+        const registration = directLocalEffectHelper
+          ? readTerminalKeyboardRegistration(
+              effectFn,
+              callExpr,
+              directLocalEffectHelper,
+              context.scopes,
+            )
+          : null;
+        const deferredCallbacks =
+          registration && hasVerifiedViteKeyboardRegistration(registration, context)
+            ? registration.callbacks
+            : [];
+        const isSetupNotification = (candidate: Reference): boolean =>
+          !deferredCallbacks.some((callback) =>
+            isAstDescendant(candidate.identifier as unknown as EsTreeNode, callback),
+          ) &&
+          isParentNotificationCallbackRef(
+            analysis,
+            candidate,
+            context,
+            discardedDirectLocalEffectHelper,
+          );
         const callGraphReferences = directLocalEffectHelper
           ? [ref, ...getDownstreamRefs(analysis, directLocalEffectHelper)]
           : [ref];
@@ -532,23 +550,11 @@ export const noPassLiveStateToParent = defineRule({
         // and a fetch-named callback pulls data in rather than mirroring
         // state up.
         const propCallbackRefs = callGraphReferences.flatMap((callGraphReference) =>
-          getEventualCallRefsTo(analysis, callGraphReference, (innerRef) =>
-            isParentNotificationCallbackRef(
-              analysis,
-              innerRef,
-              context,
-              discardedDirectLocalEffectHelper,
-            ),
-          ),
+          getEventualCallRefsTo(analysis, callGraphReference, isSetupNotification),
         );
         const transparentPropReference =
           propCallbackRefs.length === 0
-            ? getTransparentWrapperPropReference(
-                analysis,
-                ref,
-                context,
-                discardedDirectLocalEffectHelper,
-              )
+            ? getTransparentWrapperPropReference(analysis, ref, context, isSetupNotification)
             : null;
         if (
           propCallbackRefs.length === 0 &&
@@ -606,13 +612,7 @@ export const noPassLiveStateToParent = defineRule({
                 collectPropCallbackBoundStateRefs(
                   analysis,
                   callGraphReference,
-                  (innerRef) =>
-                    isParentNotificationCallbackRef(
-                      analysis,
-                      innerRef,
-                      context,
-                      discardedDirectLocalEffectHelper,
-                    ),
+                  isSetupNotification,
                   context.scopes,
                 ),
               );

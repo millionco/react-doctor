@@ -650,6 +650,21 @@ const getPossibleTsupMemoConfigs = (filename: string, source: string): readonly 
     ? getSourceRootCompilerConfigs(filename, "tsup.config.ts")
     : [];
 
+const getPossibleViteKeyboardConfigs = (filename: string, source: string): readonly string[] =>
+  filename.endsWith(".ts") && (source.includes("useEffect") || source.includes("\\u"))
+    ? getSourceRootCompilerConfigs(filename, "vite.config.mts")
+    : [];
+
+const collectLiveStateDependencies: CrossFileDependencyCollector = (input) => {
+  collectForwardedImperativeHandleDependencies(input);
+  for (const candidate of getPossibleViteKeyboardConfigs(
+    input.absoluteFilePath,
+    input.sourceText,
+  )) {
+    recordExistenceProbe(candidate);
+  }
+};
+
 const collectMissingStencilConfigProbes: CrossFileDependencyCollector = ({
   absoluteFilePath,
   sourceText,
@@ -680,7 +695,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectExhaustiveDepsDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
-    ["no-pass-live-state-to-parent", collectForwardedImperativeHandleDependencies],
+    ["no-pass-live-state-to-parent", collectLiveStateDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
@@ -813,7 +828,9 @@ export const collectCrossFileDependencyProbes = (input: {
     (input.ruleIds.includes("no-unknown-property") &&
       hasCompilerConfig(getPossibleStencilConfigs(absoluteFilePath, input.sourceText))) ||
     (input.ruleIds.includes("exhaustive-deps") &&
-      hasCompilerConfig(getPossibleTsupMemoConfigs(absoluteFilePath, input.sourceText)))
+      hasCompilerConfig(getPossibleTsupMemoConfigs(absoluteFilePath, input.sourceText))) ||
+    (input.ruleIds.includes("no-pass-live-state-to-parent") &&
+      hasCompilerConfig(getPossibleViteKeyboardConfigs(absoluteFilePath, input.sourceText)))
   ) {
     return null;
   }

@@ -37,18 +37,6 @@ const readStatementCall = (statement: EsTreeNode | null | undefined) => {
   return isNodeOfType(expression, "CallExpression") && !expression.optional ? expression : null;
 };
 
-const readStaticListenerCapture = (call: EsTreeNodeOfType<"CallExpression">): boolean | null => {
-  const options = call.arguments[2];
-  if (
-    call.arguments.length < 2 ||
-    call.arguments.length > 3 ||
-    (options && !isNodeOfType(stripParenExpression(options), "Literal"))
-  ) {
-    return null;
-  }
-  return resolveEventListenerCapture(options);
-};
-
 const isDirectEffectDeclaration = (
   declaration: EsTreeNode,
   effectBody: EsTreeNodeOfType<"BlockStatement">,
@@ -58,6 +46,33 @@ const isDirectEffectDeclaration = (
   isNodeOfType(declaration.parent, "VariableDeclaration") &&
   declaration.parent.parent === effectBody &&
   declaration.range[0] < before.range[0];
+
+const readStaticListenerCapture = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  effectBody: EsTreeNodeOfType<"BlockStatement">,
+  scheduler: EsTreeNode,
+  context: RuleContext,
+): boolean | null => {
+  if (call.arguments.length < 2 || call.arguments.length > 3) return null;
+  const options = call.arguments[2];
+  if (!options) return resolveEventListenerCapture(options);
+  const value = stripParenExpression(options);
+  if (isNodeOfType(value, "Literal")) return resolveEventListenerCapture(value);
+  if (!isNodeOfType(value, "Identifier")) return null;
+
+  const symbol = context.scopes.symbolFor(value);
+  const initializer = symbol && getDirectConstInitializer(symbol);
+  if (
+    !symbol ||
+    !initializer ||
+    !isDirectEffectDeclaration(symbol.declarationNode, effectBody, scheduler) ||
+    !symbol.references.every(({ flag }) => flag === "read")
+  ) {
+    return null;
+  }
+  const literal = stripParenExpression(initializer);
+  return isNodeOfType(literal, "Literal") ? resolveEventListenerCapture(literal) : null;
+};
 
 const isNativeGlobalIdentifier = (
   expression: EsTreeNode,
@@ -191,10 +206,8 @@ export const hasCleanedUpTimeoutListener = (
   const registrationCallee = stripParenExpression(registration.callee);
   const registrationExpression = findTransparentExpressionRoot(registration);
   const timerCallback = findEnclosingFunction(registration);
-  const capture = readStaticListenerCapture(registration);
   if (
     registration.optional ||
-    capture === null ||
     !isNodeOfType(registrationCallee, "MemberExpression") ||
     registrationCallee.optional ||
     getStaticPropertyName(registrationCallee) !== "addEventListener" ||
@@ -233,6 +246,8 @@ export const hasCleanedUpTimeoutListener = (
   ) {
     return false;
   }
+  const capture = readStaticListenerCapture(registration, effectBody, scheduler, context);
+  if (capture === null) return false;
   const timerDeclarator = findTransparentExpressionRoot(scheduler).parent;
   const timerDeclaration = timerDeclarator?.parent;
   if (
@@ -288,7 +303,7 @@ export const hasCleanedUpTimeoutListener = (
   const releaseCallee = release ? stripParenExpression(release.callee) : null;
   if (
     !release ||
-    readStaticListenerCapture(release) !== capture ||
+    readStaticListenerCapture(release, effectBody, scheduler, context) !== capture ||
     !isNodeOfType(releaseCallee, "MemberExpression") ||
     releaseCallee.optional ||
     getStaticPropertyName(releaseCallee) !== "removeEventListener"

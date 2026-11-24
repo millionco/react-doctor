@@ -155,7 +155,9 @@ const isRepeatedWithinHandler = (call: EsTreeNode, handler: EsTreeNode): boolean
 const hasAnotherSetterCallOnSamePath = (
   setterCallNode: EsTreeNodeOfType<"CallExpression">,
   setterName: string,
+  context: RuleContext,
 ): boolean => {
+  const setterBinding = context.scopes.symbolFor(setterCallNode.callee);
   const enclosingFunction = findEnclosingFunction(setterCallNode);
   if (!enclosingFunction) return false;
   const canProveExclusiveCalls =
@@ -179,6 +181,23 @@ const hasAnotherSetterCallOnSamePath = (
       !isRepeatedWithinHandler(child, enclosingFunction)
     ) {
       return;
+    }
+    const otherSetterBinding = context.scopes.symbolFor(child.callee);
+    if (
+      setterBinding?.kind === "const" &&
+      otherSetterBinding?.kind === "const" &&
+      setterBinding !== otherSetterBinding
+    ) {
+      const pair = resolveReactUseStatePair(setterCallNode.callee, context.scopes);
+      const otherPair = resolveReactUseStatePair(child.callee, context.scopes);
+      if (
+        pair?.setterSymbol === setterBinding &&
+        otherPair?.setterSymbol === otherSetterBinding &&
+        isDirectNamedReactHookCall(pair.declarator.init, "useState", context.scopes) &&
+        isDirectNamedReactHookCall(otherPair.declarator.init, "useState", context.scopes)
+      ) {
+        return;
+      }
     }
     hasAnotherCall = true;
     return false;
@@ -212,7 +231,7 @@ export const rerenderFunctionalSetstate = defineRule({
       // handler re-reads fresh state every discrete event and cannot lose
       // an update.
       const canSyncArithmeticGoStale = (): boolean =>
-        isInsideDeferredCallback(node) || hasAnotherSetterCallOnSamePath(node, calleeName);
+        isInsideDeferredCallback(node) || hasAnotherSetterCallOnSamePath(node, calleeName, context);
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&

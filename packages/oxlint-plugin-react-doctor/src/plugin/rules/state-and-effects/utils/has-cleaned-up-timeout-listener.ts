@@ -11,6 +11,7 @@ import { isProvenUnmodifiedGlobalNamespaceReference } from "../../../utils/is-pr
 import { walkAst } from "../../../utils/walk-ast.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
+import { resolveEventListenerCapture } from "./resolve-event-listener-capture.js";
 
 const DYNAMIC_DOCUMENT_REFERENCE_NAMES = new Set([
   "Document",
@@ -34,6 +35,18 @@ const readStatementCall = (statement: EsTreeNode | null | undefined) => {
   if (!isNodeOfType(statement, "ExpressionStatement")) return null;
   const expression = stripParenExpression(statement.expression);
   return isNodeOfType(expression, "CallExpression") && !expression.optional ? expression : null;
+};
+
+const readStaticListenerCapture = (call: EsTreeNodeOfType<"CallExpression">): boolean | null => {
+  const options = call.arguments[2];
+  if (
+    call.arguments.length < 2 ||
+    call.arguments.length > 3 ||
+    (options && !isNodeOfType(stripParenExpression(options), "Literal"))
+  ) {
+    return null;
+  }
+  return resolveEventListenerCapture(options);
 };
 
 const isDirectEffectDeclaration = (
@@ -178,9 +191,10 @@ export const hasCleanedUpTimeoutListener = (
   const registrationCallee = stripParenExpression(registration.callee);
   const registrationExpression = findTransparentExpressionRoot(registration);
   const timerCallback = findEnclosingFunction(registration);
+  const capture = readStaticListenerCapture(registration);
   if (
     registration.optional ||
-    registration.arguments.length !== 2 ||
+    capture === null ||
     !isNodeOfType(registrationCallee, "MemberExpression") ||
     registrationCallee.optional ||
     getStaticPropertyName(registrationCallee) !== "addEventListener" ||
@@ -274,7 +288,7 @@ export const hasCleanedUpTimeoutListener = (
   const releaseCallee = release ? stripParenExpression(release.callee) : null;
   if (
     !release ||
-    release.arguments.length !== 2 ||
+    readStaticListenerCapture(release) !== capture ||
     !isNodeOfType(releaseCallee, "MemberExpression") ||
     releaseCallee.optional ||
     getStaticPropertyName(releaseCallee) !== "removeEventListener"

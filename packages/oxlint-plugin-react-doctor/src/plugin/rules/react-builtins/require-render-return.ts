@@ -15,9 +15,6 @@ const isStaticRenderKey = (key: EsTreeNode): boolean => {
   return false;
 };
 
-const isFunctionExpressionLike = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "FunctionExpression") || isNodeOfType(node, "ArrowFunctionExpression");
-
 interface RenderHostInfo {
   reportNode: EsTreeNode;
   isObjectPropertyRender: boolean;
@@ -99,13 +96,6 @@ export const requireRenderReturn = defineRule({
         checkFunction(node);
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        checkFunction(node);
-      },
-      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        // FunctionDeclaration can't appear inside a class/object literal as
-        // a render method, but the parent traversal in `resolveRenderHost`
-        // is cheap enough to also accept it here for robustness.
-        if (isFunctionExpressionLike(node)) return;
         checkFunction(node);
       },
     };

@@ -32,6 +32,18 @@ const correctnessDiagnostic: Diagnostic = {
   category: "Bugs",
 };
 
+const jsxKeyDiagnostic: Diagnostic = {
+  filePath: "src/List.tsx",
+  plugin: "react-doctor",
+  rule: "jsx-key",
+  severity: "error",
+  message: "Missing key prop",
+  help: "",
+  line: 8,
+  column: 11,
+  category: "Bugs",
+};
+
 const externalPluginDiagnostic: Diagnostic = {
   filePath: "src/Other.tsx",
   plugin: "react",
@@ -153,6 +165,18 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
     };
     const diagnostics = [designDiagnostic, correctnessDiagnostic];
     expect(filterDiagnosticsForSurface(diagnostics, "cli", config)).toEqual([designDiagnostic]);
+  });
+
+  it("matches legacy and bare rule aliases in surface rule controls", () => {
+    const excludeConfig: ReactDoctorConfig = {
+      surfaces: { cli: { excludeRules: ["react/jsx-key"] } },
+    };
+    const includeConfig: ReactDoctorConfig = {
+      surfaces: { prComment: { includeRules: ["design-no-redundant-size-axes"] } },
+    };
+
+    expect(filterDiagnosticsForSurface([jsxKeyDiagnostic], "cli", excludeConfig)).toEqual([]);
+    expect(isDiagnosticOnSurface(designDiagnostic, "prComment", includeConfig)).toBe(true);
   });
 
   it("`includeRules` overrides excludeTags for a single rule (include wins)", () => {

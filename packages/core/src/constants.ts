@@ -955,13 +955,6 @@ export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 // diagnostics.
 export const PLUGIN_FINGERPRINT_LENGTH_CHARS = 16;
 
-// This package's own version, inlined at build time (`vite.config.ts` `env`)
-// the same way the CLI inlines `VERSION`; running from source (tests, dev)
-// falls back to "0.0.0". Cache keys include it because cached diagnostics
-// carry core's POST-PROCESSING (message text, toolchain-dependency filtering),
-// so an upgrade must never replay entries shaped by an older core.
-export const CORE_PACKAGE_VERSION = process.env.REACT_DOCTOR_CORE_VERSION ?? "0.0.0";
-
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
 // from the `react-doctor` lint surface in the printed list and JSON report.

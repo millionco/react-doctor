@@ -40,8 +40,6 @@ export const REACT_ECOSYSTEM_PACKAGE_NAMES = new Set([
   "usehooks-ts",
 ]);
 
-export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
-
 export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);

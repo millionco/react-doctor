@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
+import { flattenJsxName } from "./flatten-jsx-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -23,15 +24,11 @@ const resolveConstantStringBinding = (name: EsTreeNodeOfType<"JSXIdentifier">): 
     : null;
 };
 
-const flattenJsxName = (name: EsTreeNode): string => {
-  if (isNodeOfType(name, "JSXIdentifier")) return name.name;
-  if (isNodeOfType(name, "JSXMemberExpression")) {
-    return `${flattenJsxName(name.object)}.${name.property.name}`;
-  }
+const resolveJsxName = (name: EsTreeNode): string => {
   if (isNodeOfType(name, "JSXNamespacedName")) {
     return `${name.namespace.name}:${name.name.name}`;
   }
-  return "";
+  return flattenJsxName(name) ?? "";
 };
 
 export const resolveJsxElementType = (
@@ -42,5 +39,5 @@ export const resolveJsxElementType = (
     if (!isUppercaseName(name.name)) return name.name;
     return resolveConstantStringBinding(name) ?? name.name;
   }
-  return flattenJsxName(name);
+  return resolveJsxName(name);
 };

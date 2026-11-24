@@ -12,11 +12,8 @@ import { isNodeOfType } from "./is-node-of-type.js";
  * the rare-but-valid `<this.x />` case, which JSX surfaces as a
  * `JSXThisExpression` root).
  *
- * Used by `forbid-elements` and `jsx-props-no-spreading`. Two other
- * rules (`forbid-component-props`, `utils/get-element-type`) keep
- * their own extended variants because they handle additional node
- * types (ThisExpression / JSXNamespacedName) and return a non-
- * nullable string with a sentinel value — semantically distinct.
+ * Namespaced JSX names stay out of this helper because callers differ on
+ * whether `svg:path` should become a tag string or be treated as unsupported.
  */
 export const flattenJsxName = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "JSXIdentifier")) return node.name;

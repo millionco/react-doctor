@@ -1199,3 +1199,36 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     });
   });
 });
+
+describe("independent visible reducer state", () => {
+  it.each([
+    ["independent click", "next", "", "extra", 0],
+    ["unreachable click", "next", "", "extra", 1],
+    ["computed parameter", "next", "", "extra", 1],
+    ["module-level callback", "next", "", "extra", 1],
+    ["reset in the effect", "next", 'dispatch("reset");', "extra", 1],
+    ["click leaves the initial value unchanged", "reset", "", "extra", 1],
+    ["reducer state is unused in the returned element", "next", "", "count", 1],
+  ])("handles %s", (scenario, action, effectDispatch, observedValue, count) => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `
+        import { useEffect, useReducer, useState } from "react";
+        ${scenario === "module-level callback" ? 'document.addEventListener("click", event => event.stopPropagation(), true);' : ""}
+        export function Panel({ recordId ${scenario === "computed parameter" ? ', [document.addEventListener("click", event => event.stopPropagation(), true)]: other' : ""} }) {
+          const [name, setName] = useState("");
+          const [count, setCount] = useState(0);
+          const [extra, dispatch] = useReducer(
+            (current, action) => action === "reset" ? 0 : current + 1, 0,
+          );
+          useEffect(() => { setName(""); setCount(0); ${effectDispatch} }, [recordId]);
+          ${scenario === "unreachable click" ? "if (false)" : ""}
+          return <div>{name}{count}<button onClick={() => dispatch("${action}")}>{${observedValue}}</button></div>;
+          ${scenario === "unreachable click" ? "return <div>{name}{count}</div>;" : ""}
+        }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+});

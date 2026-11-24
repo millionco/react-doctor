@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isHistoryDependentStateWrite } from "./utils/is-history-dependent-state-write.js";
 import { isObservedCommittedStateSnapshot } from "./utils/is-observed-committed-state-snapshot.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
@@ -29,7 +30,8 @@ export const noDerivedStateEffect = defineRule({
         (fact) =>
           ((fact.isRenderKnownCopy && !fact.resetsSourceState) ||
             isRenderKnownSelectionRepair(analysis, node, fact)) &&
-          !isObservedCommittedStateSnapshot(node, fact.callExpression, context.scopes),
+          !isObservedCommittedStateSnapshot(node, fact.callExpression, context.scopes) &&
+          !isHistoryDependentStateWrite(node, fact.callExpression, context.scopes),
       );
       if (!derivedWrite) return;
       context.report({

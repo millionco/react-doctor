@@ -9,6 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isHistoryDependentStateWrite } from "./utils/is-history-dependent-state-write.js";
 import { isObservedCommittedStateSnapshot } from "./utils/is-observed-committed-state-snapshot.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
@@ -88,7 +89,10 @@ export const noDerivedState = defineRule({
           ) {
             continue;
           }
-          if (isObservedCommittedStateSnapshot(node, fact.callExpression, context.scopes)) {
+          if (
+            isObservedCommittedStateSnapshot(node, fact.callExpression, context.scopes) ||
+            isHistoryDependentStateWrite(node, fact.callExpression, context.scopes)
+          ) {
             continue;
           }
           reportStateWrite(fact.callExpression, fact.stateDeclarator);

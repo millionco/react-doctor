@@ -83,6 +83,7 @@ import {
   isSubscribeOrObserveCallExpression,
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
+import { hasCleanedUpTimeoutListener } from "./utils/has-cleaned-up-timeout-listener.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -7420,6 +7421,13 @@ const effectHasCleanupForUsage = (
   }
   if (!isNodeOfType(callback.body, "BlockStatement")) {
     return callback.body === usage.node && isKnownCallableSubscriptionResult(usage, context);
+  }
+  if (
+    usage.registrationVerbName === "addEventListener" &&
+    isNodeOfType(usage.node, "CallExpression") &&
+    hasCleanedUpTimeoutListener(callback.body, usage.node, context)
+  ) {
+    return true;
   }
   const usageExpression = findTransparentExpressionRoot(usage.node);
   const usageAssignment = usageExpression.parent;

@@ -21,6 +21,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("only on the success path");
   });
 
   it("stays quiet when a swallowing catch makes the trailing reset run on rejection too (setError-in-catch idiom)", () => {
@@ -1039,6 +1040,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
        };`,
     );
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("A failure can bypass this loading reset");
   });
 
   it("does not trust a shadowed useEffect as lifecycle cleanup proof", () => {

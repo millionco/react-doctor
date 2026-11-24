@@ -357,3 +357,48 @@ describe("rerender-functional-setstate — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("rerender-functional-setstate — exclusive click branches", () => {
+  const branches = "if (canAdvance) setStep(step + 1); else setStep(0);";
+  const renderHandler = (body: string, element = "button") => `
+    import { useState } from "react";
+    function Stepper({ canAdvance, count }: { canAdvance: boolean; count: number }) {
+      const [step, setStep] = useState(0);
+      return <${element} onClick={() => { ${body} }} />;
+    }
+  `;
+
+  it.each([
+    ["if and else", branches],
+    ["conditional expression", "canAdvance ? setStep(step + 1) : setStep(0);"],
+  ])("accepts one update in either arm of %s", (_name, body) => {
+    const result = runRule(rerenderFunctionalSetstate, renderHandler(body));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["a later update", `${branches} setStep(2);`],
+    ["separate conditions", "if (canAdvance) setStep(step + 1); if (count) setStep(0);"],
+    ["a loop around both arms", `for (let index = 0; index < count; index++) { ${branches} }`],
+    [
+      "a loop in the increment arm",
+      "if (canAdvance) { for (let index = 0; index < count; index++) setStep(step + 1); } else setStep(0);",
+    ],
+    [
+      "an invoked function in the other arm",
+      "if (canAdvance) setStep(step + 1); else (() => setStep(0))();",
+    ],
+    ["a deferred callback", `setTimeout(() => { ${branches} }, 0);`],
+  ])("keeps the stale update warning for %s", (_name, body) => {
+    const result = runRule(rerenderFunctionalSetstate, renderHandler(body));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps the warning for a callback owned by a custom component", () => {
+    const result = runRule(rerenderFunctionalSetstate, renderHandler(branches, "CustomButton"));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

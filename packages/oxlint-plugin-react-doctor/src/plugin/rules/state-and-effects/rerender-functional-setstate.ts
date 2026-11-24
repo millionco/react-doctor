@@ -1,3 +1,7 @@
+import { LOOP_TYPES } from "../../constants/js.js";
+import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
@@ -119,37 +123,63 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const isFunctionLikeNode = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "ArrowFunctionExpression") ||
-  isNodeOfType(node, "FunctionExpression") ||
-  isNodeOfType(node, "FunctionDeclaration");
+const isInlineIntrinsicClickHandler = (handler: EsTreeNode): boolean => {
+  if (!isNodeOfType(handler, "ArrowFunctionExpression") || handler.async) return false;
+  const expression = handler.parent;
+  const attribute = expression?.parent;
+  return (
+    isNodeOfType(expression, "JSXExpressionContainer") &&
+    isNodeOfType(attribute, "JSXAttribute") &&
+    isNodeOfType(attribute.name, "JSXIdentifier") &&
+    attribute.name.name === "onClick" &&
+    isJsxAttributeOnIntrinsicHtmlElement(attribute)
+  );
+};
 
-// A single synchronous `setX(x - 1)` per handler invocation cannot lose its
-// own update — React renders between discrete events, so the next call reads
-// fresh state. The sync lost-update hazard needs the same stale value feeding
-// TWO updates before a render, whose static signal is a second call to the
-// same setter reachable in the same enclosing function.
-const hasMultipleSetterCallsInEnclosingFunction = (
+const isRepeatedWithinHandler = (call: EsTreeNode, handler: EsTreeNode): boolean => {
+  let ancestor = call.parent;
+  while (ancestor && ancestor !== handler) {
+    if (LOOP_TYPES.some((loopType) => loopType === ancestor?.type)) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+// A synchronous click handler can use a fresh state snapshot for a single
+// update. Two setters on alternative branches are one update per click,
+// unless a loop can revisit either call before React renders.
+const hasAnotherSetterCallOnSamePath = (
   setterCallNode: EsTreeNodeOfType<"CallExpression">,
   setterName: string,
 ): boolean => {
-  let enclosingFunction: EsTreeNode | null | undefined = setterCallNode.parent;
-  while (enclosingFunction && !isFunctionLikeNode(enclosingFunction)) {
-    enclosingFunction = enclosingFunction.parent;
-  }
+  const enclosingFunction = findEnclosingFunction(setterCallNode);
   if (!enclosingFunction) return false;
+  const canProveExclusiveCalls =
+    isInlineIntrinsicClickHandler(enclosingFunction) &&
+    !isRepeatedWithinHandler(setterCallNode, enclosingFunction);
 
-  let setterCallCount = 0;
-  walkAst(enclosingFunction, (child: EsTreeNode) => {
+  let hasAnotherCall = false;
+  walkAst(enclosingFunction, (child) => {
+    if (hasAnotherCall) return false;
     if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "Identifier") &&
-      child.callee.name === setterName
+      child === setterCallNode ||
+      !isNodeOfType(child, "CallExpression") ||
+      !isNodeOfType(child.callee, "Identifier") ||
+      child.callee.name !== setterName
     ) {
-      setterCallCount += 1;
+      return;
     }
+    if (
+      canProveExclusiveCalls &&
+      areNodesOnExclusiveConditionalBranches(setterCallNode, child, enclosingFunction) &&
+      !isRepeatedWithinHandler(child, enclosingFunction)
+    ) {
+      return;
+    }
+    hasAnotherCall = true;
+    return false;
   });
-  return setterCallCount >= 2;
+  return hasAnotherCall;
 };
 
 export const rerenderFunctionalSetstate = defineRule({
@@ -178,8 +208,7 @@ export const rerenderFunctionalSetstate = defineRule({
       // handler re-reads fresh state every discrete event and cannot lose
       // an update.
       const canSyncArithmeticGoStale = (): boolean =>
-        isInsideDeferredCallback(node) ||
-        hasMultipleSetterCallsInEnclosingFunction(node, calleeName);
+        isInsideDeferredCallback(node) || hasAnotherSetterCallOnSamePath(node, calleeName);
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&

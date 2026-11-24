@@ -76,11 +76,11 @@ const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWrit
 
 export const noAdjustStateOnPropChange = defineRule({
   id: "no-adjust-state-on-prop-change",
-  title: "State adjusted after a prop changes",
+  title: "State adjustment in a prop-dependent effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
+    "Derive values from props during render when possible, or update related state in the event that changes the prop. Use a key when a prop change should remount the whole component. For effects that synchronize an external source, check that the state update tracks that source. Avoid tracking the previous prop in more state just to mirror it in the effect. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
   create: (context: RuleContext) => {
     const mediaReceiverCache = new WeakMap<SymbolDescriptor, boolean>();
     const reportedSetterCalls = new WeakSet<EsTreeNode>();
@@ -151,7 +151,8 @@ export const noAdjustStateOnPropChange = defineRule({
           }
           context.report({
             node: reportNode,
-            message: "Adjusting state in an effect after a prop changes costs an extra render.",
+            message:
+              "A state update in this effect can cause another render. Check which prop changes should trigger it.",
           });
         }
       },

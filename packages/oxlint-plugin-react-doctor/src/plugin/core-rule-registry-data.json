@@ -3369,9 +3369,9 @@
     "originallyExternal": true,
     "rule": {
       "id": "no-adjust-state-on-prop-change",
-      "title": "State adjusted after a prop changes",
+      "title": "State adjustment in a prop-dependent effect",
       "severity": "warn",
-      "recommendation": "Remove the adjustment effect by deriving values during render, resetting the component with a key, or updating related state in the event that changes the prop. Avoid tracking the previous prop in more state, which preserves the duplication. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
+      "recommendation": "Derive values from props during render when possible, or update related state in the event that changes the prop. Use a key when a prop change should remount the whole component. For effects that synchronize an external source, check that the state update tracks that source. Avoid tracking the previous prop in more state just to mirror it in the effect. See https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

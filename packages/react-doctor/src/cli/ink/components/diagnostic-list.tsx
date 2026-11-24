@@ -11,6 +11,7 @@ import { copyToClipboard } from "../../utils/launch-agent.js";
 import { recordCount } from "../../utils/record-metric.js";
 import { useScrollViewport } from "../hooks/use-scroll-viewport.js";
 import { buildIssuePrompt } from "../lib/build-issue-prompt.js";
+import { buildBatchedIssuePrompt } from "../lib/build-batched-issue-prompt.js";
 import type { DiagnosticListEntry } from "../lib/diagnostic-list-entries.js";
 import type { DiagnosticRow } from "../lib/diagnostic-rows.js";
 import type { DiagnosticListLayout } from "../lib/resolve-report-layout.js";
@@ -43,8 +44,10 @@ export interface DiagnosticListProps {
 const DIAGNOSTIC_KEY_HINTS = (
   <>
     <Text dimColor>↑/↓ move · </Text>
+    <Text color="cyan">space</Text>
+    <Text dimColor> select · </Text>
     <Text color="cyan">enter</Text>
-    <Text dimColor> copy context</Text>
+    <Text dimColor> copy</Text>
   </>
 );
 
@@ -102,7 +105,9 @@ export const DiagnosticList = ({
   const initialSelectedRuleKey = useRef(selectedRuleKey);
   const didRecordFindingNavigation = useRef(false);
 
+  const [selectedRuleKeys, setSelectedRuleKeys] = useState<Set<string>>(new Set());
   const [copiedRuleKey, setCopiedRuleKey] = useState<string | null>(null);
+  const [copiedBatchCount, setCopiedBatchCount] = useState<number>(0);
   const [copyFailedRuleKey, setCopyFailedRuleKey] = useState<string | null>(null);
   const effectiveReadRuleKeys = useMemo(() => {
     if (!selectedRuleKey || readRuleKeys.has(selectedRuleKey)) return readRuleKeys;
@@ -120,18 +125,45 @@ export const DiagnosticList = ({
     recordCount(METRIC.tuiFindingNavigated);
   }, [selectedRuleKey]);
 
+  const toggleSelection = (): void => {
+    if (!selectedRuleKey) return;
+    setSelectedRuleKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(selectedRuleKey)) {
+        next.delete(selectedRuleKey);
+      } else {
+        next.add(selectedRuleKey);
+      }
+      return next;
+    });
+  };
+
   const copySelectedIssueContext = (): void => {
-    if (!selected) return;
-    const issuePrompt = buildIssuePrompt({ row: selected, projectName });
-    const ruleKey = selected.ruleKey;
+    const rowsToCopy = selectedRuleKeys.size > 0
+      ? rows.filter((row) => selectedRuleKeys.has(row.ruleKey))
+      : selected
+        ? [selected]
+        : [];
+
+    if (rowsToCopy.length === 0) return;
+
+    const issuePrompt = rowsToCopy.length === 1
+      ? buildIssuePrompt({ row: rowsToCopy[0]!, projectName })
+      : buildBatchedIssuePrompt({ rows: rowsToCopy, projectName });
+
+    const ruleKey = rowsToCopy.length === 1 ? rowsToCopy[0]!.ruleKey : null;
+    const batchCount = rowsToCopy.length > 1 ? rowsToCopy.length : 0;
+    
     void copyToClipboard(issuePrompt).then((didCopyIssueContext) => {
       if (didCopyIssueContext) {
         setCopiedRuleKey(ruleKey);
+        setCopiedBatchCount(batchCount);
         setCopyFailedRuleKey(null);
         return;
       }
       recordCount(METRIC.tuiReportActionSelected, 1, { action: "copy-issue-context-failed" });
       setCopiedRuleKey(null);
+      setCopiedBatchCount(0);
       setCopyFailedRuleKey(ruleKey);
     });
   };
@@ -139,8 +171,12 @@ export const DiagnosticList = ({
   useInput((input, key) => {
     if (input === "q") return onQuit();
     if (key.escape) return onBack();
+    if (input === " " && selected) {
+      toggleSelection();
+    }
     if (key.return && selected) {
-      recordCount(METRIC.tuiReportActionSelected, 1, { action: "copy-issue-context" });
+      const action = selectedRuleKeys.size > 0 ? "copy-batched-issue-context" : "copy-issue-context";
+      recordCount(METRIC.tuiReportActionSelected, 1, { action });
       copySelectedIssueContext();
     }
   });
@@ -176,6 +212,7 @@ export const DiagnosticList = ({
             row={entry.row}
             isSelected={entryIndex === selectedEntryIndex}
             isRead={effectiveReadRuleKeys.has(entry.row.ruleKey)}
+            isMarked={selectedRuleKeys.has(entry.row.ruleKey)}
           />
         );
       })}
@@ -183,10 +220,14 @@ export const DiagnosticList = ({
   );
 
   let copyFeedback: ReactNode = null;
-  if (copiedRuleKey === selectedRuleKey) {
+  const selectedCount = selectedRuleKeys.size;
+  if (copiedRuleKey === selectedRuleKey || copiedBatchCount > 0) {
+    const message = copiedBatchCount > 0 
+      ? `✓ Copied ${copiedBatchCount} ${copiedBatchCount === 1 ? "issue" : "issues"} to clipboard`
+      : "✓ Copied issue context";
     copyFeedback = (
       <Box marginTop={TUI_REPORT_SECTION_GAP_ROWS}>
-        <Text color="green">✓ Copied issue context</Text>
+        <Text color="green">{message}</Text>
       </Box>
     );
   } else if (copyFailedRuleKey === selectedRuleKey) {
@@ -204,10 +245,24 @@ export const DiagnosticList = ({
   );
 
   let visibleKeyHints = DIAGNOSTIC_KEY_HINTS;
-  if (isCompact && copiedRuleKey === selectedRuleKey) {
-    visibleKeyHints = <Text color="green">✓ Copied issue context</Text>;
+  if (isCompact && (copiedRuleKey === selectedRuleKey || copiedBatchCount > 0)) {
+    const message = copiedBatchCount > 0
+      ? `✓ Copied ${copiedBatchCount} ${copiedBatchCount === 1 ? "issue" : "issues"}`
+      : "✓ Copied issue context";
+    visibleKeyHints = <Text color="green">{message}</Text>;
   } else if (isCompact && copyFailedRuleKey === selectedRuleKey) {
     visibleKeyHints = <Text color="yellow">Copy failed · enter retry</Text>;
+  } else if (selectedCount > 0) {
+    visibleKeyHints = (
+      <>
+        <Text dimColor>↑/↓ move · </Text>
+        <Text color="cyan">space</Text>
+        <Text dimColor> select · </Text>
+        <Text color="cyan">enter</Text>
+        <Text dimColor> copy </Text>
+        <Text color="green">({selectedCount} selected)</Text>
+      </>
+    );
   }
   const statusBar = (
     <Box marginTop={isCompact ? 0 : TUI_REPORT_SECTION_GAP_ROWS}>

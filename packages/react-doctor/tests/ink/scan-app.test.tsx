@@ -741,7 +741,7 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
 
-    expect(lastFrame()).toContain("enter copy context");
+    expect(lastFrame()).toContain("enter copy");
     expect(lastFrame()).toContain("Correctness · error");
 
     stdin.write("\r");

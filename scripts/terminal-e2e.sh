@@ -66,7 +66,7 @@ termctrl wait "$TERMINAL_E2E_SESSION_NAME" "Add to GitHub Actions" \
   --timeout "$TERMINAL_E2E_LONG_WAIT_MS"
 termctrl mark "$TERMINAL_E2E_SESSION_NAME" action-menu
 termctrl send "$TERMINAL_E2E_SESSION_NAME" enter
-termctrl wait "$TERMINAL_E2E_SESSION_NAME" "enter copy context"
+termctrl wait "$TERMINAL_E2E_SESSION_NAME" "enter copy"
 termctrl mark "$TERMINAL_E2E_SESSION_NAME" copy-context
 termctrl send "$TERMINAL_E2E_SESSION_NAME" escape
 termctrl wait "$TERMINAL_E2E_SESSION_NAME" "Add to GitHub Actions"

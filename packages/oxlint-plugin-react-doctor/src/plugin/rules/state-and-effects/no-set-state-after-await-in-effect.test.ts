@@ -2674,3 +2674,54 @@ describe("fresh cancellation guard aliases", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("loop-local cleanup guards after await", () => {
+  it.each([
+    ["continue", "if (ignored) continue;", "", "", 0],
+    ["return", "if (ignored) { return; }", "", "", 0],
+    [
+      "setter on the next iteration before the await",
+      "if (ignored) continue;",
+      "",
+      "",
+      1,
+      "setValue(value);",
+    ],
+    ["inverted guard", "if (!ignored) continue;", "", "", 1],
+    ["new suspension", "if (ignored) continue; await Promise.resolve(value);", "", "", 1],
+    ["post-loop setter", "if (ignored) continue;", "setValue(values[0]);", "", 1],
+    [
+      "reset in sibling callback",
+      "if (ignored) continue;",
+      "",
+      "queueMicrotask(() => { ignored = false; });",
+      1,
+    ],
+  ])("handles %s", (_name, guard, after, beforeRun, expected, beforeAwait = "") => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useState } from "react";
+      function Example({ values }) {
+        const [current, setValue] = useState(null);
+        useEffect(() => {
+          let ignored = false;
+          const run = async () => {
+            for (const value of values) {
+              ${beforeAwait}
+              await Promise.resolve(value);
+              ${guard}
+              setValue(value);
+            }
+            ${after}
+          };
+          ${beforeRun}
+          void run();
+          return () => { ignored = true; };
+        }, [values]);
+        return current;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

@@ -4,7 +4,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 
 export const isDirectNamedReactHookCall = (
   hook: EsTreeNode | null | undefined,
-  api: "useCallback" | "useEffect" | "useRef",
+  api: "useCallback" | "useEffect" | "useMemo" | "useRef" | "useState",
   scopes: ScopeAnalysis,
 ): boolean => {
   if (

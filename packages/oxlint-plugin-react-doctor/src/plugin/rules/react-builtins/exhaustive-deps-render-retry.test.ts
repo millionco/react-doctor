@@ -59,7 +59,7 @@ describe("exhaustive-deps render retry memo fallback", () => {
 
   it("still requires the derived array in the dependency list", () => {
     expect(run(renderRetryMemo.replace("[visibleChanges]", "[]"))).toEqual([
-      "`useMemo` can run with a stale `visibleChanges.join` & show your users old data.",
+      "Include `visibleChanges.join` explicitly in an inline dependency array for `useMemo`.",
     ]);
   });
 });

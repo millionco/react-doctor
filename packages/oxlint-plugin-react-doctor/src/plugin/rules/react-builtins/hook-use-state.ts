@@ -2,6 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 
@@ -77,6 +79,7 @@ export const hookUseState = defineRule({
   category: "Architecture",
   create: (context) => {
     const { allowDestructuredState } = resolveSettings(context.settings);
+    const allowValueOnlyState = shouldUseCuratedPortBehavior(context.settings);
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -88,6 +91,20 @@ export const hookUseState = defineRule({
         if (
           isNodeOfType(expressionParent, "ArrowFunctionExpression") &&
           expressionParent.body === expressionRoot
+        ) {
+          return;
+        }
+        if (
+          allowValueOnlyState &&
+          isNodeOfType(expressionParent, "VariableDeclarator") &&
+          expressionParent.init === expressionRoot &&
+          isNodeOfType(expressionParent.parent, "VariableDeclaration") &&
+          expressionParent.parent.kind === "const" &&
+          isNodeOfType(expressionParent.id, "ArrayPattern") &&
+          expressionParent.id.elements.length === 1 &&
+          isNodeOfType(expressionParent.id.elements[0], "Identifier") &&
+          splitLeadingLowercase(expressionParent.id.elements[0].name) &&
+          isDirectNamedReactHookCall(node, "useState", context.scopes)
         ) {
           return;
         }

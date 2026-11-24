@@ -402,3 +402,41 @@ describe("rerender-functional-setstate — exclusive click branches", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("rerender-functional-setstate — numeric state-name shadows", () => {
+  it.each([
+    ["local number on the left", "const count = 41; setCount(count + 1);", 0],
+    ["local number on the right", "const count = 41; setCount(1 + count);", 0],
+    ["typed numeric initializer", "const count = (41 as number); setCount(count + 1);", 0],
+    ["captured state", "setCount(count + 1);", 1],
+    ["local alias of captured state", "const count = captured; setCount(count + 1);", 1],
+    ["captured state in the other operand", "const count = 1; setCount(count + captured);", 1],
+    ["mutable local number", "let count = 41; count = captured; setCount(count + 1);", 1],
+    ["shadowed setter", "const count = 41; const setCount = external; setCount(count + 1);", 1],
+  ])("handles %s", (_name, callbackBody, count) => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `import { useState } from "react";
+      function Counter({ external }) {
+        const [count, setCount] = useState(0);
+        const captured = count;
+        return <button onClick={() => setTimeout(() => { ${callbackBody} }, 1)}>{count}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+
+  it("preserves the warning when the hook provider is unknown", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function Counter() {
+        const [count, setCount] = useState(0);
+        setTimeout(() => { const count = 41; setCount(count + 1); }, 1);
+        return count;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

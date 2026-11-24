@@ -65,3 +65,102 @@ describe("guarded Maps stored in private state records", () => {
     expect(getDiagnostics({ afterCopy: "base.entries.set(row.id, row);" })).toHaveLength(2);
   });
 });
+
+const getPreviousRecordCopyDiagnostics = ({
+  copy = "previous.items",
+  reset,
+  initialValue = "{ items: new Map(), defaults: new Map() }",
+  afterCopy = "",
+  beforeCopy = "",
+}: {
+  copy?: string;
+  reset?: string;
+  initialValue?: string;
+  afterCopy?: string;
+  beforeCopy?: string;
+} = {}) => {
+  const result = runRule(
+    noSideEffectInStateUpdaterFunction,
+    `
+    import { useState } from "react";
+    export function Items({ item, loadItems, inspect }) {
+      const [inventory, setInventory] = useState(() => (${initialValue}));
+      const update = () => {
+        ${reset ?? ""}
+        setInventory(previous => {
+          let next = previous.items;
+          ${beforeCopy}
+          if (next === previous.items) next = new Map(${copy});
+          next.set(item, true);
+          ${afterCopy}
+          return next === previous.items ? previous : { ...previous, items: next };
+        });
+      };
+      return <button onClick={update}>{inventory.items.size}</button>;
+    }
+    `,
+  );
+  expect(result.parseErrors).toEqual([]);
+  return result.diagnostics;
+};
+
+describe("guarded copies of the previous state's Map field", () => {
+  it.each(["previous.items", "next"])("accepts cloning %s behind the identity guard", (copy) => {
+    expect(getPreviousRecordCopyDiagnostics({ copy })).toHaveLength(0);
+  });
+
+  it("accepts an expression-bodied writer with a proved unchanged branch", () => {
+    expect(
+      getPreviousRecordCopyDiagnostics({
+        reset: "setInventory(previous => previous.items.size ? previous : { items: new Map() });",
+      }),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    ["copies another field", { copy: "previous.defaults" }],
+    ["copies through computed access", { copy: 'previous["items"]' }],
+    ["reads a getter", { initialValue: "{ get items() { return loadItems(); } }" }],
+    ["escapes its record", { beforeCopy: "inspect(previous);" }],
+    ["escapes its map", { beforeCopy: "inspect(previous.items);" }],
+    [
+      "can adopt external state from its unchanged-state writer",
+      { reset: "setInventory(previous => previous.items.size ? previous : loadItems());" },
+    ],
+  ])("retains the write warning when it %s", (_description, options) => {
+    expect(getPreviousRecordCopyDiagnostics(options).length).toBeGreaterThan(0);
+  });
+
+  it("retains the borrowed write after a guarded copy", () => {
+    expect(
+      getPreviousRecordCopyDiagnostics({ afterCopy: "previous.items.set(item, true);" }),
+    ).toHaveLength(2);
+  });
+});
+
+it("retains the warning when a host reference can replace the Map provider", () => {
+  const result = runRule(
+    noSideEffectInStateUpdaterFunction,
+    `
+    import { useState } from "react";
+    export function List({ id, mapProvider }) {
+      const [store, setStore] = useState(() => ({ entries: new Map() }));
+      const attach = (node) => {
+        const view = node?.ownerDocument.defaultView;
+        if (view) view.Map = mapProvider;
+      };
+      const update = () => {
+        setStore(previous => {
+          let next = previous.entries;
+          if (next === previous.entries) next = new Map(previous.entries);
+          next.set(id, true);
+          return next === previous.entries ? previous : { ...previous, entries: next };
+        });
+      };
+      return <button ref={attach} onClick={update}>{store.entries.size}</button>;
+    }
+    `,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
+});

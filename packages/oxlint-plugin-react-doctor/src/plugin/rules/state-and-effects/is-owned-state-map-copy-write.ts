@@ -43,6 +43,17 @@ const unsafeRuntimeMembers = new Set([
   "createRequire",
   "eval",
 ]);
+const hostRealmMembers = new Set([
+  "contentDocument",
+  "contentWindow",
+  "defaultView",
+  "frameElement",
+  "frames",
+  "opener",
+  "ownerDocument",
+  "parent",
+  "top",
+]);
 const plainObjectHelpers = new Set(["entries", "hasOwn", "is", "keys", "values"]);
 const stockRuntimeCache = new WeakMap<ScopeAnalysis, boolean>();
 const MAX_RECORD_EXPRESSION_DEPTH = 8;
@@ -111,7 +122,7 @@ const hasStockRuntimeBindings = (scopes: ScopeAnalysis): boolean => {
           isNodeOfType(call, "CallExpression") &&
           !call.optional &&
           call.callee === member;
-      } else if (unsafeRuntimeNames.has(node.name)) {
+      } else if (unsafeRuntimeNames.has(node.name) || hostRealmMembers.has(node.name)) {
         closed = false;
       }
     } else if (
@@ -138,6 +149,8 @@ const hasStockRuntimeBindings = (scopes: ScopeAnalysis): boolean => {
     ) {
       const property = getResolvedStaticPropertyName(node, scopes);
       closed =
+        property !== "Map" &&
+        !hostRealmMembers.has(property ?? "") &&
         !unsafeRuntimeMembers.has(property ?? "") &&
         !(
           node.computed &&
@@ -189,6 +202,17 @@ const isPlainStateSlotRead = (
     isNodeOfType(use, "VariableDeclarator") &&
     use.init === value &&
     use.id === copy.bindingIdentifier
+  );
+};
+
+const isReturnedRecordBranch = (record: EsTreeNode): boolean => {
+  let value = findTransparentExpressionRoot(record);
+  while (isNodeOfType(value.parent, "ConditionalExpression") && value.parent.test !== value) {
+    value = findTransparentExpressionRoot(value.parent);
+  }
+  return (
+    (isNodeOfType(value.parent, "ReturnStatement") && value.parent.argument === value) ||
+    (isNodeOfType(value.parent, "ArrowFunctionExpression") && value.parent.body === value)
   );
 };
 
@@ -380,11 +404,13 @@ const provePrivateStateRecord = (
   }
   // A producer may read a fresh-or-previous base without returning that base directly.
   const owningPrevious = updaterParameters.get(updater);
-  const baseInitializer = getDirectConstInitializer(base);
-  if (!owningPrevious || !baseInitializer || !isRecord(baseInitializer, owningPrevious))
-    return false;
-  provenRecords.add(base);
-  recordAliases.add(base);
+  if (!owningPrevious) return false;
+  if (base !== owningPrevious) {
+    const baseInitializer = getDirectConstInitializer(base);
+    if (!baseInitializer || !isRecord(baseInitializer, owningPrevious)) return false;
+    provenRecords.add(base);
+    recordAliases.add(base);
+  }
 
   const visitNullableRenderAlias = (node: EsTreeNode, symbol: SymbolDescriptor): boolean => {
     const expr = stripParenExpression(node);
@@ -413,13 +439,7 @@ const provePrivateStateRecord = (
           parent.argument === value)
       )
         continue;
-      if (
-        isNodeOfType(parent, "ReturnStatement") &&
-        findEnclosingFunction(parent) === owner &&
-        isWriterRecord &&
-        parent.argument === value
-      )
-        continue;
+      if (isWriterRecord && isReturnedRecordBranch(value)) continue;
       if (
         isNodeOfType(parent, "SpreadElement") &&
         parent.argument === value &&
@@ -527,14 +547,22 @@ export const isOwnedStateMapCopyWrite = (
     !matchesSymbol(write.left, local, scopes) ||
     !isNodeOfType(write.right, "NewExpression") ||
     write.right.arguments.length !== 1 ||
-    !matchesSymbol(write.right.arguments[0], local, scopes) ||
     !isUnmodifiedMapConstruction(write.right, scopes)
+  )
+    return false;
+  const copySource = stripParenExpression(write.right.arguments[0]);
+  if (
+    !matchesSymbol(copySource, local, scopes) &&
+    (!isNodeOfType(copySource, "MemberExpression") ||
+      copySource.optional ||
+      copySource.computed ||
+      !matchesSymbol(copySource.object, base, scopes) ||
+      getStaticPropertyName(copySource) !== property)
   )
     return false;
 
   // The only write to this alias replaces the borrowed Map. An adjacent
   // identity guard makes the set safe once the owning slot is proved stable.
-  const copySource = write.right.arguments[0];
   const receiver = call.callee.object;
   if (
     !hasCompleteSymbolReferences(local, scopes.rootScope.node, scopes) ||
@@ -553,7 +581,7 @@ export const isOwnedStateMapCopyWrite = (
             matchesSymbol(parent.value, local, scopes))) &&
         getResolvedStaticPropertyName(parent, scopes) === property &&
         isNodeOfType(parent.parent, "ObjectExpression") &&
-        isNodeOfType(parent.parent.parent, "ReturnStatement")
+        isReturnedRecordBranch(parent.parent)
       )
         return true;
       return (

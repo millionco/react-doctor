@@ -23,6 +23,28 @@ describe("no-ref-callback-cleanup-before-react-19", () => {
     expect(result.diagnostics[0].message).toContain("React 18");
   });
 
+  it("describes the ignored return value when the callback also handles null", () => {
+    const result = runRuleForCode(`
+      const Item = ({ release }) => (
+        <div ref={(node) => {
+          if (node === null) {
+            release();
+            return;
+          }
+          return () => release();
+        }} />
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toMatchObject([
+      {
+        message:
+          "React 18 ignores the cleanup function returned by this ref callback. If you rely on this function for cleanup, handle the ref's `null` call in React 18 or require React 19.",
+      },
+    ]);
+  });
+
   it("reports concise and conditionally returned cleanup functions", () => {
     const result = runRuleForCode(`
       const Examples = ({ remove }) => (

@@ -120,7 +120,7 @@ export const noRefCallbackCleanupBeforeReact19 = defineRule({
       context.report({
         node,
         message:
-          "This ref callback returns a cleanup function, but React 18 ignores ref cleanup returns, so the cleanup never runs. Handle detachment when React calls the ref with `null`, or require React 19.",
+          "React 18 ignores the cleanup function returned by this ref callback. If you rely on this function for cleanup, handle the ref's `null` call in React 18 or require React 19.",
       });
     },
   }),

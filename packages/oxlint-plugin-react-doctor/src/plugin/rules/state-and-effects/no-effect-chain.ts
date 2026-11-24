@@ -2452,7 +2452,7 @@ export const noEffectChain = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
+    "Derive values during render when possible. When the originating event handler has enough information, update related state together there.",
   create: (context: RuleContext) => {
     const isUnreachableMountEffect = createUnreachableMountEffectProof(context);
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
@@ -2576,7 +2576,7 @@ export const noEffectChain = defineRule({
 
           context.report({
             node: readerEffect.node,
-            message: `Your screen redraws several times from a single action because one useEffect changes "${chainedStateName}", which sets off this one.`,
+            message: `An update to "${chainedStateName}" in another effect can trigger this effect after a render.`,
           });
         }
       }

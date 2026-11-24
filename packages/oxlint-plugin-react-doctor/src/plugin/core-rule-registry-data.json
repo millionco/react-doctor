@@ -4505,7 +4505,7 @@
       "id": "no-effect-chain",
       "title": "Effects chained together",
       "severity": "warn",
-      "recommendation": "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
+      "recommendation": "Derive values during render when possible. When the originating event handler has enough information, update related state together there.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

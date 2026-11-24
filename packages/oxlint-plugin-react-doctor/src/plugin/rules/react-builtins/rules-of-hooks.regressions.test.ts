@@ -1525,3 +1525,61 @@ describe("imported static data getters", () => {
     }
   });
 });
+
+describe("react-builtins/rules-of-hooks — named React use aliases", () => {
+  it.each([
+    ["in a conditional", "return enabled ? useValue(context) : null;"],
+    ["inside a loop", "for (const resource of contexts) useValue(resource); return null;"],
+    ["after an early return", "if (!enabled) return null; return useValue(context);"],
+  ])("allows an exact named React use alias %s", (_name, body) => {
+    const result = runTsx(`
+      import { use as useValue } from "react";
+      export function Example({ context, contexts, enabled }) { ${body} }
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "wrapped in try/catch",
+      'import { use as useValue } from "react";',
+      "function Example() { try { return useValue(resource); } catch { return null; } }",
+    ],
+    [
+      "in an event handler",
+      'import { use as useValue } from "react";',
+      "function Example() { return <button onClick={() => useValue(context)}>Read</button>; }",
+    ],
+    [
+      "in an async component",
+      'import { use as useValue } from "react";',
+      "async function Example() { return useValue(context); }",
+    ],
+    [
+      "at module scope",
+      'import { use as useValue } from "react";',
+      "const value = useValue(context);",
+    ],
+    [
+      "aliased from a regular React Hook",
+      'import { useContext as useValue } from "react";',
+      "function Example({ enabled }) { return enabled ? useValue(context) : null; }",
+    ],
+    [
+      "imported from another module",
+      'import { use as useValue } from "./hooks.js";',
+      "function Example({ enabled }) { return enabled ? useValue(context) : null; }",
+    ],
+    [
+      "shadowed by another React Hook",
+      'import { use as useValue, useContext } from "react";',
+      "function Example({ enabled }) { const useValue = useContext; return enabled ? useValue(context) : null; }",
+    ],
+  ])("preserves the warning %s", (_name, declaration, body) => {
+    const result = runTsx(`${declaration}
+${body}`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

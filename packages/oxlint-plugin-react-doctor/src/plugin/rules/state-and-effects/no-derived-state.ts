@@ -9,6 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isObservedCommittedStateSnapshot } from "./utils/is-observed-committed-state-snapshot.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
@@ -85,6 +86,9 @@ export const noDerivedState = defineRule({
             (!fact.isRenderKnownCopy || fact.resetsSourceState) &&
             !isRenderKnownSelectionRepair(analysis, node, fact)
           ) {
+            continue;
+          }
+          if (isObservedCommittedStateSnapshot(node, fact.callExpression, context.scopes)) {
             continue;
           }
           reportStateWrite(fact.callExpression, fact.stateDeclarator);

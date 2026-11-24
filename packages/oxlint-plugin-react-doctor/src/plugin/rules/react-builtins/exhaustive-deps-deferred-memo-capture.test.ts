@@ -44,7 +44,7 @@ describe("exhaustive-deps memo presence guard for a debounced callback", () => {
   it("retains the stale guard when the relative timer is unverified", () => {
     vi.mocked(hasVerifiedStockTsupMemoFactory).mockReturnValue(false);
     expect(run(source).diagnostics.map(({ message }) => message)).toContainEqual(
-      expect.stringContaining("stale `onQuery`"),
+      expect.stringContaining("Include `onQuery`"),
     );
   });
 
@@ -73,7 +73,7 @@ describe("exhaustive-deps memo presence guard for a debounced callback", () => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.map(({ message }) => message)).toContainEqual(
-      expect.stringContaining("stale `onQuery`"),
+      expect.stringContaining("Include `onQuery`"),
     );
     expect(hasVerifiedStockTsupMemoFactory).not.toHaveBeenCalled();
   });

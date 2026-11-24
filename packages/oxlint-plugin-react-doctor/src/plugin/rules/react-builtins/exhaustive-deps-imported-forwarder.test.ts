@@ -23,7 +23,7 @@ describe("exhaustive-deps imported function forwarding", () => {
       settings: { "react-doctor": { portedRuleMode: "upstream" } },
     });
     expect(upstream.diagnostics).toHaveLength(1);
-    expect(upstream.diagnostics[0]?.message).toContain("stale `getRate`");
+    expect(upstream.diagnostics[0]?.message).toContain("Include `getRate`");
   });
 
   it.each([
@@ -75,7 +75,7 @@ describe("exhaustive-deps imported function forwarding", () => {
     const result = runRule(exhaustiveDeps, RELAY.replace(original, replacement));
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("stale `getRate`");
+    expect(result.diagnostics[0]?.message).toContain("Include `getRate`");
   });
 
   it("keeps the warning for a React namespace hook call", () => {
@@ -88,7 +88,7 @@ describe("exhaustive-deps imported function forwarding", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("stale `getRate`");
+    expect(result.diagnostics[0]?.message).toContain("Include `getRate`");
   });
 
   it("retains an unrelated missing dependency", () => {
@@ -98,7 +98,7 @@ describe("exhaustive-deps imported function forwarding", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("stale `displayCurrency`");
+    expect(result.diagnostics[0]?.message).toContain("Include `displayCurrency`");
     expect(result.diagnostics[0]?.message).not.toContain("getRate");
   });
 
@@ -112,6 +112,6 @@ describe("exhaustive-deps imported function forwarding", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("stale `getRate`");
+    expect(result.diagnostics[0]?.message).toContain("Include `getRate`");
   });
 });

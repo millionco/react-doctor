@@ -4,7 +4,7 @@
 // otherwise behavior-neutral.
 
 export const buildMissingDepMessage = (hookName: string, depName: string): string =>
-  `\`${hookName}\` can run with a stale \`${depName}\` & show your users old data.`;
+  `Include \`${depName}\` explicitly in an inline dependency array for \`${hookName}\`.`;
 
 export const buildUnnecessaryDepMessage = (hookName: string, depName: string): string =>
   `\`${hookName}\` re-runs whenever \`${depName}\` changes even though it never uses it.`;

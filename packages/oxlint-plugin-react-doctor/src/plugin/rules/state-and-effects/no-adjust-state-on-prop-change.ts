@@ -25,6 +25,7 @@ import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle
 
 import { createMountPropResetProof } from "./is-unreachable-mount-prop-reset.js";
 import { isPortalMountStateWrite } from "./utils/is-portal-mount-state-write.js";
+import { isStableProjectedEffectDependency } from "./utils/is-stable-projected-effect-dependency.js";
 
 const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWriteFact): boolean => {
   if (fact.writesPropDerivedMemberValue) return true;
@@ -92,14 +93,19 @@ export const noAdjustStateOnPropChange = defineRule({
         if (!analysis) return;
         const dependencyReferences = getEffectDepsRefs(analysis, node);
         if (!dependencyReferences) return;
-        const hasPropDependency = dependencyReferences
-          .flatMap((reference) =>
-            isState(analysis, reference) ? [] : getUpstreamRefs(analysis, reference),
-          )
-          .some(
-            (reference) =>
-              isProp(analysis, reference) && !isOnlyCalledInEffect(reference, node, analysis),
-          );
+        const hasPropDependency = dependencyReferences.some(
+          (reference) =>
+            !isState(analysis, reference) &&
+            getUpstreamRefs(analysis, reference).some(
+              (upstream) =>
+                isProp(analysis, upstream) && !isOnlyCalledInEffect(upstream, node, analysis),
+            ) &&
+            !isStableProjectedEffectDependency(
+              reference.identifier as unknown as EsTreeNode,
+              node,
+              context.scopes,
+            ),
+        );
         if (!hasPropDependency) return;
         const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename, true);
         if (hasCleanup(analysis, node)) return;

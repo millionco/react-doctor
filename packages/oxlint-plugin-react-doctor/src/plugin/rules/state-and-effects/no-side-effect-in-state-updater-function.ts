@@ -57,6 +57,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
+import { getUnreachableUpdaterHelperBranch } from "./utils/get-unreachable-updater-helper-branch.js";
 
 const MESSAGE =
   "This side-effecting call runs inside a state updater, which React may invoke more than once. Move it outside the setter after computing the next state.";
@@ -128,6 +129,7 @@ const programsActivatingDayjsBadMutable = new WeakSet<EsTreeNode>();
 interface ExecutedFunctionAnalysis {
   arrayParameterSymbolIds: Set<number>;
   functions: Set<EsTreeNode>;
+  unreachableBranches: Map<EsTreeNode, EsTreeNode>;
 }
 
 const isReactStateSetterCall = (
@@ -2102,10 +2104,14 @@ const nodeIsReachable = (
 const collectExecutedFunctions = (
   updaterFunction: EsTreeNode,
   updaterParameterIsArray: boolean,
-  invocationReferenceNode: EsTreeNode,
+  invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): ExecutedFunctionAnalysis => {
   const executedFunctions = new Set<EsTreeNode>([updaterFunction]);
+  const unreachableBranches = new Map<EsTreeNode, EsTreeNode>();
+  const isInlineUpdater =
+    invocationReferenceNode.arguments[0] === updaterFunction &&
+    isNodeOfType(updaterFunction, "ArrowFunctionExpression");
   const arrayParameterSymbolIds = new Set<number>();
   const reachableBlockIdsByCfg = new WeakMap<FunctionCfg, ReadonlySet<number>>();
   if (updaterParameterIsArray && isFunctionLike(updaterFunction)) {
@@ -2120,7 +2126,12 @@ const collectExecutedFunctions = (
     const currentFunction = pendingFunctions.pop();
     if (!currentFunction) break;
     const currentFunctionCfg = context.cfg.cfgFor(currentFunction);
+    const unreachableBranch = isInlineUpdater
+      ? getUnreachableUpdaterHelperBranch(currentFunction, updaterFunction, context.scopes)
+      : null;
+    if (unreachableBranch) unreachableBranches.set(currentFunction, unreachableBranch);
     walkOwnFunctionScope(currentFunction, (child: EsTreeNode) => {
+      if (child === unreachableBranch) return false;
       if (isStaticallyUnreachable(child, currentFunction)) return;
       if (
         currentFunctionCfg &&
@@ -2234,7 +2245,7 @@ const collectExecutedFunctions = (
       pendingFunctions.push(callbackFunction);
     });
   }
-  return { arrayParameterSymbolIds, functions: executedFunctions };
+  return { arrayParameterSymbolIds, functions: executedFunctions, unreachableBranches };
 };
 
 export const noSideEffectInStateUpdaterFunction = defineRule({
@@ -2264,7 +2275,10 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
         const executedFunctions = executedFunctionAnalysis.functions;
         for (const executedFunction of executedFunctions) {
           const functionCfg = context.cfg.cfgFor(executedFunction);
+          const unreachableBranch =
+            executedFunctionAnalysis.unreachableBranches.get(executedFunction);
           walkOwnFunctionScope(executedFunction, (child: EsTreeNode) => {
+            if (child === unreachableBranch) return false;
             if (isStaticallyUnreachable(child, executedFunction)) return;
             if (functionCfg && !nodeIsReachable(child, functionCfg, reachableBlockIdsByCfg)) return;
             const propertyWrite = getExternallyVisiblePropertyWrite(

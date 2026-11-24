@@ -1902,3 +1902,64 @@ describe("copy-on-write updater containers", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("contradictory local updater helper guards", () => {
+  it.each([
+    [
+      "unreachable side effects in a nested helper",
+      "if (!ready) emitUnavailable();",
+      "if (ready) announce();",
+      0,
+    ],
+    [
+      "reachable else and following side effects",
+      "if (!ready) emitUnavailable(); else console.log('ready'); console.log('done');",
+      "if (ready) { announce(); }",
+      2,
+    ],
+    [
+      "a second unguarded entry",
+      "if (!ready) emitUnavailable();",
+      "if (ready) announce(); announce();",
+      1,
+    ],
+    [
+      "a different binding with the same name",
+      "if (!ready) emitUnavailable();",
+      "const ready = true; if (ready) announce();",
+      1,
+    ],
+    [
+      "a possible dynamically evaluated second entry",
+      "if (!ready) emitUnavailable();",
+      "if (ready) announce(); eval(source);",
+      1,
+    ],
+    [
+      "an argument that can run user code",
+      "if (!ready) emitUnavailable();",
+      "if (ready) announce(afterSelection());",
+      1,
+    ],
+  ])("reports only %s", (_name, helperBody, updaterBody, count) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+        import { useState } from "react";
+        const Panel = ({ active, afterSelection, source }) => {
+          const ready = active;
+          const emitUnavailable = () => { console.log("unavailable"); };
+          const announce = () => { ${helperBody} };
+          const [, setCount] = useState(0);
+          const handleClick = () => setCount((value) => {
+            ${updaterBody}
+            return value + 1;
+          });
+          return <button onClick={handleClick} />;
+        };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(count);
+  });
+});

@@ -6,6 +6,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { isNextFileActive } from "../../utils/is-next-file.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -1162,7 +1163,9 @@ export const rulesOfHooks = defineRule({
         // conditionals) BUT still must be inside a component / custom
         // hook scope — the render-scope escape counts as one — and NOT
         // inside try / catch / finally.
-        if (isReactUseHook(hookName)) {
+        const isDirectReactUseAlias =
+          enclosing.isComponentOrHook && isDirectNamedReactHookCall(node, "use", context.scopes);
+        if (isReactUseHook(hookName) || isDirectReactUseAlias) {
           let outerWalker: EsTreeNode | null = enclosing.node;
           let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {

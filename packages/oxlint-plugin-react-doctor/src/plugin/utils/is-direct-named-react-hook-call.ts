@@ -5,6 +5,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 export const isDirectNamedReactHookCall = (
   hook: EsTreeNode | null | undefined,
   api:
+    | "use"
     | "useCallback"
     | "useEffect"
     | "useLayoutEffect"

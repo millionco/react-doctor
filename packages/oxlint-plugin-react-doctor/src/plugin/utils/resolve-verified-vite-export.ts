@@ -1,5 +1,6 @@
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../constants/thresholds.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 import { getStableLexicalBindingValue } from "./get-stable-lexical-binding-value.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import type {
@@ -49,18 +50,36 @@ const resolveInModule = (
       const binding = module.scopes.rootScope.symbolsByName.get(localName);
       if (!binding || binding.references.some((reference) => reference.flag !== "read"))
         return null;
-      if (binding.kind === "import" && direct.localName.kind === "Name") {
-        const imported = resolveImportedApiReference(binding.bindingIdentifier, module.scopes);
-        return imported?.importedName && !imported.isNamespace
-          ? (follow(imported.source, imported.importedName) ?? null)
+      const defaultStatement =
+        direct.localName.kind === "Default"
+          ? module.programNode.body.find((statement) =>
+              isNodeOfType(statement, "ExportDefaultDeclaration"),
+            )
           : null;
+      const snapshotValue = isNodeOfType(defaultStatement, "ExportDefaultDeclaration")
+        ? stripParenExpression(defaultStatement.declaration)
+        : null;
+      // An export-default expression allocates a distinct ESM binding, even
+      // when its immutable supplied value can be inspected through the import.
+      const snapshot =
+        isNodeOfType(snapshotValue, "Identifier") && snapshotValue.name === localName
+          ? defaultStatement
+          : null;
+      if (binding.kind === "import") {
+        if (direct.localName.kind !== "Name" && !snapshot) return null;
+        const imported = resolveImportedApiReference(binding.bindingIdentifier, module.scopes);
+        const supplier =
+          imported?.importedName && !imported.isNamespace
+            ? follow(imported.source, imported.importedName)
+            : null;
+        return supplier ? (snapshot ? { ...supplier, bindingIdentity: snapshot } : supplier) : null;
       }
       const value = getStableLexicalBindingValue(binding, module.scopes);
       if (!value) return null;
       return {
         module,
         exportedNode: value,
-        bindingIdentity: binding.bindingIdentifier,
+        bindingIdentity: snapshot ?? binding.bindingIdentifier,
       };
     }
     if (exportedName !== "default" || module.programNode.type !== "Program") return null;

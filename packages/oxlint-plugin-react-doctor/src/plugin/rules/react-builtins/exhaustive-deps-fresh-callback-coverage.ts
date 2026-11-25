@@ -12,7 +12,7 @@ import { isDirectNamedReactHookCall } from "../../utils/is-direct-named-react-ho
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
-const isBoundReactMethodCall = (
+export const isBoundReactMethodCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   method: "useCallback" | "useEffect",
   scopes: ScopeAnalysis,

@@ -5,6 +5,7 @@ import { getContextDisposalFactoryCall } from "./utils/get-context-disposal-fact
 import { getEffectCallback } from "./utils/get-effect-callback.js";
 import { getContextTimeoutCallback } from "./utils/get-context-timeout-callback.js";
 import { getFreshCallbackCoveredBindings } from "./rules/react-builtins/exhaustive-deps-fresh-callback-coverage.js";
+import { getEffectBooleanShortCircuitTargets } from "./rules/react-builtins/exhaustive-deps-verified-boolean-branches.js";
 import { resolveDirectLexicalImport } from "./utils/resolve-direct-lexical-import.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -762,7 +763,8 @@ export const collectCrossFileDependencyProbes = (input: {
         return;
       scopes ??= analyzeScopes(program);
       hasCompilerDependentCoverage =
-        getFreshCallbackCoveredBindings(node, scopes, () => true).size > 0;
+        getFreshCallbackCoveredBindings(node, scopes, () => true).size > 0 ||
+        getEffectBooleanShortCircuitTargets(node, scopes).size > 0;
     });
     // The compiler proof depends on live toolchain files and environment options.
     if (hasCompilerDependentCoverage) return null;

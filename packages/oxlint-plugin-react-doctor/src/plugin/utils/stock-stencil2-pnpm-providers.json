@@ -1,0 +1,46 @@
+{
+  "stencil": {
+    "packageName": "@stencil/core",
+    "version": "2.22.3",
+    "files": {
+      "bin/stencil": "7cf8d8cf620fc6868eec6e165a75dd1f776989fca42fff7e727a359a1e968718",
+      "cli/index.cjs": "5a133586c4ebf85d6a053c402f3a1c5a440e39e825ddb9277ac5993034c55da0",
+      "compiler/stencil.js": "145ed982f6f9d109102b38d544ecff9575a1a4abadfa6b296fe9b4ab55c15059",
+      "internal/stencil-core/index.cjs": "dc42cb84d2120879f257e1d96a5b1c41040f35008262191d3b1482910582c474",
+      "package.json": "a2142c4227f873d70cd78b59a5a1733c256324034330734cbd249b18f756ff02",
+      "sys/node/index.js": "39be394293f7abb8a2bfd36685064bf486526f473d9af1a18538863d18d54493"
+    },
+    "memberCount": 250,
+    "contentDigest": "97fd221633cecd02ad99d97acff8cb25849271e86d167de8c79fa99be0472dc1"
+  },
+  "lightningCss": {
+    "packageName": "lightningcss",
+    "version": "1.29.3",
+    "files": {
+      "node/index.js": "0305336579d3c27d8069fd8b6ead4f972afb4da5faf761f854a5bddecda7522e",
+      "package.json": "fae25ae099ad06542a1b66707fb305a29e34af5671043711b7ed3bb2b8d56742"
+    },
+    "memberCount": 14,
+    "contentDigest": "d3ea33f929be1229d915350975ae19551c92c3276d9467564054ccc1b2fb9d6f"
+  },
+  "detectLibc": {
+    "packageName": "detect-libc",
+    "version": "2.0.3",
+    "files": {
+      "lib/detect-libc.js": "603decd740a1a52835b88d6edd395bda6ea58ecd480d49f4662f3358d91f0fa6",
+      "package.json": "b4b4f146d873d28909e99015f891fbf8ce922719aa0788533eb81ae814007871"
+    },
+    "memberCount": 7,
+    "contentDigest": "ef9c9a0094f3412f65ccc3f58e87fabb9d6d83cc5a4c93637e100378b58b13c7"
+  },
+  "lightningCssNative": {
+    "packageName": "lightningcss-linux-x64-gnu",
+    "version": "1.29.3",
+    "files": {
+      "lightningcss.linux-x64-gnu.node": "f2b04a737b1487bef05a8bf532a9ee6db376b2254fd4946e2ed5d66b0117d7ad",
+      "package.json": "8260eac72225faf8903bf908d19b78a3a4a37d14614cf6915b17fd4898c050b9"
+    },
+    "memberCount": 4,
+    "contentDigest": "be4cb46ff0f93282db2abc4dd374e7a2762371ff56dad8a00277b9289a2b3053"
+  }
+}

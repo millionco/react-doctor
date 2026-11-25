@@ -109,6 +109,8 @@ export const createCrossFileClosureSnapshot = (
       )
         continue;
       const ruleIds = ["rules-of-hooks", "no-pass-live-state-to-parent"];
+      if (filename.endsWith(".tsx") && sourceText.includes("@stencil/core"))
+        ruleIds.push("no-unknown-property");
       if (sourceText.includes("useEffect") || sourceText.includes("\\u"))
         ruleIds.push("exhaustive-deps");
       if (sourceText.includes("focus") || sourceText.includes("\\u"))

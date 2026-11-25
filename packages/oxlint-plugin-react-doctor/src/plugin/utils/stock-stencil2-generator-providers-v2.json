@@ -1,0 +1,55 @@
+{
+  "@stencil/react-output-target": {
+    "packageName": "@stencil/react-output-target",
+    "version": "0.4.0",
+    "files": {
+      "dist/output-react.js": "ad4bd09cafe4e7a476adc82cfe1d1c6cf04f000cbe5743a6380210b91b971b9d",
+      "dist/plugin.js": "225effb737aa2364e0acbda7f6ede17904dd5d773e053f98a9246842357a159b",
+      "dist/utils.js": "a7c21afda4affbb4f462fb1f19cecf6bd61ebd4ac9120e78f98d7b87cc3f4650",
+      "package.json": "0289620584f2a33a2f840879724825533ea0a30d4efb28ca8911ecbf2847d1ce"
+    },
+    "memberCount": 22,
+    "contentDigest": "c452f1f3ad46628ade3cac635c8d8d4c62e2432729685f39a1d7ba5863b69441"
+  },
+  "@stencil/vue-output-target": {
+    "packageName": "@stencil/vue-output-target",
+    "version": "0.7.0",
+    "files": {
+      "dist/output-vue.js": "f51a0e8b36aa3031b6d868a611c4239eb9fa5603b7389f51cf363082caf07de0",
+      "dist/plugin.js": "14e89b9ac346face99c1a4e88a8e1be1c5b3a034f47ebb035ee65c4de5bf64bd",
+      "package.json": "7825fe769f2378e8a085b1df1c539b124e5cfc38c5d9f26158b4e792861a7700"
+    },
+    "memberCount": 17,
+    "contentDigest": "d3f20c80a5e0971287ce78d818f417b96151f86e506c9f8a0bcbc6b525e64635"
+  },
+  "rollup-plugin-node-externals": {
+    "packageName": "rollup-plugin-node-externals",
+    "version": "5.1.3",
+    "files": {
+      "dist/esm/index.js": "283b0a964aacbbde45b6c6fbba36056e914ad59ff7340ccf7212f18f6447d194",
+      "package.json": "f25c0f8f0fa14bc533f8be68a4823110deefad7f52f5a1e3e0c640519bac4b0f"
+    },
+    "memberCount": 7,
+    "contentDigest": "3de606f8a5e573fdd4a5138ca00256918d3b89e72f705f8b74fb8010897b8e09"
+  },
+  "sass": {
+    "packageName": "sass",
+    "version": "1.86.2",
+    "files": {
+      "package.json": "66794f68885e7eed2e25c5e1fd3d705f64dff16d30e603392d2361689a2cd874",
+      "sass.node.mjs": "45c68fef99d4c4ce5bffc14a48297a386b115ac056264e739dce3fdc0ad13f53"
+    },
+    "memberCount": 36,
+    "contentDigest": "c591e759516f2db700ecd1b28a7f8af004460181e72e400f8524f8e16f72f111"
+  },
+  "immutable": {
+    "packageName": "immutable",
+    "version": "5.1.1",
+    "files": {
+      "dist/immutable.js": "c5f7150e368b527a0219b63739aab4eeced36b0e2c2c2b6aaced0fddc62014e6",
+      "package.json": "3952eea8fe9b41e14d85d12d23f6e65832e0bccf8f47cddf37dda20fb727049b"
+    },
+    "memberCount": 8,
+    "contentDigest": "e14ef621f66520adb2abd8aee87add2faf10e57f220d75ac75253edd2d2c5921"
+  }
+}

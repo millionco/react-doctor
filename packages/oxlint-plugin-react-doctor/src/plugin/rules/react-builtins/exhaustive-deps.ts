@@ -1,3 +1,8 @@
+import * as path from "node:path";
+import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import { getFreshCallbackCoveredBindings } from "./exhaustive-deps-fresh-callback-coverage.js";
+import { readNamedVite8CallbackCompiler } from "../../utils/read-named-vite8-callback-compiler.js";
+import { STOCK_VITE8_CALLBACK_PROFILE } from "../../utils/stock-vite8-callback-profile.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -2074,6 +2079,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
   category: "Correctness",
   create: (hostContext) => {
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(hostContext.settings);
+    let didVerifyFreshCallbackCompiler: boolean | undefined;
     const nodeStartOffset = (node: EsTreeNode): number | null => {
       const nodeWithOffsets = node as { start?: number; range?: [number, number] };
       if (typeof nodeWithOffsets.start === "number") return nodeWithOffsets.start;
@@ -2444,6 +2450,27 @@ If the missing value is recreated every render, move it inside the hook or stabi
           shouldUseCuratedBehavior,
         );
 
+        const freshCallbackCoverage = shouldUseCuratedBehavior
+          ? getFreshCallbackCoveredBindings(node, context.scopes, () => {
+              if (didVerifyFreshCallbackCompiler !== undefined)
+                return didVerifyFreshCallbackCompiler;
+              const root = getReactDoctorStringSetting(context.settings, "rootDirectory");
+              const filename = hostContext.filename;
+              const source = hostContext.getSourceText?.();
+              didVerifyFreshCallbackCompiler = Boolean(
+                root &&
+                filename &&
+                source &&
+                readNamedVite8CallbackCompiler(
+                  root,
+                  path.resolve(root, filename),
+                  source,
+                  STOCK_VITE8_CALLBACK_PROFILE,
+                ),
+              );
+              return didVerifyFreshCallbackCompiler;
+            })
+          : new Set<string>();
         const missingCaptureKeys: string[] = [];
         for (const captureKey of captureKeys) {
           let isCoveredByDeclared = false;
@@ -2453,7 +2480,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
               break;
             }
           }
-          if (isCoveredByDeclared) continue;
+          if (isCoveredByDeclared || freshCallbackCoverage.has(captureKey)) continue;
           missingCaptureKeys.push(captureKey);
         }
         const shouldGroupMissingDeps = !hasLiteralDepElement;

@@ -1,3 +1,4 @@
+import { getFreshCallbackCoveredBindings } from "./rules/react-builtins/exhaustive-deps-fresh-callback-coverage.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
@@ -681,6 +682,31 @@ export const collectCrossFileDependencyProbes = (input: {
     };
   } catch {
     return null;
+  }
+
+  if (
+    input.ruleIds.includes("exhaustive-deps") &&
+    staticImports.some((entry) => entry.moduleRequest.value === "react")
+  ) {
+    const program = getProgram();
+    attachParentReferences(program);
+    let scopes: ReturnType<typeof analyzeScopes> | undefined;
+    let hasCompilerDependentCoverage = false;
+    walkAst(program, (node) => {
+      if (hasCompilerDependentCoverage) return false;
+      if (!isNodeOfType(node, "CallExpression")) return;
+      const [callback, dependencies] = node.arguments;
+      if (
+        !isNodeOfType(callback, "ArrowFunctionExpression") ||
+        !isNodeOfType(dependencies, "ArrayExpression")
+      )
+        return;
+      scopes ??= analyzeScopes(program);
+      hasCompilerDependentCoverage =
+        getFreshCallbackCoveredBindings(node, scopes, () => true).size > 0;
+    });
+    // The compiler proof depends on live toolchain files and environment options.
+    if (hasCompilerDependentCoverage) return null;
   }
 
   const collectorInput: CrossFileDependencyCollectorInput = {

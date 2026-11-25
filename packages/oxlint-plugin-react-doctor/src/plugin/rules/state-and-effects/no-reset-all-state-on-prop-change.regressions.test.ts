@@ -277,7 +277,9 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("clears all state");
+    expect(result.diagnostics[0]?.message).toBe(
+      "This effect clears all state after a prop changes, which can cost an extra render.",
+    );
   });
 
   describe("Boolean render gating", () => {

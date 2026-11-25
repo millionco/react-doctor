@@ -22,6 +22,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { hasFreshLocalDestructuredCallback } from "./utils/effect/has-fresh-local-destructured-callback.js";
 import {
   isCustomHookParameter,
   isProp,
@@ -400,7 +401,9 @@ export const noPropCallbackInRender = defineRule({
           (reference) =>
             isPropCallbackInvocationRef(analysis, reference, {
               nativeMethodScopes: context.scopes,
-            }) && hasProvenComponentPropOrigin(analysis, reference, context.scopes),
+            }) &&
+            hasProvenComponentPropOrigin(analysis, reference, context.scopes) &&
+            !hasFreshLocalDestructuredCallback(analysis, reference),
         )
       ) {
         return;

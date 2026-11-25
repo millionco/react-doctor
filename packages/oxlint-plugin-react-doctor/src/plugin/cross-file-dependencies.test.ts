@@ -82,6 +82,39 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("exhaustive-deps local ref provider collector", () => {
+  it("tracks ancestor provider configuration for aliased named hook imports", () => {
+    const workspacePath = writeFixtureFile("pnpm-workspace.yaml", 'packages:\n  - "packages/*"\n');
+    const packagePath = writeFixtureFile(
+      "packages/panel/package.json",
+      JSON.stringify({ dependencies: { react: "19.2.3" } }),
+    );
+    const componentPath = writeFixtureFile(
+      "packages/panel/Panel.tsx",
+      'import { useRef as ref, useCallback as callback } from "react"; export const Panel = () => null;',
+    );
+
+    const trace = collectFor(componentPath, ["exhaustive-deps"]);
+
+    expect(trace?.contentPaths.has(packagePath)).toBe(true);
+    expect(trace?.contentPaths.has(workspacePath)).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("vite.config.ts"))).toBe(true);
+    expect(collectFor(componentPath, ["exhaustive-deps"])).toEqual(trace);
+  });
+
+  it("skips ref provider probes when the required imports are absent", () => {
+    writeFixtureFile("package.json", JSON.stringify({ dependencies: { react: "19.2.3" } }));
+    const componentPath = writeFixtureFile(
+      "Panel.tsx",
+      'import { useEffect } from "react"; export const Panel = () => null;',
+    );
+
+    const trace = collectFor(componentPath, ["exhaustive-deps"]);
+
+    expect(trace?.existencePaths.has(fixturePath("vite.config.ts"))).toBe(false);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

@@ -57,6 +57,7 @@ import {
   buildUnnecessaryDepMessage,
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
+import { isLocalReturnedRefCurrentWrite } from "./exhaustive-deps-local-returned-ref.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import { isSoleWriterEffectGuardCapture } from "./exhaustive-deps-sole-writer-guard.js";
 import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
@@ -486,7 +487,17 @@ const collectCaptureDepKeys = (
     ) {
       continue;
     }
-    if (isStableRefContainerCapture(symbol, depKey, scopes)) {
+    if (
+      isStableRefContainerCapture(symbol, depKey, scopes) ||
+      (!declaredExactBindingKeys?.has(depKey) &&
+        isLocalReturnedRefCurrentWrite(
+          reference,
+          callback,
+          componentOrHookFunction,
+          scopes,
+          filename,
+        ))
+    ) {
       stableCapturedNames.add(depKey);
       continue;
     }

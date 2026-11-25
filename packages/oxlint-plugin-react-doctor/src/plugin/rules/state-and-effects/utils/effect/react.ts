@@ -9,6 +9,7 @@ import { hasSymbolWriteBefore } from "../../../../utils/has-symbol-write-before.
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
+import { isTypeOnlyImport } from "../../../../utils/is-type-only-import.js";
 import { resolveFirstArgumentBinding } from "../../../../utils/resolve-first-argument-binding.js";
 import {
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -149,7 +150,15 @@ export const isCustomHookParameter = (ref: Reference): boolean =>
     }),
   );
 
-const isReactNamedImportReference = (ref: Reference | null, importedName: string): boolean =>
+interface HookSourceOptions {
+  readonly allowNamedPreactUseState?: boolean;
+}
+
+const isReactNamedImportReference = (
+  ref: Reference | null,
+  importedName: string,
+  options?: HookSourceOptions,
+): boolean =>
   Boolean(
     ref?.resolved?.defs.some((def) => {
       if (def.type !== "ImportBinding") return false;
@@ -159,11 +168,20 @@ const isReactNamedImportReference = (ref: Reference | null, importedName: string
       if (!isNodeOfType(imported, "Identifier")) return false;
       if (imported.name !== importedName) return false;
       const importDeclaration = declarationNode.parent;
-      return Boolean(
-        importDeclaration &&
-        isNodeOfType(importDeclaration, "ImportDeclaration") &&
-        isNodeOfType(importDeclaration.source as EsTreeNode, "Literal") &&
-        importDeclaration.source.value === "react",
+      if (
+        !isNodeOfType(importDeclaration, "ImportDeclaration") ||
+        !isNodeOfType(importDeclaration.source, "Literal")
+      ) {
+        return false;
+      }
+      const source = importDeclaration.source.value;
+      return (
+        source === "react" ||
+        (options?.allowNamedPreactUseState === true &&
+          importedName === "useState" &&
+          (source === "preact/hooks" || source === "preact/compat") &&
+          declarationNode.importKind !== "type" &&
+          !isTypeOnlyImport(importDeclaration))
       );
     }),
   );
@@ -202,6 +220,7 @@ export const isGenuineReactHookDeclarator = (
   analysis: ProgramAnalysis,
   declarator: EsTreeNode,
   hookName: string,
+  options?: HookSourceOptions,
 ): boolean => {
   if (
     !isNodeOfType(declarator, "VariableDeclarator") ||
@@ -213,7 +232,7 @@ export const isGenuineReactHookDeclarator = (
   if (isNodeOfType(callee, "Identifier")) {
     const reference = getRef(analysis, callee);
     if (!reference?.resolved) return callee.name === hookName;
-    return isReactNamedImportReference(reference, hookName);
+    return isReactNamedImportReference(reference, hookName, options);
   }
   if (
     !isNodeOfType(callee, "MemberExpression") ||
@@ -296,6 +315,7 @@ const isHookStateValue = (
   analysis: ProgramAnalysis,
   ref: Reference,
   hookName: "useReducer" | "useState",
+  options?: HookSourceOptions,
 ): boolean =>
   Boolean(
     ref.resolved?.defs.some((def) => {
@@ -308,7 +328,12 @@ const isHookStateValue = (
       if (!first || !isNodeOfType(first, "Identifier") || first.name !== ref.identifier.name) {
         return false;
       }
-      if (isGenuineReactHookDeclarator(analysis, node, hookName)) return true;
+      const declaration = node.parent;
+      const directStateOptions =
+        isNodeOfType(declaration, "VariableDeclaration") && declaration.kind === "const"
+          ? options
+          : undefined;
+      if (isGenuineReactHookDeclarator(analysis, node, hookName, directStateOptions)) return true;
       if (!isNodeOfType(node.init, "Identifier")) return false;
       const tupleReference = getRef(analysis, node.init);
       return Boolean(
@@ -329,8 +354,11 @@ const isHookStateValue = (
     }),
   );
 
-export const isState = (analysis: ProgramAnalysis, ref: Reference): boolean =>
-  isHookStateValue(analysis, ref, "useState");
+export const isState = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  options?: HookSourceOptions,
+): boolean => isHookStateValue(analysis, ref, "useState", options);
 
 export const isReducerState = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isHookStateValue(analysis, ref, "useReducer");

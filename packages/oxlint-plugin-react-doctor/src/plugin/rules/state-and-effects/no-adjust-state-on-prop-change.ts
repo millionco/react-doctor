@@ -5,6 +5,7 @@ import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-st
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -93,19 +94,19 @@ export const noAdjustStateOnPropChange = defineRule({
         if (!analysis) return;
         const dependencyReferences = getEffectDepsRefs(analysis, node);
         if (!dependencyReferences) return;
-        const hasPropDependency = dependencyReferences.some(
-          (reference) =>
-            !isState(analysis, reference) &&
+        const hasPropDependency = dependencyReferences.some((reference) => {
+          const identifier = reference.identifier as unknown as EsTreeNode;
+          const isDirectDependency =
+            findTransparentExpressionRoot(identifier).parent === node.arguments[1];
+          return (
+            !isState(analysis, reference, { allowNamedPreactUseState: isDirectDependency }) &&
             getUpstreamRefs(analysis, reference).some(
               (upstream) =>
                 isProp(analysis, upstream) && !isOnlyCalledInEffect(upstream, node, analysis),
             ) &&
-            !isStableProjectedEffectDependency(
-              reference.identifier as unknown as EsTreeNode,
-              node,
-              context.scopes,
-            ),
-        );
+            !isStableProjectedEffectDependency(identifier, node, context.scopes)
+          );
+        });
         if (!hasPropDependency) return;
         const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename, true);
         if (hasCleanup(analysis, node)) return;

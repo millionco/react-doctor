@@ -2080,3 +2080,70 @@ export const Search = () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("no-chain-state-updates — guarded local self-reset helpers", () => {
+  it.each([
+    {
+      name: "a guarded reset of the triggering state",
+      resetStatements: "setIndex(idleIndex);",
+      expected: ["setMenuOpen(false);"],
+    },
+    {
+      name: "an additional state write inside the helper",
+      resetStatements: "setIndex(idleIndex); setMenuOpen(true);",
+      expected: ["setMenuOpen(false);", "resetSelection();"],
+    },
+    {
+      name: "a call result captured in a helper-local initializer",
+      resetStatements: "const next = readNextIndex(); setIndex(next);",
+      expected: ["setMenuOpen(false);", "resetSelection();"],
+    },
+    {
+      name: "a functional updater of the triggering state",
+      resetStatements: "setIndex((value) => value - 1);",
+      expected: ["setMenuOpen(false);", "resetSelection();"],
+    },
+    {
+      name: "a focus handler that can synchronously write other state",
+      resetStatements: "setIndex(idleIndex);",
+      focusBinding: "onFocus={() => setMenuOpen(true)}",
+      expected: ["setMenuOpen(false);", "resetSelection();"],
+    },
+  ])("preserves the reports for $name", ({ resetStatements, expected, focusBinding }) => {
+    const code = `import { useEffect, useRef, useState } from "react";
+      const idleIndex = -1;
+      const Picker = ({ enabled, readNextIndex }) => {
+        const [index, setIndex] = useState(idleIndex);
+        const [menuOpen, setMenuOpen] = useState(true);
+        const inputRef = useRef(null);
+        const resetSelection = () => {
+          const element = inputRef.current;
+          if (element) {
+            element.focus();
+            ${resetStatements}
+          }
+        };
+        useEffect(() => {
+          if (enabled && index !== idleIndex) {
+            setMenuOpen(false);
+            resetSelection();
+          }
+        }, [enabled, index]);
+        return (
+          <input
+            ref={inputRef}
+            onKeyDown={() => setIndex(index + 1)}
+            aria-expanded={menuOpen}
+            ${focusBinding ?? ""}
+          />
+        );
+      };`;
+    const result = runRule(noChainStateUpdates, code, {
+      forceJsx: true,
+      includeLocations: true,
+    });
+    expect(result.parseErrors).toEqual([]);
+    const lines = code.split("\n");
+    expect(result.diagnostics.map(({ line }) => lines[(line ?? 0) - 1]?.trim())).toEqual(expected);
+  });
+});

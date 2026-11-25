@@ -3,6 +3,61 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 describe("no-adjust-state-on-prop-change — regressions", () => {
+  it.each([
+    ["React local state", 'import { useEffect, useState } from "react";', "useState", "enabled", 0],
+    [
+      "Preact local state",
+      'import { useEffect, useState } from "preact/hooks";',
+      "useState",
+      "enabled",
+      0,
+    ],
+    [
+      "Preact aliased state",
+      'import { useEffect, useState, useState as useLocalState } from "preact/hooks";',
+      "useLocalState",
+      "enabled",
+      0,
+    ],
+    [
+      "Preact compat local state",
+      'import { useEffect, useState } from "preact/compat";',
+      "useState",
+      "enabled",
+      0,
+    ],
+    [
+      "Preact state with a separate prop dependency",
+      'import { useEffect, useState } from "preact/hooks";',
+      "useState",
+      "enabled, available",
+      1,
+    ],
+    [
+      "unrelated state provider",
+      'import { useEffect } from "preact/hooks"; import { useState } from "renderer-shim";',
+      "useState",
+      "enabled",
+      1,
+    ],
+  ])("tracks prop origin for %s", (_description, imports, initializer, dependencies, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `${imports}
+      function Panel({ available }) {
+        const [enabled, setEnabled] = ${initializer}(available);
+        const [ready, setReady] = useState(false);
+        useEffect(() => {
+          if (enabled) setReady(true);
+        }, [${dependencies}]);
+        return <button onClick={() => setEnabled(!enabled)}>{String(ready)}</button>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
   it("ships at warn severity, matching the derived-state family", () => {
     expect(noAdjustStateOnPropChange.severity).toBe("warn");
     expect(noAdjustStateOnPropChange.recommendation).toContain(

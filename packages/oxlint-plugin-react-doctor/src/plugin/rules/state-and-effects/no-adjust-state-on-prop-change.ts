@@ -95,7 +95,7 @@ export const noAdjustStateOnPropChange = defineRule({
         if (!dependencyReferences) return;
         const hasPropDependency = dependencyReferences.some(
           (reference) =>
-            !isState(analysis, reference) &&
+            !isState(analysis, reference, { allowNamedPreactUseState: true }) &&
             getUpstreamRefs(analysis, reference).some(
               (upstream) =>
                 isProp(analysis, upstream) && !isOnlyCalledInEffect(upstream, node, analysis),

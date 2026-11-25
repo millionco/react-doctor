@@ -6585,7 +6585,7 @@
       "id": "no-prop-callback-in-effect",
       "title": "Parent kept in sync with a callback effect",
       "severity": "warn",
-      "recommendation": "Move the shared state into a Provider so both sides read the same value. Then you don't need a useEffect to keep them in sync.",
+      "recommendation": "Keep shared state in a common owner when both components need the same value. For event notifications, call the prop where the event happens.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

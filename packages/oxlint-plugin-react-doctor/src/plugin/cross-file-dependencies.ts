@@ -1,4 +1,4 @@
-import { resolveStyledInputLeaf } from "./rules/state-and-effects/no-chain-state-updates.js";
+import { resolveStyledInputLeaf } from "./rules/state-and-effects/utils/has-closed-focus-ref-wiring.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
@@ -747,7 +747,13 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
-    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    [
+      "no-adjust-state-on-prop-change",
+      (input) => {
+        collectEffectValueHelperDependencies(input);
+        collectLocalFocusInputDependencies(input);
+      },
+    ],
     ["no-chain-state-updates", collectLocalFocusInputDependencies],
     ["no-unknown-property", collectMissingStencilConfigProbes],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],

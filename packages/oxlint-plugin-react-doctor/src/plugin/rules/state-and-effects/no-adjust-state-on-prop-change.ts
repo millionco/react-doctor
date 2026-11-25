@@ -116,7 +116,7 @@ export const noAdjustStateOnPropChange = defineRule({
             isOwnedRequestMapReset(fact.writeSite, context) ||
             isPortalMountStateWrite(fact.writeSite, context) ||
             isReleasedObjectUrlStateWrite(fact.writeSite, context) ||
-            hasDeferredOrExternalEffectWork(analysis, node, context, fact.writeSite)
+            hasDeferredOrExternalEffectWork(analysis, node, context, fact.writeSite, true)
           ) {
             continue;
           }

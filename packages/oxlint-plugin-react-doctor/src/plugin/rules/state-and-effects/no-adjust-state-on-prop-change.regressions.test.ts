@@ -58,6 +58,52 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 
+  it.each([
+    ["reassigned local binding", "let [enabled] = useLocalState(available); enabled = available;"],
+    [
+      "mutated tuple before destructuring",
+      "const tuple = useLocalState(available); tuple[0] = available; const [enabled] = tuple;",
+    ],
+  ])("reports a prop-driven update with a %s", (_description, stateSetup) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import { useEffect, useState, useState as useLocalState } from "preact/hooks";
+      function Panel({ available }) {
+        ${stateSetup}
+        const [ready, setReady] = useState(false);
+        useEffect(() => {
+          if (enabled) setReady(true);
+        }, [enabled]);
+        return <span>{String(ready)}</span>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["nested state field", "options.selected", 1],
+    ["whole state object", "options", 0],
+  ])("tracks the identity of the %s", (_description, dependency, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import { useEffect, useState } from "preact/hooks";
+      function Panel({ available }) {
+        const [options] = useState({ selected: available });
+        options.selected = available;
+        const [ready, setReady] = useState(false);
+        useEffect(() => {
+          if (options.selected) setReady(true);
+        }, [${dependency}]);
+        return <span>{String(ready)}</span>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
   it("ships at warn severity, matching the derived-state family", () => {
     expect(noAdjustStateOnPropChange.severity).toBe("warn");
     expect(noAdjustStateOnPropChange.recommendation).toContain(

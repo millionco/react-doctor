@@ -328,7 +328,12 @@ const isHookStateValue = (
       if (!first || !isNodeOfType(first, "Identifier") || first.name !== ref.identifier.name) {
         return false;
       }
-      if (isGenuineReactHookDeclarator(analysis, node, hookName, options)) return true;
+      const declaration = node.parent;
+      const directStateOptions =
+        isNodeOfType(declaration, "VariableDeclaration") && declaration.kind === "const"
+          ? options
+          : undefined;
+      if (isGenuineReactHookDeclarator(analysis, node, hookName, directStateOptions)) return true;
       if (!isNodeOfType(node.init, "Identifier")) return false;
       const tupleReference = getRef(analysis, node.init);
       return Boolean(
@@ -343,7 +348,7 @@ const isHookStateValue = (
           ) {
             return false;
           }
-          return isGenuineReactHookDeclarator(analysis, tupleDeclarator, hookName, options);
+          return isGenuineReactHookDeclarator(analysis, tupleDeclarator, hookName);
         }),
       );
     }),

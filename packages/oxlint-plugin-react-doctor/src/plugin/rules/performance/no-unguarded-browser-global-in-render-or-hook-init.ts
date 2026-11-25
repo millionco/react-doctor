@@ -271,7 +271,7 @@ const moduleTerminatesDuringServerEvaluation = (
 
 export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
   id: "no-unguarded-browser-global-in-render-or-hook-init",
-  title: "Browser global read during server render",
+  title: "Browser global may be read during server rendering",
   severity: "error",
   category: "Correctness",
   requires: ["ssr"],
@@ -317,7 +317,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       reportedNodes.add(node);
       context.report({
         node,
-        message: `\`${browserGlobalName}\` is read while React is rendering on the server, where browser globals are unavailable. Move the read into an effect or event, or provide a stable server snapshot.`,
+        message: `\`${browserGlobalName}\` can be read during render or hook initialization. This can fail during server rendering. Move the read into an effect or event, guard it behind a client-only render path, or provide a stable server snapshot.`,
       });
     };
 

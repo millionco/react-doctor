@@ -6,6 +6,14 @@ const run = (code: string, filename = "app/page.tsx") =>
   runRule(noUnguardedBrowserGlobalInRenderOrHookInit, code, { filename });
 
 describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
+  it("describes a possible server-rendering failure", () => {
+    const result = run('"use client"; export const Page = () => <div>{window.innerWidth}</div>;');
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      "`window` can be read during render or hook initialization. This can fail during server rendering. Move the read into an effect or event, guard it behind a client-only render path, or provide a stable server snapshot.",
+    ]);
+  });
+
   it.each([
     ["render body", `"use client"; export const Page = () => <div>{window.innerWidth}</div>;`],
     [

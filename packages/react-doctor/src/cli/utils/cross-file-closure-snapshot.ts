@@ -111,6 +111,8 @@ export const createCrossFileClosureSnapshot = (
       const ruleIds = ["rules-of-hooks", "no-pass-live-state-to-parent"];
       if (sourceText.includes("useEffect") || sourceText.includes("\\u"))
         ruleIds.push("exhaustive-deps");
+      if (sourceText.includes("focus") || sourceText.includes("\\u"))
+        ruleIds.push("no-chain-state-updates");
       if (sourceText.includes("!") && sourceText.includes("export")) {
         ruleIds.push("no-adjust-state-on-prop-change");
       }

@@ -1,3 +1,4 @@
+import { resolveStyledInputLeaf } from "./rules/state-and-effects/no-chain-state-updates.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { collectDisabledTerminalGuardDependencies } from "./rules/react-builtins/exhaustive-deps-disabled-terminal-state.js";
@@ -322,6 +323,14 @@ const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({
 }) => {
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const collectLocalFocusInputDependencies: CrossFileDependencyCollector = (input) => {
+  if (!input.sourceText.includes("focus") && !input.sourceText.includes("\\u")) return;
+  for (const entry of flattenImportEntries(input.staticImports)) {
+    if (entry.source.startsWith("."))
+      resolveStyledInputLeaf(input.absoluteFilePath, entry.source, entry.exportedName);
   }
 };
 
@@ -708,6 +717,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
     ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-chain-state-updates", collectLocalFocusInputDependencies],
     ["no-unknown-property", collectMissingStencilConfigProbes],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],

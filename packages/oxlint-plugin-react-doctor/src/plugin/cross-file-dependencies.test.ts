@@ -1032,3 +1032,22 @@ describe("no-effect-chain compiler-dependent disposal collector", () => {
     expect(collectFor(file, ["no-effect-chain"])).not.toBeNull();
   });
 });
+
+describe("exhaustive-deps verified Boolean branches", () => {
+  it("bypasses the sidecar cache only for a supported named-route candidate", () => {
+    const fixture = `
+      import * as React from "react";
+      export function View({ config: { enabled }, entries }: any) {
+        React.useEffect(() => { if (enabled && entries.length) consume(entries); }, []);
+        return null;
+      }
+    `;
+    const candidate = writeFixtureFile("verified-boolean-branch.tsx", fixture);
+    const ordinary = writeFixtureFile(
+      "ordinary-boolean-branch.tsx",
+      fixture.replace("enabled &&", "enabled ||"),
+    );
+    expect(collectFor(candidate, ["exhaustive-deps"])).toBeNull();
+    expect(collectFor(ordinary, ["exhaustive-deps"])).not.toBeNull();
+  });
+});

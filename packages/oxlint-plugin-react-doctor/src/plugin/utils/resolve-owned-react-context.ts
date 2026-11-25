@@ -77,10 +77,97 @@ export interface ResolvedContextGetter {
   readonly exportedNode: EsTreeNode;
 }
 
-export const resolveOwnedReactContextFromGetter = (
+export interface OwnedReactContextDefinition {
+  readonly getter: BoundValue;
+  readonly context: BoundValue;
+  readonly provider: BoundValue;
+  readonly valueExpression: EsTreeNode;
+}
+
+type OwnedContextGetterUse = (module: NamedViteSourceModule, call: EsTreeNode) => boolean;
+
+const isDirectNamedContextDestructure: OwnedContextGetterUse = (_module, call) => {
+  const owner = call.parent;
+  return (
+    isNodeOfType(owner, "VariableDeclarator") &&
+    owner.init === call &&
+    isNodeOfType(owner.id, "ObjectPattern") &&
+    owner.id.properties.every(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        !property.computed &&
+        isNodeOfType(property.value, "Identifier"),
+    )
+  );
+};
+
+// Only the third parameter may carry an existing React Context. The returned
+// hook reads its value without publishing or mutating the Context object.
+export const isClosedReactContextGetterFactory = (factory: BoundValue | null): boolean => {
+  if (
+    !factory ||
+    !isNodeOfType(factory.node, "FunctionDeclaration") ||
+    factory.node.async ||
+    factory.node.generator ||
+    factory.node.params.length !== 3 ||
+    !isNodeOfType(factory.node.params[2], "Identifier") ||
+    !factory.node.body ||
+    factory.node.body.body.length !== 1
+  )
+    return false;
+  const factoryReturn = factory.node.body.body[0];
+  if (
+    !isNodeOfType(factoryReturn, "ReturnStatement") ||
+    !isNodeOfType(factoryReturn.argument, "ArrowFunctionExpression") ||
+    factoryReturn.argument.async ||
+    factoryReturn.argument.params.length ||
+    !isNodeOfType(factoryReturn.argument.body, "BlockStatement") ||
+    factoryReturn.argument.body.body.length !== 3
+  )
+    return false;
+  const [assign, guard, result] = factoryReturn.argument.body.body;
+  if (
+    !isNodeOfType(assign, "VariableDeclaration") ||
+    assign.kind !== "const" ||
+    assign.declarations.length !== 1 ||
+    !isNodeOfType(guard, "IfStatement") ||
+    guard.alternate ||
+    !isNodeOfType(result, "ReturnStatement") ||
+    !result.argument
+  )
+    return false;
+  const local = assign.declarations[0];
+  if (
+    !isNodeOfType(local.id, "Identifier") ||
+    !local.init ||
+    !react(factory.module, local.init, "useContext") ||
+    !isNodeOfType(local.init, "CallExpression") ||
+    local.init.arguments.length !== 1 ||
+    !sameLocal(factory.module, local.init.arguments[0], factory.node.params[2]) ||
+    !sameLocal(factory.module, result.argument, local.id) ||
+    !isNodeOfType(guard.test, "UnaryExpression") ||
+    guard.test.operator !== "!" ||
+    !sameLocal(factory.module, guard.test.argument, local.id) ||
+    !isNodeOfType(guard.consequent, "BlockStatement") ||
+    guard.consequent.body.length !== 1 ||
+    !isNodeOfType(guard.consequent.body[0], "ThrowStatement")
+  )
+    return false;
+  const contextParam = factory.module.scopes.symbolFor(factory.node.params[2]);
+  const selectedContext = local.init.arguments[0];
+  return Boolean(
+    contextParam &&
+    contextParam.references.length === 1 &&
+    contextParam.references[0]?.flag === "read" &&
+    contextParam.references[0].identifier === selectedContext,
+  );
+};
+
+export const readOwnedReactContextDefinition = (
   project: NamedViteSourceProject,
   resolved: ResolvedContextGetter,
-): OwnedReactContext | null => {
+  acceptsRead: OwnedContextGetterUse,
+): OwnedReactContextDefinition | null => {
   // Caches are invocation-local and never survive a project or AST replacement.
   const byModule = new Map<NamedViteSourceModule, Map<number, BoundValue | null>>();
   const binding = (
@@ -111,55 +198,7 @@ export const resolveOwnedReactContextFromGetter = (
     return null;
   const getterCreation = getter.node;
   const factory = binding(project, getter.module, getterCreation.callee);
-  if (
-    !factory ||
-    !isNodeOfType(factory.node, "FunctionDeclaration") ||
-    factory.node.async ||
-    factory.node.generator ||
-    factory.node.params.length !== 3 ||
-    !isNodeOfType(factory.node.params[2], "Identifier") ||
-    !factory.node.body ||
-    factory.node.body.body.length !== 1
-  )
-    return null;
-  const factoryReturn = factory.node.body.body[0];
-  if (
-    !isNodeOfType(factoryReturn, "ReturnStatement") ||
-    !isNodeOfType(factoryReturn.argument, "ArrowFunctionExpression") ||
-    factoryReturn.argument.async ||
-    factoryReturn.argument.params.length ||
-    !isNodeOfType(factoryReturn.argument.body, "BlockStatement") ||
-    factoryReturn.argument.body.body.length !== 3
-  )
-    return null;
-  const [assign, guard, result] = factoryReturn.argument.body.body;
-  if (
-    !isNodeOfType(assign, "VariableDeclaration") ||
-    assign.kind !== "const" ||
-    assign.declarations.length !== 1 ||
-    !isNodeOfType(guard, "IfStatement") ||
-    guard.alternate ||
-    !isNodeOfType(result, "ReturnStatement") ||
-    !result.argument
-  )
-    return null;
-  const local = assign.declarations[0];
-  if (
-    !isNodeOfType(local.id, "Identifier") ||
-    !local.init ||
-    !react(factory.module, local.init, "useContext") ||
-    !isNodeOfType(local.init, "CallExpression") ||
-    local.init.arguments.length !== 1 ||
-    !sameLocal(factory.module, local.init.arguments[0], factory.node.params[2]) ||
-    !sameLocal(factory.module, result.argument, local.id) ||
-    !isNodeOfType(guard.test, "UnaryExpression") ||
-    guard.test.operator !== "!" ||
-    !sameLocal(factory.module, guard.test.argument, local.id) ||
-    !isNodeOfType(guard.consequent, "BlockStatement") ||
-    guard.consequent.body.length !== 1 ||
-    !isNodeOfType(guard.consequent.body[0], "ThrowStatement")
-  )
-    return null;
+  if (!isClosedReactContextGetterFactory(factory)) return null;
   const context = binding(project, getter.module, getterCreation.arguments[2]);
   if (
     !context ||
@@ -199,6 +238,10 @@ export const resolveOwnedReactContextFromGetter = (
         return null;
     }
     walkAst(module.programNode, (node) => {
+      if (isNodeOfType(node, "JSXIdentifier") && equal(jsxBinding(module, node), getter)) {
+        escaped = true;
+        return;
+      }
       if (isNodeOfType(node, "JSXIdentifier") && equal(jsxBinding(module, node), context)) {
         const member = node.parent;
         const tag = member?.parent;
@@ -218,21 +261,12 @@ export const resolveOwnedReactContextFromGetter = (
         if (isNodeOfType(parent, "VariableDeclarator") && parent.id === node) return;
         if (isNodeOfType(parent, "ImportSpecifier") || isNodeOfType(parent, "ExportSpecifier"))
           return;
-        const owner = parent?.parent;
         if (
           !isNodeOfType(parent, "CallExpression") ||
           parent.callee !== node ||
           parent.optional ||
           parent.arguments.length ||
-          !isNodeOfType(owner, "VariableDeclarator") ||
-          owner.init !== parent ||
-          !isNodeOfType(owner.id, "ObjectPattern") ||
-          owner.id.properties.some(
-            (property) =>
-              !isNodeOfType(property, "Property") ||
-              property.computed ||
-              !isNodeOfType(property.value, "Identifier"),
-          )
+          !acceptsRead(module, parent)
         )
           escaped = true;
         return;
@@ -278,8 +312,21 @@ export const resolveOwnedReactContextFromGetter = (
     !attributes[0].value.expression
   )
     return null;
-  const providerValueExpression = attributes[0].value.expression;
-  const value = binding(project, provider.module, providerValueExpression);
+  return { getter, context, provider, valueExpression: attributes[0].value.expression };
+};
+
+export const resolveOwnedReactContextFromGetter = (
+  project: NamedViteSourceProject,
+  resolved: ResolvedContextGetter,
+): OwnedReactContext | null => {
+  const definition = readOwnedReactContextDefinition(
+    project,
+    resolved,
+    isDirectNamedContextDestructure,
+  );
+  if (!definition) return null;
+  const { getter, context, provider, valueExpression: providerValueExpression } = definition;
+  const value = resolveBinding(project, provider.module, providerValueExpression);
   if (
     !value ||
     !react(value.module, value.node, "useMemo") ||
@@ -289,7 +336,10 @@ export const resolveOwnedReactContextFromGetter = (
     return null;
   let valueEscapes = false;
   walkAst(value.module.programNode, (node) => {
-    if (!isNodeOfType(node, "Identifier") || !equal(binding(project, value.module, node), value))
+    if (
+      !isNodeOfType(node, "Identifier") ||
+      !equal(resolveBinding(project, value.module, node), value)
+    )
       return;
     if (isNodeOfType(node.parent, "VariableDeclarator") && node.parent.id === node) return;
     if (node === providerValueExpression) return;

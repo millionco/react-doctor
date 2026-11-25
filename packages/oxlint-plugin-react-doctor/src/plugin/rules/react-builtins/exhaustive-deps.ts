@@ -1,8 +1,10 @@
-import * as path from "node:path";
-import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import { qualifyNamedViteRegisteredBoolean } from "../../utils/qualify-named-vite-registered-boolean.js";
+import { readCuratedViteSourceProject } from "../../utils/read-curated-vite-source-project.js";
+import {
+  getEffectBooleanShortCircuitTargets,
+  isCaptureSkippedByVerifiedFalseProp,
+} from "./exhaustive-deps-verified-boolean-branches.js";
 import { getFreshCallbackCoveredBindings } from "./exhaustive-deps-fresh-callback-coverage.js";
-import { readNamedVite8CallbackCompiler } from "../../utils/read-named-vite8-callback-compiler.js";
-import { STOCK_VITE8_CALLBACK_PROFILE } from "../../utils/stock-vite8-callback-profile.js";
 import type { ReportDescriptor } from "../../utils/report-descriptor.js";
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -444,6 +446,7 @@ const collectCaptureDepKeys = (
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
   filename?: string,
+  ignoreCaptureReference?: (identifier: EsTreeNode) => boolean,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -457,6 +460,7 @@ const collectCaptureDepKeys = (
     const symbol = reference.resolvedSymbol;
     if (!symbol) continue;
     if (isRecursiveInitializerCapture(symbol, callback)) continue;
+    if (ignoreCaptureReference?.(reference.identifier)) continue;
     if (allowSoleWriterEffectGuards && isSoleWriterEffectGuardCapture(symbol, callback, scopes)) {
       stableCapturedNames.add(symbol.name);
       continue;
@@ -2079,7 +2083,13 @@ If the missing value is recreated every render, move it inside the hook or stabi
   category: "Correctness",
   create: (hostContext) => {
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(hostContext.settings);
-    let didVerifyFreshCallbackCompiler: boolean | undefined;
+    let viteSourceProject: ReturnType<typeof readCuratedViteSourceProject> | undefined;
+    const getViteSourceProject = () => {
+      if (viteSourceProject === undefined) {
+        viteSourceProject = readCuratedViteSourceProject(hostContext);
+      }
+      return viteSourceProject;
+    };
     const nodeStartOffset = (node: EsTreeNode): number | null => {
       const nodeWithOffsets = node as { start?: number; range?: [number, number] };
       if (typeof nodeWithOffsets.start === "number") return nodeWithOffsets.start;
@@ -2451,26 +2461,53 @@ If the missing value is recreated every render, move it inside the hook or stabi
         );
 
         const freshCallbackCoverage = shouldUseCuratedBehavior
-          ? getFreshCallbackCoveredBindings(node, context.scopes, () => {
-              if (didVerifyFreshCallbackCompiler !== undefined)
-                return didVerifyFreshCallbackCompiler;
-              const root = getReactDoctorStringSetting(context.settings, "rootDirectory");
-              const filename = hostContext.filename;
-              const source = hostContext.getSourceText?.();
-              didVerifyFreshCallbackCompiler = Boolean(
-                root &&
-                filename &&
-                source &&
-                readNamedVite8CallbackCompiler(
-                  root,
-                  path.resolve(root, filename),
-                  source,
-                  STOCK_VITE8_CALLBACK_PROFILE,
-                ),
-              );
-              return didVerifyFreshCallbackCompiler;
-            })
+          ? getFreshCallbackCoveredBindings(
+              node,
+              context.scopes,
+              () => getViteSourceProject() !== null,
+            )
           : new Set<string>();
+        // Use the unfiltered captures for unused and unstable dependency checks.
+        // Only the missing-dependency pass can ignore an unreachable read.
+        let reachableCaptureKeys: Set<string> | null = null;
+        if (shouldUseCuratedBehavior && callbackToAnalyze === callbackArgument) {
+          const falseProps = new Set<SymbolDescriptor>();
+          for (const [binding, target] of getEffectBooleanShortCircuitTargets(
+            node,
+            context.scopes,
+          )) {
+            const project = getViteSourceProject();
+            if (!project) break;
+            if (qualifyNamedViteRegisteredBoolean(project, target)?.value === false) {
+              falseProps.add(binding);
+            }
+          }
+          if (falseProps.size > 0) {
+            reachableCaptureKeys = collectCaptureDepKeys(
+              callbackArgument,
+              context.scopes,
+              declaredExactBindingKeys,
+              declaredKeys,
+              SOLE_WRITER_GUARD_HOOKS.has(hookName),
+              context.filename,
+              (identifier) =>
+                isCaptureSkippedByVerifiedFalseProp(
+                  identifier,
+                  callbackArgument,
+                  context.scopes,
+                  falseProps,
+                ),
+            ).keys;
+            for (const key of forcedCaptureKeys) reachableCaptureKeys.add(key);
+            addAggregatePropsDependency(
+              reachableCaptureKeys,
+              declaredKeys,
+              callbackArgument,
+              context.scopes,
+              shouldUseCuratedBehavior,
+            );
+          }
+        }
         const missingCaptureKeys: string[] = [];
         for (const captureKey of captureKeys) {
           let isCoveredByDeclared = false;
@@ -2481,6 +2518,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             }
           }
           if (isCoveredByDeclared || freshCallbackCoverage.has(captureKey)) continue;
+          if (reachableCaptureKeys && !reachableCaptureKeys.has(captureKey)) continue;
           missingCaptureKeys.push(captureKey);
         }
         const shouldGroupMissingDeps = !hasLiteralDepElement;

@@ -229,7 +229,10 @@ const truncateAtRefCurrent = (chain: string): string => {
 //   reference is `props` in `props.foo`    → "props.foo"
 //   reference is `ref` in `ref.current`    → "ref" (`.current` access
 //                                             doesn't add a dep)
-const computeDepKey = (reference: ReferenceDescriptor): string => {
+const computeDepKey = (
+  reference: ReferenceDescriptor,
+  allowStaticComputedMembers = false,
+): string => {
   const referencedIdentifier = reference.identifier;
   let parent = referencedIdentifier.parent ?? null;
   // Strip ChainExpression wrappers (a?.b parses to `ChainExpression {
@@ -274,7 +277,9 @@ const computeDepKey = (reference: ReferenceDescriptor): string => {
     }
     break;
   }
-  const fullName = stringifyMemberChain(outermost);
+  const fullName =
+    (allowStaticComputedMembers ? stringifyStaticMemberChain(outermost) : null) ??
+    stringifyMemberChain(outermost);
   if (fullName === null) return flattenReferenceRootName(reference);
   const declarator = outermost.parent;
   if (
@@ -370,6 +375,26 @@ const stringifyMemberChain = (node: EsTreeNode): string | null => {
   return null;
 };
 
+// Restrict computed segments to single identifier-shaped string keys so the
+// dotted key representation cannot conflate a literal containing a dot
+// with a nested member. Leave all other computed paths to the existing rules.
+const stringifyStaticMemberChain = (node: EsTreeNode): string | null => {
+  const stripped = unwrapExpression(node);
+  if (!isNodeOfType(stripped, "MemberExpression")) return stringifyMemberChain(stripped);
+  const property = stripped.property;
+  if (
+    stripped.computed &&
+    (!isNodeOfType(property, "Literal") ||
+      typeof property.value !== "string" ||
+      !/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(property.value))
+  ) {
+    return null;
+  }
+  const objectName = stringifyStaticMemberChain(stripped.object);
+  const propertyName = getStaticPropertyName(stripped);
+  return objectName && propertyName !== null ? `${objectName}.${propertyName}` : null;
+};
+
 interface CaptureCollection {
   keys: Set<string>;
   // Names of bindings that the callback captured but that we filtered
@@ -447,6 +472,7 @@ const collectCaptureDepKeys = (
   filename?: string,
   declaredImportedForwarderDeps?: ReadonlyMap<string, EsTreeNode>,
   omittedMemoGuard?: EsTreeNode,
+  allowStaticComputedMembers = false,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -486,7 +512,7 @@ const collectCaptureDepKeys = (
       outerFunctionCapturedNames.add(symbol.name);
       continue;
     }
-    const depKey = computeDepKey(reference);
+    const depKey = computeDepKey(reference, allowStaticComputedMembers);
     if (!depKey) continue;
     if (
       depKey === symbol.name &&
@@ -2369,6 +2395,14 @@ If the missing value is recreated every render, move it inside the hook or stabi
           report({ node: depsArgument, message: buildLiteralDepMessage(hookName) });
         }
 
+        // Call dependencies have their own comparison policy. Preserve that
+        // policy for arrays that mix calls with ordinary member entries.
+        const allowStaticComputedMembers =
+          shouldUseCuratedBehavior &&
+          !depsArgument.elements.some(
+            (element) =>
+              element && isNodeOfType(unwrapExpression(element as EsTreeNode), "CallExpression"),
+          );
         const declaredKeys = new Set<string>();
         const declaredExactBindingKeys = new Set<string>();
         const declaredKeyToReportNode = new Map<string, EsTreeNode>();
@@ -2406,7 +2440,12 @@ If the missing value is recreated every render, move it inside the hook or stabi
           // Detect `<ref>.current` in deps where `<ref>` is a useRef
           // binding — upstream's "depend on the ref itself, not its
           // mutable .current" warning.
-          const fullChain = stringifyMemberChain(stripped);
+          const hasComputedMember = hasComputedMemberExpression(stripped);
+          const staticMemberKey =
+            allowStaticComputedMembers && hasComputedMember
+              ? stringifyStaticMemberChain(stripped)
+              : null;
+          const fullChain = staticMemberKey ?? stringifyMemberChain(stripped);
           if (
             fullChain &&
             fullChain.endsWith(".current") &&
@@ -2426,12 +2465,8 @@ If the missing value is recreated every render, move it inside the hook or stabi
             }
           }
 
-          const key = computeDeclaredDepKey(elementNode);
-          if (key === null) {
-            report({ node: elementNode, message: buildComplexDepMessage(hookName) });
-            continue;
-          }
-          if (hasComputedMemberExpression(stripped)) {
+          const key = staticMemberKey ?? computeDeclaredDepKey(elementNode);
+          if (key === null || (hasComputedMember && staticMemberKey === null)) {
             report({ node: elementNode, message: buildComplexDepMessage(hookName) });
             continue;
           }
@@ -2472,6 +2507,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             ? declaredKeyToReportNode
             : undefined,
           omittedMemoGuard,
+          allowStaticComputedMembers,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

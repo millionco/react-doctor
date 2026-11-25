@@ -267,17 +267,76 @@ const isLocalStyledInputComponent = (tag: EsTreeNode, context: RuleContext): boo
 
 const FOCUS_PROP_PATTERN = /^on(?:Focus|Blur)(?:In|Out)?(?:Capture)?$/i;
 
+export const readDirectRefCurrent = (
+  node: EsTreeNode | undefined,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  if (
+    !isNodeOfType(node, "MemberExpression") ||
+    node.computed ||
+    node.optional ||
+    getStaticPropertyName(node) !== "current" ||
+    !isNodeOfType(node.object, "Identifier")
+  ) {
+    return null;
+  }
+  return scopes.symbolFor(node.object) ?? null;
+};
+
+const isStandaloneGuardedFocusRead = (
+  node: EsTreeNode,
+  ref: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const parent = node.parent;
+  const call = parent?.parent;
+  const statement = call?.parent;
+  const block = statement?.parent;
+  const branch = isNodeOfType(parent, "IfStatement") ? parent : block?.parent;
+  if (
+    !isNodeOfType(branch, "IfStatement") ||
+    branch.alternate ||
+    !isNodeOfType(branch.consequent, "BlockStatement") ||
+    branch.consequent.body.length !== 1 ||
+    readDirectRefCurrent(branch.test, scopes) !== ref
+  ) {
+    return false;
+  }
+  const [focusStatement] = branch.consequent.body;
+  if (!isNodeOfType(focusStatement, "ExpressionStatement")) return false;
+  const focus = focusStatement.expression;
+  return (
+    isNodeOfType(focus, "CallExpression") &&
+    !focus.optional &&
+    focus.arguments.length === 0 &&
+    isNodeOfType(focus.callee, "MemberExpression") &&
+    !focus.callee.computed &&
+    !focus.callee.optional &&
+    getStaticPropertyName(focus.callee) === "focus" &&
+    readDirectRefCurrent(focus.callee.object, scopes) === ref &&
+    (node === branch.test || node === focus.callee.object)
+  );
+};
+
 export const hasClosedFocusRefWiring = (
   ref: SymbolDescriptor,
   acquisition: EsTreeNode,
   component: EsTreeNode,
   context: RuleContext,
+  directGuardRead?: EsTreeNode,
 ): boolean => {
   let attachments = 0;
   for (const { identifier, flag } of ref.references) {
     if (flag !== "read") return false;
     const parent = identifier.parent;
     if (parent === acquisition) continue;
+    if (
+      directGuardRead &&
+      (parent === directGuardRead ||
+        (parent && isStandaloneGuardedFocusRead(parent, ref, context.scopes)))
+    ) {
+      continue;
+    }
     if (
       isNodeOfType(parent, "MemberExpression") &&
       parent.object === identifier &&

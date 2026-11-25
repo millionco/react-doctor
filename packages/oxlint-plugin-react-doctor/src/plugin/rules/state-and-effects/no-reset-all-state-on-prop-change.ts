@@ -1403,7 +1403,7 @@ export const noResetAllStateOnPropChange = defineRule({
         context.report({
           node,
           message:
-            "This effect clears all state after a prop changes, which costs an extra render.",
+            "This effect clears all state after a prop changes, which can cost an extra render.",
         });
       },
     };

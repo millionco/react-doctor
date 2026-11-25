@@ -1,6 +1,11 @@
+import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
+import { isReactHookCall } from "./utils/is-react-hook-call.js";
+import { EFFECT_HOOK_NAMES } from "./constants/react.js";
+import { getContextDisposalFactoryCall } from "./utils/get-context-disposal-factory-call.js";
+import { getEffectCallback } from "./utils/get-effect-callback.js";
 import { getContextTimeoutCallback } from "./utils/get-context-timeout-callback.js";
 import { getFreshCallbackCoveredBindings } from "./rules/react-builtins/exhaustive-deps-fresh-callback-coverage.js";
-import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
+import { resolveDirectLexicalImport } from "./utils/resolve-direct-lexical-import.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
@@ -589,6 +594,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     // Context timer candidates bypass the cache below. Other files use only
     // their own source, so there are no dependency probes to collect.
     ["no-chain-state-updates", () => {}],
+    ["no-effect-chain", () => {}],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
@@ -686,6 +692,31 @@ export const collectCrossFileDependencyProbes = (input: {
     };
   } catch {
     return null;
+  }
+
+  if (
+    input.ruleIds.includes("no-effect-chain") &&
+    staticImports.some((entry) => entry.moduleRequest.value.startsWith("."))
+  ) {
+    const program = getProgram();
+    attachParentReferences(program);
+    let scopes: ReturnType<typeof analyzeScopes> | undefined;
+    let compilerDependent = false;
+    walkAst(program, (node) => {
+      if (compilerDependent) return false;
+      if (!isNodeOfType(node, "CallExpression")) return;
+      scopes ??= analyzeScopes(program);
+      if (!isReactHookCall(node, EFFECT_HOOK_NAMES, scopes)) return;
+      const callback = getEffectCallback(node, scopes);
+      const factory = callback && getContextDisposalFactoryCall(callback);
+      const imported = factory && resolveDirectLexicalImport(factory.callee, scopes);
+      compilerDependent = Boolean(
+        imported?.importedName && !imported.isNamespace && imported.source.startsWith("."),
+      );
+    });
+    // The live compiler, selected package bytes, ambient realm and context
+    // graph are deliberately not represented by a source-only sidecar key.
+    if (compilerDependent) return null;
   }
 
   if (

@@ -83,12 +83,14 @@ export interface ParseSourceTextInput {
   readonly filename: string;
   readonly sourceText: string;
   readonly shouldAttachParentReferences?: boolean;
+  readonly readModule?: (module: ReturnType<typeof parseSync>["module"]) => void;
 }
 
 export const parseSourceText = ({
   filename,
   sourceText,
   shouldAttachParentReferences = true,
+  readModule,
 }: ParseSourceTextInput): EsTreeNode | null => {
   try {
     const result = parseCrossFileSource(filename, sourceText);
@@ -96,6 +98,7 @@ export const parseSourceText = ({
     if (hasFatalError) return null;
     const parsedProgram = result.program as unknown as EsTreeNode;
     if (shouldAttachParentReferences) attachParentReferences(parsedProgram);
+    readModule?.(result.module);
     return parsedProgram;
   } catch {
     return null;

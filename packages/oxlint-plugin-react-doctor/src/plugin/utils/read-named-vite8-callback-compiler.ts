@@ -1,5 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { StaticExportEntry } from "oxc-parser";
+import type { SourceProjectModule } from "./build-source-project-index.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import { getRuntimeStaticDependencySource } from "./get-runtime-static-dependency-source.js";
 import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
@@ -408,15 +410,32 @@ const hasOpenModuleAcquisition = (
   return open;
 };
 
+export interface NamedViteSourceModule extends SourceProjectModule {
+  readonly staticExports: readonly StaticExportEntry[];
+  readonly localImports: ReadonlyMap<string, string>;
+}
+
+export interface NamedViteSourceProject {
+  readonly root: string;
+  readonly entry: string;
+  readonly focal: string;
+  readonly modulesByFilePath: ReadonlyMap<string, NamedViteSourceModule>;
+}
+
+interface NamedViteVerificationOptions {
+  readonly onReject?: (reason: string) => void;
+  readonly collectSourceProject?: boolean;
+}
+
 export const readNamedVite8CallbackCompiler = (
   root: string,
   focal: string,
   source: string,
   profile: StockNpmCompilerProfile,
-  onReject?: (reason: string) => void,
+  options?: NamedViteVerificationOptions,
 ) => {
   const reject = (reason: string) => {
-    onReject?.(reason);
+    options?.onReject?.(reason);
     return null;
   };
   const dev = path.join(root, "dev");
@@ -451,6 +470,9 @@ export const readNamedVite8CallbackCompiler = (
     if (!hasVerifiedHtmlEntry(html)) return reject("html");
     const entry = path.join(dev, "index.tsx");
     const pending = [entry];
+    const sourceModules = options?.collectSourceProject
+      ? new Map<string, NamedViteSourceModule>()
+      : undefined;
     const reachable = new Set<string>();
     const verifiedStyles = new Set<string>();
     let usedRenderer = false;
@@ -467,7 +489,16 @@ export const readNamedVite8CallbackCompiler = (
       reachable.add(filename);
       const text = readSource(filename);
       if (text === null || JSX_PRAGMA.test(text)) return reject("per-file JSX settings");
-      const program = parseSourceText({ filename, sourceText: text });
+      let staticExports: readonly StaticExportEntry[] = [];
+      const program = parseSourceText({
+        filename,
+        sourceText: text,
+        readModule: sourceModules
+          ? (module) => {
+              staticExports = module.staticExports.flatMap((statement) => statement.entries);
+            }
+          : undefined,
+      });
       if (!isNodeOfType(program, "Program")) return reject("source parse");
       const scopes = analyzeScopes(program);
       if (filename === entry && !hasStockJsxRender(program)) return reject("entry root renderer");
@@ -496,6 +527,7 @@ export const readNamedVite8CallbackCompiler = (
         }
       }
 
+      const localImports = sourceModules ? new Map<string, string>() : undefined;
       for (const statement of program.body) {
         const specifier = getRuntimeStaticDependencySource(statement);
         if (!specifier) continue;
@@ -515,6 +547,7 @@ export const readNamedVite8CallbackCompiler = (
           probe: probeEntry,
         });
         if (result.kind === "file") {
+          localImports?.set(specifier, result.filename);
           pending.push(result.filename);
           continue;
         }
@@ -526,6 +559,15 @@ export const readNamedVite8CallbackCompiler = (
         )
           return reject("React issuer or module edge");
         usedRenderer ||= specifier === "react-dom/client";
+      }
+      if (localImports) {
+        sourceModules?.set(filename, {
+          filePath: filename,
+          programNode: program,
+          scopes,
+          staticExports,
+          localImports,
+        });
       }
     }
     if (!reachable.has(focal) || !usedRenderer) return reject("entry closure");
@@ -555,6 +597,9 @@ export const readNamedVite8CallbackCompiler = (
       entry,
       focal,
       sourceGraphSize: reachable.size + verifiedStyles.size,
+      sourceProject: sourceModules
+        ? { root, entry, focal, modulesByFilePath: sourceModules }
+        : undefined,
     };
   } catch {
     return reject("thrown verifier error");

@@ -24,6 +24,7 @@ import {
 import { getPackageJsonPath, isRecord, runGitAsync } from "./git-hook-shared.js";
 import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
 import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
+import { shouldBypassNamedViteScanResultCache } from "./should-bypass-named-vite-scan-result-cache.js";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
 export { shouldStoreScanPayload } from "./scan-result-cache-payload.js";
@@ -437,6 +438,7 @@ export const buildScanResultCacheKey = async (
   input: ScanResultCacheKeyInput,
 ): Promise<string | null> => {
   if (isCacheGloballyDisabled() || input.options.baselineReport) return null;
+  if (shouldBypassNamedViteScanResultCache(input.projectDirectory, input.options.lint)) return null;
   const isTrustworthyPromise = isGitIdentityTrustworthy(input.projectDirectory);
   const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
     input.projectDirectory,

@@ -82,6 +82,51 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-chain-state-updates collector", () => {
+  it("bypasses the cache for a callback passed to an imported context timer", () => {
+    const path = writeFixtureFile(
+      "WithContextTimer.tsx",
+      `
+      import { useSchedule } from "./schedule";
+      function Widget() {
+        const { setTimeout: later } = useSchedule();
+        later(() => updateValue());
+        return null;
+      }
+    `,
+    );
+    expect(collectFor(path, ["no-chain-state-updates"])).toBeNull();
+  });
+
+  it("keeps a scheduler from a default export object eligible for the file cache", () => {
+    const filePath = writeFixtureFile(
+      "WithSchedulerObject.tsx",
+      `
+      import schedulers from "./schedulers";
+      const { useSchedule } = schedulers;
+      const { setTimeout: later } = useSchedule();
+      later(() => updateValue());
+    `,
+    );
+    expect(collectFor(filePath, ["no-chain-state-updates"])).not.toBeNull();
+  });
+
+  it("keeps a local scheduler eligible for the file cache", () => {
+    const path = writeFixtureFile(
+      "WithLocalScheduler.tsx",
+      `
+      import { helper } from "./schedule";
+      const { setTimeout: later } = { setTimeout: helper };
+      later(() => updateValue());
+    `,
+    );
+    const trace = collectFor(path, ["no-chain-state-updates"]);
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.size).toBe(0);
+    expect(trace?.existencePaths.size).toBe(0);
+  });
+});
+
 describe("no-hydration-branch-on-browser-global collector", () => {
   it("records both imported helpers and the nearest manifest", () => {
     const manifestPath = writeFixtureFile(

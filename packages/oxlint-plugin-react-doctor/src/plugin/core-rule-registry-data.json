@@ -7807,7 +7807,7 @@
     "originallyExternal": false,
     "rule": {
       "id": "no-unguarded-browser-global-in-render-or-hook-init",
-      "title": "Browser global read during server render",
+      "title": "Browser global may be read during server rendering",
       "severity": "error",
       "recommendation": "Move browser-only reads into an effect or event, guard them behind a client-only render path, or use useSyncExternalStore with a stable server snapshot.",
       "category": "Bugs",

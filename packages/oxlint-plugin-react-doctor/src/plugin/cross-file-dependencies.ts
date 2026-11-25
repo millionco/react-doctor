@@ -1,3 +1,4 @@
+import { getContextTimeoutCallback } from "./utils/get-context-timeout-callback.js";
 import { getFreshCallbackCoveredBindings } from "./rules/react-builtins/exhaustive-deps-fresh-callback-coverage.js";
 import { resolveImportedApiReference } from "./utils/resolve-imported-api-reference.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
@@ -585,6 +586,9 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
+    // Context timer candidates bypass the cache below. Other files use only
+    // their own source, so there are no dependency probes to collect.
+    ["no-chain-state-updates", () => {}],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
@@ -682,6 +686,30 @@ export const collectCrossFileDependencyProbes = (input: {
     };
   } catch {
     return null;
+  }
+
+  if (
+    input.ruleIds.includes("no-chain-state-updates") &&
+    staticImports.some((entry) => entry.moduleRequest.value.startsWith("."))
+  ) {
+    const program = getProgram();
+    attachParentReferences(program);
+    let scopes: ReturnType<typeof analyzeScopes> | undefined;
+    let hasContextTimer = false;
+    walkAst(program, (node) => {
+      if (hasContextTimer) return false;
+      if (
+        !isNodeOfType(node, "ArrowFunctionExpression") &&
+        !isNodeOfType(node, "FunctionExpression")
+      )
+        return;
+      if (!isNodeOfType(node.parent, "CallExpression") || node.parent.arguments[0] !== node) return;
+      scopes ??= analyzeScopes(program);
+      hasContextTimer = getContextTimeoutCallback(node, scopes) !== null;
+    });
+    // The rule verifies a live browser build and its package graph for this
+    // shape. A source-only fingerprint cannot cover those dependencies.
+    if (hasContextTimer) return null;
   }
 
   if (

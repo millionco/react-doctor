@@ -1,4 +1,8 @@
 import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
+import { getContextTimeoutCallback } from "../../utils/get-context-timeout-callback.js";
+import { hasQualifiedViteContextTimer } from "../../utils/qualify-vite-context-timer.js";
+import { readCuratedViteSourceProject } from "../../utils/read-curated-vite-source-project.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
@@ -14,6 +18,7 @@ import {
   getArgsUpstreamRefs,
   getCallExpr,
   getDownstreamRefs,
+  getEventualCallRefsTo,
   getRef,
   getUpstreamRefs,
 } from "./utils/effect/ast.js";
@@ -143,6 +148,46 @@ const isSimpleExpression = (
   return isSimple;
 };
 
+const createDeferredStateWriteCheck = (context: RuleContext) => {
+  let project: ReturnType<typeof readCuratedViteSourceProject> | undefined;
+  const qualifiedByImport = new Map<string, boolean>();
+
+  const isWithinQualifiedTimeout = (setter: EsTreeNode): boolean => {
+    let node = setter.parent;
+    while (node) {
+      const timer = getContextTimeoutCallback(node, context.scopes);
+      if (timer) {
+        if (project === undefined) project = readCuratedViteSourceProject(context);
+        const focal = project?.modulesByFilePath.get(project.focal);
+        if (!project || !focal) return false;
+        const { getter } = timer;
+        const key = JSON.stringify([getter.source, getter.importedName]);
+        if (!qualifiedByImport.has(key)) {
+          qualifiedByImport.set(key, hasQualifiedViteContextTimer(project, focal, getter));
+        }
+        if (qualifiedByImport.get(key)) return true;
+      }
+      node = node.parent;
+    }
+    return false;
+  };
+
+  return (analysis: ProgramAnalysis, reference: Reference): boolean => {
+    const setters = getEventualCallRefsTo(
+      analysis,
+      reference,
+      (candidate) => resolveStateSetterReference(analysis, candidate) !== null,
+    );
+    return (
+      setters.length > 0 &&
+      setters.every((candidate) => {
+        const call = getCallExpr(candidate);
+        return call !== null && isWithinQualifiedTimeout(call);
+      })
+    );
+  };
+};
+
 export const noChainStateUpdates = defineRule({
   id: "no-chain-state-updates",
   title: "State updates chained through effects",
@@ -151,109 +196,118 @@ export const noChainStateUpdates = defineRule({
   tags: ["test-noise"],
   recommendation:
     "Set all the related state together in the event handler that starts it, instead of having one useEffect react to a state change and set more state. See https://react.dev/learn/you-might-not-need-an-effect#chains-of-computations",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (
-        !isReactApiCall(node, APPLICABLE_EFFECT_HOOK_NAMES, context.scopes, {
-          allowGlobalReactNamespace: true,
-          allowUnboundBareCalls: true,
-          resolveConditionalAliases: true,
-          resolveNamedAliases: true,
-        })
-      ) {
-        return;
-      }
-      const analysis = getProgramAnalysis(node);
-      if (!analysis) return;
-      if (hasCleanup(analysis, node)) return;
-      const effectFnRefs = getEffectFnRefs(analysis, node);
-      const depsRefs = getEffectDepsRefs(analysis, node);
-      if (!effectFnRefs || !depsRefs) return;
-      const effectFn = getEffectFn(analysis, node);
-      if (!effectFn) return;
-
-      const stateDeps = depsRefs.flatMap((reference) =>
-        getDependencyStateRefs(analysis, context, reference),
-      );
-      if (stateDeps.length === 0) return;
-      // Every triggering state dep is driven by a timer / listener / observer
-      // / subscription — there is no single event handler to set all the
-      // related state together, so the chain is the correct shape here.
-      if (stateDeps.every((ref) => isExternallyDrivenState(analysis, ref))) return;
-
-      const stateDepDeclarators = new Set(
-        stateDeps
-          .map((ref) => getUseStateDeclarator(ref))
-          .filter((declarator): declarator is EsTreeNode => declarator !== null),
-      );
-      const isReachableFromStateTrigger = createStateTriggerReachability({
-        analysis,
-        context,
-        effectFunction: effectFn,
-      });
-
-      // A state synced from a live DOM read (`document.querySelectorAll`,
-      // a layout measurement) cannot be computed in the upstream event
-      // handler — the DOM is only consistent after commit, so the effect is
-      // required and the doc's "set both in the handler" fix cannot apply.
-      // The whole state is exempt, including its fallback resets in the same
-      // effect (the `catch { setAnchors([]) }` arm of the DOM-sync flow).
-      const domSyncedStateDeclarators = new Set<EsTreeNode>();
-      for (const ref of effectFnRefs) {
-        if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
-        const callExpr = getCallExpr(ref);
-        if (!callExpr) continue;
-        if (!isReachableFromStateTrigger(callExpr)) continue;
+  create: (context: RuleContext) => {
+    const onlyWritesInQualifiedTimeouts = shouldUseCuratedPortBehavior(context.settings)
+      ? createDeferredStateWriteCheck(context)
+      : null;
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
-          !readsPostMountValueThroughLocals(callExpr, effectFn, {
-            ignoreBareRefCurrent: true,
-            scopes: context.scopes,
+          !isReactApiCall(node, APPLICABLE_EFFECT_HOOK_NAMES, context.scopes, {
+            allowGlobalReactNamespace: true,
+            allowUnboundBareCalls: true,
+            resolveConditionalAliases: true,
+            resolveNamedAliases: true,
           })
         ) {
-          continue;
+          return;
         }
-        const declarator = getUseStateDeclarator(resolveStateSetterReference(analysis, ref) ?? ref);
-        if (declarator) domSyncedStateDeclarators.add(declarator);
-      }
+        const analysis = getProgramAnalysis(node);
+        if (!analysis) return;
+        if (hasCleanup(analysis, node)) return;
+        const effectFnRefs = getEffectFnRefs(analysis, node);
+        const depsRefs = getEffectDepsRefs(analysis, node);
+        if (!effectFnRefs || !depsRefs) return;
+        const effectFn = getEffectFn(analysis, node);
+        if (!effectFn) return;
 
-      for (const ref of effectFnRefs) {
-        if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
-        const callExpr = getCallExpr(ref);
-        if (!callExpr) continue;
-        if (!isReachableFromStateTrigger(callExpr)) continue;
-        // Avoid overlap with no-derived-state
-        const isSomeArgsState = getArgsUpstreamRefs(analysis, ref).some((argRef) =>
-          isState(analysis, argRef),
+        const stateDeps = depsRefs.flatMap((reference) =>
+          getDependencyStateRefs(analysis, context, reference),
         );
-        if (isSomeArgsState) continue;
-        // Guarded self-sync: the setter writes the SAME state the effect
-        // depends on (clamp/normalize/latch patterns — `setPage(max)` when
-        // `page` is a dep). These converge in one pass and re-derive from
-        // in-scope values, so there is no handler to hoist them into. Only
-        // simple re-derivations are exempt; a self-targeting setter fed by
-        // a call result (editor/instance creation) is still a chain.
-        const setterDeclarator = getUseStateDeclarator(
-          resolveStateSetterReference(analysis, ref) ?? ref,
+        if (stateDeps.length === 0) return;
+        // Every triggering state dep is driven by a timer / listener / observer
+        // / subscription — there is no single event handler to set all the
+        // related state together, so the chain is the correct shape here.
+        if (stateDeps.every((ref) => isExternallyDrivenState(analysis, ref))) return;
+
+        const stateDepDeclarators = new Set(
+          stateDeps
+            .map((ref) => getUseStateDeclarator(ref))
+            .filter((declarator): declarator is EsTreeNode => declarator !== null),
         );
-        if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
-        const isSelfTargeting =
-          setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);
-        const setterArguments = isNodeOfType(callExpr, "CallExpression")
-          ? ((callExpr.arguments ?? []) as EsTreeNode[])
-          : [];
-        if (
-          isSelfTargeting &&
-          setterArguments.every((argument) =>
-            isSimpleExpression(analysis, argument, effectFn, new WeakSet()),
-          )
-        ) {
-          continue;
-        }
-        context.report({
-          node: callExpr,
-          message: "Chaining state updates triggers an extra render each step.",
+        const isReachableFromStateTrigger = createStateTriggerReachability({
+          analysis,
+          context,
+          effectFunction: effectFn,
         });
-      }
-    },
-  }),
+
+        // A state synced from a live DOM read (`document.querySelectorAll`,
+        // a layout measurement) cannot be computed in the upstream event
+        // handler — the DOM is only consistent after commit, so the effect is
+        // required and the doc's "set both in the handler" fix cannot apply.
+        // The whole state is exempt, including its fallback resets in the same
+        // effect (the `catch { setAnchors([]) }` arm of the DOM-sync flow).
+        const domSyncedStateDeclarators = new Set<EsTreeNode>();
+        for (const ref of effectFnRefs) {
+          if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
+          if (onlyWritesInQualifiedTimeouts?.(analysis, ref)) continue;
+          const callExpr = getCallExpr(ref);
+          if (!callExpr) continue;
+          if (!isReachableFromStateTrigger(callExpr)) continue;
+          if (
+            !readsPostMountValueThroughLocals(callExpr, effectFn, {
+              ignoreBareRefCurrent: true,
+              scopes: context.scopes,
+            })
+          ) {
+            continue;
+          }
+          const declarator = getUseStateDeclarator(
+            resolveStateSetterReference(analysis, ref) ?? ref,
+          );
+          if (declarator) domSyncedStateDeclarators.add(declarator);
+        }
+
+        for (const ref of effectFnRefs) {
+          if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
+          if (onlyWritesInQualifiedTimeouts?.(analysis, ref)) continue;
+          const callExpr = getCallExpr(ref);
+          if (!callExpr) continue;
+          if (!isReachableFromStateTrigger(callExpr)) continue;
+          // Avoid overlap with no-derived-state
+          const isSomeArgsState = getArgsUpstreamRefs(analysis, ref).some((argRef) =>
+            isState(analysis, argRef),
+          );
+          if (isSomeArgsState) continue;
+          // Guarded self-sync: the setter writes the SAME state the effect
+          // depends on (clamp/normalize/latch patterns — `setPage(max)` when
+          // `page` is a dep). These converge in one pass and re-derive from
+          // in-scope values, so there is no handler to hoist them into. Only
+          // simple re-derivations are exempt; a self-targeting setter fed by
+          // a call result (editor/instance creation) is still a chain.
+          const setterDeclarator = getUseStateDeclarator(
+            resolveStateSetterReference(analysis, ref) ?? ref,
+          );
+          if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
+          const isSelfTargeting =
+            setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);
+          const setterArguments = isNodeOfType(callExpr, "CallExpression")
+            ? ((callExpr.arguments ?? []) as EsTreeNode[])
+            : [];
+          if (
+            isSelfTargeting &&
+            setterArguments.every((argument) =>
+              isSimpleExpression(analysis, argument, effectFn, new WeakSet()),
+            )
+          ) {
+            continue;
+          }
+          context.report({
+            node: callExpr,
+            message: "Chaining state updates triggers an extra render each step.",
+          });
+        }
+      },
+    };
+  },
 });

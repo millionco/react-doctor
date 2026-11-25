@@ -150,6 +150,21 @@ afterEach(() => {
 });
 
 describe("scan result cache", () => {
+  it("rechecks live named Vite build inputs when linting is enabled", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "named-vite-cache", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).not.toBeNull();
+    const devDirectory = path.join(projectDirectory, "dev");
+    fs.mkdirSync(devDirectory);
+    fs.writeFileSync(path.join(devDirectory, "vite.config.ts"), "export default {};\n");
+
+    expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions())).not.toBeNull();
+  });
+
   it("separates contextual, line, and deletion-only scopes", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "contextual-cache", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

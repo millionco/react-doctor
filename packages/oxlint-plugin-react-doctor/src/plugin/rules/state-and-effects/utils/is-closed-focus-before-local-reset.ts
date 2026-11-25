@@ -1,3 +1,4 @@
+import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
@@ -5,8 +6,29 @@ import { isDirectNamedReactHookCall } from "../../../utils/is-direct-named-react
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import type { EffectStateWriteSite } from "./collect-effect-state-write-facts.js";
-import { hasClosedFocusRefWiring } from "./has-closed-focus-ref-wiring.js";
+import { hasClosedFocusRefWiring, readDirectRefCurrent } from "./has-closed-focus-ref-wiring.js";
 import { readStaticResetNumber } from "./read-static-reset-number.js";
+
+const hasOwnedNativeFocusRef = (
+  ref: SymbolDescriptor | null | undefined,
+  acquisition: EsTreeNode,
+  helper: EsTreeNode,
+  context: RuleContext,
+  directGuardRead?: EsTreeNode,
+): boolean => {
+  const initializer = ref?.initializer;
+  const component = findEnclosingFunction(helper);
+  return Boolean(
+    ref?.kind === "const" &&
+    isNodeOfType(initializer, "CallExpression") &&
+    isDirectNamedReactHookCall(initializer, "useRef", context.scopes) &&
+    initializer.arguments.length === 1 &&
+    isNodeOfType(initializer.arguments[0], "Literal") &&
+    initializer.arguments[0].value === null &&
+    component &&
+    hasClosedFocusRefWiring(ref, acquisition, component, context, directGuardRead),
+  );
+};
 
 export const isClosedFocusBeforeLocalReset = (
   call: EsTreeNode,
@@ -21,7 +43,6 @@ export const isClosedFocusBeforeLocalReset = (
     call.callee.computed ||
     call.callee.optional ||
     getStaticPropertyName(call.callee) !== "focus" ||
-    !isNodeOfType(call.callee.object, "Identifier") ||
     !write.value ||
     readStaticResetNumber(write.value, context.scopes) === null
   ) {
@@ -43,16 +64,30 @@ export const isClosedFocusBeforeLocalReset = (
     !isNodeOfType(branch, "IfStatement") ||
     branch.consequent !== block ||
     branch.alternate ||
-    !isNodeOfType(branch.test, "Identifier") ||
     !isNodeOfType(body, "BlockStatement") ||
-    body.body.length !== 2 ||
-    body.body[1] !== branch ||
     !isNodeOfType(helper, "ArrowFunctionExpression") ||
     helper.async ||
     helper.params.length !== 0 ||
     !isNodeOfType(wrapper, "CallExpression") ||
     wrapper.arguments[0] !== helper ||
     !isDirectNamedReactHookCall(wrapper, "useCallback", context.scopes)
+  ) {
+    return false;
+  }
+  if (body.body.length === 1 && body.body[0] === branch) {
+    const acquisition = call.callee.object;
+    const ref = readDirectRefCurrent(acquisition, context.scopes);
+    return (
+      ref !== null &&
+      readDirectRefCurrent(branch.test, context.scopes) === ref &&
+      hasOwnedNativeFocusRef(ref, acquisition, helper, context, branch.test)
+    );
+  }
+  if (
+    body.body.length !== 2 ||
+    body.body[1] !== branch ||
+    !isNodeOfType(branch.test, "Identifier") ||
+    !isNodeOfType(call.callee.object, "Identifier")
   ) {
     return false;
   }
@@ -78,19 +113,10 @@ export const isClosedFocusBeforeLocalReset = (
   }
   const input = context.scopes.symbolFor(alias.id);
   const ref = context.scopes.symbolFor(acquisition.object);
-  const initializer = ref?.initializer;
-  const component = findEnclosingFunction(helper);
   return Boolean(
     input &&
     context.scopes.symbolFor(call.callee.object) === input &&
     context.scopes.symbolFor(branch.test) === input &&
-    ref?.kind === "const" &&
-    isNodeOfType(initializer, "CallExpression") &&
-    isDirectNamedReactHookCall(initializer, "useRef", context.scopes) &&
-    initializer.arguments.length === 1 &&
-    isNodeOfType(initializer.arguments[0], "Literal") &&
-    initializer.arguments[0].value === null &&
-    component &&
-    hasClosedFocusRefWiring(ref, acquisition, component, context),
+    hasOwnedNativeFocusRef(ref, acquisition, helper, context),
   );
 };

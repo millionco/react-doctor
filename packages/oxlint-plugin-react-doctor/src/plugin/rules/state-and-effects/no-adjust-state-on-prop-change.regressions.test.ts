@@ -4,6 +4,53 @@ import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 describe("no-adjust-state-on-prop-change — regressions", () => {
   it.each([
+    ["direct guard", "if (fieldRef.current) { fieldRef.current.focus(); setActive(-1); }", "", 0],
+    [
+      "separate guarded focus",
+      "if (fieldRef.current) { fieldRef.current.focus(); setActive(-1); }",
+      "if (fieldRef.current) { fieldRef.current.focus(); }",
+      0,
+    ],
+    ["optional focus and unconditional reset", "fieldRef.current?.focus(); setActive(-1);", "", 1],
+    [
+      "guard for a different ref",
+      "if (otherRef.current) { fieldRef.current.focus(); setActive(-1); }",
+      "",
+      1,
+    ],
+    [
+      "separate ref replacement",
+      "if (fieldRef.current) { fieldRef.current.focus(); setActive(-1); }",
+      "fieldRef.current = getField();",
+      1,
+    ],
+    [
+      "separate focus with arguments",
+      "if (fieldRef.current) { fieldRef.current.focus(); setActive(-1); }",
+      "if (fieldRef.current) { fieldRef.current.focus(getOptions()); }",
+      1,
+    ],
+  ])("handles a reset after %s", (_description, focusWork, eventWork, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import { useCallback, useEffect, useRef, useState } from "react";
+      function SearchBox({ expanded }) {
+        const [active, setActive] = useState(-1);
+        const fieldRef = useRef(null);
+        const otherRef = useRef(null);
+        const focusAndReset = useCallback(() => { ${focusWork} }, []);
+        useEffect(() => {
+          if (expanded) focusAndReset();
+        }, [expanded, focusAndReset]);
+        return <><input ref={fieldRef} /><button onClick={() => { ${eventWork} setActive(2); }}>{active}</button></>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
     [
       "customized built-in input",
       "field.focus(); setActive(-1);",

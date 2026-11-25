@@ -262,7 +262,7 @@ export const noPropCallbackInEffect = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Move the shared state into a Provider so both sides read the same value. Then you don't need a useEffect to keep them in sync.",
+    "Keep shared state in a common owner when both components need the same value. For event notifications, call the prop where the event happens.",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 
@@ -423,9 +423,28 @@ export const noPropCallbackInEffect = defineRule({
           if (!isResultDiscardedCall(child) && !isDirectEffectReturn) return;
           if (reportedNodes.has(child)) return;
           reportedNodes.add(child);
+          const callee = stripParenExpression(child.callee);
+          const callbackBinding = isNodeOfType(callee, "Identifier")
+            ? context.scopes.symbolFor(callee)
+            : null;
+          const watchesCallback =
+            callbackBinding !== null &&
+            depsNode.elements.every(
+              (element) => element && !isNodeOfType(element, "SpreadElement"),
+            ) &&
+            depsNode.elements.some((element) => {
+              if (!element) return false;
+              const dependency = stripParenExpression(element);
+              return (
+                isNodeOfType(dependency, "Identifier") &&
+                context.scopes.symbolFor(dependency) === callbackBinding
+              );
+            });
           context.report({
             node: child,
-            message: `Your parent re-renders on every local state change because this useEffect calls the prop "${calleeName}" just to stay in sync.`,
+            message: watchesCallback
+              ? `This effect calls the prop "${calleeName}" and can notify it again if the callback changes while local state stays the same.`
+              : `This effect calls the prop "${calleeName}" in response to local state.`,
           });
         });
       },

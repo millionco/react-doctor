@@ -669,3 +669,37 @@ describe("notifications without state payloads", () => {
     },
   );
 });
+
+describe("no-prop-callback-in-effect — callback dependencies", () => {
+  const source = (dependencies: string) => `
+    import { useEffect, useState } from "react";
+    const Meter = ({ onReady, otherCallbacks }) => {
+      const [status, setStatus] = useState("idle");
+      useEffect(() => {
+        if (status === "ready") onReady("ready");
+      }, ${dependencies});
+      return <button onClick={() => setStatus("ready")} />;
+    };
+  `;
+
+  it("explains that a new callback can repeat a gated notification", () => {
+    const result = runRule(noPropCallbackInEffect, source("[status, onReady]"));
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain(
+      "can notify it again if the callback changes while local state stays the same",
+    );
+  });
+
+  it.each(["[status]", "[status, onReady, ...otherCallbacks]", "[status, , onReady]"])(
+    "describes local state without claiming a callback replay for %s",
+    (dependencies) => {
+      const result = runRule(noPropCallbackInEffect, source(dependencies));
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toBe(
+        'This effect calls the prop "onReady" in response to local state.',
+      );
+    },
+  );
+});

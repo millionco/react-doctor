@@ -987,3 +987,48 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+describe("no-effect-chain compiler-dependent disposal collector", () => {
+  it("bypasses the cache for the same imported cleanup factory shape as the rule", () => {
+    const file = writeFixtureFile(
+      "Composed.tsx",
+      `
+      import * as React from "react";
+      import { cleanup } from "./helpers";
+      function Widget() {
+        React.useEffect(() => cleanup(cancel, subscribe("x", () => {})), [state]);
+      }
+    `,
+    );
+    expect(collectFor(file, ["no-effect-chain"])).toBeNull();
+  });
+
+  it("keeps a default export object outside the named-import admission", () => {
+    const file = writeFixtureFile(
+      "Record.tsx",
+      `
+      import * as React from "react";
+      import helpers from "./helpers";
+      const { cleanup } = helpers;
+      function Widget() {
+        React.useEffect(() => cleanup(cancel, subscribe("x", () => {})), [state]);
+      }
+    `,
+    );
+    expect(collectFor(file, ["no-effect-chain"])).not.toBeNull();
+  });
+
+  it("keeps a local cleanup factory eligible for the file cache", () => {
+    const file = writeFixtureFile(
+      "Local.tsx",
+      `
+      import * as React from "react";
+      const cleanup = (first, second) => () => {};
+      function Widget() {
+        React.useEffect(() => cleanup(cancel, subscribe("x", () => {})), [state]);
+      }
+    `,
+    );
+    expect(collectFor(file, ["no-effect-chain"])).not.toBeNull();
+  });
+});

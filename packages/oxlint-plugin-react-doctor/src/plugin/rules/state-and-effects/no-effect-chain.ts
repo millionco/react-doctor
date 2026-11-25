@@ -1,3 +1,4 @@
+import { createContextDisposalEffectCheck } from "../../utils/is-qualified-context-disposal-effect.js";
 import {
   EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
@@ -2453,6 +2454,7 @@ export const noEffectChain = defineRule({
   recommendation:
     "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
   create: (context: RuleContext) => {
+    const isContextDisposal = createContextDisposalEffectCheck(context);
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
@@ -2518,6 +2520,7 @@ export const noEffectChain = defineRule({
           stateWrites,
           analysisFunctions,
           isExternalSync:
+            (writtenStateNames.size === 0 && isContextDisposal(callback)) ||
             externalSyncAnchors.length > 0 ||
             doesCallStorageSetter ||
             (writtenStateNames.size === 0 &&

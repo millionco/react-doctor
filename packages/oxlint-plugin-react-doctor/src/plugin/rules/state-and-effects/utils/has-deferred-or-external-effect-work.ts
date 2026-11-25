@@ -1,3 +1,4 @@
+import { isClosedFocusBeforeLocalReset } from "./is-closed-focus-before-local-reset.js";
 import {
   EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
@@ -434,6 +435,7 @@ export const hasDeferredOrExternalEffectWork = (
   effectNode: EsTreeNode,
   context: RuleContext,
   write: EffectStateWriteSite,
+  allowClosedFocusBeforeReset = false,
 ): boolean => {
   const { scopes } = context;
   const effectFunction = getEffectFn(analysis, effectNode);
@@ -522,7 +524,9 @@ export const hasDeferredOrExternalEffectWork = (
         : null;
       const localFunction = resolveInvokedFunction(analysis, callee, scopes);
       const timerOperationName = resolveTimerOperationName(callee, scopes);
-      const isExternalDomSync = isExternalDomSyncCall(child, context);
+      const isExternalDomSync =
+        isExternalDomSyncCall(child, context) ||
+        (allowClosedFocusBeforeReset && isClosedFocusBeforeLocalReset(child, write, context));
       const isExternalWork =
         isFetchCall(child) ||
         isExternalDomSync ||

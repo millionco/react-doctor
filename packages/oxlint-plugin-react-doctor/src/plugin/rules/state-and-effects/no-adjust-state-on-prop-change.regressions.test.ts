@@ -4,6 +4,61 @@ import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 describe("no-adjust-state-on-prop-change — regressions", () => {
   it.each([
+    [
+      "customized built-in input",
+      "field.focus(); setActive(-1);",
+      '<input is="custom-field" ref={fieldRef} />',
+      "",
+      1,
+    ],
+    ["closed focus and reset", "field.focus(); setActive(-1);", "<input ref={fieldRef} />", "", 0],
+    ["unverified input", "field.focus(); setActive(-1);", "<CustomInput ref={fieldRef} />", "", 1],
+    [
+      "different focus receiver",
+      "other.focus(); setActive(-1);",
+      "<input ref={fieldRef} />",
+      "",
+      1,
+    ],
+    ["focus after reset", "setActive(-1); field.focus();", "<input ref={fieldRef} />", "", 1],
+    [
+      "uncontrolled ref escape",
+      "field.focus(); setActive(-1);",
+      "<input ref={fieldRef} />",
+      "register(fieldRef);",
+      1,
+    ],
+    [
+      "focus handler on a wrapper",
+      "field.focus(); setActive(-1);",
+      "<div onFocusCapture={() => setActive(0)}><input ref={fieldRef} /></div>",
+      "",
+      1,
+    ],
+  ])("keeps the diagnostic scoped to %s", (_description, guardedWork, markup, extra, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import { useCallback, useEffect, useRef, useState } from "react";
+      function Picker({ expanded }) {
+        const [active, setActive] = useState(-1);
+        const fieldRef = useRef(null);
+        ${extra}
+        const focusAndReset = useCallback(() => {
+          const field = fieldRef.current;
+          if (field) { ${guardedWork} }
+        }, []);
+        useEffect(() => {
+          if (expanded) focusAndReset();
+        }, [expanded, focusAndReset]);
+        return <>${markup}<button onClick={() => setActive(2)}>{active}</button></>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it.each([
     ["React local state", 'import { useEffect, useState } from "react";', "useState", "enabled", 0],
     [
       "Preact local state",

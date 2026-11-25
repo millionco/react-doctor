@@ -1067,22 +1067,25 @@ it("records the API Platform provider manifest", () => {
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
 
-describe("no-chain-state-updates local focus input collector", () => {
-  it("records the selected input export and nearer unresolved alternatives", () => {
-    const leaf = writeFixtureFile("field/Field.jsx", "export const Field = styled.input``;");
-    const barrel = writeFixtureFile(
-      "field/index.js",
-      'import { Field } from "./Field"; export { Field };',
-    );
-    const caller = writeFixtureFile(
-      "Picker.jsx",
-      'import { Field } from "./field"; export const Picker = () => input.current.focus();',
-    );
+describe("local focus input collector", () => {
+  it.each(["no-chain-state-updates", "no-adjust-state-on-prop-change"])(
+    "records the selected input export and nearer unresolved alternatives for %s",
+    (ruleId) => {
+      const leaf = writeFixtureFile("field/Field.jsx", "export const Field = styled.input``;");
+      const barrel = writeFixtureFile(
+        "field/index.js",
+        'import { Field } from "./Field"; export { Field };',
+      );
+      const caller = writeFixtureFile(
+        "Picker.jsx",
+        'import { Field } from "./field"; export const Picker = () => input.current.focus();',
+      );
 
-    const trace = collectFor(caller, ["no-chain-state-updates"]);
-    expect(trace).not.toBeNull();
-    expect(trace?.contentPaths).toContain(barrel);
-    expect(trace?.contentPaths).toContain(leaf);
-    expect(trace?.existencePaths).toContain(fixturePath("field/Field.js"));
-  });
+      const trace = collectFor(caller, [ruleId]);
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths).toContain(barrel);
+      expect(trace?.contentPaths).toContain(leaf);
+      expect(trace?.existencePaths).toContain(fixturePath("field/Field.js"));
+    },
+  );
 });

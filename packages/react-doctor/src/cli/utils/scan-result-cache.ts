@@ -442,7 +442,7 @@ export const resolveScanResultToolchainFingerprint = (
 const mayReadInstalledCompiler = (input: ScanResultCacheKeyInput): boolean => {
   if (!input.options.lint) return false;
   if (
-    ["stencil.config.ts", "tsup.config.ts"].some((configuration) =>
+    ["stencil.config.ts", "stencil.config.js", "tsup.config.ts"].some((configuration) =>
       fs.existsSync(path.join(input.projectDirectory, configuration)),
     )
   ) {

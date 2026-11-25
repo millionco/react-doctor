@@ -20,6 +20,7 @@ import { isPathInside } from "../is-path-inside.js";
 export type StockProviderProfile =
   | "node-require"
   | "node-import"
+  | "esbuild-node-import"
   | "vite-production-import"
   | "vite-production-require"
   | "vite-style"
@@ -50,6 +51,7 @@ export interface StockPhysicalEntry {
 const CONDITIONS: Readonly<Record<StockProviderProfile, readonly string[]>> = {
   "node-require": ["node", "require", "node-addons", "module-sync"],
   "node-import": ["node", "import", "node-addons", "module-sync"],
+  "esbuild-node-import": ["node", "module", "import"],
   "vite-production-import": ["module", "browser", "production", "import"],
   "vite-production-require": ["module", "browser", "production", "require"],
   "vite-style": ["style", "production", "import"],
@@ -177,6 +179,8 @@ const selectStockMember = (
     target = selectExport(manifest.exports, subpath, CONDITIONS[profile]);
   } else if (subpath !== ".") {
     target = subpath.slice(2);
+  } else if (profile === "esbuild-node-import") {
+    target = manifest.main ?? manifest.module ?? "index.js";
   } else if (profile === "vite-style") {
     target = manifest.style ?? manifest.main;
   } else if (viteBrowser) {
@@ -273,6 +277,34 @@ const findPackageDirectory = (
   return null;
 };
 
+export const resolveStockPhysicalPackageDirectory = (
+  projectRoot: string,
+  importerDirectory: string,
+  packageName: string,
+): string | null => {
+  if (
+    !path.isAbsolute(projectRoot) ||
+    !path.isAbsolute(importerDirectory) ||
+    !isPathInside(importerDirectory, projectRoot) ||
+    !barePackage.test(packageName) ||
+    packageName
+      .split("/")
+      .some((segment) => segment === "." || segment === ".." || segment === "node_modules")
+  )
+    return null;
+  recordRealpathProbe(projectRoot);
+  recordRealpathProbe(importerDirectory);
+  try {
+    const root = realpathSync(projectRoot);
+    const issuer = realpathSync(importerDirectory);
+    return isPathInside(issuer, root) && lstatSync(issuer).isDirectory()
+      ? findPackageDirectory(root, issuer, packageName, true)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Read one installed provider from explicitly selected stock resolver
  * conditions. The caller must qualify those conditions, compiler/config
@@ -312,7 +344,8 @@ export const resolveStockPhysicalEntry = (
       scope.manifest.name === contract.packageName &&
       scope.manifest.exports !== undefined &&
       scope.manifest.exports !== null;
-    const rejectFileCandidates = profile === "node-require" || profile === "jest-browser";
+    const rejectFileCandidates =
+      profile === "node-require" || profile === "jest-browser" || profile === "esbuild-node-import";
     const directory = self
       ? scope.directory
       : findPackageDirectory(root, issuer, contract.packageName, rejectFileCandidates);

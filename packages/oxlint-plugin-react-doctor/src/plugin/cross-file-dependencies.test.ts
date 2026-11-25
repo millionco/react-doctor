@@ -132,6 +132,34 @@ describe("no-unknown-property collector", () => {
     expect(collectFor(component, ["no-unknown-property"])).toBeNull();
   });
 
+  it("keeps a declared generated Stencil build live before its config exists", () => {
+    const component = writeFixtureFile(
+      "src/card.tsx",
+      'import { h } from "@stencil/core"; export const Card = () => <main class="card" />;',
+    );
+    const trace = collectFor(component, ["no-unknown-property"]);
+    expect(trace?.existencePaths.has(fixturePath("stencil.config.js"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("package.json"))).toBe(true);
+    writeFixtureFile(
+      "package.json",
+      JSON.stringify({
+        scripts: {
+          prod: "pnpm run build",
+          prebuild: "run-p generate:*",
+          build: "cross-env NODE_ENV=production run-s build:components",
+          "build:components": "stencil build",
+          "generate:stencil-config":
+            "esbuild ./scripts/stencil.config.ts --external:lightningcss --bundle --platform=node --outfile=stencil.config.js",
+        },
+      }),
+    );
+    expect(collectFor(component, ["no-unknown-property"])).toBeNull();
+    writeFixtureFile("package.json", "{}");
+    expect(
+      collectFor(component, ["no-unknown-property"])?.contentPaths.has(fixturePath("package.json")),
+    ).toBe(true);
+  });
+
   it("keeps ordinary React source fingerprintable", () => {
     writeFixtureFile("stencil.config.ts", "export const config = {};");
     const component = writeFixtureFile("src/Card.tsx", "export const Card = () => <main />;");

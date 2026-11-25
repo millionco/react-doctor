@@ -903,3 +903,458 @@ export const readPhysicalStencilBuild = (input: { projectRoot: string; filename:
     return null;
   }
 };
+
+interface GeneratedFactoryBinding {
+  readonly module: string;
+  readonly exportedName: string;
+}
+
+export interface DeclaredGeneratedStencilConfig {
+  readonly namespace: string;
+  readonly productionOnly: true;
+  readonly sourceMap: boolean;
+  readonly globalStyle: string;
+  readonly localStyleFactory: GeneratedFactoryBinding & { readonly arguments: DataObject };
+  readonly localOutputFactories: readonly (GeneratedFactoryBinding & {
+    readonly proxiesFile: string;
+    readonly arguments: DataObject;
+  })[];
+  readonly builtinOutputTargets: readonly DataObject[];
+  readonly rollupExternals: GeneratedFactoryBinding;
+  readonly mainFields: readonly string[];
+  readonly rollupFilters: {
+    readonly include: readonly GeneratedFilter[];
+    readonly exclude: readonly GeneratedFilter[];
+  };
+}
+
+type GeneratedFilter = string | { readonly pattern: string; readonly flags: "" };
+
+const readStaticMember = (node: EsTreeNode, name: string): EsTreeNode | null =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.computed &&
+  !node.optional &&
+  isNodeOfType(node.property, "Identifier") &&
+  node.property.name === name
+    ? node.object
+    : null;
+
+const defaultLocalFactoryPath = /^\.\/[\w-]+(?:\/[\w-]+)*$/u;
+const readGeneratedObject = (node: EsTreeNode): DataObject | null => {
+  const data = readData(node, new Map());
+  return plain(data) ? data : null;
+};
+
+const isProductionSelector = (test: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (
+    !isNodeOfType(test, "BinaryExpression") ||
+    test.operator !== "===" ||
+    !isNodeOfType(test.right, "Literal") ||
+    test.right.value !== "production"
+  )
+    return false;
+  const env = readStaticMember(test.left, "NODE_ENV");
+  const receiver = env ? readStaticMember(env, "env") : null;
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "process" &&
+    scopes.isGlobalReference(receiver)
+  );
+};
+
+const readGeneratedFactoryCall = (
+  node: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): { binding: GeneratedFactoryBinding; argument: EsTreeNode } | null => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    node.optional ||
+    !isNodeOfType(node.callee, "Identifier") ||
+    node.arguments.length !== 1
+  )
+    return null;
+  const symbol = scopes.symbolFor(node.callee);
+  const imported = symbol?.declarationNode;
+  const declaration = symbol ? getImportDeclarationForSymbol(symbol) : null;
+  if (
+    !declaration ||
+    declaration.importKind === "type" ||
+    typeof declaration.source.value !== "string" ||
+    declaration.attributes?.length
+  )
+    return null;
+  const exportedName = isNodeOfType(imported, "ImportDefaultSpecifier")
+    ? "default"
+    : isNodeOfType(imported, "ImportSpecifier") &&
+        imported.importKind !== "type" &&
+        isNodeOfType(imported.imported, "Identifier")
+      ? imported.imported.name
+      : null;
+  return exportedName
+    ? { binding: { module: declaration.source.value, exportedName }, argument: node.arguments[0] }
+    : null;
+};
+
+const generatedOutputPath = /^\.\.\/[a-zA-Z0-9][\w-]*\/src\/(?:[\w-]+\/)*[\w-]+\.ts$/u;
+const permittedLegacyBuiltins = (data: DataObject): boolean => {
+  if (data.type === "dist") return allowedBuiltin(data);
+  if (data.type === "dist-custom-elements") {
+    return (
+      keysIn(data, ["type", "minify", "autoDefineCustomElements", "generateTypeDeclarations"]) &&
+      [data.minify, data.autoDefineCustomElements, data.generateTypeDeclarations].every(
+        (value) => value === undefined || typeof value === "boolean",
+      )
+    );
+  }
+  return (
+    data.type === "dist-hydrate-script" &&
+    keysIn(data, ["type", "dir"]) &&
+    typeof data.dir === "string" &&
+    /^dist(?:\/[\w-]+)+$/u.test(data.dir) &&
+    projectPath(data.dir)
+  );
+};
+
+const readGeneratedFilters = (node: EsTreeNode | undefined): readonly GeneratedFilter[] | null => {
+  if (!isNodeOfType(node, "ArrayExpression") || node.elements.length > 16) return null;
+  const entries: GeneratedFilter[] = [];
+  for (const element of node.elements) {
+    if (!isNodeOfType(element, "Literal")) return null;
+    if (typeof element.value === "string") entries.push(element.value);
+    else if ("regex" in element && element.regex.pattern.length <= 128 && !element.regex.flags) {
+      entries.push({ pattern: element.regex.pattern, flags: "" });
+    } else return null;
+  }
+  return entries;
+};
+
+const isInertGeneratedTesting = (node: EsTreeNode, scopes: ScopeAnalysis, depth = 0): boolean => {
+  if (depth > 12) return false;
+  if (readData(node, new Map()) !== UNKNOWN) return true;
+  const properties = fields(node);
+  if (properties) {
+    return [...properties.values()].every((value) =>
+      isInertGeneratedTesting(value, scopes, depth + 1),
+    );
+  }
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    node.optional ||
+    node.arguments.length < 2 ||
+    node.arguments.length > 8
+  )
+    return false;
+  const receiver = readStaticMember(node.callee, "resolve");
+  const [first, ...parts] = node.arguments;
+  const binding = isNodeOfType(receiver, "Identifier") ? scopes.symbolFor(receiver) : null;
+  const declaration = binding ? getImportDeclarationForSymbol(binding) : null;
+  return (
+    isNodeOfType(binding?.declarationNode, "ImportNamespaceSpecifier") &&
+    declaration?.importKind !== "type" &&
+    (declaration?.source.value === "path" || declaration?.source.value === "node:path") &&
+    isNodeOfType(first, "Identifier") &&
+    first.name === "__dirname" &&
+    scopes.isGlobalReference(first) &&
+    parts.every((part) => isNodeOfType(part, "Literal") && typeof part.value === "string")
+  );
+};
+
+const readConstDeclaration = (node: EsTreeNode) => {
+  if (
+    !isNodeOfType(node, "VariableDeclaration") ||
+    node.kind !== "const" ||
+    node.declarations.length !== 1
+  )
+    return null;
+  const [decl] = node.declarations;
+  return isNodeOfType(decl.id, "Identifier") && decl.init ? { id: decl.id, init: decl.init } : null;
+};
+
+// Parse a small production config generator as data. The caller must separately
+// certify the recorded runtime imports, selected config and workspace writes.
+export const readDeclaredGeneratedStencilConfig = (
+  sourceText: string,
+): DeclaredGeneratedStencilConfig | null => {
+  if (sourceText.length > 128 * 1024) return null;
+  const program = parseSourceText({ filename: "stencil.config.ts", sourceText });
+  if (!isNodeOfType(program, "Program")) return null;
+  const scopes = analyzeScopes(program);
+  let first = 0;
+  while (first < program.body.length) {
+    const declaration = program.body[first];
+    if (!isNodeOfType(declaration, "ImportDeclaration")) break;
+    if (declaration.attributes?.length || declaration.specifiers.length === 0) return null;
+    first++;
+  }
+  const [envNode, targetsNode, devNode, exported] = program.body.slice(first);
+  if (program.body.length !== first + 4) return null;
+  const environment = readConstDeclaration(envNode);
+  const targets = readConstDeclaration(targetsNode);
+  if (
+    !environment ||
+    !isProductionSelector(environment.init, scopes) ||
+    !targets ||
+    !isNodeOfType(targets.init, "ArrayExpression") ||
+    !isNodeOfType(devNode, "IfStatement") ||
+    devNode.alternate ||
+    !isNodeOfType(devNode.test, "UnaryExpression") ||
+    devNode.test.operator !== "!" ||
+    !isNodeOfType(devNode.test.argument, "Identifier") ||
+    scopes.symbolFor(devNode.test.argument) !== scopes.symbolFor(environment.id) ||
+    !isNodeOfType(devNode.consequent, "BlockStatement") ||
+    devNode.consequent.body.length !== 1 ||
+    !isNodeOfType(exported, "ExportNamedDeclaration") ||
+    !exported.declaration
+  )
+    return null;
+  const [devStatement] = devNode.consequent.body;
+  const devPush = isNodeOfType(devStatement, "ExpressionStatement")
+    ? devStatement.expression
+    : null;
+  const devReceiver =
+    isNodeOfType(devPush, "CallExpression") && !devPush.optional && devPush.arguments.length === 1
+      ? readStaticMember(devPush.callee, "push")
+      : null;
+  const extra =
+    isNodeOfType(devPush, "CallExpression") && devPush.arguments[0]
+      ? readGeneratedObject(devPush.arguments[0])
+      : null;
+  if (
+    !isNodeOfType(devReceiver, "Identifier") ||
+    scopes.symbolFor(devReceiver) !== scopes.symbolFor(targets.id) ||
+    !extra ||
+    extra.type !== "docs-readme" ||
+    !allowedBuiltin(extra)
+  )
+    return null;
+  const declared = readConstDeclaration(exported.declaration);
+  const options = declared?.id.name === "config" ? fields(declared.init) : null;
+  if (
+    !options ||
+    ![...options.keys()].every((k) =>
+      [
+        "namespace",
+        "globalStyle",
+        "plugins",
+        "sourceMap",
+        "nodeResolve",
+        "outputTargets",
+        "bundles",
+        "testing",
+        "rollupConfig",
+        "rollupPlugins",
+      ].includes(k),
+    )
+  )
+    return null;
+  const namespace = options.get("namespace");
+  const style = options.get("globalStyle");
+  const mapped = options.get("sourceMap");
+  const attached = options.get("outputTargets");
+  if (
+    !isNodeOfType(namespace, "Literal") ||
+    typeof namespace.value !== "string" ||
+    !plainConfigOther("namespace", namespace.value) ||
+    !isNodeOfType(style, "Literal") ||
+    typeof style.value !== "string" ||
+    !projectPath(style.value) ||
+    !/\.s[ac]ss$/u.test(style.value) ||
+    !isNodeOfType(mapped, "UnaryExpression") ||
+    mapped.operator !== "!" ||
+    !isNodeOfType(mapped.argument, "Identifier") ||
+    scopes.symbolFor(mapped.argument) !== scopes.symbolFor(environment.id) ||
+    !isNodeOfType(attached, "Identifier") ||
+    scopes.symbolFor(attached) !== scopes.symbolFor(targets.id)
+  )
+    return null;
+
+  const pluginNodes = options.get("plugins");
+  const styleCall =
+    isNodeOfType(pluginNodes, "ArrayExpression") && pluginNodes.elements.length === 1
+      ? readGeneratedFactoryCall(pluginNodes.elements[0], scopes)
+      : null;
+  const styleArgs = styleCall ? readGeneratedObject(styleCall.argument) : null;
+  if (
+    !styleCall ||
+    styleCall.binding.exportedName !== "default" ||
+    !defaultLocalFactoryPath.test(styleCall.binding.module) ||
+    !styleArgs ||
+    !keysIn(styleArgs, ["injectGlobalPaths", "outputStyle"]) ||
+    (styleArgs.outputStyle !== undefined && styleArgs.outputStyle !== "compressed") ||
+    (styleArgs.injectGlobalPaths !== undefined &&
+      (!Array.isArray(styleArgs.injectGlobalPaths) ||
+        !styleArgs.injectGlobalPaths.every(projectPath)))
+  )
+    return null;
+
+  const resolve = options.get("nodeResolve");
+  const resolved = resolve ? readGeneratedObject(resolve) : null;
+  if (
+    !resolved ||
+    !keysIn(resolved, ["preferBuiltins", "mainFields"]) ||
+    resolved.preferBuiltins !== false ||
+    !Array.isArray(resolved.mainFields) ||
+    !resolved.mainFields.length ||
+    !resolved.mainFields.every((k): k is string => typeof k === "string" && /^[\w:-]+$/u.test(k))
+  )
+    return null;
+
+  const rollup = options.get("rollupPlugins");
+  const rollupFields = rollup ? fields(rollup) : null;
+  const before = rollupFields?.get("before");
+  const external =
+    rollupFields?.size === 1 &&
+    isNodeOfType(before, "ArrayExpression") &&
+    before.elements.length === 1
+      ? readGeneratedFactoryCall(before.elements[0], scopes)
+      : null;
+  const filters = external ? fields(external.argument) : null;
+  const include = readGeneratedFilters(filters?.get("include"));
+  const exclude = readGeneratedFilters(filters?.get("exclude"));
+  if (
+    !external ||
+    external.binding.module !== "rollup-plugin-node-externals" ||
+    external.binding.exportedName !== "default" ||
+    !filters ||
+    filters.size !== 4 ||
+    !include ||
+    !exclude
+  )
+    return null;
+  for (const [name, expected] of [
+    ["deps", true],
+    ["devDeps", false],
+  ] as const) {
+    const field = filters.get(name);
+    if (!isNodeOfType(field, "Literal") || field.value !== expected) return null;
+  }
+  const testing = options.get("testing");
+  if (testing && !isInertGeneratedTesting(testing, scopes)) return null;
+  const rollupConfig = options.get("rollupConfig");
+  if (rollupConfig) {
+    const config = readGeneratedObject(rollupConfig);
+    if (
+      !config ||
+      !keysIn(config, ["inputOptions"]) ||
+      !plain(config.inputOptions) ||
+      !keysIn(config.inputOptions, ["treeshake"]) ||
+      config.inputOptions.treeshake !== true
+    )
+      return null;
+  }
+  const bundles = options.get("bundles");
+  if (bundles) {
+    const data = readData(bundles, new Map());
+    if (
+      !Array.isArray(data) ||
+      !data.every(
+        (bundle) =>
+          plain(bundle) &&
+          keysIn(bundle, ["components"]) &&
+          Array.isArray(bundle.components) &&
+          bundle.components.every(
+            (tag) => typeof tag === "string" && /^[a-z][a-z0-9-]*-[a-z0-9-]+$/u.test(tag),
+          ),
+      )
+    )
+      return null;
+  }
+
+  const localOutputFactories: (GeneratedFactoryBinding & {
+    proxiesFile: string;
+    arguments: DataObject;
+  })[] = [];
+  const builtinOutputTargets: DataObject[] = [];
+  for (const target of targets.init.elements) {
+    if (!target) return null;
+    const call = readGeneratedFactoryCall(target, scopes);
+    if (call) {
+      const recorded = readGeneratedObject(call.argument);
+      if (
+        !defaultLocalFactoryPath.test(call.binding.module) ||
+        call.binding.exportedName === "default" ||
+        !recorded ||
+        typeof recorded.proxiesFile !== "string" ||
+        !generatedOutputPath.test(recorded.proxiesFile) ||
+        !keysIn(recorded, [
+          "componentCorePackage",
+          "customElementsDir",
+          "includeImportCustomElements",
+          "proxiesFile",
+          "componentModels",
+        ]) ||
+        !projectPath(recorded.customElementsDir) ||
+        recorded.includeImportCustomElements !== true ||
+        typeof recorded.componentCorePackage !== "string"
+      )
+        return null;
+      localOutputFactories.push({
+        ...call.binding,
+        proxiesFile: recorded.proxiesFile,
+        arguments: recorded,
+      });
+      continue;
+    }
+    const object = fields(target);
+    if (!object) return null;
+    const legacy: Record<string, Data> = Object.create(null);
+    for (const [name, value] of object) {
+      const data =
+        isNodeOfType(value, "Identifier") &&
+        scopes.symbolFor(value) === scopes.symbolFor(environment.id)
+          ? true
+          : readData(value, new Map());
+      if (data === UNKNOWN) return null;
+      legacy[name] = data;
+    }
+    if (
+      !permittedLegacyBuiltins(legacy) ||
+      builtinOutputTargets.some((other) => other.type === legacy.type)
+    )
+      return null;
+    builtinOutputTargets.push(legacy);
+  }
+  if (!builtinOutputTargets.some((target) => target.type === "dist-custom-elements")) return null;
+  const declaredImports = [styleCall.binding, external.binding, ...localOutputFactories];
+  for (const statement of program.body.slice(0, first)) {
+    if (!isNodeOfType(statement, "ImportDeclaration") || typeof statement.source.value !== "string")
+      return null;
+    if (statement.importKind === "type") continue;
+    for (const specifier of statement.specifiers) {
+      const module = statement.source.value;
+      if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
+        if (module !== "path" && module !== "node:path") return null;
+        continue;
+      }
+      let imported = "default";
+      if (isNodeOfType(specifier, "ImportSpecifier")) {
+        if (specifier.importKind === "type") continue;
+        if (!isNodeOfType(specifier.imported, "Identifier")) return null;
+        imported = specifier.imported.name;
+      }
+      if (
+        (module === "@stencil/core" && imported === "Config") ||
+        (module === "@stencil/core/internal" && imported === "OutputTarget")
+      )
+        continue;
+      if (
+        !declaredImports.some(
+          (binding) => binding.module === module && binding.exportedName === imported,
+        )
+      )
+        return null;
+    }
+  }
+  return {
+    namespace: namespace.value,
+    productionOnly: true,
+    sourceMap: false,
+    globalStyle: style.value,
+    localStyleFactory: { ...styleCall.binding, arguments: styleArgs },
+    localOutputFactories,
+    builtinOutputTargets,
+    rollupExternals: external.binding,
+    mainFields: resolved.mainFields as string[],
+    rollupFilters: { include, exclude },
+  };
+};

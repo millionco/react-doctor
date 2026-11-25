@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import { recordDirectoryProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import { isPathInside } from "./is-path-inside.js";
 import {
   haveNoPhysicalPackageCandidates,
@@ -15,6 +15,7 @@ export interface StockNpmCompilerPackage {
   readonly memberCount: number;
   readonly contentDigest: string;
   readonly optimizedContentDigest?: string;
+  readonly allowPnpmGeneratedBinDirectory?: boolean;
   readonly entryMembers: Readonly<Record<string, string>>;
 }
 export interface StockNpmCompilerProfile {
@@ -69,8 +70,13 @@ const verifyPackage = (
       if (entry.isSymbolicLink()) return false;
       if (entry.isDirectory()) {
         if (current === directory && entry.name === "node_modules") {
-          if (![...expectedPackages].some((candidate) => isPathInside(candidate, filename)))
-            return false;
+          if (![...expectedPackages].some((candidate) => isPathInside(candidate, filename))) {
+            if (!profile.allowPnpmGeneratedBinDirectory) return false;
+            recordDirectoryProbe(filename);
+            const generated = fs.readdirSync(filename, { withFileTypes: true });
+            if (generated.some((child) => child.name !== ".bin" || !child.isDirectory()))
+              return false;
+          }
           continue;
         }
         pending.push(filename);

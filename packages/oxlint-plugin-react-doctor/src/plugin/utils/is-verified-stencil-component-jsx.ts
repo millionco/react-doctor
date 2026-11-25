@@ -7,6 +7,7 @@ import { findProgramRoot } from "./find-program-root.js";
 import { getImportedName } from "./get-imported-name.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { getValueImportSource } from "./get-value-import-declaration.js";
+import { hasVerifiedGeneratedStencilClassCompiler } from "./has-verified-generated-stencil-class-compiler.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isPathInside } from "./is-path-inside.js";
 import { collectJsxRuntimeImports } from "./non-react-jsx-dialect.js";
@@ -102,11 +103,11 @@ const validOutputPath = (root: string, relative: string): boolean => {
   return true;
 };
 
-export const hasVerifiedStencilClassCompiler = (context: RuleContext): boolean => {
-  const configuredRoot = getReactDoctorStringSetting(context.settings, "rootDirectory");
-  if (!context.filename || !configuredRoot || !path.isAbsolute(configuredRoot)) return false;
-  const projectRoot = path.resolve(configuredRoot);
-  const filename = path.resolve(projectRoot, context.filename);
+const hasVerifiedOrdinaryStencilClassCompiler = (
+  context: RuleContext,
+  projectRoot: string,
+  filename: string,
+): boolean => {
   try {
     const selection = readPhysicalStencilBuild({ projectRoot, filename });
     if (!selection || !readPhysicalImplicitJsxProgram(context, filename)) return false;
@@ -138,6 +139,21 @@ export const hasVerifiedStencilClassCompiler = (context: RuleContext): boolean =
     return (
       rootOutputs.every((destination) => validOutputPath(projectRoot, destination)) &&
       hasVerifiedStockStencilCompiler(projectRoot, filename)
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const hasVerifiedStencilClassCompiler = (context: RuleContext): boolean => {
+  const configuredRoot = getReactDoctorStringSetting(context.settings, "rootDirectory");
+  if (!context.filename || !configuredRoot || !path.isAbsolute(configuredRoot)) return false;
+  const projectRoot = path.resolve(configuredRoot);
+  const filename = path.resolve(projectRoot, context.filename);
+  try {
+    return (
+      hasVerifiedOrdinaryStencilClassCompiler(context, projectRoot, filename) ||
+      hasVerifiedGeneratedStencilClassCompiler(context, projectRoot, filename)
     );
   } catch {
     return false;

@@ -14,6 +14,7 @@ import {
   getServiceHookFieldName,
   resolveServiceHookInvocation,
 } from "./rules/react-builtins/utils/service-hook-field.js";
+import { readGeneratedStencil2Lifecycle } from "./utils/read-generated-stencil2-lifecycle.js";
 import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
@@ -32,7 +33,11 @@ import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
-import { collectCrossFileProbes, recordExistenceProbe } from "./utils/cross-file-probe-recorder.js";
+import {
+  collectCrossFileProbes,
+  recordContentProbe,
+  recordExistenceProbe,
+} from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import {
@@ -651,8 +656,30 @@ const getSourceRootCompilerConfigs = (filename: string, configName: string): rea
 
 const getPossibleStencilConfigs = (filename: string, source: string): readonly string[] =>
   filename.endsWith(".tsx") && source.includes("@stencil/core")
-    ? getSourceRootCompilerConfigs(filename, "stencil.config.ts")
+    ? ["stencil.config.ts", "stencil.config.js"].flatMap((configName) =>
+        getSourceRootCompilerConfigs(filename, configName),
+      )
     : [];
+
+const getPossibleStencilBuildOwners = (filename: string, source: string): readonly string[] =>
+  filename.endsWith(".tsx") && source.includes("@stencil/core")
+    ? getSourceRootCompilerConfigs(filename, "package.json")
+    : [];
+
+const hasGeneratedStencilBuild = (filename: string, source: string): boolean => {
+  try {
+    return getPossibleStencilBuildOwners(filename, source).some((manifest) => {
+      const entry = fs.lstatSync(manifest, { throwIfNoEntry: false });
+      return Boolean(
+        entry?.isFile() &&
+        entry.size <= 128 * 1024 &&
+        readGeneratedStencil2Lifecycle(fs.readFileSync(manifest, "utf8")),
+      );
+    });
+  } catch {
+    return true;
+  }
+};
 
 const getPossibleTsupMemoConfigs = (filename: string, source: string): readonly string[] =>
   filename.endsWith(".tsx") && (source.includes("useMemo") || source.includes("\\u"))
@@ -680,6 +707,10 @@ const collectMissingStencilConfigProbes: CrossFileDependencyCollector = ({
 }) => {
   for (const candidate of getPossibleStencilConfigs(absoluteFilePath, sourceText))
     recordExistenceProbe(candidate);
+  for (const candidate of getPossibleStencilBuildOwners(absoluteFilePath, sourceText)) {
+    recordExistenceProbe(candidate);
+    if (fs.lstatSync(candidate, { throwIfNoEntry: false })?.isFile()) recordContentProbe(candidate);
+  }
 };
 
 const hasCompilerConfig = (candidates: readonly string[]): boolean => {
@@ -836,7 +867,8 @@ export const collectCrossFileDependencyProbes = (input: {
   // these files fresh and still record missing root markers elsewhere.
   if (
     (input.ruleIds.includes("no-unknown-property") &&
-      hasCompilerConfig(getPossibleStencilConfigs(absoluteFilePath, input.sourceText))) ||
+      (hasCompilerConfig(getPossibleStencilConfigs(absoluteFilePath, input.sourceText)) ||
+        hasGeneratedStencilBuild(absoluteFilePath, input.sourceText))) ||
     (input.ruleIds.includes("exhaustive-deps") &&
       hasCompilerConfig(getPossibleTsupMemoConfigs(absoluteFilePath, input.sourceText))) ||
     (input.ruleIds.includes("no-pass-live-state-to-parent") &&

@@ -1,0 +1,24 @@
+{
+  "pnpm": {
+    "name": "pnpm",
+    "version": "9.15.9",
+    "memberCount": 902,
+    "contentDigest": "123c90eba7d4c9b3329dff71bf53473d4062f0bef7f2fee40577cffa940aa43d",
+    "entryMembers": {}
+  },
+  "esbuildNative": {
+    "name": "@esbuild/linux-x64",
+    "version": "0.21.5",
+    "memberCount": 3,
+    "contentDigest": "f8a055ae15b863c8c0fa697c67086b9cee57c44889e2a909713b3529fc482c1b",
+    "entryMembers": {}
+  },
+  "esbuild": {
+    "name": "esbuild",
+    "version": "0.21.5",
+    "memberCount": 7,
+    "entryMembers": {},
+    "contentDigest": "5c899862c2729509b723668f4479833e3381f13533ab88384c29443098ae1082",
+    "optimizedContentDigest": "974e34c93ec9d0ca4c2823cc50d43547fc9b675eb3557fb411ab065cc6d1014a"
+  }
+}

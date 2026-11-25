@@ -2725,3 +2725,303 @@ describe("loop-local cleanup guards after await", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("structured while cleanup", () => {
+  it.each([
+    [
+      "rechecks its cleanup flag after continue",
+      "if (paused) { await work(); continue; } setValue(1); await work();",
+      "",
+      0,
+    ],
+    [
+      "keeps a post-loop setter reachable after cancellation",
+      "await work(); continue;",
+      "setValue(1);",
+      1,
+    ],
+    [
+      "keeps a post-loop setter reachable after break",
+      "if (paused) { await work(); break; }",
+      "setValue(1);",
+      1,
+    ],
+    ["invalidates the loop guard at a new await", "await work(); setValue(1);", "", 1],
+    [
+      "keeps a setter after an await that falls through",
+      "if (paused) { await work(); } setValue(1);",
+      "",
+      1,
+    ],
+    [
+      "checks the false branch of a cancellation exit after an await",
+      "await work(); if (cancelled) return; setValue(1);",
+      "",
+      0,
+    ],
+  ])("%s", (_name, loopBody, afterLoop, expected) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useState } from "react";
+      function Panel({ paused, work }) {
+        const [value, setValue] = useState(0);
+        useEffect(() => {
+          let cancelled = false;
+          async function update() {
+            while (!cancelled) { ${loopBody} }
+            ${afterLoop}
+          }
+          void update();
+          return () => { cancelled = true; };
+        }, [paused, work]);
+        return value;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("closed timer cancellation and continuation", () => {
+  it.each([
+    [
+      "protects checked success and the next loop entry",
+      "signal",
+      "",
+      "if (!(await waitForStep(10, signal))) return; setValue(1);",
+      0,
+    ],
+    [
+      "keeps an unchecked Boolean waiter",
+      "signal",
+      "",
+      "await waitForStep(10, signal); setValue(1);",
+      1,
+    ],
+    [
+      "keeps a write after a synchronous callback",
+      "signal",
+      "",
+      "if (!(await waitForStep(10, signal))) return; work(); setValue(1);",
+      1,
+    ],
+    [
+      "keeps a synchronous callback in a setter argument",
+      "signal",
+      "",
+      "if (!(await waitForStep(10, signal))) return; setValue(work());",
+      1,
+    ],
+    [
+      "keeps a later suspension",
+      "signal",
+      "",
+      "if (!(await waitForStep(10, signal))) return; await work(); setValue(1);",
+      1,
+    ],
+    [
+      "keeps a write on cancelled settlement",
+      "signal",
+      "",
+      "if (!(await waitForStep(10, signal))) { setValue(1); return; }",
+      1,
+    ],
+    [
+      "keeps an externally observable timer callback",
+      "signal",
+      "onElapsed();",
+      "if (!(await waitForStep(10, signal))) return; setValue(1);",
+      1,
+    ],
+    [
+      "keeps an escaped signal",
+      "signal",
+      "",
+      "if (!(await waitForStep(10, signal))) return; inspect(signal); setValue(1);",
+      1,
+    ],
+    [
+      "keeps a different controller's signal",
+      "foreign",
+      "",
+      "if (!(await waitForStep(10, foreign))) return; setValue(1);",
+      1,
+    ],
+  ])("%s", (_name, guardSignal, timerExtra, loopEnding, expected) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useState } from "react";
+      function waitForStep(ms, signal) {
+        return new Promise((finish) => {
+          if (signal.aborted) return finish(false);
+          const stop = () => {
+            window.clearTimeout(timer);
+            finish(false);
+          };
+          const timer = window.setTimeout(() => {
+            ${timerExtra}
+            signal.removeEventListener("abort", stop);
+            finish(true);
+          }, ms);
+          signal.addEventListener("abort", stop, { once: true });
+        });
+      }
+      function Panel({ paused, work, inspect, foreign }) {
+        const [value, setValue] = useState(0);
+        useEffect(() => {
+          const controller = new AbortController();
+          const { signal } = controller;
+          async function update() {
+            while (!${guardSignal}.aborted) {
+              if (paused) {
+                if (!(await waitForStep(10, signal))) return;
+                continue;
+              }
+              setValue(0);
+              ${loopEnding}
+            }
+          }
+          void update();
+          return () => controller.abort();
+        }, [paused, work, inspect, foreign]);
+        return value;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("while cancellation opposition", () => {
+  it.each([
+    [
+      "a shared ref can reopen the alternate branch",
+      "gate.current = false;",
+      "await work(); while (!cancelled) { await work(); if (gate.current) continue; setValue(1); break; }",
+      "cancelled = true; gate.current = true;",
+    ],
+    [
+      "a shared ref can reopen the consequent",
+      "gate.current = false;",
+      "await work(); while (!cancelled) { await work(); if (!gate.current) setValue(1); break; }",
+      "cancelled = true; gate.current = true;",
+    ],
+    [
+      "a loose comparison can reenter after a marker read",
+      "",
+      "await work(); while (!cancelled && onDispose == 0) { setValue(1); break; }",
+      "cancelled = true;",
+    ],
+    [
+      "a cleanup call can throw before setting the marker",
+      "",
+      "await work(); while (!cancelled) { setValue(1); break; }",
+      "onDispose(); cancelled = true;",
+    ],
+  ])("retains %s", (_name, opening, worker, cleanup) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useRef, useState } from "react";
+      function Panel({ work, onDispose }) {
+        const [value, setValue] = useState(0);
+        const gate = useRef(false);
+        useEffect(() => {
+          let cancelled = false;
+          ${opening}
+          async function update() { ${worker} }
+          void update();
+          return () => { ${cleanup} };
+        }, [work, onDispose]);
+        return value;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("implicitly reentrant operations after a fresh cancellation check", () => {
+  it.each([
+    ["primitive argument", "setValue(1);", 0],
+    ["plain local read", "const next = 1; setValue(next);", 0],
+    ["getter argument", "setValue(value.next);", 1],
+    ["getter statement", "const next = value.next; setValue(next);", 1],
+    ["destructuring getter", "const { next } = value; setValue(next);", 1],
+    ["iterator spread", "setValue([...value]);", 1],
+    ["object spread getter", "setValue({ ...value });", 1],
+    ["numeric coercion", "setValue(+value);", 1],
+    ["string coercion", "setValue(`${value}`);", 1],
+    ["binary coercion", "setValue(value + 1);", 1],
+    [
+      "another cleanup check after reentry",
+      "const next = value.next; if (cancelled) return; setValue(next);",
+      0,
+    ],
+  ])("handles %s", (_name, operation, expected) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useState } from "react";
+      function Panel({ load, value }) {
+        const [current, setValue] = useState(0);
+        useEffect(() => {
+          let cancelled = false;
+          async function update() {
+            await load();
+            while (!cancelled) {
+              ${operation}
+              break;
+            }
+          }
+          void update();
+          return () => { cancelled = true; };
+        }, [load, value]);
+        return current;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("implicit evaluation after a checked timer wait", () => {
+  it.each([
+    ["plain successful wait", "setValue(1);", 0],
+    ["literal computed key", 'setValue({ ["widget"]: 1 });', 0],
+    ["computed key", "setValue({ [value]: 1 });", 1],
+    ["iterator protocol", "for (const item of value) { setValue(item); }", 1],
+    ["property enumeration", "for (const key in value) { setValue(key); }", 1],
+    ["destructuring before a default setter", "const { next = setValue(1) } = value;", 1],
+  ])("handles %s", (_name, operation, expected) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useState } from "react";
+      function waitForStep(ms, signal) {
+        return new Promise((finish) => {
+          if (signal.aborted) return finish(false);
+          const stop = () => { window.clearTimeout(timer); finish(false); };
+          const timer = window.setTimeout(() => {
+            signal.removeEventListener("abort", stop);
+            finish(true);
+          }, ms);
+          signal.addEventListener("abort", stop, { once: true });
+        });
+      }
+      function Panel({ value }) {
+        const [current, setValue] = useState(0);
+        useEffect(() => {
+          const controller = new AbortController();
+          const { signal } = controller;
+          async function update() {
+            if (!(await waitForStep(10, signal))) return;
+            ${operation}
+          }
+          void update();
+          return () => controller.abort();
+        }, [value]);
+        return current;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

@@ -7,6 +7,7 @@ import { getPromiseChainCallForCallback } from "../../utils/collect-effect-invok
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -14,6 +15,7 @@ import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-ref
 import { getDeferredEffectCallbackCall } from "../../utils/get-deferred-effect-callback-call.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import { canNodeExecuteBefore } from "../../utils/has-static-property-write-before.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
@@ -34,6 +36,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveStateWriteSite } from "./utils/collect-effect-state-write-facts.js";
+import { isClosedBooleanTimerWaiter } from "./utils/is-closed-boolean-timer-waiter.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 const MESSAGE =
@@ -1020,9 +1023,30 @@ const doesSequenceMismatchForceGuardValue = (
     context,
   );
 
+interface WhileTransferStates {
+  readonly continues: AsyncPathState[];
+  readonly breaks: AsyncPathState[];
+}
+
+interface OwnedCancellationUses {
+  readonly signalReads: ReadonlySet<EsTreeNode>;
+  readonly guardedWaitCalls: ReadonlySet<EsTreeNode>;
+}
+
+interface AsyncCancellationAnalysis extends OwnedCancellationUses {
+  readonly cleanupWrites: ReadonlyMap<string, boolean>;
+  readonly transfers?: WhileTransferStates;
+}
+
+interface AsyncStatementAnalysis {
+  states: AsyncPathState[];
+  hasUnsafeSetter: boolean;
+}
+
 interface AsyncPathState {
   didSuspend: boolean;
   hasDominatingGuard: boolean;
+  hasFreshCancellationGuard?: boolean;
   isAbortProtected: boolean;
   suspensionNode: EsTreeNode | null;
 }
@@ -1031,7 +1055,7 @@ const dedupeAsyncPathStates = (states: AsyncPathState[]): AsyncPathState[] => {
   const dedupedStates = new Map<string, AsyncPathState>();
   for (const state of states) {
     const suspensionStart = state.suspensionNode?.range?.[0] ?? "none";
-    const key = `${String(state.didSuspend)}:${String(state.hasDominatingGuard)}:${String(state.isAbortProtected)}:${String(suspensionStart)}`;
+    const key = `${String(state.didSuspend)}:${String(state.hasDominatingGuard)}:${String(Boolean(state.hasFreshCancellationGuard))}:${String(state.isAbortProtected)}:${String(suspensionStart)}`;
     if (!dedupedStates.has(key)) dedupedStates.set(key, state);
   }
   return [...dedupedStates.values()];
@@ -1051,13 +1075,90 @@ const collectSwitchPathStatements = (
   return statements;
 };
 
-const collectOrderedAsyncEvents = (root: EsTreeNode, context: RuleContext): EsTreeNode[] => {
+const isLiteralAsyncPrimitive = (rawExpression: EsTreeNode): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  return (
+    isNodeOfType(expression, "Literal") &&
+    (expression.value === null || typeof expression.value !== "object") &&
+    !("regex" in expression)
+  );
+};
+
+const isPotentiallyReentrantAsyncEvent = (
+  node: EsTreeNode,
+  cancellation: AsyncCancellationAnalysis,
+  context: RuleContext,
+): boolean => {
+  const parent = node.parent;
+  if (
+    ((isNodeOfType(parent, "ForOfStatement") || isNodeOfType(parent, "ForInStatement")) &&
+      parent.right === node) ||
+    (isNodeOfType(parent, "AssignmentPattern") && parent.left === node)
+  ) {
+    return true;
+  }
+  if (
+    (isNodeOfType(parent, "Property") ||
+      isNodeOfType(parent, "MethodDefinition") ||
+      isNodeOfType(parent, "PropertyDefinition")) &&
+    parent.computed &&
+    parent.key === node &&
+    !isLiteralAsyncPrimitive(node)
+  ) {
+    return true;
+  }
+  if (isNodeOfType(node, "MemberExpression")) {
+    return !isNonReentrantCancellationTest(node, cancellation, context);
+  }
+  if (isNodeOfType(node, "VariableDeclarator")) {
+    return isNodeOfType(node.id, "ArrayPattern") || isNodeOfType(node.id, "ObjectPattern");
+  }
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    return (
+      !isNodeOfType(node.parent, "TaggedTemplateExpression") &&
+      node.expressions.some((expression) => !isLiteralAsyncPrimitive(expression))
+    );
+  }
+  if (isNodeOfType(node, "UnaryExpression")) {
+    return (
+      (node.operator === "+" || node.operator === "-" || node.operator === "~") &&
+      !isLiteralAsyncPrimitive(node.argument)
+    );
+  }
+  if (isNodeOfType(node, "BinaryExpression")) {
+    return (
+      node.operator === "in" ||
+      node.operator === "instanceof" ||
+      (node.operator !== "===" &&
+        node.operator !== "!==" &&
+        (!isLiteralAsyncPrimitive(node.left) || !isLiteralAsyncPrimitive(node.right)))
+    );
+  }
+  return (
+    isNodeOfType(node, "NewExpression") ||
+    isNodeOfType(node, "TaggedTemplateExpression") ||
+    isNodeOfType(node, "SpreadElement") ||
+    isNodeOfType(node, "UpdateExpression") ||
+    (isNodeOfType(node, "AssignmentExpression") &&
+      (node.operator !== "=" ||
+        isNodeOfType(node.left, "ArrayPattern") ||
+        isNodeOfType(node.left, "ObjectPattern")))
+  );
+};
+
+const collectOrderedAsyncEvents = (
+  root: EsTreeNode,
+  context: RuleContext,
+  cancellation?: AsyncCancellationAnalysis,
+): EsTreeNode[] => {
   const events: EsTreeNode[] = [];
   walkWithoutNestedFunctions(root, (child: EsTreeNode) => {
     if (
       (isNodeOfType(child, "AwaitExpression") ||
         (isNodeOfType(child, "ForOfStatement") && child.await === true) ||
-        (isNodeOfType(child, "CallExpression") && isStateDispatcherCall(child, context))) &&
+        (isNodeOfType(child, "CallExpression") &&
+          (cancellation || isStateDispatcherCall(child, context))) ||
+        (cancellation && isPotentiallyReentrantAsyncEvent(child, cancellation, context))) &&
       isNodeReachableWithinFunction(child, context)
     ) {
       events.push(child);
@@ -1198,9 +1299,16 @@ const analyzeAsyncEvents = (
   context: RuleContext,
   cleanupWrites: ReadonlyMap<string, boolean>,
   abortProtectedControllers: ReadonlySet<string>,
-): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
+  cancellation: AsyncCancellationAnalysis,
+): AsyncStatementAnalysis => {
   let states = initialStates;
-  for (const event of collectOrderedAsyncEvents(root, context)) {
+  const observesReentry = states.some((state) => state.hasFreshCancellationGuard);
+  const events = collectOrderedAsyncEvents(
+    root,
+    context,
+    observesReentry ? cancellation : undefined,
+  );
+  for (const event of events) {
     if (isNodeOfType(event, "AwaitExpression")) {
       const isAbortProtected = awaitUsesAbortedControllerSignal(
         event,
@@ -1211,6 +1319,7 @@ const analyzeAsyncEvents = (
         ...state,
         didSuspend: true,
         hasDominatingGuard: false,
+        hasFreshCancellationGuard: false,
         isAbortProtected,
         suspensionNode: event,
       }));
@@ -1221,6 +1330,7 @@ const analyzeAsyncEvents = (
         ...state,
         didSuspend: true,
         hasDominatingGuard: false,
+        hasFreshCancellationGuard: false,
         isAbortProtected: false,
         suspensionNode: event,
       }));
@@ -1228,10 +1338,12 @@ const analyzeAsyncEvents = (
     }
     if (
       isNodeOfType(event, "CallExpression") &&
+      isStateDispatcherCall(event, context) &&
       states.some(
         (state) =>
           state.didSuspend &&
           !state.hasDominatingGuard &&
+          !state.hasFreshCancellationGuard &&
           !state.isAbortProtected &&
           (!state.suspensionNode ||
             (!areNodesOnExclusiveConditionalBranches(state.suspensionNode, event, root) &&
@@ -1241,8 +1353,126 @@ const analyzeAsyncEvents = (
     ) {
       return { states, hasUnsafeSetter: true };
     }
+    if (observesReentry) {
+      states = states.map((state) => ({ ...state, hasFreshCancellationGuard: false }));
+    }
   }
   return { states, hasUnsafeSetter: false };
+};
+
+const isNonReentrantCancellationTest = (
+  expression: EsTreeNode,
+  cancellation: AsyncCancellationAnalysis,
+  context: RuleContext,
+): boolean => {
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Identifier") || isNodeOfType(value, "Literal")) return true;
+  if (cancellation.signalReads.has(value)) return true;
+  if (isNodeOfType(value, "UnaryExpression") && value.operator === "!") {
+    return isNonReentrantCancellationTest(value.argument, cancellation, context);
+  }
+  if (
+    isNodeOfType(value, "LogicalExpression") ||
+    (isNodeOfType(value, "BinaryExpression") &&
+      (value.operator === "===" || value.operator === "!=="))
+  ) {
+    return (
+      isNonReentrantCancellationTest(value.left, cancellation, context) &&
+      isNonReentrantCancellationTest(value.right, cancellation, context)
+    );
+  }
+  if (!isNodeOfType(value, "MemberExpression") || getStaticPropertyName(value) !== "current") {
+    return false;
+  }
+  const receiver = stripParenExpression(value.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    !isReactHookResultReference(receiver, REF_HOOKS, null, context.scopes)
+  ) {
+    return false;
+  }
+  const ref = context.scopes.symbolFor(receiver);
+  return Boolean(
+    ref?.kind === "const" &&
+    hasCompleteSymbolReferences(ref, context.scopes.rootScope.node, context.scopes) &&
+    ref.references.every((reference) => {
+      const member = reference.identifier.parent;
+      return (
+        reference.flag === "read" &&
+        isNodeOfType(member, "MemberExpression") &&
+        member.object === reference.identifier &&
+        getStaticPropertyName(member) === "current"
+      );
+    }),
+  );
+};
+
+const whileTestRejectsCleanup = (
+  test: EsTreeNode,
+  cancellation: AsyncCancellationAnalysis,
+  context: RuleContext,
+): boolean => {
+  if (doesCleanupForceGuardValue(test, false, cancellation.cleanupWrites, context)) return true;
+  const condition = stripParenExpression(test);
+  if (
+    isNodeOfType(condition, "UnaryExpression") &&
+    condition.operator === "!" &&
+    cancellation.signalReads.has(stripParenExpression(condition.argument))
+  ) {
+    return true;
+  }
+  return (
+    isNodeOfType(condition, "LogicalExpression") &&
+    condition.operator === "&&" &&
+    whileTestRejectsCleanup(condition.left, cancellation, context) &&
+    isSideEffectFreeGuardExpression(condition.right, context)
+  );
+};
+
+const testExitsOnCancelledWait = (
+  test: EsTreeNode,
+  cancellation: AsyncCancellationAnalysis,
+  context: RuleContext,
+): boolean => {
+  if (cancellation.guardedWaitCalls.size === 0) return false;
+  const condition = stripParenExpression(test);
+  if (isNodeOfType(condition, "UnaryExpression") && condition.operator === "!") {
+    const argument = stripParenExpression(condition.argument);
+    return (
+      isNodeOfType(argument, "AwaitExpression") &&
+      cancellation.guardedWaitCalls.has(stripParenExpression(argument.argument))
+    );
+  }
+  return (
+    isNodeOfType(condition, "LogicalExpression") &&
+    condition.operator === "||" &&
+    testExitsOnCancelledWait(condition.left, cancellation, context) &&
+    isNonReentrantCancellationTest(condition.right, cancellation, context)
+  );
+};
+
+const supportsStructuredWhileBody = (body: EsTreeNode): boolean => {
+  let supported = true;
+  walkWithoutNestedFunctions(body, (node) => {
+    if (
+      node.type === "WhileStatement" ||
+      node.type === "DoWhileStatement" ||
+      node.type === "ForStatement" ||
+      node.type === "ForOfStatement" ||
+      node.type === "ForInStatement" ||
+      node.type === "SwitchStatement" ||
+      node.type === "TryStatement" ||
+      node.type === "LabeledStatement" ||
+      node.type === "WithStatement" ||
+      ((isNodeOfType(node, "ContinueStatement") || isNodeOfType(node, "BreakStatement")) &&
+        node.label)
+    ) {
+      supported = false;
+      return false;
+    }
+    return undefined;
+  });
+  return supported;
 };
 
 const analyzeAsyncStatements = (
@@ -1252,10 +1482,40 @@ const analyzeAsyncStatements = (
   cleanupWrites: ReadonlyMap<string, boolean>,
   abortProtectedControllers: ReadonlySet<string>,
   sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
-): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
+  cancellation: AsyncCancellationAnalysis,
+): AsyncStatementAnalysis => {
   let states = initialStates;
   for (const statement of statements) {
     if (states.length === 0) break;
+    if (cancellation.transfers && isNodeOfType(statement, "ContinueStatement")) {
+      cancellation.transfers.continues.push(...states);
+      states = [];
+      continue;
+    }
+    if (cancellation.transfers && isNodeOfType(statement, "BreakStatement")) {
+      cancellation.transfers.breaks.push(...states);
+      states = [];
+      continue;
+    }
+    if (
+      isNodeOfType(statement, "WhileStatement") &&
+      isNonReentrantCancellationTest(statement.test, cancellation, context) &&
+      whileTestRejectsCleanup(statement.test, cancellation, context) &&
+      supportsStructuredWhileBody(statement.body)
+    ) {
+      const loop = analyzeGuardedWhile(
+        statement,
+        states,
+        context,
+        cleanupWrites,
+        abortProtectedControllers,
+        sequenceSnapshots,
+        cancellation,
+      );
+      if (loop.hasUnsafeSetter) return loop;
+      states = loop.states;
+      continue;
+    }
     if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
       if (statement.argument) {
         const returned = analyzeAsyncEvents(
@@ -1264,6 +1524,7 @@ const analyzeAsyncStatements = (
           context,
           cleanupWrites,
           abortProtectedControllers,
+          cancellation,
         );
         if (returned.hasUnsafeSetter) return returned;
       }
@@ -1278,6 +1539,7 @@ const analyzeAsyncStatements = (
         cleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        cancellation,
       );
       if (nested.hasUnsafeSetter) return nested;
       states = nested.states;
@@ -1290,10 +1552,15 @@ const analyzeAsyncStatements = (
         context,
         cleanupWrites,
         abortProtectedControllers,
+        cancellation,
       );
       if (tested.hasUnsafeSetter) return tested;
       states = tested.states;
-      if (!statement.alternate && isEarlyExitStatement(statement.consequent)) {
+      if (
+        !cancellation.transfers &&
+        !statement.alternate &&
+        isEarlyExitStatement(statement.consequent)
+      ) {
         const doesCleanupForceExit = doesCleanupForceGuardValue(
           statement.test,
           true,
@@ -1316,18 +1583,18 @@ const analyzeAsyncStatements = (
           continue;
         }
       }
+      const branchCleanupWrites = cancellation.transfers
+        ? cancellation.cleanupWrites
+        : cleanupWrites;
       const doesCleanupPreventProceed = doesCleanupForceGuardValue(
         statement.test,
         false,
-        cleanupWrites,
+        branchCleanupWrites,
         context,
       );
-      const doesSequenceMismatchPreventProceed = doesSequenceMismatchForceGuardValue(
-        statement.test,
-        false,
-        sequenceSnapshots,
-        context,
-      );
+      const doesSequenceMismatchPreventProceed =
+        !cancellation.transfers &&
+        doesSequenceMismatchForceGuardValue(statement.test, false, sequenceSnapshots, context);
       const consequent = analyzeAsyncStatements(
         isNodeOfType(statement.consequent, "BlockStatement")
           ? (statement.consequent.body as EsTreeNode[])
@@ -1336,26 +1603,46 @@ const analyzeAsyncStatements = (
           ...state,
           hasDominatingGuard:
             state.hasDominatingGuard ||
-            (state.didSuspend && (doesCleanupPreventProceed || doesSequenceMismatchPreventProceed)),
+            (!cancellation.transfers &&
+              state.didSuspend &&
+              (doesCleanupPreventProceed || doesSequenceMismatchPreventProceed)),
+          hasFreshCancellationGuard:
+            state.hasFreshCancellationGuard ||
+            (Boolean(cancellation.transfers) &&
+              state.didSuspend &&
+              doesCleanupPreventProceed &&
+              isNonReentrantCancellationTest(statement.test, cancellation, context)),
         })),
         context,
         cleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        cancellation,
       );
       if (consequent.hasUnsafeSetter) return consequent;
+      const alternateIsGuarded =
+        testExitsOnCancelledWait(statement.test, cancellation, context) ||
+        (Boolean(cancellation.transfers) &&
+          doesCleanupForceGuardValue(statement.test, true, cancellation.cleanupWrites, context) &&
+          isNonReentrantCancellationTest(statement.test, cancellation, context));
+      const alternateStates = states.map((state) => ({
+        ...state,
+        hasFreshCancellationGuard:
+          state.hasFreshCancellationGuard || (state.didSuspend && alternateIsGuarded),
+      }));
       const alternate = statement.alternate
         ? analyzeAsyncStatements(
             isNodeOfType(statement.alternate, "BlockStatement")
               ? (statement.alternate.body as EsTreeNode[])
               : [statement.alternate as EsTreeNode],
-            states.map((state) => ({ ...state })),
+            alternateStates,
             context,
             cleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
+            cancellation,
           )
-        : { states: states.map((state) => ({ ...state })), hasUnsafeSetter: false };
+        : { states: alternateStates, hasUnsafeSetter: false };
       if (alternate.hasUnsafeSetter) return alternate;
       states = [...consequent.states, ...alternate.states];
       states = dedupeAsyncPathStates(states);
@@ -1368,6 +1655,7 @@ const analyzeAsyncStatements = (
         context,
         cleanupWrites,
         abortProtectedControllers,
+        cancellation,
       );
       if (discriminated.hasUnsafeSetter) return discriminated;
       const switchStates: AsyncPathState[] = [];
@@ -1379,6 +1667,7 @@ const analyzeAsyncStatements = (
           cleanupWrites,
           abortProtectedControllers,
           sequenceSnapshots,
+          cancellation,
         );
         if (switched.hasUnsafeSetter) return switched;
         switchStates.push(...switched.states);
@@ -1406,6 +1695,7 @@ const analyzeAsyncStatements = (
         cleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        cancellation,
       );
       if (body.hasUnsafeSetter) return body;
       states = [...states, ...body.states];
@@ -1419,6 +1709,7 @@ const analyzeAsyncStatements = (
         cleanupWrites,
         abortProtectedControllers,
         sequenceSnapshots,
+        cancellation,
       );
       if (tried.hasUnsafeSetter) return tried;
       const trySuspension = collectOrderedAsyncEvents(statement.block, context).find(
@@ -1444,6 +1735,7 @@ const analyzeAsyncStatements = (
             cleanupWrites,
             abortProtectedControllers,
             sequenceSnapshots,
+            cancellation,
           )
         : { states: [], hasUnsafeSetter: false };
       if (caught.hasUnsafeSetter) return caught;
@@ -1457,6 +1749,7 @@ const analyzeAsyncStatements = (
           cleanupWrites,
           abortProtectedControllers,
           sequenceSnapshots,
+          cancellation,
         );
         if (finalized.hasUnsafeSetter) return finalized;
         states = finalized.states;
@@ -1469,11 +1762,340 @@ const analyzeAsyncStatements = (
       context,
       cleanupWrites,
       abortProtectedControllers,
+      cancellation,
     );
     if (analyzedEvents.hasUnsafeSetter) return analyzedEvents;
     states = analyzedEvents.states;
   }
   return { states, hasUnsafeSetter: false };
+};
+
+const analyzeGuardedWhile = (
+  statement: EsTreeNodeOfType<"WhileStatement">,
+  initialStates: AsyncPathState[],
+  context: RuleContext,
+  cleanupWrites: ReadonlyMap<string, boolean>,
+  abortProtectedControllers: ReadonlySet<string>,
+  sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
+  cancellation: AsyncCancellationAnalysis,
+): AsyncStatementAnalysis => {
+  const body = isNodeOfType(statement.body, "BlockStatement")
+    ? statement.body.body
+    : [statement.body];
+  const exitStates: AsyncPathState[] = [];
+  let entries = initialStates;
+  let processedSuspendedBackedge = false;
+  for (;;) {
+    const header = analyzeAsyncEvents(
+      statement.test,
+      entries,
+      context,
+      cleanupWrites,
+      abortProtectedControllers,
+      cancellation,
+    );
+    if (header.hasUnsafeSetter) return header;
+    exitStates.push(...header.states);
+    const transfers: WhileTransferStates = { continues: [], breaks: [] };
+    const iteration = analyzeAsyncStatements(
+      body,
+      header.states.map((state) => ({
+        ...state,
+        hasFreshCancellationGuard: state.hasFreshCancellationGuard || state.didSuspend,
+      })),
+      context,
+      cleanupWrites,
+      abortProtectedControllers,
+      sequenceSnapshots,
+      { ...cancellation, transfers },
+    );
+    if (iteration.hasUnsafeSetter) return iteration;
+    exitStates.push(...transfers.breaks);
+    if (
+      processedSuspendedBackedge ||
+      ![...iteration.states, ...transfers.continues].some((state) => state.didSuspend)
+    ) {
+      return { states: dedupeAsyncPathStates(exitStates), hasUnsafeSetter: false };
+    }
+    // Every suspended backedge has the same state at the next guard test.
+    entries = [
+      {
+        didSuspend: true,
+        hasDominatingGuard: false,
+        isAbortProtected: false,
+        suspensionNode: null,
+      },
+    ];
+    processedSuspendedBackedge = true;
+  }
+};
+
+const getFirstCleanupExpression = (cleanup: EsTreeNode): EsTreeNode | null => {
+  if (!isFunctionLike(cleanup)) return null;
+  if (!isNodeOfType(cleanup.body, "BlockStatement")) return cleanup.body;
+  const first = cleanup.body.body[0];
+  return isNodeOfType(first, "ExpressionStatement") ? first.expression : null;
+};
+
+const collectOwnedLoopCleanupWrites = (
+  effectCallback: EsTreeNode,
+  cleanupFunctions: readonly EsTreeNode[],
+  cleanupWrites: ReadonlyMap<string, boolean>,
+  context: RuleContext,
+): ReadonlyMap<string, boolean> => {
+  const ownedCleanupWrites = new Map<string, boolean>();
+  if (!cleanupWrites.size) return ownedCleanupWrites;
+  let hasDynamicBindingAccess = false;
+  walkAst(effectCallback, (node) => {
+    if (hasDynamicBindingAccess) return false;
+    if (
+      node.type === "WithStatement" ||
+      (isNodeOfType(node, "Identifier") && node.name === "eval")
+    ) {
+      hasDynamicBindingAccess = true;
+      return false;
+    }
+    return undefined;
+  });
+  if (hasDynamicBindingAccess) return ownedCleanupWrites;
+  walkOwnFunctionScope(effectCallback, (node) => {
+    if (
+      !isNodeOfType(node, "VariableDeclarator") ||
+      !isNodeOfType(node.id, "Identifier") ||
+      !isNodeOfType(node.init, "Literal") ||
+      typeof node.init.value !== "boolean"
+    ) {
+      return;
+    }
+    const key = serializeReferenceKey({ node: node.id, scopes: context.scopes });
+    if (!key) return;
+    const cleanupValue = cleanupWrites.get(key);
+    if (
+      cleanupValue === undefined ||
+      !cleanupFunctions.every((cleanup) => {
+        const expression = getFirstCleanupExpression(cleanup);
+        return (
+          isNodeOfType(expression, "AssignmentExpression") &&
+          expression.operator === "=" &&
+          serializeReferenceKey({ node: expression.left, scopes: context.scopes }) === key &&
+          isNodeOfType(expression.right, "Literal") &&
+          expression.right.value === cleanupValue
+        );
+      })
+    ) {
+      return;
+    }
+    const binding = context.scopes.symbolFor(node.id);
+    if (
+      !binding ||
+      binding.kind !== "let" ||
+      !hasCompleteSymbolReferences(binding, effectCallback, context.scopes) ||
+      binding.references.some((reference) => {
+        if (reference.flag === "read") return false;
+        const writer = findEnclosingFunction(reference.identifier);
+        const assignment = reference.identifier.parent;
+        return (
+          !writer ||
+          !cleanupFunctions.includes(writer) ||
+          !isNodeOfType(assignment, "AssignmentExpression") ||
+          assignment.left !== reference.identifier ||
+          assignment.operator !== "=" ||
+          !isNodeOfType(assignment.right, "Literal") ||
+          assignment.right.value !== cleanupValue
+        );
+      })
+    ) {
+      return;
+    }
+    ownedCleanupWrites.set(key, cleanupValue);
+  });
+  return ownedCleanupWrites;
+};
+
+const isReadOnlySignalMember = (member: EsTreeNode): boolean => {
+  const outerMember = findTransparentExpressionRoot(member);
+  const parent = outerMember.parent;
+  return (
+    !(isNodeOfType(parent, "AssignmentExpression") && parent.left === outerMember) &&
+    !(isNodeOfType(parent, "UpdateExpression") && parent.argument === outerMember) &&
+    !(isNodeOfType(parent, "UnaryExpression") && parent.operator === "delete")
+  );
+};
+
+const collectOwnedCancellationUses = (
+  effectCallback: EsTreeNode,
+  abortedControllers: ReadonlySet<string>,
+  cleanupFunctions: readonly EsTreeNode[],
+  context: RuleContext,
+): OwnedCancellationUses => {
+  const signalReads = new Set<EsTreeNode>();
+  const guardedWaitCalls = new Set<EsTreeNode>();
+  if (abortedControllers.size === 0) return { signalReads, guardedWaitCalls };
+  const waiterResults = new WeakMap<EsTreeNode, boolean>();
+
+  walkOwnFunctionScope(effectCallback, (node) => {
+    if (
+      !isNodeOfType(node, "VariableDeclarator") ||
+      !isNodeOfType(node.id, "Identifier") ||
+      !isNodeOfType(node.init, "NewExpression") ||
+      node.init.arguments.length !== 0 ||
+      !isNodeOfType(node.init.callee, "Identifier") ||
+      node.init.callee.name !== "AbortController"
+    ) {
+      return;
+    }
+    const controllerKey = serializeReferenceKey({ node: node.id, scopes: context.scopes });
+    const controller = context.scopes.symbolFor(node.id);
+    if (
+      !controllerKey ||
+      !abortedControllers.has(controllerKey) ||
+      controller?.kind !== "const" ||
+      !hasCompleteSymbolReferences(controller, effectCallback, context.scopes) ||
+      !isProvenUnmodifiedGlobalNamespaceReference(
+        node.init.callee,
+        "AbortController",
+        context.scopes,
+        undefined,
+        true,
+      )
+    ) {
+      return;
+    }
+    if (
+      !cleanupFunctions.every((cleanup) => {
+        const expression = getFirstCleanupExpression(cleanup);
+        if (
+          !isNodeOfType(expression, "CallExpression") ||
+          expression.optional ||
+          expression.arguments.length !== 0 ||
+          !isNodeOfType(expression.callee, "MemberExpression") ||
+          expression.callee.optional ||
+          getStaticPropertyName(expression.callee) !== "abort"
+        ) {
+          return false;
+        }
+        return context.scopes.symbolFor(expression.callee.object) === controller;
+      })
+    ) {
+      return;
+    }
+    let signalIdentifier: EsTreeNode | null = null;
+    let abortCallCount = 0;
+    for (const reference of controller.references) {
+      if (reference.flag !== "read") return;
+      const identifier = reference.identifier;
+      const parent = identifier.parent;
+      if (
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === identifier &&
+        isNodeOfType(parent.id, "ObjectPattern") &&
+        parent.id.properties.length === 1
+      ) {
+        const property = parent.id.properties[0];
+        if (
+          signalIdentifier ||
+          !isNodeOfType(property, "Property") ||
+          property.computed ||
+          getStaticPropertyKeyName(property) !== "signal" ||
+          !isNodeOfType(property.value, "Identifier")
+        ) {
+          return;
+        }
+        signalIdentifier = property.value;
+        continue;
+      }
+      if (
+        !isNodeOfType(parent, "MemberExpression") ||
+        parent.optional ||
+        parent.object !== identifier ||
+        getStaticPropertyName(parent) !== "abort" ||
+        !isNodeOfType(parent.parent, "CallExpression") ||
+        parent.parent.callee !== parent ||
+        parent.parent.optional ||
+        parent.parent.arguments.length !== 0
+      ) {
+        return;
+      }
+      const cleanup = findEnclosingFunction(parent);
+      if (!cleanup || !cleanupFunctions.includes(cleanup)) return;
+      abortCallCount += 1;
+    }
+    if (!signalIdentifier || abortCallCount === 0) return;
+    const signal = context.scopes.symbolFor(signalIdentifier);
+    if (
+      signal?.kind !== "const" ||
+      !hasCompleteSymbolReferences(signal, effectCallback, context.scopes)
+    ) {
+      return;
+    }
+    const localReads: EsTreeNode[] = [];
+    const localWaits: EsTreeNode[] = [];
+    for (const reference of signal.references) {
+      if (reference.flag !== "read") return;
+      const identifier = reference.identifier;
+      const use = identifier.parent;
+      if (
+        identifier === signalIdentifier ||
+        (use === signalIdentifier.parent &&
+          isNodeOfType(use, "Property") &&
+          use.shorthand &&
+          use.key === identifier)
+      ) {
+        continue;
+      }
+      if (
+        isNodeOfType(use, "MemberExpression") &&
+        !use.optional &&
+        use.object === identifier &&
+        getStaticPropertyName(use) === "aborted" &&
+        isReadOnlySignalMember(use)
+      ) {
+        localReads.push(use);
+        continue;
+      }
+      if (
+        !isNodeOfType(use, "CallExpression") ||
+        use.optional ||
+        !isNodeOfType(use.callee, "Identifier") ||
+        use.arguments.length !== 2 ||
+        use.arguments[1] !== identifier ||
+        !isNodeOfType(use.arguments[0], "Literal") ||
+        typeof use.arguments[0].value !== "number" ||
+        !Number.isFinite(use.arguments[0].value) ||
+        use.arguments[0].value <= 0 ||
+        use.arguments[0].value > 0x7fffffff ||
+        !isNodeOfType(findTransparentExpressionRoot(use).parent, "AwaitExpression")
+      ) {
+        return;
+      }
+      const waiter = resolveExactLocalFunction(use.callee, context.scopes);
+      const waitBinding = context.scopes.symbolFor(use.callee);
+      if (
+        !waiter ||
+        !waitBinding ||
+        !hasCompleteSymbolReferences(waitBinding, context.scopes.rootScope.node, context.scopes) ||
+        waitBinding.references.some((waitReference) => {
+          const call = waitReference.identifier.parent;
+          return (
+            !isNodeOfType(call, "CallExpression") ||
+            call.callee !== waitReference.identifier ||
+            !isNodeOfType(call.arguments[1], "Identifier") ||
+            context.scopes.symbolFor(call.arguments[1]) !== signal
+          );
+        })
+      ) {
+        return;
+      }
+      const cached = waiterResults.get(waiter);
+      const proved = cached ?? isClosedBooleanTimerWaiter(waiter, context);
+      waiterResults.set(waiter, proved);
+      if (!proved) return;
+      localWaits.push(use);
+    }
+    for (const read of localReads) signalReads.add(read);
+    for (const call of localWaits) guardedWaitCalls.add(call);
+  });
+  return { signalReads, guardedWaitCalls };
 };
 
 const hasUnsafePostAwaitSetter = (
@@ -1537,6 +2159,20 @@ const hasUnsafePostAwaitSetter = (
     cleanupWrites,
     abortProtectedControllers,
     sequenceSnapshots,
+    {
+      cleanupWrites: collectOwnedLoopCleanupWrites(
+        effectCallback,
+        cleanupFunctions,
+        cleanupWrites,
+        context,
+      ),
+      ...collectOwnedCancellationUses(
+        effectCallback,
+        abortProtectedControllers,
+        cleanupFunctions,
+        context,
+      ),
+    },
   ).hasUnsafeSetter;
 };
 

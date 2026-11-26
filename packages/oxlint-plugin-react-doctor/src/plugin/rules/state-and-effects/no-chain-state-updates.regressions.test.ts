@@ -2261,3 +2261,172 @@ function Picker({pressed}){
     ).toHaveLength(testCase.expectSuppression ? 0 : 1);
   });
 });
+
+interface ClosedNumericSentinelCase {
+  name: string;
+  quiet: boolean;
+  initial?: string;
+  writer?: string;
+  guard?: string;
+  stateKind?: string;
+  extra?: string;
+  unchanged?: boolean;
+  stateImport?: string;
+  shadowed?: boolean;
+  beforeState?: string;
+}
+const closedNumericSentinelCases: ClosedNumericSentinelCase[] = [
+  { name: "literal numeric writes", quiet: true },
+  {
+    name: "destructured default object write",
+    quiet: false,
+    writer: "const {next={valueOf(){return 1;}}}=0;setCursor(next);",
+  },
+  {
+    name: "destructured default string write",
+    quiet: false,
+    writer: "const {next='1'}=0;setCursor(next);",
+  },
+  {
+    name: "renamed destructured default write",
+    quiet: false,
+    writer: "const {next:replacement=payload}=0;setCursor(replacement);",
+  },
+  { name: "rest destructuring write", quiet: false, writer: "const {...next}=0;setCursor(next);" },
+  {
+    name: "coercible rest object write",
+    quiet: false,
+    writer: "const {...next}=0;next.valueOf=()=>{capture('coercion');return 1;};setCursor(next);",
+  },
+  {
+    name: "array destructuring write",
+    quiet: false,
+    writer: "const [next]=[payload];setCursor(next);",
+  },
+  {
+    name: "property projected write",
+    quiet: false,
+    writer: "const wrapped={next:payload};const next=wrapped.next;setCursor(next);",
+  },
+  {
+    name: "destructured default object initializer",
+    quiet: false,
+    beforeState: "const {initial={valueOf(){return 1;}}}=0;",
+    initial: "initial",
+  },
+  {
+    name: "destructured default string initializer",
+    quiet: false,
+    beforeState: "const {initial='1'}=0;",
+    initial: "initial",
+  },
+  {
+    name: "rest destructured initializer",
+    quiet: false,
+    beforeState: "const {...initial}=0;",
+    initial: "initial",
+  },
+  {
+    name: "coercible rest object initializer",
+    quiet: false,
+    beforeState: "const {...initial}=0;initial.valueOf=()=>{capture('coercion');return 1;};",
+    initial: "initial",
+  },
+  {
+    name: "array destructured initializer",
+    quiet: false,
+    beforeState: "const [initial]=[payload];",
+    initial: "initial",
+  },
+  {
+    name: "property projected initializer",
+    quiet: false,
+    beforeState: "const wrapped={initial:payload};const initial=wrapped.initial;",
+    initial: "initial",
+  },
+  { name: "foreign state import", quiet: false, unchanged: true, stateImport: "foreign-react" },
+  { name: "shadowed state hook", quiet: false, unchanged: true, shadowed: true },
+  {
+    name: "immutable conditional increment",
+    quiet: true,
+    writer: "const next=cursor<8?cursor+1:cursor;setCursor(next);",
+  },
+  {
+    name: "immutable conditional decrement",
+    quiet: true,
+    writer: "const next=cursor>0?cursor-1:cursor;setCursor(next);",
+  },
+  { name: "conjunctive strict guard", quiet: true, guard: "pressed&&cursor>EMPTY" },
+  { name: "non-strict comparator", quiet: false, guard: "cursor>=EMPTY&&pressed" },
+  { name: "disjunctive comparator", quiet: false, guard: "cursor>EMPTY||pressed" },
+  { name: "arbitrary coercible initial object", quiet: false, initial: "({valueOf(){return 1;}})" },
+  {
+    name: "arbitrary coercible writer",
+    quiet: false,
+    writer: "setCursor({valueOf(){return 1;}});",
+  },
+  { name: "unknown value writer", quiet: false, writer: "setCursor(payload);" },
+  { name: "setter escapes to callback", quiet: false, extra: "capture(setCursor);" },
+  { name: "setter alias", quiet: false, extra: "const write=setCursor;", writer: "write(1);" },
+  { name: "functional updater", quiet: false, writer: "setCursor(value=>value+1);" },
+  { name: "spread argument", quiet: false, writer: "setCursor(...[1]);" },
+  { name: "optional setter", quiet: false, writer: "setCursor?.(1);" },
+  {
+    name: "string conditional arm",
+    quiet: false,
+    writer: "const next=cursor>0?cursor-1:'1';setCursor(next);",
+  },
+  {
+    name: "object conditional arm",
+    quiet: false,
+    writer: "const next=cursor>0?cursor-1:{valueOf(){return 1;}};setCursor(next);",
+  },
+  { name: "mutable local number", quiet: false, writer: "let next=cursor+1;setCursor(next);" },
+  {
+    name: "numeric local object property",
+    quiet: false,
+    writer: "const next={value:1};setCursor(next.value);",
+  },
+  { name: "opaque function number", quiet: false, writer: "setCursor(Number(payload));" },
+  { name: "bigint writer", quiet: false, writer: "setCursor(1n);" },
+  { name: "mutable state binding", quiet: false, stateKind: "let" },
+  {
+    name: "dynamic lexical lookup",
+    quiet: false,
+    unchanged: true,
+    extra: 'eval("capture(setCursor)");',
+  },
+  { name: "unsupported arithmetic", quiet: false, writer: "setCursor(cursor*2);" },
+  {
+    name: "immutable alias chain",
+    quiet: true,
+    writer: "const amount=1;const next=pressed?cursor+amount:cursor;setCursor(next);",
+  },
+];
+
+describe("closed numeric state sentinel guards", () => {
+  it.each(closedNumericSentinelCases)("checks $name", (testCase) => {
+    const code = `import {useEffect,useRef} from 'react';
+ import {useState${testCase.shadowed ? " as realState" : ""}} from '${testCase.stateImport ?? "react"}';
+ const EMPTY=-1;
+ function Choice({pressed,payload,capture${testCase.shadowed ? ",useState" : ""}}){
+ ${testCase.beforeState ?? ""}
+ ${testCase.stateKind ?? "const"} [cursor,setCursor]=useState(${testCase.initial ?? "EMPTY"});
+ const [open,setOpen]=useState(true);const field=useRef(null);
+ const finish=()=>{const input=field.current;if(input){input.focus();setCursor(EMPTY);}};
+ const advance=()=>{${testCase.writer ?? "setCursor(1);"}};
+ ${testCase.extra ?? ""}
+ useEffect(()=>{if(${testCase.guard ?? "cursor>EMPTY&&pressed"}){setOpen(false);finish();}},[cursor,pressed]);
+ return <div><button onClick={advance}>Choose</button><input ref={field}/></div>;
+ }`;
+    const offset = code.lastIndexOf("finish();");
+    const line = code.slice(0, offset).split("\n").length;
+    const column = offset - code.lastIndexOf("\n", offset) - 1;
+    const result = runRule(noChainStateUpdates, code, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    const target = result.diagnostics.filter(
+      (diagnostic) => diagnostic.line === line && diagnostic.column === column,
+    );
+    expect(target).toHaveLength(testCase.quiet || testCase.unchanged ? 0 : 1);
+  });
+});

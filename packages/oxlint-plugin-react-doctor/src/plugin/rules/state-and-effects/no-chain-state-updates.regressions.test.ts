@@ -2147,3 +2147,117 @@ describe("no-chain-state-updates — guarded local self-reset helpers", () => {
     expect(result.diagnostics.map(({ line }) => lines[(line ?? 0) - 1]?.trim())).toEqual(expected);
   });
 });
+
+interface TerminalSentinelCase {
+  name: string;
+  preceding: string;
+  expectSuppression: boolean;
+  stateDeclaration?: string;
+  effectBody?: string;
+  helperBody?: string;
+  inputAttributes?: string;
+}
+const terminalSentinelCases: TerminalSentinelCase[] = [
+  {
+    name: "terminal same-state guard",
+    preceding: "if(cursor===EMPTY){setOpen(false);return;}",
+    expectSuppression: true,
+  },
+  {
+    name: "literal terminal guard",
+    preceding: "if(cursor===-1){return;}",
+    expectSuppression: true,
+  },
+  {
+    name: "missing return",
+    preceding: "if(cursor===EMPTY){setOpen(false);}",
+    expectSuppression: false,
+  },
+  {
+    name: "conditional return",
+    preceding: "if(cursor===EMPTY){if(open)return;}",
+    expectSuppression: false,
+  },
+  { name: "different state", preceding: "if(open===EMPTY){return;}", expectSuppression: false },
+  { name: "different sentinel", preceding: "if(cursor===0){return;}", expectSuppression: false },
+  { name: "loose equality", preceding: "if(cursor==EMPTY){return;}", expectSuppression: false },
+  {
+    name: "disjunctive sentinel guard",
+    preceding: "if(cursor===EMPTY||open){return;}",
+    expectSuppression: false,
+  },
+  {
+    name: "returned value",
+    preceding: "if(cursor===EMPTY){return null;}",
+    expectSuppression: false,
+  },
+  {
+    name: "guard not first",
+    preceding: "setOpen(false);if(cursor===EMPTY){return;}",
+    expectSuppression: false,
+  },
+  {
+    name: "mutable state binding",
+    preceding: "if(cursor===EMPTY){return;}cursor=1;",
+    stateDeclaration: "let",
+    expectSuppression: false,
+  },
+  {
+    name: "surrounding finally",
+    preceding: "",
+    effectBody:
+      "try{if(pressed){if(cursor===EMPTY){return;}setOpen(false);settle();}}finally{setOpen(false);}",
+    expectSuppression: false,
+  },
+  {
+    name: "relational guard remains excluded",
+    preceding: "if(cursor>EMPTY){setOpen(false);}",
+    expectSuppression: false,
+  },
+  {
+    name: "coercive inequality remains excluded",
+    preceding: "if(cursor!=EMPTY){setOpen(false);}",
+    expectSuppression: false,
+  },
+  {
+    name: "helper writes another state",
+    preceding: "if(cursor===EMPTY){return;}",
+    helperBody: "const input=inputRef.current;if(input){input.focus();setOpen(false);}",
+    expectSuppression: false,
+  },
+  {
+    name: "focus observer can recover state",
+    preceding: "if(cursor===EMPTY){return;}",
+    inputAttributes: "onFocus={()=>setCursor(1)}",
+    expectSuppression: false,
+  },
+];
+
+describe("terminal same-state sentinel guard", () => {
+  it.each(terminalSentinelCases)("checks $name", (testCase) => {
+    const helperBody =
+      testCase.helperBody ??
+      "const input=inputRef.current;if(input){input.focus();setCursor(EMPTY);}";
+    const effectBody =
+      testCase.effectBody ?? `if(pressed){${testCase.preceding}setOpen(false);settle();}`;
+    const code = `import {useEffect,useRef,useState} from 'react';
+const EMPTY=-1;
+function Picker({pressed}){
+ ${testCase.stateDeclaration ?? "const"} [cursor,setCursor]=useState(EMPTY);
+ const [open,setOpen]=useState(true);const inputRef=useRef(null);
+ const settle=()=>{${helperBody}};
+ useEffect(()=>{${effectBody}},[cursor,pressed]);
+ return <div><button onClick={()=>setCursor(0)}>Choose</button><input ref={inputRef} ${testCase.inputAttributes ?? ""}/></div>;
+}`;
+    const offset = code.lastIndexOf("settle();");
+    const line = code.slice(0, offset).split("\n").length;
+    const column = offset - code.lastIndexOf("\n", offset) - 1;
+    const result = runRule(noChainStateUpdates, code, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(
+      result.diagnostics.filter(
+        (diagnostic) => diagnostic.line === line && diagnostic.column === column,
+      ),
+    ).toHaveLength(testCase.expectSuppression ? 0 : 1);
+  });
+});

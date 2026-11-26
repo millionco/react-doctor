@@ -188,6 +188,7 @@ const hasSameStateSentinelGuard = (
   sentinel: number,
   analysis: ProgramAnalysis,
   context: RuleContext,
+  effectFunction: EsTreeNode,
 ): boolean => {
   const statement = call.parent;
   const block = statement?.parent;
@@ -212,7 +213,31 @@ const hasSameStateSentinelGuard = (
       Object.is(getNumericSentinel(test.right, context), sentinel)
     );
   };
-  return readsGuard(branch.test);
+  if (readsGuard(branch.test)) return true;
+  const stateDeclaration = getUseStateDeclarator(state)?.parent;
+  if (
+    !isNodeOfType(stateDeclaration, "VariableDeclaration") ||
+    stateDeclaration.kind !== "const" ||
+    !isFunctionLike(effectFunction) ||
+    branch.parent !== effectFunction.body
+  ) {
+    return false;
+  }
+  const [sentinelExit] = block.body;
+  if (
+    !isNodeOfType(sentinelExit, "IfStatement") ||
+    sentinelExit.alternate ||
+    !isNodeOfType(sentinelExit.test, "BinaryExpression") ||
+    sentinelExit.test.operator !== "===" ||
+    !isNodeOfType(sentinelExit.test.left, "Identifier") ||
+    getRef(analysis, sentinelExit.test.left)?.resolved !== state.resolved ||
+    !Object.is(getNumericSentinel(sentinelExit.test.right, context), sentinel) ||
+    !isNodeOfType(sentinelExit.consequent, "BlockStatement")
+  ) {
+    return false;
+  }
+  const terminalStatement = sentinelExit.consequent.body.at(-1);
+  return isNodeOfType(terminalStatement, "ReturnStatement") && terminalStatement.argument === null;
 };
 
 const isStyledInputMember = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
@@ -659,7 +684,8 @@ const isGuardedLocalFocusAndSelfReset = (
   if (setterCalls.length !== 1 || getCallExpr(setterCalls[0]) !== reset) return false;
   const sentinel = getNumericSentinel(reset.arguments[0], context);
   return (
-    sentinel !== null && hasSameStateSentinelGuard(outerCall, state, sentinel, analysis, context)
+    sentinel !== null &&
+    hasSameStateSentinelGuard(outerCall, state, sentinel, analysis, context, effectFunction)
   );
 };
 

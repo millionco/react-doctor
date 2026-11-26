@@ -2148,6 +2148,139 @@ describe("no-chain-state-updates — guarded local self-reset helpers", () => {
   });
 });
 
+describe("guarded focus resets through an input ref", () => {
+  it.each([
+    {
+      name: "consecutive reads of the same ref",
+      read: "inputRef.current",
+      beforeFocus: "",
+      inputAttributes: "",
+      expectHelperReport: false,
+    },
+    {
+      name: "a different ref supplies the focus receiver",
+      read: "otherRef.current",
+      beforeFocus: "",
+      inputAttributes: "",
+      expectHelperReport: true,
+    },
+    {
+      name: "an intervening call can change the ref",
+      read: "inputRef.current",
+      beforeFocus: "observe();",
+      inputAttributes: "",
+      expectHelperReport: true,
+    },
+    {
+      name: "the input has a focus handler that can recover state",
+      read: "inputRef.current",
+      beforeFocus: "",
+      inputAttributes: "onFocus={() => setIndex(0)}",
+      expectHelperReport: true,
+    },
+    {
+      name: "the ref escapes to an observer",
+      read: "inputRef.current",
+      beforeFocus: "",
+      inputAttributes: "onBlur={() => observe(inputRef)}",
+      expectHelperReport: true,
+    },
+  ])("checks $name", ({ read, beforeFocus, inputAttributes, expectHelperReport }) => {
+    const code = `import { useEffect, useRef, useState } from "react";
+const EMPTY = -1;
+function Picker({ pressed, observe }) {
+  const [index, setIndex] = useState(EMPTY);
+  const [open, setOpen] = useState(true);
+  const inputRef = useRef(null);
+  const otherRef = useRef(null);
+  const finishSelection = () => {
+    if (inputRef.current) {
+      ${beforeFocus}
+      ${read}.focus();
+      setIndex(EMPTY);
+    }
+  };
+  useEffect(() => {
+    if (pressed && index !== EMPTY) {
+      setOpen(false);
+      finishSelection();
+    }
+  }, [index, pressed]);
+  return <div><button onClick={() => setIndex(0)}>{open}</button><input ref={inputRef} ${inputAttributes} /><input ref={otherRef} /></div>;
+}`;
+    const result = runRule(noChainStateUpdates, code, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    const lines = code.split("\n");
+    const expected = expectHelperReport
+      ? ["setOpen(false);", "finishSelection();"]
+      : ["setOpen(false);"];
+    expect(result.diagnostics.map(({ line }) => lines[(line ?? 0) - 1]?.trim())).toEqual(expected);
+  });
+});
+
+describe("memoized focus resets", () => {
+  it.each([
+    { name: "another state dependency", suppressesReset: true },
+    { name: "an unmounted input", mayBeUnmounted: true, suppressesReset: true },
+    { name: "a JSX focus handler", attributes: "onFocus={() => setPosition(0)}" },
+    {
+      name: "a native focus listener",
+      observer: 'document.addEventListener("focusin", restorePosition);',
+    },
+    {
+      name: "a native listener with an unknown event",
+      observer: "document.addEventListener(eventName, restorePosition);",
+    },
+    { name: "a missing reset dependency", stateDependencies: "expanded" },
+    {
+      name: "a second writer in the primary effect",
+      rearm: "if (ready && position === idle) setPosition(0);",
+    },
+    {
+      name: "a second writer in a sibling effect",
+      siblingEffect:
+        "useEffect(() => { if (ready && position === idle) setPosition(0); }, [ready, position]);",
+    },
+  ])("checks $name", (testCase) => {
+    const input = `<input ref={field} ${testCase.attributes ?? ""} />`;
+    const field = testCase.mayBeUnmounted ? `{ready && ${input}}` : input;
+    const stateDependencies = testCase.stateDependencies ?? "position, expanded";
+    const suppressesReset = testCase.suppressesReset ?? false;
+    const observer = testCase.observer
+      ? `useEffect(() => {
+           const restorePosition = () => queueMicrotask(() => setPosition(0));
+           ${testCase.observer}
+         }, []);`
+      : "";
+    const code = `import { useCallback, useEffect, useRef, useState } from "react";
+const idle = -1;
+export function Picker({ ready, eventName }) {
+  const [position, setPosition] = useState(idle);
+  const [expanded, setExpanded] = useState(true);
+  const field = useRef(null);
+  const finish = useCallback(() => {
+    field.current?.focus();
+    setPosition(idle);
+  }, []);
+  ${testCase.siblingEffect ?? ""}
+  useEffect(() => {
+    ${testCase.rearm ?? ""}
+    if (position !== idle && ready) {
+      setExpanded((wasExpanded) => !wasExpanded);
+      finish();
+    }
+  }, [ready, finish, ${stateDependencies}]);
+  ${observer}
+  return <div><button onClick={() => setPosition(0)}>{expanded}</button>${field}</div>;
+}`;
+    const result = runRule(noChainStateUpdates, code, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    const calls = result.diagnostics.map(({ line }) => code.split("\n")[(line ?? 0) - 1]?.trim());
+    expect(calls).toContain("setExpanded((wasExpanded) => !wasExpanded);");
+    expect(calls.includes("finish();")).toBe(!suppressesReset);
+  });
+});
+
 interface TerminalSentinelCase {
   name: string;
   preceding: string;

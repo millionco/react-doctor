@@ -64,7 +64,11 @@ const inside = (name: string): boolean =>
 
 // The accepted stylesheet lane has only ordinary CSS at-rules and literal
 // file directives. Strings and comments are skipped before inspecting tokens.
-export const readStyleFileDirectives = (text: string, scss: boolean): Directive[] | null => {
+export const readStyleFileDirectives = (
+  text: string,
+  scss: boolean,
+  allowedAtRules?: ReadonlySet<string>,
+): Directive[] | null => {
   const items: Directive[] = [];
   let line = 1;
   let parentheses = 0;
@@ -110,6 +114,7 @@ export const readStyleFileDirectives = (text: string, scss: boolean): Directive[
     const name = /^[A-Za-z-]+/u.exec(text.slice(start + 1))?.[0];
     if (!name || text[start + 1 + name.length] === "\\") return null;
     const lower = name.toLowerCase();
+    if (allowedAtRules && !allowedAtRules.has(lower)) return null;
     if (scss && (lower === "at-root" || lower === "function")) return null;
     if (lower === "config" || lower === "import" || lower === "use" || lower === "forward") {
       const rule = /^\s+(['"])([A-Za-z0-9_@./-]+)\1\s*;/u.exec(text.slice(start + 1 + name.length));

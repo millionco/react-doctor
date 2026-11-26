@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import { recordDirectoryProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import { isPathInside } from "./is-path-inside.js";
 import {
   haveNoPhysicalPackageCandidates,
@@ -64,6 +64,7 @@ const verifyPackage = (
   const pending = [directory];
   while (pending.length) {
     const current = pending.pop()!;
+    recordDirectoryProbe(current);
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const filename = path.join(current, entry.name);
       if (entry.isSymbolicLink()) return false;

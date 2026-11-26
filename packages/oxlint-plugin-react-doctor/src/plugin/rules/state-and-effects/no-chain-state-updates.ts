@@ -11,6 +11,7 @@ import { getImportBindingForName } from "../../utils/find-import-source-for-name
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -507,11 +508,45 @@ const getDirectRefCurrentBinding = (
   return scopes.symbolFor(read.object);
 };
 
+const getFocusReceiver = (
+  statement: EsTreeNode | null | undefined,
+  optional: boolean,
+): EsTreeNode | null => {
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+  const call = optional ? stripParenExpression(statement.expression) : statement.expression;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.optional ||
+    call.arguments.length !== 0 ||
+    !isNodeOfType(call.callee, "MemberExpression") ||
+    Boolean(call.callee.optional) !== optional ||
+    call.callee.computed ||
+    getStaticPropertyName(call.callee) !== "focus"
+  ) {
+    return null;
+  }
+  return call.callee.object;
+};
+
 const FOCUS_PROP_PATTERN = /^on(?:Focus|Blur)(?:In|Out)?(?:Capture)?$/i;
+const NATIVE_FOCUS_EVENTS: ReadonlySet<string> = new Set(["focus", "blur", "focusin", "focusout"]);
+
+const mayRegisterNativeFocusObserver = (node: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    !isNodeOfType(node.callee, "MemberExpression") ||
+    getStaticPropertyName(node.callee) !== "addEventListener"
+  ) {
+    return false;
+  }
+  const eventName = getStaticStringExpression(node.arguments[0]);
+  return eventName === null || NATIVE_FOCUS_EVENTS.has(eventName);
+};
 
 const hasClosedFocusRefWiring = (
   ref: SymbolDescriptor,
   refReads: ReadonlySet<EsTreeNode>,
+  allowsOtherOptionalFocusCalls: boolean,
   component: EsTreeNode,
   context: RuleContext,
 ): boolean => {
@@ -527,6 +562,13 @@ const hasClosedFocusRefWiring = (
       getStaticPropertyName(parent) === "current"
     ) {
       const comparison = parent.parent;
+      if (allowsOtherOptionalFocusCalls && isNodeOfType(comparison, "MemberExpression")) {
+        const call = comparison.parent;
+        if (!isNodeOfType(call, "CallExpression")) return false;
+        const chain = isNodeOfType(call.parent, "ChainExpression") ? call.parent : call;
+        if (getFocusReceiver(chain.parent, true) === parent) continue;
+        return false;
+      }
       if (!isNodeOfType(comparison, "BinaryExpression") || comparison.operator !== "===") {
         return false;
       }
@@ -575,6 +617,7 @@ const hasClosedFocusRefWiring = (
     if (containsFocusObserver) return false;
     if (
       isNodeOfType(child, "JSXSpreadAttribute") ||
+      (allowsOtherOptionalFocusCalls && mayRegisterNativeFocusObserver(child)) ||
       (isNodeOfType(child, "JSXAttribute") &&
         FOCUS_PROP_PATTERN.test(getJsxAttributeName(child.name) ?? ""))
     ) {
@@ -583,6 +626,147 @@ const hasClosedFocusRefWiring = (
     }
   });
   return !containsFocusObserver;
+};
+
+interface FocusAndReset {
+  ref: SymbolDescriptor;
+  refReads: ReadonlySet<EsTreeNode>;
+  reset: EsTreeNode;
+}
+
+const getGuardedFocusAndReset = (
+  statements: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): FocusAndReset | null => {
+  if (statements.length !== 1 && statements.length !== 2) return null;
+  const [firstStatement, secondStatement] = statements;
+  const readsRefDirectly = statements.length === 1;
+  const branch = readsRefDirectly ? firstStatement : secondStatement;
+  if (
+    !isNodeOfType(branch, "IfStatement") ||
+    branch.alternate ||
+    !isNodeOfType(branch.consequent, "BlockStatement") ||
+    branch.consequent.body.length !== 2
+  ) {
+    return null;
+  }
+  let refRead = branch.test;
+  let inputSymbol: SymbolDescriptor | null = null;
+  if (!readsRefDirectly) {
+    if (
+      !isNodeOfType(firstStatement, "VariableDeclaration") ||
+      firstStatement.kind !== "const" ||
+      firstStatement.declarations.length !== 1
+    ) {
+      return null;
+    }
+    const [input] = firstStatement.declarations;
+    if (
+      !isNodeOfType(input.id, "Identifier") ||
+      !input.init ||
+      !isNodeOfType(branch.test, "Identifier")
+    ) {
+      return null;
+    }
+    inputSymbol = context.scopes.symbolFor(input.id);
+    if (!inputSymbol || context.scopes.symbolFor(branch.test) !== inputSymbol) return null;
+    refRead = input.init;
+  }
+  const inputRef = getDirectRefCurrentBinding(refRead, context.scopes);
+  if (!inputRef) return null;
+  const [focusStatement, resetStatement] = branch.consequent.body;
+  const focusReceiver = getFocusReceiver(focusStatement, false);
+  if (!focusReceiver || !isNodeOfType(resetStatement, "ExpressionStatement")) return null;
+  const refReads = new Set<EsTreeNode>([refRead]);
+  if (readsRefDirectly) {
+    if (getDirectRefCurrentBinding(focusReceiver, context.scopes) !== inputRef) return null;
+    refReads.add(focusReceiver);
+  } else if (
+    !isNodeOfType(focusReceiver, "Identifier") ||
+    context.scopes.symbolFor(focusReceiver) !== inputSymbol
+  ) {
+    return null;
+  }
+  return { ref: inputRef, refReads, reset: resetStatement.expression };
+};
+
+const getMemoizedFocusAndReset = (
+  statements: ReadonlyArray<EsTreeNode>,
+  scopes: ScopeAnalysis,
+): FocusAndReset | null => {
+  if (statements.length !== 2) return null;
+  const [focusStatement, resetStatement] = statements;
+  const receiver = getFocusReceiver(focusStatement, true);
+  const ref = getDirectRefCurrentBinding(receiver, scopes);
+  if (!receiver || !ref || !isNodeOfType(resetStatement, "ExpressionStatement")) return null;
+  return { ref, refReads: new Set([receiver]), reset: resetStatement.expression };
+};
+
+interface CompetingStateEffectContext {
+  component: EsTreeNode;
+  effectFunction: EsTreeNode;
+  resetCall: EsTreeNode;
+  stateDeclarator: EsTreeNode;
+  analysis: ProgramAnalysis;
+  context: RuleContext;
+}
+
+const hasCompetingStateEffectWrite = ({
+  component,
+  effectFunction,
+  resetCall,
+  stateDeclarator,
+  analysis,
+  context,
+}: CompetingStateEffectContext): boolean => {
+  let hasCompetingWrite = false;
+  walkAst(component, (child) => {
+    if (hasCompetingWrite) return false;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      !isReactApiCall(child, APPLICABLE_EFFECT_HOOK_NAMES, context.scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+        resolveConditionalAliases: true,
+        resolveNamedAliases: true,
+      }) ||
+      findEnclosingFunction(child) !== component
+    ) {
+      return;
+    }
+    const siblingEffect = getEffectFn(analysis, child);
+    if (!siblingEffect) return;
+    if (siblingEffect !== effectFunction) {
+      const dependencies = getEffectDepsRefs(analysis, child);
+      if (
+        dependencies &&
+        !dependencies.some((dependency) =>
+          getDependencyStateRefs(analysis, context, dependency).some(
+            (state) => getUseStateDeclarator(state) === stateDeclarator,
+          ),
+        )
+      ) {
+        return;
+      }
+    }
+    hasCompetingWrite = (getEffectFnRefs(analysis, child) ?? []).some((reference) => {
+      const call = getCallExpr(reference);
+      if (
+        !call ||
+        call === resetCall ||
+        !isSyncStateSetterCall(analysis, reference, siblingEffect)
+      ) {
+        return false;
+      }
+      return (
+        getEventualCallRefsTo(analysis, reference, (candidate) => {
+          const setter = resolveStateSetterReference(analysis, candidate);
+          return setter !== null && getUseStateDeclarator(setter) === stateDeclarator;
+        }).length > 0
+      );
+    });
+  });
+  return hasCompetingWrite;
 };
 
 // Classify the one setter a closed helper contributes, as if the helper body
@@ -599,63 +783,44 @@ const isGuardedLocalFocusAndSelfReset = (
     !isNodeOfType(outerCall, "CallExpression") ||
     outerCall.optional ||
     outerCall.arguments.length !== 0 ||
-    !isNodeOfType(outerCall.callee, "Identifier") ||
-    deps.length !== 1
+    !isNodeOfType(outerCall.callee, "Identifier")
   ) {
     return false;
   }
   const component = findEnclosingFunction(effectFunction);
   const helperSymbol = context.scopes.symbolFor(outerCall.callee);
-  const helper = helperSymbol?.initializer;
+  const initializer = helperSymbol?.initializer;
+  const helperDeclarator = helperSymbol?.declarationNode;
+  const isMemoized =
+    isNodeOfType(helperDeclarator, "VariableDeclarator") &&
+    helperDeclarator.id === helperSymbol?.bindingIdentifier &&
+    isNodeOfType(initializer, "CallExpression") &&
+    !initializer.optional &&
+    initializer.arguments.length === 2 &&
+    isNodeOfType(initializer.arguments[1], "ArrayExpression") &&
+    initializer.arguments[1].elements.length === 0 &&
+    isReactApiCall(initializer, "useCallback", context.scopes);
+  const helper = isMemoized ? initializer.arguments[0] : initializer;
   if (
     helperSymbol?.kind !== "const" ||
     !isNodeOfType(helper, "ArrowFunctionExpression") ||
     helper.async ||
     helper.params.length !== 0 ||
     !isNodeOfType(helper.body, "BlockStatement") ||
-    (helper.body.body.length !== 1 && helper.body.body.length !== 2) ||
+    (!isMemoized && deps.length !== 1) ||
     !component ||
     findEnclosingFunction(helper) !== component
   ) {
     return false;
   }
-  const [firstStatement, secondStatement] = helper.body.body;
-  const readsRefDirectly = helper.body.body.length === 1;
-  const branch = readsRefDirectly ? firstStatement : secondStatement;
+  const focusAndReset = isMemoized
+    ? getMemoizedFocusAndReset(helper.body.body, context.scopes)
+    : getGuardedFocusAndReset(helper.body.body, context);
+  if (!focusAndReset) return false;
+  const { ref: inputRef, refReads, reset } = focusAndReset;
+  const refInitializer = inputRef.initializer;
   if (
-    !isNodeOfType(branch, "IfStatement") ||
-    branch.alternate ||
-    !isNodeOfType(branch.consequent, "BlockStatement") ||
-    branch.consequent.body.length !== 2
-  ) {
-    return false;
-  }
-  let refRead = branch.test;
-  let inputSymbol: SymbolDescriptor | null = null;
-  if (!readsRefDirectly) {
-    if (
-      !isNodeOfType(firstStatement, "VariableDeclaration") ||
-      firstStatement.kind !== "const" ||
-      firstStatement.declarations.length !== 1
-    ) {
-      return false;
-    }
-    const [input] = firstStatement.declarations;
-    if (
-      !isNodeOfType(input.id, "Identifier") ||
-      !input.init ||
-      !isNodeOfType(branch.test, "Identifier")
-    ) {
-      return false;
-    }
-    inputSymbol = context.scopes.symbolFor(input.id);
-    if (!inputSymbol || context.scopes.symbolFor(branch.test) !== inputSymbol) return false;
-    refRead = input.init;
-  }
-  const inputRef = getDirectRefCurrentBinding(refRead, context.scopes);
-  const refInitializer = inputRef?.initializer;
-  if (
-    inputRef?.kind !== "const" ||
+    inputRef.kind !== "const" ||
     !isNodeOfType(refInitializer, "CallExpression") ||
     !isReactApiCall(refInitializer, "useRef", context.scopes) ||
     refInitializer.arguments.length !== 1 ||
@@ -664,55 +829,29 @@ const isGuardedLocalFocusAndSelfReset = (
   ) {
     return false;
   }
-  const [focusStatement, resetStatement] = branch.consequent.body;
   if (
-    !isNodeOfType(focusStatement, "ExpressionStatement") ||
-    !isNodeOfType(resetStatement, "ExpressionStatement")
-  ) {
-    return false;
-  }
-  const focus = focusStatement.expression;
-  const reset = resetStatement.expression;
-  if (
-    !isNodeOfType(focus, "CallExpression") ||
-    focus.optional ||
-    focus.arguments.length !== 0 ||
-    !isNodeOfType(focus.callee, "MemberExpression") ||
-    focus.callee.computed ||
-    focus.callee.optional ||
-    getStaticPropertyName(focus.callee) !== "focus" ||
     !isNodeOfType(reset, "CallExpression") ||
     reset.optional ||
     reset.arguments.length !== 1 ||
-    !isNodeOfType(reset.callee, "Identifier")
+    !isNodeOfType(reset.callee, "Identifier") ||
+    !hasClosedFocusRefWiring(inputRef, refReads, isMemoized, component, context)
   ) {
     return false;
   }
-  const focusReceiver = focus.callee.object;
-  const refReads = new Set([refRead]);
-  if (readsRefDirectly) {
-    if (getDirectRefCurrentBinding(focusReceiver, context.scopes) !== inputRef) return false;
-    refReads.add(focusReceiver);
-  } else if (
-    !isNodeOfType(focusReceiver, "Identifier") ||
-    context.scopes.symbolFor(focusReceiver) !== inputSymbol
-  ) {
-    return false;
-  }
-  if (!hasClosedFocusRefWiring(inputRef, refReads, component, context)) return false;
 
   const resetRef = getRef(analysis, reset.callee);
   const setter = resetRef && resolveStateSetterReference(analysis, resetRef);
-  const state = deps[0];
-  const stateDeclarator = getUseStateDeclarator(state);
+  const stateDeclarator = setter && getUseStateDeclarator(setter);
   if (
-    !setter ||
-    !state.resolved ||
     !stateDeclarator ||
-    getUseStateDeclarator(setter) !== stateDeclarator
+    (isMemoized &&
+      (!isNodeOfType(stateDeclarator.parent, "VariableDeclaration") ||
+        stateDeclarator.parent.kind !== "const"))
   ) {
     return false;
   }
+  const state = deps.find((dependency) => getUseStateDeclarator(dependency) === stateDeclarator);
+  if (!state?.resolved) return false;
   const setterCalls = getEventualCallRefsTo(
     analysis,
     outerRef,
@@ -722,7 +861,16 @@ const isGuardedLocalFocusAndSelfReset = (
   const sentinel = getNumericSentinel(reset.arguments[0], context);
   return (
     sentinel !== null &&
-    hasSameStateSentinelGuard(outerCall, state, sentinel, analysis, context, effectFunction)
+    hasSameStateSentinelGuard(outerCall, state, sentinel, analysis, context, effectFunction) &&
+    (!isMemoized ||
+      !hasCompetingStateEffectWrite({
+        component,
+        effectFunction,
+        resetCall: outerCall,
+        stateDeclarator,
+        analysis,
+        context,
+      }))
   );
 };
 

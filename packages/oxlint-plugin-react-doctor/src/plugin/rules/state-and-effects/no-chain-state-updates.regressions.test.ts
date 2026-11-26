@@ -2218,6 +2218,69 @@ function Picker({ pressed, observe }) {
   });
 });
 
+describe("memoized focus resets", () => {
+  it.each([
+    { name: "another state dependency", suppressesReset: true },
+    { name: "an unmounted input", mayBeUnmounted: true, suppressesReset: true },
+    { name: "a JSX focus handler", attributes: "onFocus={() => setPosition(0)}" },
+    {
+      name: "a native focus listener",
+      observer: 'document.addEventListener("focusin", restorePosition);',
+    },
+    {
+      name: "a native listener with an unknown event",
+      observer: "document.addEventListener(eventName, restorePosition);",
+    },
+    { name: "a missing reset dependency", stateDependencies: "expanded" },
+    {
+      name: "a second writer in the primary effect",
+      rearm: "if (ready && position === idle) setPosition(0);",
+    },
+    {
+      name: "a second writer in a sibling effect",
+      siblingEffect:
+        "useEffect(() => { if (ready && position === idle) setPosition(0); }, [ready, position]);",
+    },
+  ])("checks $name", (testCase) => {
+    const input = `<input ref={field} ${testCase.attributes ?? ""} />`;
+    const field = testCase.mayBeUnmounted ? `{ready && ${input}}` : input;
+    const stateDependencies = testCase.stateDependencies ?? "position, expanded";
+    const suppressesReset = testCase.suppressesReset ?? false;
+    const observer = testCase.observer
+      ? `useEffect(() => {
+           const restorePosition = () => queueMicrotask(() => setPosition(0));
+           ${testCase.observer}
+         }, []);`
+      : "";
+    const code = `import { useCallback, useEffect, useRef, useState } from "react";
+const idle = -1;
+export function Picker({ ready, eventName }) {
+  const [position, setPosition] = useState(idle);
+  const [expanded, setExpanded] = useState(true);
+  const field = useRef(null);
+  const finish = useCallback(() => {
+    field.current?.focus();
+    setPosition(idle);
+  }, []);
+  ${testCase.siblingEffect ?? ""}
+  useEffect(() => {
+    ${testCase.rearm ?? ""}
+    if (position !== idle && ready) {
+      setExpanded((wasExpanded) => !wasExpanded);
+      finish();
+    }
+  }, [ready, finish, ${stateDependencies}]);
+  ${observer}
+  return <div><button onClick={() => setPosition(0)}>{expanded}</button>${field}</div>;
+}`;
+    const result = runRule(noChainStateUpdates, code, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    const calls = result.diagnostics.map(({ line }) => code.split("\n")[(line ?? 0) - 1]?.trim());
+    expect(calls).toContain("setExpanded((wasExpanded) => !wasExpanded);");
+    expect(calls.includes("finish();")).toBe(!suppressesReset);
+  });
+});
+
 interface TerminalSentinelCase {
   name: string;
   preceding: string;

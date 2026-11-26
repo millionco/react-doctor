@@ -56,6 +56,7 @@ const resolveHtmlScriptAddress = (
   rootDirectory: string,
   filename: string,
   address: string,
+  resolveLocalEntrypoint?: (fromFilename: string, specifier: string) => string | null,
 ): string | null => {
   try {
     const relativeFile = normalizeFilename(path.relative(rootDirectory, filename));
@@ -66,6 +67,7 @@ const resolveHtmlScriptAddress = (
     if (pathname.includes("\\") || pathname.includes("\0")) return null;
     const absolutePath = path.resolve(rootDirectory, "." + pathname);
     if (!isPathInside(absolutePath, rootDirectory)) return null;
+    if (resolveLocalEntrypoint) return resolveLocalEntrypoint(filename, address);
     return resolveModulePath(
       filename,
       "./" + normalizeFilename(path.relative(path.dirname(filename), absolutePath)),
@@ -83,6 +85,11 @@ const getText = (element: DefaultTreeAdapterTypes.Element): string =>
 
 interface ReadProjectHtmlScriptsOptions {
   readonly onlyLocalModuleScripts?: boolean;
+  readonly rejectHtmlTemplates?: boolean;
+  // The callback receives the original validated HTML address so an active
+  // resolver can apply aliases before local path normalization.
+  readonly resolveLocalEntrypoint?: (fromFilename: string, specifier: string) => string | null;
+  readonly readSource?: (filename: string) => string | null;
 }
 
 export const readProjectHtmlScripts = (
@@ -93,7 +100,11 @@ export const readProjectHtmlScripts = (
   let root: DefaultTreeAdapterTypes.Document;
   try {
     recordContentProbe(filename);
-    root = parse(fs.readFileSync(filename, "utf8"));
+    const source = options.readSource
+      ? options.readSource(filename)
+      : fs.readFileSync(filename, "utf8");
+    if (source === null) return null;
+    root = parse(source);
   } catch {
     return null;
   }
@@ -113,6 +124,7 @@ export const readProjectHtmlScripts = (
         return null;
     }
     if (current.tagName === "template" && current.namespaceURI === html.NS.HTML) {
+      if (options.rejectHtmlTemplates) return null;
       pending.push(
         ...defaultTreeAdapter.getTemplateContent(current as DefaultTreeAdapterTypes.Template)
           .childNodes,
@@ -152,7 +164,12 @@ export const readProjectHtmlScripts = (
     }
     if (/(?:^|\/)system(?:js(?:[/@]|$)|(?:\.min)?\.js(?:[?#]|$))/iu.test(source)) return null;
     if (isExternalHttpUrl(source)) continue;
-    const resolved = resolveHtmlScriptAddress(rootDirectory, filename, source);
+    const resolved = resolveHtmlScriptAddress(
+      rootDirectory,
+      filename,
+      source,
+      options.resolveLocalEntrypoint,
+    );
     if (!resolved) return null;
     localEntrypoints.push(normalizeFilename(resolved));
   }

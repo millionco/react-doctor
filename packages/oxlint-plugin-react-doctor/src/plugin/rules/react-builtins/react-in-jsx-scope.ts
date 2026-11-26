@@ -5,6 +5,7 @@ import { hasAutomaticClassicRemixJsx } from "../../utils/has-automatic-classic-r
 import { hasAutomaticElectronRendererJsx } from "../../utils/has-automatic-electron-renderer-jsx.js";
 import { hasAutomaticStockCraJsx } from "../../utils/has-automatic-stock-cra-jsx.js";
 import { hasAutomaticStockKktJsx } from "../../utils/has-automatic-stock-kkt-jsx.js";
+import { hasAutomaticStockViteCssJsx } from "../../utils/has-automatic-stock-vite-css-jsx.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
@@ -44,7 +45,8 @@ export const reactInJsxScope = defineRule({
         hasAutomaticElectronRendererJsx(context) ||
         hasAutomaticClassicRemixJsx(context) ||
         hasAutomaticStockCraJsx(context) ||
-        hasAutomaticStockKktJsx(context);
+        hasAutomaticStockKktJsx(context) ||
+        hasAutomaticStockViteCssJsx(context);
       return hasAutomaticFactory;
     };
     return {

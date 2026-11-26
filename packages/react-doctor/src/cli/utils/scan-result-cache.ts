@@ -439,6 +439,41 @@ export const resolveScanResultToolchainFingerprint = (
   return fingerprints;
 };
 
+const mayUseStandaloneViteIndexProof = (input: ScanResultCacheKeyInput): boolean => {
+  if (!input.options.lint) return false;
+  const overrides = Object.entries(input.userConfig?.rules ?? {}).filter(
+    ([ruleKey]) => canonicalizeUserRuleKey(ruleKey) === "react-doctor/no-array-index-as-key",
+  );
+  if (overrides.length > 0 && overrides.every(([, override]) => override === "off")) return false;
+  try {
+    const hasConfig = [
+      "vite.config.js",
+      "vite.config.mjs",
+      "vite.config.ts",
+      "vite.config.cjs",
+      "vite.config.mts",
+      "vite.config.cts",
+    ].some((name) =>
+      Boolean(fs.lstatSync(path.join(input.projectDirectory, name), { throwIfNoEntry: false })),
+    );
+    if (!hasConfig) return false;
+    const manifestFile = path.join(input.projectDirectory, "package.json");
+    const manifestInfo = fs.lstatSync(manifestFile, { throwIfNoEntry: false });
+    if (!manifestInfo) return false;
+    if (!manifestInfo.isFile()) return true;
+    const manifest: unknown = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+    if (!isRecord(manifest) || manifest.private !== true || !isRecord(manifest.scripts))
+      return false;
+    const build = manifest.scripts.build;
+    return (
+      typeof build === "string" &&
+      /^[ \t]*(?:tsc[ \t]*&&[ \t]*)?vite[ \t]+build[ \t]*$/u.test(build)
+    );
+  } catch {
+    return true;
+  }
+};
+
 const mayUseProjectJsxRuntimeProof = (input: ScanResultCacheKeyInput): boolean => {
   if (!input.options.lint) return false;
   if (fs.existsSync(path.join(input.projectDirectory, "stencil.config.ts"))) return true;
@@ -475,7 +510,8 @@ export const buildScanResultCacheKey = async (
   if (
     isCacheGloballyDisabled() ||
     input.options.baselineReport ||
-    mayUseProjectJsxRuntimeProof(input)
+    mayUseProjectJsxRuntimeProof(input) ||
+    mayUseStandaloneViteIndexProof(input)
   ) {
     return null;
   }

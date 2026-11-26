@@ -211,8 +211,13 @@ interface ScanInputs {
 
 // Discovers the live project's declared default build inputs. Runtime
 // compiler and plugin package selection must still be proved by the caller.
+export interface DeclaredViteSelectionOptions {
+  readonly allowTypeScriptNoEmitPrefix?: boolean;
+}
+
 export const readDeclaredViteSelection = (
   filename: string,
+  options: DeclaredViteSelectionOptions = {},
 ): {
   selection: ScanSelection | null;
   inputs: ScanInputs;
@@ -254,7 +259,11 @@ export const readDeclaredViteSelection = (
           ["exports", "main", "module", "browser"].some((key) => Object.hasOwn(manifest, key)) ||
           !scripts ||
           typeof scripts.build !== "string" ||
-          !/^[ \t]*vite[ \t]+build[ \t]*$/u.test(scripts.build) ||
+          !(
+            options.allowTypeScriptNoEmitPrefix
+              ? /^[ \t]*(?:tsc[ \t]*&&[ \t]*)?vite[ \t]+build[ \t]*$/u
+              : /^[ \t]*vite[ \t]+build[ \t]*$/u
+          ).test(scripts.build) ||
           ["prebuild", "postbuild"].some((key) => Object.hasOwn(scripts, key))
         )
           return rejected;

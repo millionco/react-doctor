@@ -29,6 +29,15 @@ describe("react-builtins/react-in-jsx-scope — regressions: scope-aware lookup"
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("conditions the missing React warning on the default classic JSX transform", () => {
+    const result = runJsx(`const App = () => <><div /></>;`);
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      "This JSX needs `React` in scope when compiled with the default classic JSX transform.",
+      "This JSX needs `React` in scope when compiled with the default classic JSX transform.",
+    ]);
+  });
+
   it("does not flag JSX inside a function that itself binds React locally", () => {
     const result = runJsx(`
       function App() {

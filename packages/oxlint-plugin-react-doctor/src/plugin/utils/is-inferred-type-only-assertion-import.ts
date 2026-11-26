@@ -10,19 +10,24 @@ interface ImportEmissionOptions {
   readonly verbatimModuleSyntax?: boolean;
   readonly preserveValueImports?: boolean;
   readonly importsNotUsedAsValues?: string;
+  readonly allowNamedTypeReferences?: boolean;
 }
 
-const isOnlyReadInAssertion = (identifier: EsTreeNode): boolean => {
+const isSupportedTypeReference = (
+  identifier: EsTreeNode,
+  allowNamedTypeReferences: boolean,
+): boolean => {
   const reference = identifier.parent;
   const assertion = reference?.parent;
   return (
     isTypeScriptTypePosition(identifier) &&
     isNodeOfType(reference, "TSTypeReference") &&
     reference.typeName === identifier &&
-    (isNodeOfType(assertion, "TSAsExpression") ||
-      isNodeOfType(assertion, "TSTypeAssertion") ||
-      isNodeOfType(assertion, "TSSatisfiesExpression")) &&
-    assertion.typeAnnotation === reference
+    (allowNamedTypeReferences ||
+      ((isNodeOfType(assertion, "TSAsExpression") ||
+        isNodeOfType(assertion, "TSTypeAssertion") ||
+        isNodeOfType(assertion, "TSSatisfiesExpression")) &&
+        assertion.typeAnnotation === reference))
   );
 };
 
@@ -49,7 +54,7 @@ export const isInferredTypeOnlyAssertionImport = (
     // The scope analysis intentionally excludes erased TS nodes. Enumerate
     // same-name syntax and refuse every occurrence other than this specifier
     // and type references directly in supported assertions.
-    let sawAssertion = false;
+    let sawTypeReference = false;
     let unsupported = false;
     walkAst(program, (node) => {
       if (unsupported) return false;
@@ -64,9 +69,10 @@ export const isInferredTypeOnlyAssertionImport = (
         node === specifier.imported
       )
         return;
-      if (isOnlyReadInAssertion(node)) sawAssertion = true;
-      else unsupported = true;
+      if (isSupportedTypeReference(node, options.allowNamedTypeReferences === true)) {
+        sawTypeReference = true;
+      } else unsupported = true;
     });
-    return sawAssertion && !unsupported;
+    return sawTypeReference && !unsupported;
   });
 };

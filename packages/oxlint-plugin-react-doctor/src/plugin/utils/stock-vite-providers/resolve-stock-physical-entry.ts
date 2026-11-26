@@ -130,7 +130,17 @@ const chooseConditionalTarget = (
   for (const [condition, target] of Object.entries(alternatives)) {
     // Unmodeled conditions and array fallbacks need a separate
     // resolver contract before this reader can make any claim about them.
-    if (condition !== "default" && !EXCLUDED_STOCK_CONDITIONS.has(condition)) return null;
+    const inactiveNativePlatformCondition =
+      condition === "react-native" &&
+      (active === CONDITIONS["vite-production-import"] ||
+        active === CONDITIONS["vite-production-require"]) &&
+      !active.includes(condition);
+    if (
+      condition !== "default" &&
+      !EXCLUDED_STOCK_CONDITIONS.has(condition) &&
+      !inactiveNativePlatformCondition
+    )
+      return null;
     if (condition !== "default" && !active.includes(condition)) continue;
     const selected = chooseConditionalTarget(target, active);
     if (selected !== NOT_APPLICABLE) return selected;

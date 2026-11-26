@@ -653,6 +653,8 @@ const hasPossibleStencilConfig = (filename: string, source: string): boolean => 
   }
 };
 
+const collectSourceLocalIndexKeyDependencies: CrossFileDependencyCollector = () => {};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -664,6 +666,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectExhaustiveDepsDependencies],
+    ["no-array-index-as-key", collectSourceLocalIndexKeyDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
     ["no-pass-live-state-to-parent", collectForwardedImperativeHandleDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
@@ -783,6 +786,17 @@ export const collectCrossFileDependencyProbes = (input: {
     ) {
       return null;
     }
+  }
+
+  if (
+    input.ruleIds.includes("no-array-index-as-key") &&
+    staticImports.some(
+      (entry) =>
+        entry.moduleRequest.value === "@react-three/drei" &&
+        entry.entries.some((binding) => !binding.isType),
+    )
+  ) {
+    return null;
   }
 
   // The stock compiler check consults live npm and toolchain state. Keep

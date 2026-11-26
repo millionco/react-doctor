@@ -41,6 +41,7 @@ import { REACT_ROUTER_RULE_IDS } from "./react-router.js";
 
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   ...INK_RULE_IDS,
+  "no-array-index-as-key",
   "client-passive-event-listeners",
   "effect-needs-cleanup",
   "effect-listener-cleanup-reference-mismatch",

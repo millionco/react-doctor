@@ -156,6 +156,36 @@ afterEach(() => {
 });
 
 describe("scan result cache", () => {
+  it.each(["vite build", "tsc && vite build"])(
+    "bypasses only eligible standalone index-key lint replay for %s",
+    async (build) => {
+      const projectDirectory = setupReactProject(tempDirectory, "standalone-vite-index", {
+        files: { "vite.config.ts": "export default {};" },
+      });
+      const manifestFile = path.join(projectDirectory, "package.json");
+      const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+      fs.writeFileSync(
+        manifestFile,
+        JSON.stringify({ ...manifest, private: true, scripts: { build } }),
+      );
+      initGitRepo(projectDirectory, { commit: true });
+      expect(await cacheKey(projectDirectory, baseOptions({ lint: true }))).toBeNull();
+      expect(await cacheKey(projectDirectory, baseOptions({ lint: false }))).not.toBeNull();
+      expect(
+        await cacheKey(
+          projectDirectory,
+          baseOptions({ lint: true }),
+          VERSION,
+          null,
+          createScanResultCacheInvocationState(),
+          {
+            rules: { "react-doctor/no-array-index-as-key": "off" },
+          },
+        ),
+      ).not.toBeNull();
+    },
+  );
+
   it.each(["react-doctor/react-in-jsx-scope", "react/react-in-jsx-scope", "react-in-jsx-scope"])(
     "bypasses whole-scan replay for Electron renderer compiler reads with %s enabled",
     async (ruleKey) => {

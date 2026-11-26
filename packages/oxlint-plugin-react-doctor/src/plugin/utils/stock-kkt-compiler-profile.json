@@ -1,0 +1,113 @@
+{
+  "snapshot": {
+    "packages": 2642,
+    "members": 63017,
+    "contentDigest": "5d820d91d7f18b7d2ac073ce37e2f93d92ce9a44c6c1887e13b4e77333b4cc53",
+    "canonicalModuleRootSlots": true
+  },
+  "kkt": {
+    "packageName": "kkt",
+    "version": "7.5.5",
+    "files": {
+      "package.json": "7671b40c8774b804d489eb2c63b65cb3259b97e0e38501de388397528623803e",
+      "lib/bin/kkt.js": "f48d9a9f206b7a96af457ba1ca10d1eef328f39ee8013177c243a9da79d26d59",
+      "lib/index.js": "a1736efd06a2ad4aceb9a6eb8659e9d3def607fef2a993641335f592770b54be",
+      "lib/utils/path.js": "6d54d34cc965b0f5f05edd2dd8f1a07e4f3f5d7d82fc53f801c8e56af7330046",
+      "lib/scripts/build.js": "f7682661b65433d0955a74bdbe16615f6aeb110fe4c7745dd9f5e6a54252a3f0",
+      "lib/utils/conf.js": "7eef182f83738269ac118bc00b5e7a63495f882d81a5c4cfc8664f5fe6cd2112"
+    }
+  },
+  "reactScripts": {
+    "packageName": "react-scripts",
+    "version": "5.0.1",
+    "files": {
+      "package.json": "bf0b5ee6f70a1a9818123476f9d40fa079c3391b97d215cc7f1b71b3782d3eee",
+      "config/webpack.config.js": "6b34ea00cefa4567050effbdb08a8a4d3ca94e6c73530c6d3229aa3992847d0d",
+      "config/paths.js": "559fe229a3910a9912a3d970989db456b88ca21736b881571b0914fd2a10f6a5",
+      "scripts/build.js": "61737fa01056c03b10fe2f72a70324f14b12415044ffb3bd082b5caf8ee7ebf0"
+    }
+  },
+  "reactDevUtils": {
+    "packageName": "react-dev-utils",
+    "version": "12.0.1",
+    "files": {
+      "package.json": "3b7a4f94ed2fc6d4a1ea1ae51f03caf3b813937490b5387b4d77447824483650"
+    }
+  },
+  "autoConfigLoader": {
+    "packageName": "auto-config-loader",
+    "version": "1.7.8",
+    "files": {
+      "package.json": "ce5f19dc2a7e6b750b3d16faf7cf7ec682958a08041a4e9c7fcd8537507c2900",
+      "lib/index.js": "3cc93fc9bcc819b9bbbed5d9cdc66392fdc2903c0b8d6073bd77a4bb99f7d008"
+    }
+  },
+  "babelPresetReactApp": {
+    "packageName": "babel-preset-react-app",
+    "version": "10.1.0",
+    "files": {
+      "package.json": "6582fd41ea1b1bc209964d7b4103966b4bad0704fdbeaef5b2aca80cc3d96bd6",
+      "index.js": "21918a40d7a1767e68d05761c0bec6a3cd43938dcbf43d9a07d745b9a795b568",
+      "create.js": "1cd3e7708f867ecd95c7756e49fa5fa7b27e05c92e7b9981035dc25ec1300cd0"
+    }
+  },
+  "babelPresetReact": {
+    "packageName": "@babel/preset-react",
+    "version": "7.29.7",
+    "files": {
+      "package.json": "bde634c0af08bd65d8fb0435d8e451ceab34220181fa6e6ad0827cd5b1ec8d06",
+      "lib/index.js": "1dd7d24eb33727d5f5c59442fd18179514851f2f85209e8adec25ad82525007c"
+    }
+  },
+  "react": {
+    "packageName": "react",
+    "version": "18.2.0",
+    "files": {
+      "package.json": "74e589ae1dca62bf6f76140b92e60b1c829e8e1b6c9645b39e9d1c0b4008ad80",
+      "jsx-runtime.js": "28170e60f2ff0bc045bc7d175f5849e86f68dd02d76d7255369420718b30295a",
+      "cjs/react-jsx-runtime.production.min.js": "76e3364c46895ed2c4a8d5cc332e5e4ef31d6f732d35b1e56826dc5895245452"
+    }
+  },
+  "configSuppliers": [
+    {
+      "packageName": "webpack",
+      "version": "5.111.1",
+      "files": {
+        "package.json": "7aff48065b623b44a5c774ccab3df84eb85830342509f4fd8165271a481ed404",
+        "lib/index.js": "a756b526b22a1c0ad4d3e7cb75f05e14ccf0baf84dd331dff966016dd7a32c5d"
+      }
+    },
+    {
+      "packageName": "@kkt/less-modules",
+      "version": "7.5.5",
+      "files": {
+        "package.json": "6a106532e5c4f3b8be1c7a41b3c2edf75da03f0fcf759a1a23b3c2da78372a4e",
+        "lib/index.js": "604b90222839d427f9e2381c0329a330d5bc172ce0a85262583b901795e46b5d"
+      }
+    },
+    {
+      "packageName": "@kkt/raw-modules",
+      "version": "7.5.5",
+      "files": {
+        "package.json": "8de9b0831bb379bd1173eb9d5081dea6e8374798a7fa7189934fb45c6cdf7970",
+        "lib/index.js": "5978e05c00aed1fff2c50dd6a730f7399459c321f3ab4733cb1a628dee5328a0"
+      }
+    },
+    {
+      "packageName": "markdown-react-code-preview-loader",
+      "version": "2.1.9",
+      "files": {
+        "package.json": "c4ed88d4638a8665b0c15d1b33c99cc11f8ff04d6cb3aaa6060b32536e8e1e29",
+        "lib/index.js": "a2d3d2f4d9444a54dacdbba74905966d5f1539dda30fad1b90d4e6622323db86"
+      }
+    },
+    {
+      "packageName": "@kkt/scope-plugin-options",
+      "version": "7.5.5",
+      "files": {
+        "package.json": "e76782d31c28f009ad8a46a8aec531c365352475dcaac9de51541110ad1d3351",
+        "lib/index.js": "f2eec677881e37b156dc9b6cfb7cc201d32235ad2c19efff8afa8084faa32d8d"
+      }
+    }
+  ]
+}

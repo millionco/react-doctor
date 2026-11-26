@@ -443,9 +443,12 @@ const mayUseProjectJsxRuntimeProof = (input: ScanResultCacheKeyInput): boolean =
   if (!input.options.lint) return false;
   if (fs.existsSync(path.join(input.projectDirectory, "stencil.config.ts"))) return true;
   if (
-    !["electron.vite.config.mjs", "remix.config.js", "node_modules/react-scripts"].some(
-      (filename) => fs.existsSync(path.join(input.projectDirectory, filename)),
-    )
+    ![
+      "electron.vite.config.mjs",
+      "remix.config.js",
+      "node_modules/react-scripts",
+      ".kktrc.ts",
+    ].some((filename) => fs.existsSync(path.join(input.projectDirectory, filename)))
   ) {
     return false;
   }

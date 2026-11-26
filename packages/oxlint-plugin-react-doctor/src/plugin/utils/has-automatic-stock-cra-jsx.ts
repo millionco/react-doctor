@@ -11,6 +11,7 @@ import {
   hasExpectedNpmLauncher,
   hasStockNodeNpmCompilerEnvironment,
 } from "./has-stock-node-npm-compiler-environment.js";
+import { isStockBrowserSelection } from "./is-stock-browser-selection.js";
 import { isPathInside } from "./is-path-inside.js";
 import { readPhysicalImplicitJsxProgram } from "./read-physical-implicit-jsx-program.js";
 import type { RuleContext } from "./rule-context.js";
@@ -99,16 +100,6 @@ const hasUnambiguousParentConfiguration = (root: string): boolean => {
     }
     if (path.dirname(directory) === directory) return true;
   }
-};
-
-const isStockBrowserSelection = (browserslist: unknown): boolean => {
-  const environments = jsonObject(browserslist);
-  if (!environments || Object.keys(environments).length !== 2) return false;
-  return (
-    JSON.stringify(environments.production) === '[">0.2%","not dead","not op_mini all"]' &&
-    JSON.stringify(environments.development) ===
-      '["last 1 chrome version","last 1 firefox version","last 1 safari version"]'
-  );
 };
 
 const jsonObject = (value: unknown): Record<string, unknown> | null =>

@@ -511,7 +511,7 @@ const FOCUS_PROP_PATTERN = /^on(?:Focus|Blur)(?:In|Out)?(?:Capture)?$/i;
 
 const hasClosedFocusRefWiring = (
   ref: SymbolDescriptor,
-  refReads: readonly EsTreeNode[],
+  refReads: ReadonlySet<EsTreeNode>,
   component: EsTreeNode,
   context: RuleContext,
 ): boolean => {
@@ -519,7 +519,7 @@ const hasClosedFocusRefWiring = (
   for (const { identifier, flag } of ref.references) {
     if (flag !== "read") return false;
     const parent = identifier.parent;
-    if (parent && refReads.includes(parent)) continue;
+    if (parent && refReads.has(parent)) continue;
     if (
       isNodeOfType(parent, "MemberExpression") &&
       parent.object === identifier &&
@@ -689,10 +689,10 @@ const isGuardedLocalFocusAndSelfReset = (
     return false;
   }
   const focusReceiver = focus.callee.object;
-  const refReads = [refRead];
+  const refReads = new Set([refRead]);
   if (readsRefDirectly) {
     if (getDirectRefCurrentBinding(focusReceiver, context.scopes) !== inputRef) return false;
-    refReads.push(focusReceiver);
+    refReads.add(focusReceiver);
   } else if (
     !isNodeOfType(focusReceiver, "Identifier") ||
     context.scopes.symbolFor(focusReceiver) !== inputSymbol

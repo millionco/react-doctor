@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export function Selection({ confirm }) {
+export function Selection() {
   const [position, setPosition] = useState(-1);
   const [expanded, setExpanded] = useState(true);
   const input = useRef(null);
@@ -12,18 +12,18 @@ export function Selection({ confirm }) {
   };
 
   useEffect(() => {
-    if (confirm && position !== -1) {
+    if (position !== -1) {
       setExpanded(false);
       returnFocus();
     }
-  }, [confirm, position]);
+  }, [position]);
 
   return (
     <div>
       <button onClick={() => setPosition(0)} aria-expanded={expanded}>
         Choose
       </button>
-      <input ref={input} />
+      <input ref={input} aria-label="Selection search" />
     </div>
   );
 }

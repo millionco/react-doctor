@@ -1,4 +1,5 @@
 import { resetStockCraCompilerCache } from "./has-automatic-stock-cra-jsx.js";
+import { resetStockKktCompilerCache } from "./has-automatic-stock-kkt-jsx.js";
 import { resetStaticProjectDomIdCache } from "./get-static-project-dom-ids.js";
 import { resetRealDirectoryCache } from "./is-package-within-project-root.js";
 import { resetBundlerIgnoreAnnotatedFileTextCache } from "./read-bundler-ignore-annotated-file-text.js";
@@ -15,5 +16,6 @@ export const resetFilesystemCaches = (): void => {
   resetRealDirectoryCache();
   resetStaticProjectDomIdCache();
   resetStockCraCompilerCache();
+  resetStockKktCompilerCache();
   resetTsconfigAliasCaches();
 };

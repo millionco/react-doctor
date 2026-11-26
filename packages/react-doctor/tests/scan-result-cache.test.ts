@@ -231,6 +231,22 @@ describe("scan result cache", () => {
     expect(await cacheKey(projectDirectory, options)).not.toBeNull();
   });
 
+  it("bypasses whole-scan replay for KKT compiler reads with JSX scope enabled", async () => {
+    const projectDirectory = setupReactProject(tempDirectory, "kkt-jsx-scope-cache", {
+      files: { "src/App.tsx": "export const App = () => <main />;" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions({ lint: true, adoptExistingLintConfig: false });
+    const key = () =>
+      cacheKey(projectDirectory, options, VERSION, null, createScanResultCacheInvocationState(), {
+        rules: { "react-doctor/react-in-jsx-scope": "warn" },
+      });
+    expect(await key()).not.toBeNull();
+    fs.writeFileSync(path.join(projectDirectory, ".kktrc.ts"), "export default {};");
+    expect(await key()).toBeNull();
+    expect(await cacheKey(projectDirectory, options)).not.toBeNull();
+  });
+
   it("bypasses lint replay when a project can use the Stencil compiler", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "stencil-runtime-cache", {
       files: { "stencil.config.ts": "export const config = {};" },

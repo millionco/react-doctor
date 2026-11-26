@@ -14,12 +14,16 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
+import { isSymbolReadOnly } from "../../utils/is-symbol-read-only.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -1831,6 +1835,224 @@ const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
   return memberFunction && isFunctionLike(memberFunction) ? (memberFunction.body ?? null) : null;
 };
 
+const readPlainMethodExpression = (member: EsTreeNode): EsTreeNode | null => {
+  if (
+    !isNodeOfType(member, "MethodDefinition") ||
+    member.kind !== "method" ||
+    member.static ||
+    member.computed ||
+    member.decorators?.length ||
+    member.value.async ||
+    member.value.generator ||
+    member.value.params.length !== 0 ||
+    !isNodeOfType(member.value.body, "BlockStatement") ||
+    member.value.body.body.length !== 1
+  ) {
+    return null;
+  }
+  const statement = member.value.body.body[0];
+  return isNodeOfType(statement, "ExpressionStatement") ? statement.expression : null;
+};
+
+const getPrivateThisProperty = (node: EsTreeNode): EsTreeNodeOfType<"PrivateIdentifier"> | null =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.optional &&
+  !node.computed &&
+  isNodeOfType(node.object, "ThisExpression") &&
+  isNodeOfType(node.property, "PrivateIdentifier")
+    ? node.property
+    : null;
+
+const isReturnedTimerComponentUse = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+  seenOwnerIds: ReadonlySet<number> = new Set(),
+): boolean => {
+  const jsx = identifier.parent;
+  if (!isNodeOfType(jsx, "JSXOpeningElement") && !isNodeOfType(jsx, "JSXClosingElement"))
+    return false;
+  if (jsx.name !== identifier || !isNodeOfType(jsx.parent, "JSXElement")) return false;
+  const returned = findTransparentExpressionRoot(jsx.parent);
+  const owner = findEnclosingFunction(returned);
+  if (!owner || !isFunctionLike(owner) || !isComponentFunction(owner)) return false;
+  if (
+    owner.body !== returned &&
+    (!isNodeOfType(returned.parent, "ReturnStatement") || returned.parent.argument !== returned)
+  )
+    return false;
+  const ownerDeclaration = owner.parent;
+  if (
+    (!isNodeOfType(owner, "ArrowFunctionExpression") &&
+      (!isNodeOfType(owner, "FunctionExpression") || owner.id)) ||
+    !isNodeOfType(ownerDeclaration, "VariableDeclarator") ||
+    ownerDeclaration.init !== owner ||
+    !isNodeOfType(ownerDeclaration.id, "Identifier") ||
+    !isNodeOfType(ownerDeclaration.parent, "VariableDeclaration") ||
+    ownerDeclaration.parent.kind !== "const"
+  )
+    return false;
+  const binding = scopes.symbolFor(ownerDeclaration.id);
+  if (
+    !binding ||
+    binding.declarationNode !== ownerDeclaration ||
+    seenOwnerIds.has(binding.id) ||
+    seenOwnerIds.size >= 8 ||
+    !isSymbolReadOnly(binding) ||
+    !hasCompleteSymbolReferences(binding, scopes.rootScope.node, scopes)
+  )
+    return false;
+  const nextOwners = new Set(seenOwnerIds).add(binding.id);
+  return binding.references.every(({ identifier: reference }) =>
+    isReturnedTimerComponentUse(reference, scopes, nextOwners),
+  );
+};
+
+const hasOwnedLocalTimerComponent = (
+  classBody: EsTreeNodeOfType<"ClassBody">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const component = classBody.parent;
+  if (
+    !isNodeOfType(component, "ClassDeclaration") ||
+    !isNodeOfType(component.parent, "Program") ||
+    component.decorators?.length ||
+    !component.id ||
+    !isNodeOfType(component.superClass, "Identifier") ||
+    scopes.symbolFor(component.superClass)?.kind !== "import" ||
+    getImportedNameFromModule(component, component.superClass.name, "react") !== "Component"
+  ) {
+    return false;
+  }
+  const binding = scopes.symbolFor(component.id);
+  return Boolean(
+    binding &&
+    isSymbolReadOnly(binding) &&
+    hasCompleteSymbolReferences(binding, component.parent, scopes) &&
+    binding.references.every(({ identifier }) => {
+      if (!isReturnedTimerComponentUse(identifier, scopes)) return false;
+      const jsx = identifier.parent;
+      return (
+        isNodeOfType(jsx, "JSXClosingElement") ||
+        (isNodeOfType(jsx, "JSXOpeningElement") &&
+          jsx.attributes.every(
+            (attribute) =>
+              isNodeOfType(attribute, "JSXAttribute") &&
+              isNodeOfType(attribute.name, "JSXIdentifier") &&
+              attribute.name.name !== "ref",
+          ))
+      );
+    }),
+  );
+};
+
+const hasPrivateIntervalRelease = (
+  acquireCall: EsTreeNodeOfType<"CallExpression">,
+  classBody: EsTreeNodeOfType<"ClassBody">,
+  mountMember: EsTreeNode,
+  unmountMember: EsTreeNode | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!unmountMember || acquireCall.optional || acquireCall.arguments.length !== 2) return false;
+  const acquire = readPlainMethodExpression(mountMember);
+  if (
+    !isNodeOfType(acquire, "AssignmentExpression") ||
+    acquire.operator !== "=" ||
+    acquire.right !== acquireCall ||
+    getBareCalleeName(acquireCall) !== "setInterval" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      acquireCall.callee,
+      "setInterval",
+      scopes,
+      undefined,
+      true,
+    ) ||
+    !isNodeOfType(acquireCall.arguments[0], "ArrowFunctionExpression") ||
+    !isNodeOfType(acquireCall.arguments[1], "Literal") ||
+    typeof acquireCall.arguments[1].value !== "number"
+  ) {
+    return false;
+  }
+  const slot = getPrivateThisProperty(acquire.left);
+  if (!slot || getClassMemberName(mountMember) !== "componentDidMount") return false;
+
+  const unmountExpression = readPlainMethodExpression(unmountMember);
+  if (!isNodeOfType(unmountExpression, "CallExpression") || unmountExpression.optional)
+    return false;
+  const releaseMethodKey = getPrivateThisProperty(unmountExpression.callee);
+  const releaseMethod = releaseMethodKey
+    ? classBody.body.find(
+        (member) =>
+          isNodeOfType(member, "MethodDefinition") &&
+          isNodeOfType(member.key, "PrivateIdentifier") &&
+          member.key.name === releaseMethodKey.name,
+      )
+    : null;
+  if (releaseMethodKey && (!releaseMethod || unmountExpression.arguments.length !== 0))
+    return false;
+  const release = releaseMethod ? readPlainMethodExpression(releaseMethod) : unmountExpression;
+  if (
+    !isNodeOfType(release, "CallExpression") ||
+    release.optional ||
+    getBareCalleeName(release) !== "clearInterval" ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      release.callee,
+      "clearInterval",
+      scopes,
+      undefined,
+      true,
+    ) ||
+    release.arguments.length !== 1
+  ) {
+    return false;
+  }
+  if (!hasOwnedLocalTimerComponent(classBody, scopes)) return false;
+  if (
+    classBody.body.some(
+      (member) =>
+        isNodeOfType(member, "StaticBlock") ||
+        ((isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition")) &&
+          (member.static ||
+            member.computed ||
+            member.decorators?.length ||
+            getClassMemberName(member) === "constructor" ||
+            (member !== mountMember && getClassMemberName(member) === "componentDidMount") ||
+            (member !== unmountMember && getClassMemberName(member) === "componentWillUnmount"))),
+    )
+  )
+    return false;
+  const releaseSlot = getPrivateThisProperty(release.arguments[0]);
+  if (!releaseSlot || releaseSlot.name !== slot.name) return false;
+
+  const declaredSlot = classBody.body.find(
+    (member) =>
+      isNodeOfType(member, "PropertyDefinition") &&
+      !member.static &&
+      !member.value &&
+      !member.decorators?.length &&
+      isNodeOfType(member.key, "PrivateIdentifier") &&
+      member.key.name === slot.name,
+  );
+  if (!isNodeOfType(declaredSlot, "PropertyDefinition")) return false;
+  const allowedPrivateKeys = new Set([declaredSlot.key, slot, releaseSlot, releaseMethodKey]);
+  if (isNodeOfType(releaseMethod, "MethodDefinition")) allowedPrivateKeys.add(releaseMethod.key);
+
+  let hasUnexpectedAccess = false;
+  walkAst(classBody, (node) => {
+    if (
+      isNodeOfType(node, "PrivateIdentifier") &&
+      (node.name === slot.name || node.name === releaseMethodKey?.name) &&
+      !allowedPrivateKeys.has(node)
+    )
+      hasUnexpectedAccess = true;
+    if (isNodeOfType(node, "Super")) hasUnexpectedAccess = true;
+    if (isNodeOfType(node, "ThisExpression")) {
+      const receiver = node.parent && getPrivateThisProperty(node.parent);
+      if (!receiver || !allowedPrivateKeys.has(receiver)) hasUnexpectedAccess = true;
+    }
+  });
+  return !hasUnexpectedAccess;
+};
+
 // KNOWN ACCEPTED NOISE: an app-root class component that never unmounts
 // (cboard's AppContainer, mounted once via a non-exact `<Route path="/">`
 // under ReactDOM.render) registers intentionally app-lifetime listeners,
@@ -1900,7 +2122,15 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
         const undisposedHazard = mountHazards.find((mountHazard) => {
           if (mountHazard.isAcquiredAfterSuspension) return true;
-          if (mountHazard.releaseKeys.length === 0) return true;
+          if (mountHazard.releaseKeys.length === 0) {
+            return !hasPrivateIntervalRelease(
+              mountHazard.node,
+              node,
+              member,
+              componentWillUnmountMember,
+              context.scopes,
+            );
+          }
           if (
             mountHazard.releaseKeys.some((releaseKey) =>
               componentWillUnmountReleaseKeys.has(releaseKey),

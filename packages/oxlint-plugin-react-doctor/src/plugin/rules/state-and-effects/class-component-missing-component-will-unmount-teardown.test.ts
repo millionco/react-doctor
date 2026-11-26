@@ -2551,3 +2551,71 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(perIterationRemoval.diagnostics).toHaveLength(0);
   });
 });
+
+describe("private interval teardown", () => {
+  const start = "this.#timer = setInterval(() => {}, 1000);";
+  const clear = "clearInterval(this.#timer);";
+
+  const runLifecycle = (
+    mount: string,
+    unmount: string,
+    otherMembers = "",
+    renderEntry = "export const App = () => <Clock />;",
+  ) =>
+    runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      import { Component } from "react";
+      class Clock extends Component {
+        #timer;
+        componentDidMount() { ${mount} }
+        componentWillUnmount() { ${unmount} }
+        ${otherMembers}
+        render() { return null; }
+      }
+      ${renderEntry}
+      `,
+    );
+
+  it("accepts equivalent direct and private helper cleanup", () => {
+    for (const result of [
+      runLifecycle(start, clear),
+      runLifecycle(start, "this.#stop();", `#stop() { ${clear} }`),
+      runLifecycle(
+        start,
+        clear,
+        "",
+        "const App = () => <Clock />; export const Root = () => <App />;",
+      ),
+    ]) {
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("retains intervals whose allocated handle may survive unmount", () => {
+    for (const result of [
+      runLifecycle(start, ""),
+      runLifecycle(start + start, clear),
+      runLifecycle(start, "clearInterval(this.#other);", "#other;"),
+      runLifecycle(start, `if (this.props.ready) { ${clear} }`),
+      runLifecycle(start, clear, "change(other) { other.#timer = 0; }"),
+      runLifecycle(start, clear, "expose() { return this.valueOf(); }"),
+      runLifecycle(start, clear, "static { this.prototype.componentWillUnmount = () => {}; }"),
+      runLifecycle(
+        start,
+        clear,
+        "",
+        `
+        const App = () => <Clock />;
+        const shell = <App />;
+        const element = shell.type();
+        element.type.prototype.componentWillUnmount = () => {};
+      `,
+      ),
+    ]) {
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+});

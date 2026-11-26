@@ -916,7 +916,7 @@
       "id": "effect-needs-cleanup",
       "title": "Effect subscription or timer never cleaned up",
       "severity": "error",
-      "recommendation": "Return a cleanup function that stops the subscription or timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` or `clearTimeout(id)` for timers, `return () => observer.disconnect()` for observers, `return () => socket.close()` for connections, or `return unsubscribe` if the subscribe call already gave you one.",
+      "recommendation": "Release each resource when its setup is replaced or its owner unmounts. For setup in an effect, return a cleanup function that removes the listener, clears the timer, disconnects the observer, closes the connection, or calls the supplied unsubscribe function.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

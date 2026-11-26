@@ -11852,7 +11852,7 @@ export const effectNeedsCleanup = defineRule({
   severity: "error",
   tags: ["test-noise"],
   recommendation:
-    "Return a cleanup function that stops the subscription or timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` or `clearTimeout(id)` for timers, `return () => observer.disconnect()` for observers, `return () => socket.close()` for connections, or `return unsubscribe` if the subscribe call already gave you one.",
+    "Release each resource when its setup is replaced or its owner unmounts. For setup in an effect, return a cleanup function that removes the listener, clears the timer, disconnects the observer, closes the connection, or calls the supplied unsubscribe function.",
   create: (context: RuleContext) => {
     const reportRetainedLeak = (retainedFunction: EsTreeNode): void => {
       if (isExclusivelyFocusEffectCallback(retainedFunction, context)) return;
@@ -11898,7 +11898,7 @@ export const effectNeedsCleanup = defineRule({
       const resourceNoun = RESOURCE_NOUN_BY_KIND[leak.kind];
       context.report({
         node: leak.node,
-        message: `\`${leak.resourceName}\` creates a ${resourceNoun} in a function that outlives the render, with no cleanup path. Store the handle and release it, or move this into a useEffect that returns cleanup, so it does not leak after unmount.`,
+        message: `\`${leak.resourceName}\` creates a ${resourceNoun} in a retained callback. Check that every ${resourceNoun} is released, including on unmount.`,
       });
     };
 

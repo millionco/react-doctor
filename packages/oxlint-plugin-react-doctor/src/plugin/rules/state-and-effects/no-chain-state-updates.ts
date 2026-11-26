@@ -1,3 +1,4 @@
+import { hasClosedNumericStateWrites } from "./utils/has-closed-numeric-state-writes.js";
 import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -201,20 +202,24 @@ const hasSameStateSentinelGuard = (
   ) {
     return false;
   }
+  const stateDeclarator = getUseStateDeclarator(state);
   const readsGuard = (test: EsTreeNode): boolean => {
     if (isNodeOfType(test, "LogicalExpression") && test.operator === "&&") {
       return readsGuard(test.left) || readsGuard(test.right);
     }
     return (
       isNodeOfType(test, "BinaryExpression") &&
-      test.operator === "!==" &&
+      (test.operator === "!==" ||
+        (test.operator === ">" &&
+          stateDeclarator !== null &&
+          hasClosedNumericStateWrites(stateDeclarator, context))) &&
       isNodeOfType(test.left, "Identifier") &&
       getRef(analysis, test.left)?.resolved === state.resolved &&
       Object.is(getNumericSentinel(test.right, context), sentinel)
     );
   };
   if (readsGuard(branch.test)) return true;
-  const stateDeclaration = getUseStateDeclarator(state)?.parent;
+  const stateDeclaration = stateDeclarator?.parent;
   if (
     !isNodeOfType(stateDeclaration, "VariableDeclaration") ||
     stateDeclaration.kind !== "const" ||

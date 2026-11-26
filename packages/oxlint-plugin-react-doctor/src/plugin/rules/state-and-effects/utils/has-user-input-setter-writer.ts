@@ -1,3 +1,4 @@
+import { readNativeEventWriterHost } from "./is-native-event-writer-host.js";
 import { getRuntimeSymbolReferences } from "../../../utils/get-runtime-symbol-references.js";
 import type { Reference, Variable } from "eslint-scope";
 import type { SymbolDescriptor } from "../../../semantic/scope-analysis.js";
@@ -18,9 +19,6 @@ import { resolveJsxElementType } from "../../../utils/resolve-jsx-element-type.j
 import { hasOrdinaryNativeEventWriterRuntime } from "./has-ordinary-native-event-writer-runtime.js";
 import {
   NATIVE_EVENT_WRITER_EVENT_NAMES,
-  NATIVE_EVENT_WRITER_INACTIVE_ATTRIBUTE_NAMES,
-  NATIVE_EVENT_WRITER_INACTIVE_ANCESTOR_TAG_NAMES,
-  NATIVE_EVENT_WRITER_UNSUPPORTED_ANCESTOR_TAG_NAMES,
   NATIVE_EVENT_WRITER_UNSUPPORTED_CONTROL_FLOW_NODES,
   NATIVE_EVENT_WRITER_UNSUPPORTED_MEMBERS,
   NATIVE_EVENT_WRITER_UNSUPPORTED_COMPONENT_CONTROL_FLOW_NODES,
@@ -613,33 +611,32 @@ const isNativeEventWitnessAttribute = (
     return false;
   }
   let current: EsTreeNode | null | undefined = openingElement.parent;
+  let usesExtendedHost = false;
+  let hasInteractionOverride = false;
   while (current && current !== componentFunction) {
-    if (
-      isNodeOfType(current, "JSXElement") &&
-      (!isProvenIntrinsicJsxElement(current.openingElement, context.scopes) ||
-        !HTML_TAGS.has(resolveJsxElementType(current.openingElement)) ||
-        NATIVE_EVENT_WRITER_INACTIVE_ANCESTOR_TAG_NAMES.has(
-          resolveJsxElementType(current.openingElement),
-        ) ||
-        (current.openingElement !== openingElement &&
-          NATIVE_EVENT_WRITER_UNSUPPORTED_ANCESTOR_TAG_NAMES.has(
-            resolveJsxElementType(current.openingElement),
-          )) ||
-        current.openingElement.attributes.some(
-          (candidate) =>
-            isNodeOfType(candidate, "JSXSpreadAttribute") ||
-            (isNodeOfType(candidate, "JSXAttribute") &&
-              NATIVE_EVENT_WRITER_INACTIVE_ATTRIBUTE_NAMES.has(
-                getJsxAttributeName(candidate.name) ?? "",
-              )),
-        ))
-    ) {
-      return false;
+    if (isNodeOfType(current, "JSXElement")) {
+      const host = readNativeEventWriterHost(
+        current.openingElement,
+        openingElement,
+        componentFunction,
+        context,
+      );
+      if (!host) return false;
+      usesExtendedHost ||= host === "extended";
+      hasInteractionOverride ||= current.openingElement.attributes.some((attribute) => {
+        if (!isNodeOfType(attribute, "JSXAttribute")) return false;
+        const name = getJsxAttributeName(attribute.name);
+        return name === "style" || name === eventName + "Capture";
+      });
     }
     const expression = findTransparentExpressionRoot(current);
     const parent = expression.parent;
     if (isNodeOfType(parent, "ReturnStatement")) {
-      return parent.argument === expression && isNodeReachableWithinFunction(attribute, context);
+      return (
+        parent.argument === expression &&
+        (!usesExtendedHost || !hasInteractionOverride) &&
+        isNodeReachableWithinFunction(attribute, context)
+      );
     }
     if (
       (isNodeOfType(parent, "JSXElement") || isNodeOfType(parent, "JSXFragment")) &&

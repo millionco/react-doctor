@@ -942,3 +942,29 @@ it("records the API Platform provider manifest", () => {
   const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
   expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
 });
+
+describe("native event writer host dependencies", () => {
+  it.each(["no-derived-state", "no-derived-state-effect"])(
+    "records the provider and transitive declaration-only imports for %s",
+    (ruleId) => {
+      writeFixtureFile("src/shape.ts", 'import { Props } from "./props"; export { Props };');
+      writeFixtureFile("src/props.ts", "export interface Props { active: boolean }");
+      writeFixtureFile(
+        "src/context.ts",
+        'import { createContext } from "react"; export const PanelContext = createContext(null);',
+      );
+      const app = writeFixtureFile(
+        "src/Panel.tsx",
+        `import "./shape";
+import { PanelContext } from "./context";
+export const Panel = () => <PanelContext.Provider value={null}><button>Toggle</button></PanelContext.Provider>;
+`,
+      );
+      for (const trace of [collectFor(app, [ruleId]), collectFor(app, [ruleId])]) {
+        expect(trace?.contentPaths.has(fixturePath("src/context.ts"))).toBe(true);
+        expect(trace?.contentPaths.has(fixturePath("src/shape.ts"))).toBe(true);
+        expect(trace?.contentPaths.has(fixturePath("src/props.ts"))).toBe(true);
+      }
+    },
+  );
+});

@@ -288,6 +288,7 @@ describe("no-derived-state — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0]?.message).toBe('"search" receives a value copied from an effect.');
   });
 
   it("fires on kurozenzen SmallNumberInput: setInternalValue(value.toString()) derived mirror", () => {

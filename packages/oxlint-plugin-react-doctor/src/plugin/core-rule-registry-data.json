@@ -4238,7 +4238,7 @@
       "id": "no-derived-state",
       "title": "Derived value copied into state",
       "severity": "warn",
-      "recommendation": "Work out the value while rendering (or with useMemo if it's expensive) instead of copying it into state and synchronizing it during render or through an effect. See https://react.dev/learn/you-might-not-need-an-effect#updating-state-based-on-props-or-state",
+      "recommendation": "Calculate the value during render if the state only mirrors its inputs. If the state can change independently, keep it and make its reset conditions explicit. See https://react.dev/learn/you-might-not-need-an-effect#updating-state-based-on-props-or-state",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

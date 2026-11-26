@@ -23,7 +23,9 @@ describe("no-derived-state — render-phase compare-and-set", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("themeAccentColor");
+    expect(result.diagnostics[0].message).toBe(
+      '"themeAccentColor" receives a value copied during render.',
+    );
   });
 
   it("flags a pure transform through an immutable alias and module helper", () => {

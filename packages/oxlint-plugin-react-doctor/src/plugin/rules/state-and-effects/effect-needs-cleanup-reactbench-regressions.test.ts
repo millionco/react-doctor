@@ -485,6 +485,9 @@ export const DelayedAction = ({ delay, action }) => {
 };`,
     );
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`setInterval` creates a timer in a retained callback. Check that every timer is released, including on unmount.",
+    );
   });
 
   it("reports direct effect-owned timers in parameterized callbacks", () => {

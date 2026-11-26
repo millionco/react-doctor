@@ -46,13 +46,17 @@ export const noDerivedState = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Work out the value while rendering (or with useMemo if it's expensive) instead of copying it into state and synchronizing it during render or through an effect. See https://react.dev/learn/you-might-not-need-an-effect#updating-state-based-on-props-or-state",
+    "Calculate the value during render if the state only mirrors its inputs. If the state can change independently, keep it and make its reset conditions explicit. See https://react.dev/learn/you-might-not-need-an-effect#updating-state-based-on-props-or-state",
   create: (context: RuleContext) => {
-    const reportStateWrite = (callExpression: EsTreeNode, stateDeclarator: EsTreeNode): void => {
+    const reportStateWrite = (
+      callExpression: EsTreeNode,
+      stateDeclarator: EsTreeNode,
+      phase: "effect" | "render",
+    ): void => {
       const stateName = getStateName(stateDeclarator);
       context.report({
         node: callExpression,
-        message: `Storing "${stateName}" in state when you can derive it from other values costs an extra render.`,
+        message: `"${stateName}" receives a value copied ${phase === "effect" ? "from an effect" : "during render"}.`,
       });
     };
     const componentTracker = createComponentPropStackTracker({
@@ -65,7 +69,7 @@ export const noDerivedState = defineRule({
           componentBody,
           context.filename,
         )) {
-          reportStateWrite(fact.callExpression, fact.stateDeclarator);
+          reportStateWrite(fact.callExpression, fact.stateDeclarator, "render");
         }
       },
     });
@@ -87,7 +91,7 @@ export const noDerivedState = defineRule({
           ) {
             continue;
           }
-          reportStateWrite(fact.callExpression, fact.stateDeclarator);
+          reportStateWrite(fact.callExpression, fact.stateDeclarator, "effect");
         }
       },
     };

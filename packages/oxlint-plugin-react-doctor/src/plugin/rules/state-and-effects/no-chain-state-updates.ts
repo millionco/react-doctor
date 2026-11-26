@@ -491,11 +491,27 @@ const isLocalStyledInputComponent = (tag: EsTreeNode, context: RuleContext): boo
   return Boolean(resolved && isStyledInputLeaf(resolved.node, analyzeScopes(resolved.programNode)));
 };
 
+const getDirectRefCurrentBinding = (
+  read: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  if (
+    !isNodeOfType(read, "MemberExpression") ||
+    read.computed ||
+    read.optional ||
+    !isNodeOfType(read.object, "Identifier") ||
+    getStaticPropertyName(read) !== "current"
+  ) {
+    return null;
+  }
+  return scopes.symbolFor(read.object);
+};
+
 const FOCUS_PROP_PATTERN = /^on(?:Focus|Blur)(?:In|Out)?(?:Capture)?$/i;
 
 const hasClosedFocusRefWiring = (
   ref: SymbolDescriptor,
-  acquisition: EsTreeNode,
+  refReads: readonly EsTreeNode[],
   component: EsTreeNode,
   context: RuleContext,
 ): boolean => {
@@ -503,7 +519,7 @@ const hasClosedFocusRefWiring = (
   for (const { identifier, flag } of ref.references) {
     if (flag !== "read") return false;
     const parent = identifier.parent;
-    if (parent === acquisition) continue;
+    if (parent && refReads.includes(parent)) continue;
     if (
       isNodeOfType(parent, "MemberExpression") &&
       parent.object === identifier &&
@@ -597,17 +613,16 @@ const isGuardedLocalFocusAndSelfReset = (
     helper.async ||
     helper.params.length !== 0 ||
     !isNodeOfType(helper.body, "BlockStatement") ||
-    helper.body.body.length !== 2 ||
+    (helper.body.body.length !== 1 && helper.body.body.length !== 2) ||
     !component ||
     findEnclosingFunction(helper) !== component
   ) {
     return false;
   }
-  const [declaration, branch] = helper.body.body;
+  const [firstStatement, secondStatement] = helper.body.body;
+  const readsRefDirectly = helper.body.body.length === 1;
+  const branch = readsRefDirectly ? firstStatement : secondStatement;
   if (
-    !isNodeOfType(declaration, "VariableDeclaration") ||
-    declaration.kind !== "const" ||
-    declaration.declarations.length !== 1 ||
     !isNodeOfType(branch, "IfStatement") ||
     branch.alternate ||
     !isNodeOfType(branch.consequent, "BlockStatement") ||
@@ -615,31 +630,37 @@ const isGuardedLocalFocusAndSelfReset = (
   ) {
     return false;
   }
-  const [input] = declaration.declarations;
-  if (
-    !isNodeOfType(input.id, "Identifier") ||
-    !isNodeOfType(input.init, "MemberExpression") ||
-    input.init.computed ||
-    input.init.optional ||
-    !isNodeOfType(input.init.object, "Identifier") ||
-    getStaticPropertyName(input.init) !== "current" ||
-    !isNodeOfType(branch.test, "Identifier")
-  ) {
-    return false;
+  let refRead = branch.test;
+  let inputSymbol: SymbolDescriptor | null = null;
+  if (!readsRefDirectly) {
+    if (
+      !isNodeOfType(firstStatement, "VariableDeclaration") ||
+      firstStatement.kind !== "const" ||
+      firstStatement.declarations.length !== 1
+    ) {
+      return false;
+    }
+    const [input] = firstStatement.declarations;
+    if (
+      !isNodeOfType(input.id, "Identifier") ||
+      !input.init ||
+      !isNodeOfType(branch.test, "Identifier")
+    ) {
+      return false;
+    }
+    inputSymbol = context.scopes.symbolFor(input.id);
+    if (!inputSymbol || context.scopes.symbolFor(branch.test) !== inputSymbol) return false;
+    refRead = input.init;
   }
-  const inputSymbol = context.scopes.symbolFor(input.id);
-  const inputRef = context.scopes.symbolFor(input.init.object);
+  const inputRef = getDirectRefCurrentBinding(refRead, context.scopes);
   const refInitializer = inputRef?.initializer;
   if (
-    !inputSymbol ||
-    context.scopes.symbolFor(branch.test) !== inputSymbol ||
+    inputRef?.kind !== "const" ||
     !isNodeOfType(refInitializer, "CallExpression") ||
     !isReactApiCall(refInitializer, "useRef", context.scopes) ||
     refInitializer.arguments.length !== 1 ||
     !isNodeOfType(refInitializer.arguments[0], "Literal") ||
-    refInitializer.arguments[0].value !== null ||
-    inputRef?.kind !== "const" ||
-    !hasClosedFocusRefWiring(inputRef, input.init, component, context)
+    refInitializer.arguments[0].value !== null
   ) {
     return false;
   }
@@ -660,8 +681,6 @@ const isGuardedLocalFocusAndSelfReset = (
     focus.callee.computed ||
     focus.callee.optional ||
     getStaticPropertyName(focus.callee) !== "focus" ||
-    !isNodeOfType(focus.callee.object, "Identifier") ||
-    context.scopes.symbolFor(focus.callee.object) !== inputSymbol ||
     !isNodeOfType(reset, "CallExpression") ||
     reset.optional ||
     reset.arguments.length !== 1 ||
@@ -669,6 +688,19 @@ const isGuardedLocalFocusAndSelfReset = (
   ) {
     return false;
   }
+  const focusReceiver = focus.callee.object;
+  const refReads = [refRead];
+  if (readsRefDirectly) {
+    if (getDirectRefCurrentBinding(focusReceiver, context.scopes) !== inputRef) return false;
+    refReads.push(focusReceiver);
+  } else if (
+    !isNodeOfType(focusReceiver, "Identifier") ||
+    context.scopes.symbolFor(focusReceiver) !== inputSymbol
+  ) {
+    return false;
+  }
+  if (!hasClosedFocusRefWiring(inputRef, refReads, component, context)) return false;
+
   const resetRef = getRef(analysis, reset.callee);
   const setter = resetRef && resolveStateSetterReference(analysis, resetRef);
   const state = deps[0];

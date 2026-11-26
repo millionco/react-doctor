@@ -2148,6 +2148,76 @@ describe("no-chain-state-updates — guarded local self-reset helpers", () => {
   });
 });
 
+describe("guarded focus resets through an input ref", () => {
+  it.each([
+    {
+      name: "consecutive reads of the same ref",
+      read: "inputRef.current",
+      beforeFocus: "",
+      inputAttributes: "",
+      expectHelperReport: false,
+    },
+    {
+      name: "a different ref supplies the focus receiver",
+      read: "otherRef.current",
+      beforeFocus: "",
+      inputAttributes: "",
+      expectHelperReport: true,
+    },
+    {
+      name: "an intervening call can change the ref",
+      read: "inputRef.current",
+      beforeFocus: "observe();",
+      inputAttributes: "",
+      expectHelperReport: true,
+    },
+    {
+      name: "the input has a focus handler that can recover state",
+      read: "inputRef.current",
+      beforeFocus: "",
+      inputAttributes: "onFocus={() => setIndex(0)}",
+      expectHelperReport: true,
+    },
+    {
+      name: "the ref escapes to an observer",
+      read: "inputRef.current",
+      beforeFocus: "",
+      inputAttributes: "onBlur={() => observe(inputRef)}",
+      expectHelperReport: true,
+    },
+  ])("checks $name", ({ read, beforeFocus, inputAttributes, expectHelperReport }) => {
+    const code = `import { useEffect, useRef, useState } from "react";
+const EMPTY = -1;
+function Picker({ pressed, observe }) {
+  const [index, setIndex] = useState(EMPTY);
+  const [open, setOpen] = useState(true);
+  const inputRef = useRef(null);
+  const otherRef = useRef(null);
+  const finishSelection = () => {
+    if (inputRef.current) {
+      ${beforeFocus}
+      ${read}.focus();
+      setIndex(EMPTY);
+    }
+  };
+  useEffect(() => {
+    if (pressed && index !== EMPTY) {
+      setOpen(false);
+      finishSelection();
+    }
+  }, [index, pressed]);
+  return <div><button onClick={() => setIndex(0)}>{open}</button><input ref={inputRef} ${inputAttributes} /><input ref={otherRef} /></div>;
+}`;
+    const result = runRule(noChainStateUpdates, code, { includeLocations: true });
+    expect(result.parseErrors).toEqual([]);
+    const lines = code.split("\n");
+    const expected = expectHelperReport
+      ? ["setOpen(false);", "finishSelection();"]
+      : ["setOpen(false);"];
+    expect(result.diagnostics.map(({ line }) => lines[(line ?? 0) - 1]?.trim())).toEqual(expected);
+  });
+});
+
 interface TerminalSentinelCase {
   name: string;
   preceding: string;

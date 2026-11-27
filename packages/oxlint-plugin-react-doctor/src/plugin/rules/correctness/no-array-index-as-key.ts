@@ -82,7 +82,7 @@ const MUTATING_ARRAY_METHOD_NAMES = new Set([
 const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
 
 const ARITHMETIC_KEY_OPERATORS = new Set(["+", "-", "*", "/", "%"]);
-const bindingMutationResultsByProgram = new WeakMap<EsTreeNode, Map<string, boolean>>();
+const bindingMutationResultsByProgram = new WeakMap<EsTreeNode, Map<EsTreeNode, boolean>>();
 
 interface StaticKeyBranchValue {
   isNullish: boolean | null;
@@ -386,21 +386,32 @@ const isArrayFromCall = (node: EsTreeNode | null | undefined): boolean => {
 
 const isBindingReassignedOrMutated = (referenceNode: EsTreeNode, bindingName: string): boolean => {
   const programRoot = findProgramRoot(referenceNode);
-  if (!programRoot) return false;
-  let mutationResultsByBindingName = bindingMutationResultsByProgram.get(programRoot);
-  if (!mutationResultsByBindingName) {
-    mutationResultsByBindingName = new Map();
-    bindingMutationResultsByProgram.set(programRoot, mutationResultsByBindingName);
+  const binding = findVariableInitializer(referenceNode, bindingName);
+  if (!programRoot || !binding?.initializer) return true;
+  let mutationResultsByBinding = bindingMutationResultsByProgram.get(programRoot);
+  if (!mutationResultsByBinding) {
+    mutationResultsByBinding = new Map();
+    bindingMutationResultsByProgram.set(programRoot, mutationResultsByBinding);
   }
-  const cachedResult = mutationResultsByBindingName.get(bindingName);
+  const cachedResult = mutationResultsByBinding.get(binding.bindingIdentifier);
   if (cachedResult !== undefined) return cachedResult;
+  let hasShadowedWrite = false;
+  const belongsToBinding = (identifier: EsTreeNode): boolean => {
+    if (!isNodeOfType(identifier, "Identifier") || identifier.name !== bindingName) return false;
+    const candidateBinding = findVariableInitializer(identifier, bindingName);
+    if (candidateBinding && candidateBinding.bindingIdentifier !== binding.bindingIdentifier) {
+      hasShadowedWrite = true;
+      return false;
+    }
+    return true;
+  };
   let didFindWrite = false;
   walkAst(programRoot, (child: EsTreeNode): boolean | void => {
     if (didFindWrite) return false;
     if (
       isNodeOfType(child, "AssignmentExpression") &&
       isNodeOfType(child.left, "Identifier") &&
-      child.left.name === bindingName
+      belongsToBinding(child.left)
     ) {
       didFindWrite = true;
       return false;
@@ -408,7 +419,7 @@ const isBindingReassignedOrMutated = (referenceNode: EsTreeNode, bindingName: st
     if (
       isNodeOfType(child, "UpdateExpression") &&
       isNodeOfType(child.argument, "Identifier") &&
-      child.argument.name === bindingName
+      belongsToBinding(child.argument)
     ) {
       didFindWrite = true;
       return false;
@@ -417,15 +428,97 @@ const isBindingReassignedOrMutated = (referenceNode: EsTreeNode, bindingName: st
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "MemberExpression") &&
       isNodeOfType(child.callee.object, "Identifier") &&
-      child.callee.object.name === bindingName &&
       isNodeOfType(child.callee.property, "Identifier") &&
-      MUTATING_ARRAY_METHOD_NAMES.has(child.callee.property.name)
+      MUTATING_ARRAY_METHOD_NAMES.has(child.callee.property.name) &&
+      belongsToBinding(child.callee.object)
     ) {
       didFindWrite = true;
       return false;
     }
   });
-  mutationResultsByBindingName.set(bindingName, didFindWrite);
+  if (!didFindWrite && hasShadowedWrite) {
+    const declarator = binding.bindingIdentifier.parent;
+    const initializer = stripParenExpression(binding.initializer);
+    // Removing an unrelated name collision must not expose the broader legacy
+    // placeholder heuristics. Admit only an unaliased hole-array allocation.
+    const lengthObject =
+      isNodeOfType(initializer, "CallExpression") && initializer.arguments.length === 1
+        ? initializer.arguments[0]
+        : null;
+    const lengthProperty =
+      isNodeOfType(lengthObject, "ObjectExpression") && lengthObject.properties.length === 1
+        ? lengthObject.properties[0]
+        : null;
+    const hasOnlyPlaceholderHoles =
+      isArrayFromCall(initializer) &&
+      isNodeOfType(initializer, "CallExpression") &&
+      !initializer.optional &&
+      isNodeOfType(initializer.callee, "MemberExpression") &&
+      !initializer.callee.computed &&
+      !initializer.callee.optional &&
+      !findVariableInitializer(initializer, "Array") &&
+      isNodeOfType(lengthProperty, "Property") &&
+      !lengthProperty.computed &&
+      lengthProperty.kind === "init" &&
+      isNodeOfType(lengthProperty.key, "Identifier") &&
+      lengthProperty.key.name === "length" &&
+      isNodeOfType(lengthProperty.value, "Literal") &&
+      typeof lengthProperty.value.value === "number" &&
+      Number.isInteger(lengthProperty.value.value) &&
+      lengthProperty.value.value >= 0;
+    if (
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.id !== binding.bindingIdentifier ||
+      !findEnclosingFunction(declarator) ||
+      !hasOnlyPlaceholderHoles
+    ) {
+      didFindWrite = true;
+    } else {
+      walkAst(programRoot, (child: EsTreeNode): boolean | void => {
+        if (didFindWrite) return false;
+        if (
+          isNodeOfType(child, "WithStatement") ||
+          (isNodeOfType(child, "CallExpression") &&
+            isNodeOfType(child.callee, "Identifier") &&
+            child.callee.name === "eval")
+        ) {
+          didFindWrite = true;
+          return false;
+        }
+        if (
+          !isNodeOfType(child, "Identifier") ||
+          child.name !== bindingName ||
+          child === binding.bindingIdentifier
+        )
+          return;
+        const candidateBinding = findVariableInitializer(child, bindingName);
+        if (candidateBinding?.bindingIdentifier !== binding.bindingIdentifier) return;
+        const member = child.parent;
+        const call = member?.parent;
+        const callback = isNodeOfType(call, "CallExpression") ? call.arguments[0] : null;
+        if (
+          !isNodeOfType(member, "MemberExpression") ||
+          member.object !== child ||
+          member.computed ||
+          member.optional ||
+          !isNodeOfType(member.property, "Identifier") ||
+          member.property.name !== "map" ||
+          !isNodeOfType(call, "CallExpression") ||
+          call.optional ||
+          call.callee !== member ||
+          call.arguments.length !== 1 ||
+          !isNodeOfType(callback, "ArrowFunctionExpression") ||
+          callback.async ||
+          callback.params.length > 2 ||
+          callback.params.some((parameter) => isNodeOfType(parameter, "RestElement"))
+        ) {
+          didFindWrite = true;
+          return false;
+        }
+      });
+    }
+  }
+  mutationResultsByBinding.set(binding.bindingIdentifier, didFindWrite);
   return didFindWrite;
 };
 

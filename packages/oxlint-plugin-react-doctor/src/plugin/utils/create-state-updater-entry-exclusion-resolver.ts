@@ -21,6 +21,7 @@ import { isTypeScriptTypePosition } from "./is-typescript-type-position.js";
 import { isWithinAssignmentTarget } from "./is-within-assignment-target.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "./resolve-cross-file-function-export.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
+import { resolveTsconfigAliasPath } from "./resolve-tsconfig-alias.js";
 import { resolveReactRefSymbol } from "./react-ref-origin.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -208,6 +209,7 @@ export const createStateUpdaterEntryExclusionResolver = (
   const cellProofs = new Map<SymbolDescriptor, boolean>();
   const consumerProofs = new Map<EsTreeNode, Map<number, boolean>>();
   const empty = new Set<EsTreeNode>();
+  let hasRedirectedReact: boolean | undefined;
 
   const indexProgram = (program: EsTreeNode, scopes: ScopeAnalysis): EntryProofProgram => {
     const cached = programs.get(program);
@@ -636,6 +638,10 @@ export const createStateUpdaterEntryExclusionResolver = (
     }
     const calleeRead = getTruthinessRead(calleeTest);
     if (!calleeRead || callerRead.truthy === calleeRead.truthy) return empty;
+    if (context.filename) {
+      hasRedirectedReact ??= resolveTsconfigAliasPath(context.filename, "react") !== null;
+      if (hasRedirectedReact) return empty;
+    }
     const callerSymbol = resolveReactRefSymbol(callerRead.member, context.scopes);
     const calleeSymbol = resolveReactRefSymbol(calleeRead.member, context.scopes);
     if (!callerSymbol || callerSymbol !== calleeSymbol || !hasOrdinaryCell(callerSymbol))

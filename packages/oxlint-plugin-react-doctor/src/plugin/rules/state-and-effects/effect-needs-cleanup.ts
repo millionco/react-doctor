@@ -1408,8 +1408,11 @@ const isKnownCallableSubscriptionResult = (
   if (callee.property.name === "addEventListener") {
     return usage.node.arguments.length === 1 && isKnownNetInfoReceiver(callee.object, context);
   }
+  if (callee.property.name !== "addListener") return false;
+  if (usage.node.arguments.length === 1) {
+    return includeLocalContracts && hasClosedLocalCallableListenerRegistration(usage.node, context);
+  }
   return (
-    callee.property.name === "addListener" &&
     usage.node.arguments.length >= 2 &&
     (isKnownReactNavigationReceiver(callee.object, context) ||
       (includeLocalContracts &&

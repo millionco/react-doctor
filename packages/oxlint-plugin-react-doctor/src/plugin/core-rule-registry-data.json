@@ -6857,7 +6857,7 @@
       "id": "no-ref-callback-cleanup-before-react-19",
       "title": "Ref cleanup requires React 19",
       "severity": "warn",
-      "recommendation": "React 18 ignores functions returned from ref callbacks. Handle cleanup when React calls the ref with `null`, or require React 19 before returning a cleanup function.",
+      "recommendation": "Handle detachment when the ref receives `null` and omit the cleanup return if you support React 18. Returning a cleanup function requires React 19.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react:18"],

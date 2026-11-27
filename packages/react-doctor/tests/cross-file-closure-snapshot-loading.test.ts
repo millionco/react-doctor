@@ -11,7 +11,10 @@ import {
 vi.mock("oxlint-plugin-react-doctor/core", async () => {
   const { hasPotentialSplitGenerationReactSource } =
     await import("../../oxlint-plugin-react-doctor/src/plugin/utils/has-potential-split-generation-react-proof.js");
+  const { hasPotentialCallerEventListSource } =
+    await import("../../oxlint-plugin-react-doctor/src/plugin/utils/has-potential-caller-event-list-proof.js");
   return {
+    hasPotentialCallerEventListSource,
     hasPotentialSplitGenerationReactSource,
     resetManifestCaches: vi.fn(),
     collectCrossFileDependencyProbes: vi.fn(() => ({

@@ -1,3 +1,6 @@
+import { hasViteDefaultCallSourceProof } from "../../utils/read-vite-default-call-source-proof.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
+import { getFunctionExportNames } from "../../utils/get-function-export-names.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -2396,6 +2399,108 @@ const resolveReplayableIteratorCollectionKey = (
   return collectionKey;
 };
 
+const resolveClosedDefaultEventList = (
+  symbol: SymbolDescriptor,
+  context: RuleContext,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  const parameter = symbol.bindingIdentifier.parent;
+  if (
+    symbol.kind !== "parameter" ||
+    !isNodeOfType(parameter, "AssignmentPattern") ||
+    parameter.left !== symbol.bindingIdentifier ||
+    !isNodeOfType(parameter.right, "Identifier")
+  ) {
+    return null;
+  }
+  const owner = parameter.parent;
+  const program = context.scopes.rootScope.node;
+  if (
+    !isFunctionLike(owner) ||
+    !isNodeOfType(program, "Program") ||
+    program.sourceType !== "module"
+  ) {
+    return null;
+  }
+  const parameterIndex = owner.params.findIndex(
+    (candidate) => isNodeOfType(candidate, "AssignmentPattern") && candidate === parameter,
+  );
+  const exported = getFunctionExportNames(program, owner).length > 0;
+  const selectedSourceRoute =
+    exported &&
+    isNodeOfType(owner, "FunctionDeclaration") &&
+    parameterIndex >= 0 &&
+    hasViteDefaultCallSourceProof(context, owner, parameterIndex);
+  if (exported && !selectedSourceRoute) return null;
+  const [binding, ...otherBindings] = getFunctionBindingSymbols(owner, context.scopes);
+  const selfBinding =
+    binding &&
+    context.scopes
+      .ownScopeFor(owner)
+      ?.symbols.find((candidate) => candidate.bindingIdentifier === binding.bindingIdentifier);
+  if (
+    parameterIndex < 0 ||
+    !binding ||
+    otherBindings.length > 0 ||
+    (selfBinding !== undefined && selfBinding.references.length > 0) ||
+    !["function", "const"].includes(binding.kind) ||
+    (!selectedSourceRoute && binding.references.length === 0) ||
+    !hasCompleteSymbolReferences(binding, program, context.scopes) ||
+    !hasCompleteSymbolReferences(symbol, program, context.scopes) ||
+    !binding.references.every((reference) => {
+      const identifier = findTransparentExpressionRoot(reference.identifier);
+      const call = identifier.parent;
+      return (
+        reference.flag === "read" &&
+        isNodeOfType(call, "CallExpression") &&
+        call.callee === identifier &&
+        call.arguments.length <= parameterIndex &&
+        !call.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))
+      );
+    })
+  ) {
+    return null;
+  }
+  const initial = parameter.right;
+  const source = context.scopes.symbolFor(initial);
+  if (
+    !source ||
+    !isPrivatePlainConstIdentifier(initial, context) ||
+    !hasCompleteSymbolReferences(source, program, context.scopes) ||
+    source.references.length !== 1 ||
+    source.references[0]?.identifier !== initial ||
+    !symbol.references.every((reference) => {
+      if (reference.flag !== "read") return false;
+      const read = findTransparentExpressionRoot(reference.identifier);
+      const parent = read.parent;
+      if (isNodeOfType(parent, "ForOfStatement") && parent.right === read) return true;
+      const hook = parent?.parent;
+      return (
+        isNodeOfType(parent, "ArrayExpression") &&
+        isNodeOfType(hook, "CallExpression") &&
+        hook.arguments[1] === parent &&
+        isReactApiCall(hook, "useEffect", context.scopes, {
+          resolveNamedAliases: true,
+          allowUnboundBareCalls: selectedSourceRoute,
+        })
+      );
+    })
+  ) {
+    return null;
+  }
+  let hasUnmodeledEvaluation = false;
+  walkAst(program, (node) => {
+    if (hasUnmodeledEvaluation) return false;
+    if (
+      isNodeOfType(node, "WithStatement") ||
+      (isNodeOfType(node, "Identifier") && node.name === "eval")
+    ) {
+      hasUnmodeledEvaluation = true;
+      return false;
+    }
+  });
+  return hasUnmodeledEvaluation ? null : initial;
+};
+
 const resolvePrimitiveReplayableIteratorCollectionKey = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
@@ -2403,15 +2508,27 @@ const resolvePrimitiveReplayableIteratorCollectionKey = (
 ): string | null => {
   if (!expression) return null;
   const unwrappedExpression = stripParenExpression(expression);
-  if (
-    !isNodeOfType(unwrappedExpression, "Identifier") ||
-    !isPrivatePlainConstIdentifier(unwrappedExpression, context)
-  ) {
-    return null;
-  }
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(unwrappedExpression);
   if (!symbol || visitedSymbolIds.has(symbol.id)) return null;
   visitedSymbolIds.add(symbol.id);
+  if (symbol.kind === "parameter") {
+    const selectedDefault = resolveClosedDefaultEventList(symbol, context);
+    if (!selectedDefault) return null;
+    const selectedSymbol = context.scopes.symbolFor(selectedDefault);
+    const originalInitializer = selectedSymbol?.initializer;
+    if (
+      !selectedSymbol ||
+      !isNodeOfType(originalInitializer, "ArrayExpression") ||
+      !originalInitializer.elements.every(
+        (element) => isNodeOfType(element, "Literal") && typeof element.value === "string",
+      )
+    ) {
+      return null;
+    }
+    return `symbol:${selectedSymbol.id}`;
+  }
+  if (!isPrivatePlainConstIdentifier(unwrappedExpression, context)) return null;
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   const isPrimitiveArrayCollection = (collection: EsTreeNode | null): boolean => {
     if (!collection) return false;

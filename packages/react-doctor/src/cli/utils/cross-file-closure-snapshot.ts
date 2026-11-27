@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { readRealpathIdentity } from "@react-doctor/core";
 import {
   collectCrossFileDependencyProbes,
+  hasPotentialCallerEventListSource,
   hasPotentialSplitGenerationReactSource,
   resetManifestCaches,
 } from "oxlint-plugin-react-doctor/core";
@@ -35,15 +36,15 @@ const readSource = (filename: string): Buffer | null => {
     throw new Error("Oversized closure source");
   return fs.readFileSync(filename);
 };
+const hasUnfingerprintedSourceProof = (filename: string, sourceText: string): boolean =>
+  hasPotentialCallerEventListSource(filename, sourceText) ||
+  hasPotentialSplitGenerationReactSource(filename, sourceText);
 const fingerprint = (snapshot: Omit<CrossFileClosureSnapshot, "fingerprint">): string | null => {
   try {
     const content = snapshot.contentPaths.map((filename) => {
       const bytes = readSource(filename);
-      if (
-        bytes !== null &&
-        hasPotentialSplitGenerationReactSource(filename, bytes.toString("utf8"))
-      )
-        throw new Error("Unbounded loading ownership proof");
+      if (bytes !== null && hasUnfingerprintedSourceProof(filename, bytes.toString("utf8")))
+        throw new Error("Unbounded cross-file ownership proof");
       return [filename, bytes === null ? "absent" : hash(bytes)];
     });
     const existence = snapshot.existencePaths.map((filename) => {
@@ -98,7 +99,7 @@ export const createCrossFileClosureSnapshot = (
       const bytes = readSource(filename);
       if (bytes === null) return null;
       const sourceText = bytes.toString("utf8");
-      if (hasPotentialSplitGenerationReactSource(filename, sourceText)) return null;
+      if (hasUnfingerprintedSourceProof(filename, sourceText)) return null;
       // Conservative cheap filter; source edits remain pinned by the ordinary
       // scan key. Literal import and class keywords also occur in comments.
       if (

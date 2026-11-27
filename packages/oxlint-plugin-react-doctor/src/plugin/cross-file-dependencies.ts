@@ -35,6 +35,10 @@ import { collectCrossFileProbes, recordExistenceProbe } from "./utils/cross-file
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { hasPotentialMountPropReset } from "./rules/state-and-effects/find-negated-effect-prop.js";
+import {
+  hasPotentialCallerEventListProof,
+  mayHaveCallerEventListProof,
+} from "./utils/has-potential-caller-event-list-proof.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
@@ -804,6 +808,15 @@ export const collectCrossFileDependencyProbes = (input: {
   if (
     input.ruleIds.includes("no-unknown-property") &&
     hasPossibleStencilConfig(absoluteFilePath, input.sourceText)
+  ) {
+    return null;
+  }
+
+  // Caller ownership may depend on modules the focal file never imports.
+  if (
+    input.ruleIds.includes("effect-needs-cleanup") &&
+    mayHaveCallerEventListProof(input.sourceText) &&
+    hasPotentialCallerEventListProof(getProgram())
   ) {
     return null;
   }

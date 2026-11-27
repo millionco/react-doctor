@@ -73,11 +73,23 @@ export const readsVerifiedPackageLauncher = (input: PackageLauncherInput): boole
     const moduleSearchPath = moduleDirectories.join(":");
     const relativeEntry = path.relative(modules, entry);
     if (!shellData(moduleSearchPath) || !shellData(relativeEntry)) return false;
-    const expected = stockLauncher.template
-      .replaceAll("{{moduleSearchPath}}", moduleSearchPath)
-      .replaceAll("{{localEntrypoint}}", "$basedir/../" + relativeEntry);
+    const renderLauncher = (entryPath: string): string =>
+      stockLauncher.template
+        .replaceAll("{{moduleSearchPath}}", moduleSearchPath)
+        .replaceAll("{{localEntrypoint}}", "$basedir/../" + entryPath);
     recordContentProbe(filename);
-    return fs.readFileSync(filename, "utf8") === expected;
+    const content = fs.readFileSync(filename, "utf8");
+    if (content === renderLauncher(relativeEntry)) return true;
+
+    const linkedPackage = path.join(modules, binary);
+    const linkedEntry = path.join(linkedPackage, "bin", binary + ".js");
+    const linkedRelativeEntry = path.posix.join(binary, "bin", binary + ".js");
+    if (content !== renderLauncher(linkedRelativeEntry)) return false;
+    recordPath(linkedPackage);
+    recordPath(linkedEntry);
+    return (
+      fs.realpathSync(linkedPackage) === packageDirectory && fs.realpathSync(linkedEntry) === entry
+    );
   } catch {
     return false;
   }

@@ -60,4 +60,5 @@ export type { FileScan, ScanFinding, ScannedFile } from "./plugin/utils/file-sca
 export type { Rule, RuleExecution, RuleFramework, RuleSeverity } from "./plugin/utils/rule.js";
 export type { OxlintRuleSeverity } from "./types.js";
 
+export { hasPotentialCallerEventListSource } from "./plugin/utils/has-potential-caller-event-list-proof.js";
 export { hasPotentialSplitGenerationReactSource } from "./plugin/utils/has-potential-split-generation-react-proof.js";

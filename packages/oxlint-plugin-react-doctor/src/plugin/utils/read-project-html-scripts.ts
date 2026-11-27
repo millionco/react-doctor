@@ -86,6 +86,7 @@ const getText = (element: DefaultTreeAdapterTypes.Element): string =>
 interface ReadProjectHtmlScriptsOptions {
   readonly onlyLocalModuleScripts?: boolean;
   readonly rejectHtmlTemplates?: boolean;
+  readonly externalLocalModulesOnly?: boolean;
   // The callback receives the original validated HTML address so an active
   // resolver can apply aliases before local path normalization.
   readonly resolveLocalEntrypoint?: (fromFilename: string, specifier: string) => string | null;
@@ -148,6 +149,19 @@ export const readProjectHtmlScripts = (
         isExternalHttpUrl(source))
     ) {
       return null;
+    }
+    if (options.externalLocalModulesOnly) {
+      if (type === "module") {
+        if (
+          attr("type") !== "module" ||
+          attr("src") === undefined ||
+          !source ||
+          source.includes("%") ||
+          content.trim() ||
+          isExternalHttpUrl(source)
+        )
+          return null;
+      } else if (source !== undefined && !isExternalHttpUrl(source)) return null;
     }
     if (type === "importmap") return null;
     if (type === "systemjs-importmap") {

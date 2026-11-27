@@ -2756,3 +2756,132 @@ describe("closed stable focus data actions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("placeholder bindings with shadowed writes", () => {
+  it.each([
+    {
+      name: "shadow-push",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 0,
+    },
+    {
+      name: "shadow-write",
+      code: "function Other(){let slots=[];slots=['data']} function App(){const slots=Array.from({length:3});return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 0,
+    },
+    {
+      name: "shadow-update",
+      code: "function Other(){let slots=0;slots++} function App(){const slots=Array.from({length:3});return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 0,
+    },
+    {
+      name: "shadow-parameter",
+      code: "function Other(slots){slots.push('data')} function App(){const slots=Array.from({length:3});return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 0,
+    },
+    {
+      name: "own-push",
+      code: "function App(){const slots=Array.from({length:3});slots.push('data');return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "own-write",
+      code: "function App(){let slots=Array.from({length:3});slots=['data'];return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "closure-push",
+      code: "function App(){const slots=Array.from({length:3});function mutate(){slots.push('data')} mutate();return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "distinct-bindings",
+      code: "function First(){const slots=Array.from({length:3});slots.push('data');return slots.map((_,index)=><Widget key={index} value={_}/>)} function Second(){const slots=Array.from({length:3});return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadow-with-escaped-receiver",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});publish(slots);return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadow-with-computed-mutation",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});slots['push']('data');return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadow-with-member-write",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});slots[0]='data';return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadow-with-default-parameter",
+      code: "function Other(){const slots=[];slots.push('data')} function App({slots=Array.from({length:3})}){return slots.map((_,index)=><Widget key={index} value={_}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadow-with-real-array-from",
+      code: "function Other(){const slots=[];slots.push('data')} function App({items}){const slots=Array.from(items);return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadow-with-array-from-mapper",
+      code: "function Other(){const slots=[];slots.push('data')} function App({items}){const slots=Array.from({length:3},(_,i)=>items[i]);return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "shadowed-array-provider",
+      code: "function Other(){const slots=[];slots.push('data')} function App({Array}){const slots=Array.from({length:3});return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "computed-array-method",
+      code: "function Other(){const slots=[];slots.push('data')} function App({from}){const slots=Array[from]({length:3});return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "optional-array-call",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from?.({length:3});return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "alias-mutation",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});const alias=slots;alias.push('data');return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "exported-array",
+      code: "function Other(){const slots=[];slots.push('data')} export const slots=Array.from({length:3}); function App(){return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "direct-eval",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});eval(\"slots.reverse()\");return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "map-third-parameter",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});slots.map((item,index,collection)=>collection.push('data'));return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "map-external-callback",
+      code: "function Other(){const slots=[];slots.push('data')} function App({callback}){const slots=Array.from({length:3});slots.map(callback);return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "map-arguments-escape",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});slots.map(function(item,index){arguments[2].push('data')});return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+    {
+      name: "map-rest-parameter",
+      code: "function Other(){const slots=[];slots.push('data')} function App(){const slots=Array.from({length:3});slots.map((...values)=>values[2].push('data'));return slots.map((item,index)=><Widget key={index} value={item}/>);}",
+      expected: 1,
+    },
+  ])("$name", ({ code, expected }) => {
+    const result = runRule(noArrayIndexAsKey, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

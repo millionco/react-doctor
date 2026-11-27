@@ -6,8 +6,6 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
-import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
@@ -200,55 +198,6 @@ const hasMatchingLocalStateWrite = (
   return didFindMatchingWrite;
 };
 
-const getRefHeldPropCallbackName = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-  isPropName: (name: string) => boolean,
-): string | null => {
-  const callee = stripParenExpression(callExpression.callee as EsTreeNode);
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== "current"
-  ) {
-    return null;
-  }
-  const receiver = stripParenExpression(callee.object as EsTreeNode);
-  if (!isNodeOfType(receiver, "Identifier")) return null;
-  const binding = findVariableInitializer(callExpression, receiver.name);
-  if (!binding?.initializer || !isNodeOfType(binding.initializer, "CallExpression")) return null;
-  if (getCalleeName(binding.initializer) !== "useRef") return null;
-  const callbackArgument = binding.initializer.arguments?.[0];
-  if (!callbackArgument || !isNodeOfType(callbackArgument, "Identifier")) return null;
-  return isPropName(callbackArgument.name) ? callbackArgument.name : null;
-};
-
-const getTransparentWrappedPropCallbackName = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-  context: RuleContext,
-  isPropName: (name: string, referenceNode?: EsTreeNode) => boolean,
-): string | null => {
-  const callee = stripParenExpression(callExpression.callee as EsTreeNode);
-  if (!isNodeOfType(callee, "Identifier")) return null;
-  const binding = findVariableInitializer(callExpression, callee.name);
-  if (!binding?.initializer) return null;
-  const resultSymbol = context.scopes.symbolFor(callee);
-  const callbackArgument = getTransparentReactCallbackWrapperArgument(
-    binding.initializer,
-    resultSymbol,
-    context.scopes,
-  );
-  if (!callbackArgument) return null;
-  const callbackSource = stripParenExpression(callbackArgument);
-  if (isNodeOfType(callbackSource, "Identifier")) {
-    return isPropName(callbackSource.name, callbackSource) ? callbackSource.name : null;
-  }
-  if (!isNodeOfType(callbackSource, "MemberExpression")) return null;
-  const receiver = stripParenExpression(callbackSource.object as EsTreeNode);
-  const propertyName = getStaticPropertyName(callbackSource);
-  if (!isNodeOfType(receiver, "Identifier") || !propertyName) return null;
-  return isPropName(receiver.name, receiver) ? propertyName : null;
-};
-
 // HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
 // "lift state up via callback" anti-pattern: the child owns state, then
 // fires a parent callback every time the state changes to keep the
@@ -348,28 +297,13 @@ export const noPropCallbackInEffect = defineRule({
         const getPropCallbackName = (
           callExpression: EsTreeNodeOfType<"CallExpression">,
         ): string | null => {
-          const directCallee = stripParenExpression(callExpression.callee as EsTreeNode);
-          const resolvedCallbackPropNames =
-            analysis && propStackTracker.getCurrentPropNames().size > 0
-              ? getParentCallbackPropNames({
-                  analysis,
-                  expression: directCallee,
-                  scopes: context.scopes,
-                })
-              : null;
-          const calleeName =
-            (resolvedCallbackPropNames && [...resolvedCallbackPropNames][0]) ||
-            (isNodeOfType(directCallee, "Identifier") &&
-              propStackTracker.isPropName(directCallee.name) &&
-              directCallee.name) ||
-            (!analysis &&
-              getRefHeldPropCallbackName(callExpression, propStackTracker.isPropName)) ||
-            getTransparentWrappedPropCallbackName(
-              callExpression,
-              context,
-              propStackTracker.isPropName,
-            );
-          return calleeName || null;
+          if (!analysis || propStackTracker.getCurrentPropNames().size === 0) return null;
+          const callbackNames = getParentCallbackPropNames({
+            analysis,
+            expression: callExpression.callee,
+            scopes: context.scopes,
+          });
+          return callbackNames?.values().next().value ?? null;
         };
         const cleanupPropCallbackNames = new Set<string>();
         for (const cleanupFunction of collectReturnedCleanupFunctions(callback, context.scopes)) {

@@ -91,6 +91,26 @@ describe("no-ref-callback-cleanup-before-react-19", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("explains the unsupported return when the null path already detaches", () => {
+    const result = runRuleForCode(`
+      const Row = ({ elements, id }) => (
+        <div ref={(element) => {
+          if (element === null) {
+            elements.delete(id);
+            return;
+          }
+          elements.set(id, element);
+          return () => { elements.delete(id); };
+        }} />
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("ignores the cleanup function returned");
+    expect(result.diagnostics[0].message).toContain("omit the cleanup return");
+  });
+
   it("stays silent for React 18-compatible null-detach callbacks", () => {
     const result = runRuleForCode(`
       const Component = ({ itemRefs, id }) => (

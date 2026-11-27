@@ -109,7 +109,7 @@ export const noRefCallbackCleanupBeforeReact19 = defineRule({
   disabledWhen: ["react:19"],
   severity: "warn",
   recommendation:
-    "React 18 ignores functions returned from ref callbacks. Handle cleanup when React calls the ref with `null`, or require React 19 before returning a cleanup function.",
+    "Handle detachment when the ref receives `null` and omit the cleanup return if you support React 18. Returning a cleanup function requires React 19.",
   create: (context) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (getJsxAttributeName(node.name) !== "ref") return;
@@ -120,7 +120,7 @@ export const noRefCallbackCleanupBeforeReact19 = defineRule({
       context.report({
         node,
         message:
-          "This ref callback returns a cleanup function, but React 18 ignores ref cleanup returns, so the cleanup never runs. Handle detachment when React calls the ref with `null`, or require React 19.",
+          "React 18 ignores the cleanup function returned by this ref callback. To support React 18, handle detachment when the ref receives `null` and omit the cleanup return.",
       });
     },
   }),

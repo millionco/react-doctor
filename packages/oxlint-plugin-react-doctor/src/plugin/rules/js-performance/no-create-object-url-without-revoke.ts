@@ -25,6 +25,8 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
+const OBJECT_URL_LIFETIME_METHODS = ["createObjectURL", "revokeObjectURL"];
+
 const ESCAPE_ASSIGNMENT_TARGET_PROPERTIES = new Set(["href", "src", "current"]);
 
 const MESSAGE =
@@ -34,12 +36,19 @@ const isUrlMethodCall = (
   node: EsTreeNodeOfType<"CallExpression">,
   methodName: string,
   scopes: ScopeAnalysis,
+  considerEscapes: boolean | readonly string[] = false,
 ): boolean => {
   const callee = stripParenExpression(node.callee);
   return (
     isNodeOfType(callee, "MemberExpression") &&
     getStaticPropertyName(callee) === methodName &&
-    isProvenUnmodifiedGlobalNamespaceReference(callee.object, "URL", scopes, methodName)
+    isProvenUnmodifiedGlobalNamespaceReference(
+      callee.object,
+      "URL",
+      scopes,
+      methodName,
+      considerEscapes,
+    )
   );
 };
 
@@ -292,9 +301,15 @@ const isRevokeOfProducedBinding = (
   call: EsTreeNodeOfType<"CallExpression">,
   binding: EsTreeNode,
   scopes: ScopeAnalysis,
+  considerEscapes: boolean | readonly string[] = false,
 ): boolean => {
   const revokedUrl = call.arguments[0];
-  if (!isUrlMethodCall(call, "revokeObjectURL", scopes) || !isAstNode(revokedUrl)) return false;
+  if (
+    !isUrlMethodCall(call, "revokeObjectURL", scopes, considerEscapes) ||
+    !isAstNode(revokedUrl)
+  ) {
+    return false;
+  }
   const revokedCandidate = stripParenExpression(revokedUrl);
   const bindingCandidate = stripParenExpression(binding);
   if (revokedCandidate === bindingCandidate) return true;
@@ -1018,6 +1033,75 @@ const isGuaranteedScheduledRevoke = (
   );
 };
 
+const immediatelyFollowingFinallyRevokesBinding = (
+  resultCall: EsTreeNodeOfType<"CallExpression">,
+  binding: EsTreeNode,
+  executionBoundary: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isFunctionLike(executionBoundary) && executionBoundary.generator) return false;
+  const declarator = binding.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== findTransparentExpressionRoot(resultCall)
+  ) {
+    return false;
+  }
+  const declaration = declarator.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1
+  ) {
+    return false;
+  }
+  const parent = declaration.parent;
+  const statements =
+    isNodeOfType(parent, "BlockStatement") || isNodeOfType(parent, "Program")
+      ? parent.body
+      : isNodeOfType(parent, "SwitchCase")
+        ? parent.consequent
+        : null;
+  if (!statements) return false;
+
+  const acquisitionIndex = statements.findIndex(
+    (statement) => statement.range[0] === declaration.range[0],
+  );
+  if (acquisitionIndex < 0) return false;
+  const protectedStatement = statements[acquisitionIndex + 1];
+  if (!isNodeOfType(protectedStatement, "TryStatement")) return false;
+  const firstFinalizerStatement = protectedStatement.finalizer?.body[0];
+  if (!isNodeOfType(firstFinalizerStatement, "ExpressionStatement")) return false;
+  const revokeCall = stripParenExpression(firstFinalizerStatement.expression);
+  if (
+    !isNodeOfType(revokeCall, "CallExpression") ||
+    revokeCall.arguments.length !== 1 ||
+    !isRevokeOfProducedBinding(revokeCall, binding, scopes, OBJECT_URL_LIFETIME_METHODS)
+  ) {
+    return false;
+  }
+
+  let hasSuspensionBeforeFinally = false;
+  walkAst(protectedStatement, (node) => {
+    if (
+      hasSuspensionBeforeFinally ||
+      node === protectedStatement.finalizer ||
+      isFunctionLike(node)
+    ) {
+      return false;
+    }
+    if (
+      isNodeOfType(node, "AwaitExpression") ||
+      (isNodeOfType(node, "ForOfStatement") && node.await) ||
+      (isNodeOfType(node, "VariableDeclaration") && node.kind === "await using")
+    ) {
+      hasSuspensionBeforeFinally = true;
+      return false;
+    }
+  });
+  return !hasSuspensionBeforeFinally;
+};
+
 const boundCreationIsDisposed = (
   createCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -1027,6 +1111,16 @@ const boundCreationIsDisposed = (
   const resultSymbol = context.scopes.symbolFor(resultExpression);
   if (!resultSymbol) return false;
   const executionBoundary = context.cfg.enclosingFunction(createCall);
+  if (
+    immediatelyFollowingFinallyRevokesBinding(
+      createCall,
+      resultExpression,
+      executionBoundary,
+      context.scopes,
+    )
+  ) {
+    return true;
+  }
   const valueBindings: ProducedValueBinding[] = [];
   collectProvenValueBindings(resultExpression, createCall.range[1], context.scopes, valueBindings);
   const didFindGuaranteedRevoke = valueBindings.some((producedValue) => {

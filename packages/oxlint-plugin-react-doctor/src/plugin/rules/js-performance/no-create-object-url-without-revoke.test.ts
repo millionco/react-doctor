@@ -1433,6 +1433,97 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("recognizes direct revocation of the captured URL at the start of an adjacent finally", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `function download(blob, preview, skip) {
+         if (preview) {
+           const url = URL.createObjectURL(blob);
+           try {
+             preview.href = url;
+             if (skip) return;
+             preview.click();
+           } finally {
+             URL.revokeObjectURL(url);
+           }
+         }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps warning if cleanup can be bypassed or revokes a different URL", () => {
+    const cases = [
+      `const url = URL.createObjectURL(blob);
+       if (skip) return;
+       try { preview.href = url; } finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob), view = openPreview();
+       try { view.href = url; } finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; } finally { URL.revokeObjectURL(preview.href); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; } finally { if (ready) URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; } finally { URL.revokeObjectURL(url, getValue()); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; } finally { log(); URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; } finally { const url = getValue(); URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; globalThis.URL = class {}; } finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; URL.valueOf().revokeObjectURL = () => {}; }
+       finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; new URL("https://example.invalid").constructor.revokeObjectURL = () => {}; }
+       finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; document.defaultView.URL = class {}; }
+       finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; Object.defineProperty(document.defaultView, "URL", {}); }
+       finally { URL.revokeObjectURL(url); }`,
+      `const holder = { api: URL };
+       const url = URL.createObjectURL(blob);
+       try { preview.href = url; holder.api.revokeObjectURL = () => {}; }
+       finally { URL.revokeObjectURL(url); }`,
+      `const holder = { realm: globalThis };
+       const url = URL.createObjectURL(blob);
+       try { preview.href = url; holder.realm.URL = class {}; }
+       finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; await waitForClose(); } finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; for await (const item of items) show(item); }
+       finally { URL.revokeObjectURL(url); }`,
+      `const url = URL.createObjectURL(blob);
+       try { preview.href = url; await using subscription = openSubscription(); }
+       finally { URL.revokeObjectURL(url); }`,
+    ];
+    for (const body of cases) {
+      const result = runRule(
+        noCreateObjectUrlWithoutRevoke,
+        `async function show(blob, preview, skip) {
+           if (preview) {
+             ${body}
+           }
+         }`,
+      );
+      expect(result.diagnostics, body).toHaveLength(1);
+    }
+
+    const generatorResult = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `function* show(blob, preview) {
+         if (preview) {
+           const url = URL.createObjectURL(blob);
+           try { preview.href = url; yield; } finally { URL.revokeObjectURL(url); }
+         }
+       }`,
+    );
+    expect(generatorResult.diagnostics).toHaveLength(1);
+  });
+
   it("tracks the exact produced binding version through aliases and writes", () => {
     const staleAliasResult = runRule(
       noCreateObjectUrlWithoutRevoke,

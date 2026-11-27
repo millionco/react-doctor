@@ -1,0 +1,94 @@
+{
+  "/@babel/core@7.24.5": {
+    "json5": "37b98405740ff209263689b6bb753fd5be12c63508d020ac96ce1da5001e1dc0",
+    "parser": "f30e84b748167fd074f072e5aac5db7300d404fb0bc6a6796b09ce37cd69d6fa",
+    "semver": "8df0b8e40a6a13e51bf66d4d64026f482f0ceb319ece7c7d0185f0f06435da80"
+  },
+  "/@babel/generator@7.24.5": {
+    "jsesc": "6fcfe37f9a82289728a48bcfcba5a9c0aab25ba23399ca5dd556e63029deb217"
+  },
+  "/@babel/helper-compilation-targets@7.23.6": {
+    "browserslist": "f6ae4cb8cf09bf1fdad2a5cbe7859396f0bf4eb8ff9dfb64b8dcf303c467b04b",
+    "semver": "8df0b8e40a6a13e51bf66d4d64026f482f0ceb319ece7c7d0185f0f06435da80"
+  },
+  "/@babel/helper-create-class-features-plugin@7.24.5(@babel/core@7.24.5)": {
+    "semver": "8df0b8e40a6a13e51bf66d4d64026f482f0ceb319ece7c7d0185f0f06435da80"
+  },
+  "/@babel/template@7.24.0": {
+    "parser": "f30e84b748167fd074f072e5aac5db7300d404fb0bc6a6796b09ce37cd69d6fa"
+  },
+  "/@babel/traverse@7.24.5": {
+    "parser": "f30e84b748167fd074f072e5aac5db7300d404fb0bc6a6796b09ce37cd69d6fa"
+  },
+  "/@milkdown/utils@7.3.6(@milkdown/core@7.3.6)(@milkdown/ctx@7.3.6)(@milkdown/prose@7.3.6)(@milkdown/transformer@7.3.6)": {
+    "nanoid": "9c301fcc9f20970547663ae76a9201e278632ca537444d2b75ccc0882d703efa"
+  },
+  "/@types/babel__core@7.20.5": {
+    "parser": "f30e84b748167fd074f072e5aac5db7300d404fb0bc6a6796b09ce37cd69d6fa"
+  },
+  "/@types/babel__template@7.4.4": {
+    "parser": "f30e84b748167fd074f072e5aac5db7300d404fb0bc6a6796b09ce37cd69d6fa"
+  },
+  "/@unocss/astro@0.59.4(vite@5.2.10)": {
+    "vite": "fd73e29bfcccc39ff07023845e0e1d2e4fb852c03a444ccb33ac7c61c85cac8f"
+  },
+  "/@unocss/vite@0.59.4(vite@5.2.10)": {
+    "vite": "fd73e29bfcccc39ff07023845e0e1d2e4fb852c03a444ccb33ac7c61c85cac8f"
+  },
+  "/@vitejs/plugin-react@4.2.1(vite@5.2.10)": {
+    "vite": "fd73e29bfcccc39ff07023845e0e1d2e4fb852c03a444ccb33ac7c61c85cac8f"
+  },
+  "/browserslist@4.23.0": {
+    "update-browserslist-db": "2604c7e9fb1b6ccc108b6110f186696f2d26123093edddb89882daf15d07ef0c"
+  },
+  "/cross-spawn@7.0.3": {
+    "node-which": "c5b15ca19136ec05613cdcb3f5052be2f83032533008641c748375499babb175"
+  },
+  "/micromark-extension-math@3.0.0": {
+    "katex": "e14634da0c62c0d126ee9e5e275c8af7a6423db1bb615434157940106519a819"
+  },
+  "/mlly@1.7.0": {
+    "acorn": "1c42bbf4dcdedab94cf93c9297d63c0dcb3838da80fbf4b0bbf86d936200d95d"
+  },
+  "/postcss@8.4.38": {
+    "nanoid": "ff359a0cc475871ff2c00ef40ce195b945d957d8abd3a1d510ffe5c7dd581e9c"
+  },
+  "/prop-types@15.8.1": {
+    "loose-envify": "becd90a27831491074eae3f89d2baefad9c8b67d497b00246ac98e9fa4255588"
+  },
+  "/react-dom@18.3.1(react@18.3.1)": {
+    "loose-envify": "becd90a27831491074eae3f89d2baefad9c8b67d497b00246ac98e9fa4255588"
+  },
+  "/react@18.3.1": {
+    "loose-envify": "becd90a27831491074eae3f89d2baefad9c8b67d497b00246ac98e9fa4255588"
+  },
+  "/rehype-katex@7.0.0": {
+    "katex": "e14634da0c62c0d126ee9e5e275c8af7a6423db1bb615434157940106519a819"
+  },
+  "/scheduler@0.23.2": {
+    "loose-envify": "becd90a27831491074eae3f89d2baefad9c8b67d497b00246ac98e9fa4255588"
+  },
+  "/strip-literal@1.3.0": {
+    "acorn": "1c42bbf4dcdedab94cf93c9297d63c0dcb3838da80fbf4b0bbf86d936200d95d"
+  },
+  "/unconfig@0.3.13": {
+    "jiti": "7aae5ff8ee76a58b70eab801f00840fd62f7fa80d9502dd29a328444939fac60"
+  },
+  "/unimport@3.7.1": {
+    "acorn": "1c42bbf4dcdedab94cf93c9297d63c0dcb3838da80fbf4b0bbf86d936200d95d"
+  },
+  "/unocss@0.59.4(postcss@8.4.38)(vite@5.2.10)": {
+    "unocss": "d6a51197b3bc5cef438bdb4dde33f4d8c02cdc1f3bdf7d91d8ea84316e00eb3e",
+    "vite": "eb3c06d23db1b2c994179ceeba24ce2a0ee949979c02d7013312406110708f7c"
+  },
+  "/unplugin@1.10.1": {
+    "acorn": "1c42bbf4dcdedab94cf93c9297d63c0dcb3838da80fbf4b0bbf86d936200d95d"
+  },
+  "/update-browserslist-db@1.0.14(browserslist@4.23.0)": {
+    "browserslist": "e58684ae9d44edbc654938cdd1d6954bfe40390c6328074cab75ffbb496c8043"
+  },
+  "/vite@5.2.10(@types/node@20.12.8)": {
+    "esbuild": "f7832e3530db63d898c3b0c19830fb3ec6b14cb5d43acedc373f8c579c7ea186",
+    "rollup": "d45b49038ca0624e951567142c7ce90d30550e79a13c822711fd576ddefa176b"
+  }
+}

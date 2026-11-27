@@ -25,6 +25,7 @@ interface AdditionalDependencyEdge {
 export interface StockPnpmInstalledProfile {
   readonly format: 1;
   readonly roots: Readonly<Record<string, string>>;
+  readonly generatedBins?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly packages: Readonly<Record<string, PackageContent>>;
   readonly effectiveExtraIssuerEdges: readonly AdditionalDependencyEdge[];
   readonly runtimeRootSpecifiers: readonly string[];
@@ -79,7 +80,41 @@ const readPackageAtIssuer = (root: string, issuer: string, specifier: string): s
   return null;
 };
 
-const verifyPackageContent = (directory: string, expected: PackageContent): boolean => {
+const PACKAGE_BIN_PROJECT_ROOT = "/__react_doctor_project_root__/";
+
+const hasVerifiedPackageLocalBins = (
+  root: string,
+  modules: string,
+  expected: Readonly<Record<string, string>> | undefined,
+): boolean => {
+  if (!expected) return false;
+  recordDirectoryProbe(modules);
+  const children = fs.readdirSync(modules, { withFileTypes: true });
+  if (children.length !== 1 || children[0]?.name !== ".bin" || !children[0].isDirectory())
+    return false;
+  const directory = path.join(modules, ".bin");
+  recordDirectoryProbe(directory);
+  const shims = fs.readdirSync(directory, { withFileTypes: true });
+  if (shims.length !== Object.keys(expected).length) return false;
+  return shims.every((shim) => {
+    if (!shim.isFile() || !Object.hasOwn(expected, shim.name)) return false;
+    const filename = path.join(directory, shim.name);
+    if ((fs.statSync(filename).mode & 0o111) === 0) return false;
+    const contents = readProviderMember(filename);
+    if (!contents || contents.length > 16_384) return false;
+    const source = contents.toString("utf8");
+    if (source.includes(PACKAGE_BIN_PROJECT_ROOT)) return false;
+    const canonical = source.replaceAll(root + "/", PACKAGE_BIN_PROJECT_ROOT);
+    return createHash("sha256").update(canonical).digest("hex") === expected[shim.name];
+  });
+};
+
+const verifyPackageContent = (
+  root: string,
+  directory: string,
+  expected: PackageContent,
+  generatedBins: Readonly<Record<string, string>> | undefined,
+): boolean => {
   let manifest: unknown;
   const pending = [directory];
   const members: Array<[string, number, string]> = [];
@@ -89,7 +124,11 @@ const verifyPackageContent = (directory: string, expected: PackageContent): bool
     for (const leaf of fs.readdirSync(current, { withFileTypes: true })) {
       const filename = path.join(current, leaf.name);
       if (leaf.isDirectory()) {
-        if (leaf.name === "node_modules") return false;
+        if (leaf.name === "node_modules") {
+          if (current !== directory || !hasVerifiedPackageLocalBins(root, filename, generatedBins))
+            return false;
+          continue;
+        }
         pending.push(filename);
       } else {
         if (!leaf.isFile()) return false;
@@ -154,7 +193,8 @@ export const verifyStockPnpmInstalledProfile = (
     }
     for (const { key, directory } of queue) {
       const expected = profile.packages[key];
-      if (!verifyPackageContent(directory, expected)) return null;
+      if (!verifyPackageContent(root, directory, expected, profile.generatedBins?.[key]))
+        return null;
       for (const [name, target] of Object.entries(expected.dependencies)) {
         if (!add(directory, name, target)) return null;
       }

@@ -1,5 +1,8 @@
+import generatedBins from "./stock-pnpm-vite-bin-profiles.json" with { type: "json" };
+
 export const stockInstalledViteProfile = {
   format: 1,
+  generatedBins,
   roots: {
     vite: "/vite@5.2.10(@types/node@20.12.8)",
     "@vitejs/plugin-react": "/@vitejs/plugin-react@4.2.1(vite@5.2.10)",

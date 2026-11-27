@@ -1065,6 +1065,9 @@ describe("react-builtins/rules-of-hooks — regressions: non-Hook APIs called fr
       }
     `);
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` is called in a class scope. A class definition does not establish a React render scope by itself. Call Hooks from a function component or a custom Hook.",
+    );
   });
 });
 

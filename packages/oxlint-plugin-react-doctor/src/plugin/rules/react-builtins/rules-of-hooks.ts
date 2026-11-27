@@ -63,8 +63,8 @@ const buildLoopMessage = (hookName: string): string =>
   `\`${hookName}\` can run a different number of times inside a loop, so React can attach state to the wrong Hook.`;
 const buildAsyncMessage = (hookName: string): string =>
   `\`${hookName}\` runs inside an async function, so React cannot guarantee the same Hook order during render.`;
-const buildClassComponentMessage = (hookName: string): string =>
-  `\`${hookName}\` cannot run in a class component because Hooks require a function component or custom Hook render scope.`;
+const buildClassScopeMessage = (hookName: string): string =>
+  `\`${hookName}\` is called in a class scope. A class definition does not establish a React render scope by itself. Call Hooks from a function component or a custom Hook.`;
 const buildTryMessage = (hookName: string): string =>
   `\`${hookName}\` can be skipped by try/catch/finally control flow, so React can attach state to the wrong Hook.`;
 const buildEffectEventCallMessage = (bindingName: string): string =>
@@ -856,7 +856,7 @@ const findEnclosingFunctionInfo = (
   return null;
 };
 
-const isInsideClassComponent = (node: EsTreeNode): boolean => {
+const isInsideClassScope = (node: EsTreeNode): boolean => {
   // Walk all ancestors. If we reach a Class container before any
   // standalone (non-class-method) function boundary, we're inside a
   // class. Functions are class methods iff their parent is a
@@ -1072,14 +1072,14 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (isInsideClassComponent(node)) {
+        if (isInsideClassScope(node)) {
           if (
             isPackageImportedNonReactHookCallee(node) ||
             isDefaultImportedClassApiMemberCallee(node)
           ) {
             return;
           }
-          context.report({ node: node.callee, message: buildClassComponentMessage(hookName) });
+          context.report({ node: node.callee, message: buildClassScopeMessage(hookName) });
           return;
         }
 

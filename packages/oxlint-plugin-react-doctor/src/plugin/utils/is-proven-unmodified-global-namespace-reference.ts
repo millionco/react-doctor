@@ -2,7 +2,10 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isAstNode } from "./is-ast-node.js";
+import { walkAst } from "./walk-ast.js";
 import {
   isProvenGlobalObjectReference,
   isProvenGlobalNamespaceReference,
@@ -24,17 +27,83 @@ const memberIsMutated = (member: EsTreeNode): boolean => {
   );
 };
 
+const GLOBAL_OBJECT_ALIAS_PROPERTIES = new Set([
+  "window",
+  "globalThis",
+  "self",
+  "global",
+  "frames",
+  "parent",
+  "top",
+  "opener",
+]);
+
+const isDirectNamespaceOperation = (
+  namespace: EsTreeNode,
+  directMethods: readonly string[],
+): boolean => {
+  const consumer = namespace.parent;
+  if (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "typeof") return true;
+  if (!isNodeOfType(consumer, "MemberExpression") || consumer.object !== namespace) return false;
+  const memberName = getStaticPropertyName(consumer);
+  const member = findTransparentExpressionRoot(consumer);
+  const call = member.parent;
+  return (
+    memberName !== null &&
+    directMethods.includes(memberName) &&
+    isNodeOfType(call, "CallExpression") &&
+    call.callee === member
+  );
+};
+
+const hasPossibleNamespacePropertyMutation = (
+  namespaceName: string,
+  memberName: string | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const mutations = getSymbolMutationInspector(scopes);
+  let hasPossibleMutation = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasPossibleMutation) return false;
+    const target = isNodeOfType(node, "MemberExpression")
+      ? node
+      : isNodeOfType(node, "CallExpression")
+        ? node.arguments[0]
+        : null;
+    if (!isAstNode(target)) return;
+    const properties = mutations.getMutationPropertyNames(target);
+    if (
+      properties === null ||
+      properties?.has(namespaceName) ||
+      (memberName !== undefined && properties?.has(memberName))
+    ) {
+      hasPossibleMutation = true;
+      return false;
+    }
+  });
+  return hasPossibleMutation;
+};
+
 const namespaceHasMemberMutation = (
   namespaceName: string | null,
   scopes: ScopeAnalysis,
   memberName?: string,
-  considerEscapes = false,
+  considerEscapes: boolean | readonly string[] = false,
 ): boolean => {
   const cacheKey = JSON.stringify([namespaceName, memberName, considerEscapes]);
   const cachedMutation = namespaceMutationByAnalysis.get(scopes)?.get(cacheKey);
   if (cachedMutation !== undefined) return cachedMutation;
   const mutationByNamespace = namespaceMutationByAnalysis.get(scopes) ?? new Map<string, boolean>();
   namespaceMutationByAnalysis.set(scopes, mutationByNamespace);
+  const directMethods = typeof considerEscapes === "boolean" ? null : considerEscapes;
+  if (
+    directMethods &&
+    namespaceName !== null &&
+    hasPossibleNamespacePropertyMutation(namespaceName, memberName, scopes)
+  ) {
+    mutationByNamespace.set(cacheKey, true);
+    return true;
+  }
   const mutations = getSymbolMutationInspector(scopes);
   const matchesNamespace = (expression: EsTreeNode): boolean => {
     if (namespaceName === null) return isProvenGlobalObjectReference(expression, scopes);
@@ -56,9 +125,28 @@ const namespaceHasMemberMutation = (
       let candidate = findTransparentExpressionRoot(reference.identifier);
       let referencesNamespace = false;
       while (true) {
+        const isNamespace = matchesNamespace(candidate);
+        if (directMethods && namespaceName !== null) {
+          const consumer = candidate.parent;
+          const globalMember =
+            isNodeOfType(consumer, "MemberExpression") && consumer.object === candidate
+              ? getStaticPropertyName(consumer)
+              : null;
+          const globalUseMightEscape =
+            isProvenGlobalObjectReference(candidate, scopes) &&
+            !(isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "typeof") &&
+            (globalMember === null || GLOBAL_OBJECT_ALIAS_PROPERTIES.has(globalMember));
+          if (
+            (isNamespace && !isDirectNamespaceOperation(candidate, directMethods)) ||
+            globalUseMightEscape
+          ) {
+            mutationByNamespace.set(cacheKey, true);
+            return true;
+          }
+        }
         referencesNamespace =
-          matchesNamespace(candidate) ||
-          (considerEscapes && namespaceName !== null && referencesNamespace);
+          isNamespace ||
+          (Boolean(considerEscapes) && namespaceName !== null && referencesNamespace);
         const target = mutations.getOutermostTarget(candidate);
         const consumer = target.parent;
         const properties = mutations.getMutationPropertyNames(candidate);
@@ -134,7 +222,7 @@ export const isProvenUnmodifiedGlobalNamespaceReference = (
   namespaceName: string | null,
   scopes: ScopeAnalysis,
   memberName?: string,
-  considerEscapes = false,
+  considerEscapes: boolean | readonly string[] = false,
 ): boolean =>
   (namespaceName === null
     ? isProvenGlobalObjectReference(expression, scopes)

@@ -19,6 +19,27 @@ interface EntryFixture {
   hasCertifiedEntry: boolean;
 }
 
+const redirectedReactFixtureCode = `import { useCallback, useRef, useState } from "react";
+export const Widget = ({ enabled }: { enabled: boolean }) => {
+  const openRef = useRef(false);
+  const [value, setValue] = useState(0);
+  const [, setVisible] = useState(false);
+  const scroll = useCallback(() => {
+    if (!openRef.current && enabled) {
+      setVisible(true);
+    }
+  }, [enabled]);
+  const update = () => setValue((previous) => {
+    if (enabled && openRef.current) {
+      scroll();
+    }
+    return previous + 1;
+  });
+  const reveal = () => { openRef.current = true; update(); };
+  return <button onClick={reveal}>{value}</button>;
+};
+`;
+
 const entryFixtures: EntryFixture[] = [
   {
     name: "fixed 0 ordinary-current-last-read-first-helper-read",
@@ -319,6 +340,36 @@ const entryFixtures: EntryFixture[] = [
     name: "native-valid export assignment without reflective capability",
     code: "import {useCallback,useRef,useState} from 'react';\nconst Widget=({enabled})=>{const gate=useRef(false);const [value,setValue]=useState(0);const [visible,setVisible]=useState(false);const reset=()=>{analytics.track('reset');};const scroll=useCallback(()=>{try{if(!gate.current && enabled){reset();}else{setVisible(true);}}catch(error){report(error);}},[enabled]); const update=()=>setValue(previous=>{if(enabled && gate.current){scroll();} return previous+1;});return <button onClick={update}>{value}</button>;};\nexport = Widget;\n",
     providers: {},
+    hasCertifiedEntry: false,
+  },
+  {
+    name: "excludes the opposite branch with the ordinary React provider",
+    code: redirectedReactFixtureCode,
+    providers: {},
+    hasCertifiedEntry: true,
+  },
+  {
+    name: "retains effects with a redirected React ref provider",
+    code: redirectedReactFixtureCode,
+    providers: {
+      "tsconfig.json":
+        '{"compilerOptions":{"baseUrl":".","paths":{"react":["./src/authored-react.ts"]}}}',
+      "src/authored-react.ts": `export { useCallback, useState } from "react-stock";
+export function useRef(initial: boolean) {
+  let latest = initial;
+  return {
+    get current() {
+      const value = latest;
+      latest = false;
+      return value;
+    },
+    set current(value: boolean) {
+      latest = value;
+    },
+  };
+}
+`,
+    },
     hasCertifiedEntry: false,
   },
 ];

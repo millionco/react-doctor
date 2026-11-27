@@ -1,13 +1,17 @@
 import { collectFunctionReturnStatements } from "./collect-function-return-statements.js";
 import { EFFECT_HOOK_NAMES } from "../constants/react.js";
-import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "./function-returns-matching-expression.js";
+import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getDirectUnreassignedInitializer } from "./get-direct-unreassigned-initializer.js";
+import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
 import { isFunctionLike } from "./is-function-like.js";
+import { isProvenGlobalObjectReference } from "./is-proven-global-namespace-reference.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "./is-proven-unmodified-global-namespace-reference.js";
 import { isKeyedDraftTypeReference } from "./is-keyed-draft-type-reference.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
@@ -15,9 +19,11 @@ import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import type { RuleContext } from "./rule-context.js";
 
 const lexicalHazardsByAnalysis = new WeakMap<ScopeAnalysis, boolean>();
+const directSetConstructionByAnalysis = new WeakMap<ScopeAnalysis, boolean>();
 
 const hasUnsupportedLexicalRuntime = (scopes: ScopeAnalysis): boolean => {
   const cached = lexicalHazardsByAnalysis.get(scopes);
@@ -142,6 +148,124 @@ const hasClosedCallableReturns = (
   );
 };
 
+const hasOnlyDirectSetConstruction = (scopes: ScopeAnalysis): boolean => {
+  const cached = directSetConstructionByAnalysis.get(scopes);
+  if (cached !== undefined) return cached;
+  let onlyDirectConstruction = true;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (!onlyDirectConstruction || isKeyedDraftTypeReference(node)) return false;
+    const isGlobalSet =
+      (isNodeOfType(node, "Identifier") && node.name === "Set" && scopes.isGlobalReference(node)) ||
+      (isNodeOfType(node, "MemberExpression") &&
+        getResolvedStaticPropertyName(node, scopes) === "Set" &&
+        isProvenGlobalObjectReference(node.object, scopes));
+    if (!isGlobalSet) return;
+    const expression = findTransparentExpressionRoot(node);
+    const consumer = expression.parent;
+    onlyDirectConstruction =
+      isNodeOfType(consumer, "NewExpression") && consumer.callee === expression;
+  });
+  directSetConstructionByAnalysis.set(scopes, onlyDirectConstruction);
+  return onlyDirectConstruction;
+};
+
+const getSetOperationReceiver = (
+  expression: EsTreeNode,
+  operation: "add" | "delete",
+  listenerSymbol: SymbolDescriptor,
+  context: RuleContext,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  const call = stripParenExpression(expression);
+  if (!isNodeOfType(call, "CallExpression") || call.optional || call.arguments.length !== 1)
+    return null;
+  const callee = stripParenExpression(call.callee);
+  const listener = stripParenExpression(call.arguments[0]);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.optional ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== operation ||
+    !isNodeOfType(listener, "Identifier") ||
+    context.scopes.symbolFor(listener) !== listenerSymbol
+  )
+    return null;
+  const receiver = stripParenExpression(callee.object);
+  return isNodeOfType(receiver, "Identifier") ? receiver : null;
+};
+
+const hasOwnedUnarySetDisposer = (
+  registration: EsTreeNode,
+  effectFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(registration)) return false;
+  const [listener] = registration.params;
+  if (
+    registration.params.length !== 1 ||
+    !isNodeOfType(listener, "Identifier") ||
+    !isNodeOfType(registration.body, "BlockStatement") ||
+    registration.body.body.length !== 2 ||
+    findEnclosingFunction(registration) !== effectFunction
+  )
+    return false;
+  const listenerSymbol = context.scopes.symbolFor(listener);
+  const [addStatement, returnStatement] = registration.body.body;
+  if (
+    !listenerSymbol ||
+    !isNodeOfType(addStatement, "ExpressionStatement") ||
+    !isNodeOfType(returnStatement, "ReturnStatement") ||
+    !returnStatement.argument
+  )
+    return false;
+  const disposer = stripParenExpression(returnStatement.argument);
+  if (!isFunctionLike(disposer) || disposer.async || disposer.generator || disposer.params.length)
+    return false;
+  let deleteExpression = disposer.body;
+  if (isNodeOfType(deleteExpression, "BlockStatement")) {
+    const [deleteStatement] = deleteExpression.body;
+    if (deleteExpression.body.length !== 1 || !isNodeOfType(deleteStatement, "ExpressionStatement"))
+      return false;
+    deleteExpression = deleteStatement.expression;
+  }
+  const addReceiver = getSetOperationReceiver(
+    addStatement.expression,
+    "add",
+    listenerSymbol,
+    context,
+  );
+  const deleteReceiver = getSetOperationReceiver(
+    deleteExpression,
+    "delete",
+    listenerSymbol,
+    context,
+  );
+  if (!addReceiver || !deleteReceiver) return false;
+  const registry = context.scopes.symbolFor(addReceiver);
+  if (
+    !registry ||
+    context.scopes.symbolFor(deleteReceiver) !== registry ||
+    findEnclosingFunction(registry.declarationNode) !== effectFunction ||
+    !hasCompleteSymbolReferences(registry, context.scopes.rootScope.node, context.scopes) ||
+    !registry.references.every(
+      (reference) =>
+        reference.flag === "read" &&
+        (reference.identifier === addReceiver || reference.identifier === deleteReceiver),
+    )
+  )
+    return false;
+  const initializer = getDirectConstInitializer(registry);
+  const value = initializer ? stripParenExpression(initializer) : null;
+  if (!isNodeOfType(value, "NewExpression") || value.arguments.length !== 0) return false;
+  const constructor = stripParenExpression(value.callee);
+  return (
+    isNodeOfType(constructor, "Identifier") &&
+    constructor.name === "Set" &&
+    hasOnlyDirectSetConstruction(context.scopes) &&
+    isProvenUnmodifiedGlobalNamespaceReference(constructor, "Set", context.scopes, undefined, true)
+  );
+};
+
 export const hasClosedLocalCallableListenerRegistration = (
   node: EsTreeNode,
   context: RuleContext,
@@ -248,5 +372,13 @@ export const hasClosedLocalCallableListenerRegistration = (
     registration.generator
   )
     return false;
+  if (node.arguments.length === 1) {
+    return (
+      findEnclosingFunction(node) === effectFunction &&
+      findEnclosingFunction(symbol.declarationNode) === effectFunction &&
+      symbol.references.every((reference) => reference.identifier === receiver) &&
+      hasOwnedUnarySetDisposer(registration, effectFunction, context)
+    );
+  }
   return !hasImplicitReceiver(registration) && hasClosedCallableReturns(registration, context);
 };

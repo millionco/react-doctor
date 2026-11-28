@@ -1,11 +1,13 @@
 import oxlintPlugin, {
   ALL_REACT_DOCTOR_RULES,
+  CROSS_FILE_RULE_IDS,
   NEXTJS_RULES,
   PREACT_RULES,
   REACT_NATIVE_RULES,
   RECOMMENDED_RULES,
   TANSTACK_QUERY_RULES,
   TANSTACK_START_RULES,
+  resetManifestCaches,
 } from "oxlint-plugin-react-doctor";
 import type { EsTreeNode, OxlintRuleSeverity, RuleVisitors } from "oxlint-plugin-react-doctor";
 
@@ -82,7 +84,12 @@ const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): Eslint
     },
     schema: [],
   },
-  create: ruleImpl.create,
+  create: CROSS_FILE_RULE_IDS.has(ruleName)
+    ? (context) => {
+        resetManifestCaches();
+        return ruleImpl.create(context);
+      }
+    : ruleImpl.create,
 });
 
 const eslintShapedRules: Record<string, EslintRule> = Object.fromEntries(

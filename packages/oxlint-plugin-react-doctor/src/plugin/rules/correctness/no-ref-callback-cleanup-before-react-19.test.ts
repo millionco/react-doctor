@@ -121,6 +121,71 @@ describe("no-ref-callback-cleanup-before-react-19", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("ignores cleanup returns that cannot execute", () => {
+    const result = runRuleForCode(`
+      const Component = ({ remove }) => (
+        <>
+          <div ref={(node) => { if (false) return () => remove(node); }} />
+          <span ref={(node) => { return; return () => remove(node); }} />
+          <button ref={(node) => { throw Error("stopped"); return () => remove(node); }} />
+        </>
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("retains a conditionally reachable cleanup return after an early exit", () => {
+    const result = runRuleForCode(`
+      const Component = ({ remove, enabled }) => (
+        <div ref={(node) => {
+          if (!enabled) return;
+          return () => remove(node);
+        }} />
+      );
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("retains cleanup returns that may be reached through exception handling", () => {
+    const result = runRuleForCode(`
+      const Component = ({ remove, notify }) => (
+        <>
+          <div ref={(node) => { try { return; } finally { return () => remove(node); } }} />
+          <span ref={(node) => {
+            try { return notify(); } catch {}
+            return () => remove(node);
+          }} />
+        </>
+      );
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("retains cleanup returns reached after labeled continue and switch break", () => {
+    const result = runRuleForCode(`
+      const Component = ({ remove, mode }) => (
+        <>
+          <div ref={(node) => {
+            once: do { continue once; } while (false);
+            return () => remove(node);
+          }} />
+          <span ref={(node) => {
+            do {
+              switch (mode) { default: break; }
+              return () => remove(node);
+            } while (false);
+          }} />
+        </>
+      );
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does not report statically unreachable logical cleanup branches", () => {
     const result = runRuleForCode(`
       const Component = ({ remove }) => (

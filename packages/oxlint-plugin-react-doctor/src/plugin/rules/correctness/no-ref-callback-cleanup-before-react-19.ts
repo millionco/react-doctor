@@ -80,6 +80,35 @@ const resolveFunctionExpressions = (
   return resolveFunctionExpressions(initializer, scopes, new Set([...visitedSymbolIds, symbol.id]));
 };
 
+const isStaticallyUnreachableReturn = (
+  statement: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean => {
+  let child = statement;
+  let parent = child.parent;
+  while (parent && parent !== functionNode) {
+    if (isNodeOfType(parent, "IfStatement")) {
+      const test = stripParenExpression(parent.test);
+      if (
+        isNodeOfType(test, "Literal") &&
+        ((test.value === false && child === parent.consequent) ||
+          (test.value === true && child === parent.alternate))
+      )
+        return true;
+    }
+    if (isNodeOfType(parent, "BlockStatement")) {
+      for (const sibling of parent.body) {
+        if (sibling === child) break;
+        if (isNodeOfType(sibling, "ReturnStatement") || isNodeOfType(sibling, "ThrowStatement"))
+          return true;
+      }
+    }
+    child = parent;
+    parent = child.parent;
+  }
+  return false;
+};
+
 const functionReturnsCleanupFunction = (
   functionExpression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -91,6 +120,7 @@ const functionReturnsCleanupFunction = (
   return collectFunctionReturnStatements(functionExpression).some((returnStatement) =>
     Boolean(
       returnStatement.argument &&
+      !isStaticallyUnreachableReturn(returnStatement, functionExpression) &&
       resolveFunctionExpressions(returnStatement.argument, scopes).length > 0,
     ),
   );

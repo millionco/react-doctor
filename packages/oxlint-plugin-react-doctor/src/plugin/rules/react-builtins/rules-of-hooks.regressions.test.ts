@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { clearRulesOfHooksSuppressionCache } from "./rules-of-hooks-suppression.js";
@@ -1520,6 +1520,246 @@ describe("imported static data getters", () => {
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(expectedCount);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("async imported data getters", () => {
+  it.each(
+    [
+      {
+        name: "a primitive returned by an explicit TypeScript module",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider: "export const useData = async function () { return 3; };",
+        extra: {},
+        posixOnly: false,
+        warningCount: 0,
+      },
+      {
+        name: "a primitive const returned by an explicit JavaScript module",
+        loader: "loader.mjs",
+        providerFile: "data.mjs",
+        entry: 'import { useData as useReader } from "./data.mjs";',
+        call: "useReader()",
+        provider: 'const value = "ready"; export const useData = async () => value;',
+        extra: {},
+        posixOnly: false,
+        warningCount: 0,
+      },
+      {
+        name: "an async React Hook from the same file",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider:
+          'import { useState } from "react"; export async function useData() { return useState(3)[0]; }',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a default parameter that calls a Hook",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider:
+          'import { useState } from "react"; export async function useData(value = useState(3)[0]) { return 3; }',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "an object result",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider: 'export async function useData() { return { label: "Ready" }; }',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "an unknown call",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider: "export async function useData() { return lookup(); }",
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "an extensionless request",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data";',
+        call: "useData()",
+        provider: "export const useData = async () => 3;",
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a JavaScript specifier resolved to a TypeScript file",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mjs";',
+        call: "useData()",
+        provider: "export const useData = async () => 3;",
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a real Hook on a default export with a colliding named export",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import Data from "./data.mts";',
+        call: "Data.useData()",
+        provider:
+          'import { useState } from "react"; export const useData = async () => 3; export default { useData: () => useState(3)[0] };',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a real Hook destructured from a default export",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import Data from "./data.mts"; const { useData } = Data;',
+        call: "useData()",
+        provider:
+          'import { useState } from "react"; export const useData = async () => 3; export default { useData: () => useState(3)[0] };',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a supplier that replaces its CommonJS export",
+        loader: "loader.ts",
+        providerFile: "data.ts",
+        entry: 'import { useData } from "./data.ts";',
+        call: "useData()",
+        provider:
+          'import { useState } from "react"; export async function useData() { return 3; } module.exports.useData = () => useState(3)[0];',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a caller that replaces the required export",
+        loader: "loader.ts",
+        providerFile: "data.ts",
+        entry:
+          'import { useData } from "./data.ts"; import { useState } from "react"; const provider = require("./data.ts"); provider.useData = () => useState(3)[0];',
+        call: "useData()",
+        provider: "export async function useData() { return 3; }",
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a TypeScript importer with an ambiguous module format",
+        loader: "loader.ts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider: "export const useData = async () => 3;",
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a mutable exported function declaration",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider: "export async function useData() { return 3; }",
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a live export reassigned through a pattern",
+        loader: "loader.mts",
+        providerFile: "data.mts",
+        entry: 'import { useData } from "./data.mts";',
+        call: "useData()",
+        provider:
+          'import { useState } from "react"; export async function useData() { return 3; } ({ useData } = { useData: () => useState(3)[0] });',
+        extra: {},
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a specifier whose fragment selects another physical file",
+        loader: "loader.mts",
+        providerFile: "data.mjs#version.mjs",
+        entry: 'import { useData } from "./data.mjs#version.mjs";',
+        call: "useData()",
+        provider: "export const useData = async () => 3;",
+        extra: {
+          "data.mjs":
+            'import { useState } from "react"; export const useData = async () => useState(3)[0];',
+        },
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a specifier with an encoded character",
+        loader: "loader.mts",
+        providerFile: "data%23version.mjs",
+        entry: 'import { useData } from "./data%23version.mjs";',
+        call: "useData()",
+        provider: "export const useData = async () => 3;",
+        extra: {
+          "data#version.mjs":
+            'import { useState } from "react"; export const useData = async () => useState(3)[0];',
+        },
+        posixOnly: false,
+        warningCount: 1,
+      },
+      {
+        name: "a POSIX filename containing a literal backslash",
+        loader: "loader.mts",
+        providerFile: "directory\\data.mjs",
+        entry: 'import { useData } from "./directory\\\\data.mjs";',
+        call: "useData()",
+        provider: "export const useData = async () => 3;",
+        extra: {
+          "directory/data.mjs":
+            'import { useState } from "react"; export const useData = async () => useState(3)[0];',
+        },
+        posixOnly: true,
+        warningCount: 1,
+      },
+    ].filter(({ posixOnly }) => !posixOnly || sep === "/"),
+  )("checks $name", ({ loader, providerFile, entry, call, provider, extra, warningCount }) => {
+    const directory = mkdtempSync(join(tmpdir(), "async-hook-data-getter-"));
+    try {
+      writeFileSync(join(directory, providerFile), provider);
+      for (const [file, code] of Object.entries(extra)) {
+        const destination = join(directory, file);
+        mkdirSync(dirname(destination), { recursive: true });
+        writeFileSync(destination, code);
+      }
+      const result = runRule(
+        rulesOfHooks,
+        `${entry}\nexport async function load() { return await ${call}; }`,
+        { filename: join(directory, loader) },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(warningCount);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

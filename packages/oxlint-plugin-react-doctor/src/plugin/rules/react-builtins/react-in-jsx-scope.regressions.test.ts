@@ -2,7 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { reactInJsxScope } from "./react-in-jsx-scope.js";
 
-const runJsx = (code: string) => runRule(reactInJsxScope, code, { filename: "fixture.jsx" });
+const runJsx = (code: string) =>
+  runRule(reactInJsxScope, code, { filename: "fixture.jsx", includeLocations: true });
 
 describe("react-builtins/react-in-jsx-scope — regressions: scope-aware lookup", () => {
   it("does not flag when React is imported at the module level", () => {
@@ -64,5 +65,56 @@ describe("react-builtins/react-in-jsx-scope — regressions: scope-aware lookup"
 
     // Block-scoped React inside the if doesn't reach the return outside.
     expect(result.diagnostics).toHaveLength(1);
+  });
+  it("resolves a catch binding for elements and fragments only inside its block", () => {
+    const result = runJsx(`
+      function render() {
+        try {
+          throw { React: require("react") };
+        } catch ({ React }) {
+          return <><span /></>;
+        }
+      }
+      function other() { return <div />; }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ nodeType: "JSXIdentifier", line: 9 });
+  });
+
+  it("resolves a loop binding only inside the loop", () => {
+    const result = runJsx(`
+      for (const React of [require("react")]) {
+        render(<span />);
+      }
+      render(<div />);
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ nodeType: "JSXIdentifier", line: 5 });
+  });
+
+  it.each([
+    'import type React from "react";',
+    'import { type React } from "./types";',
+    'import type React = require("react");',
+    "type React = unknown;",
+    "interface React {}",
+  ])("requires a value binding when React is declared with %s", (declaration) => {
+    const result = runRule(reactInJsxScope, `${declaration}\nexport const el = <span />;`, {
+      filename: "fixture.tsx",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows separate type and value declarations with the same name", () => {
+    const result = runRule(
+      reactInJsxScope,
+      `
+        import React from "react";
+        type React = unknown;
+        export const el = <span />;
+      `,
+      { filename: "fixture.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
   });
 });

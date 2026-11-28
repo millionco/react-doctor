@@ -12,6 +12,7 @@ import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cov
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { hasCompleteSymbolReferences } from "../../utils/has-complete-symbol-references.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
@@ -29,6 +30,7 @@ import {
 } from "../../utils/is-never-rejecting-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -3125,6 +3127,150 @@ const findFirstAwaitAfter = (awaitSites: ReadonlyArray<AwaitSite>, start: number
   return low;
 };
 
+const getLiteralBooleanSetterArgument = (node: EsTreeNode): boolean | null => {
+  if (!isNodeOfType(node, "CallExpression") || node.optional || node.arguments.length !== 1)
+    return null;
+  const argument = stripParenExpression(node.arguments[0]);
+  return isNodeOfType(argument, "Literal") && typeof argument.value === "boolean"
+    ? argument.value
+    : null;
+};
+
+const isClosedReactStateSetter = (
+  callee: EsTreeNode,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const setter = context.scopes.symbolFor(callee);
+  const declarator = setter?.declarationNode;
+  if (
+    setter?.kind !== "const" ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "ArrayPattern") ||
+    declarator.id.elements[1] !== setter.bindingIdentifier ||
+    !declarator.init
+  )
+    return false;
+  const initializer = stripParenExpression(declarator.init);
+  if (
+    !isNodeOfType(initializer, "CallExpression") ||
+    initializer.optional ||
+    !isNodeOfType(initializer.callee, "Identifier") ||
+    resolveConstIdentifierAlias(initializer.callee, context.scopes)?.kind !== "import" ||
+    !isReactApiCall(initializer, "useState", context.scopes, { resolveNamedAliases: true }) ||
+    !hasCompleteSymbolReferences(setter, context.scopes.rootScope.node, context.scopes)
+  )
+    return false;
+  return setter.references.every((reference) => {
+    const identifier = findTransparentExpressionRoot(reference.identifier);
+    const call = identifier.parent;
+    return (
+      reference.flag === "read" &&
+      isNodeOfType(call, "CallExpression") &&
+      call.callee === identifier &&
+      findEnclosingFunction(call) === owner &&
+      isNodeOfType(findTransparentExpressionRoot(call).parent, "ExpressionStatement") &&
+      getLiteralBooleanSetterArgument(call) !== null
+    );
+  });
+};
+
+const isTopLevelLoadingClear = (
+  call: SetterCall,
+  body: EsTreeNode,
+  callee: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(call.node, "CallExpression") ||
+    !isNodeOfType(call.node.callee, "Identifier") ||
+    context.scopes.symbolFor(call.node.callee) !== context.scopes.symbolFor(callee) ||
+    getLiteralBooleanSetterArgument(call.node) !== false
+  )
+    return false;
+  const expression = findTransparentExpressionRoot(call.node);
+  const statement = expression.parent;
+  if (!isNodeOfType(statement, "ExpressionStatement") || statement.expression !== expression)
+    return false;
+  const block = statement.parent;
+  if (block === body) return true;
+  const parent = block?.parent;
+  return (
+    isNodeOfType(block, "BlockStatement") &&
+    block.body.length === 1 &&
+    isNodeOfType(parent, "TryStatement") &&
+    parent.finalizer === block &&
+    parent.parent === body
+  );
+};
+
+const isTopLevelAwait = (node: EsTreeNode, body: EsTreeNode): boolean => {
+  const expression = findTransparentExpressionRoot(node);
+  const owner = expression.parent;
+  if (isNodeOfType(owner, "ExpressionStatement")) return owner.parent === body;
+  return (
+    isNodeOfType(owner, "VariableDeclarator") &&
+    owner.init === expression &&
+    isNodeOfType(owner.parent, "VariableDeclaration") &&
+    owner.parent.parent === body
+  );
+};
+
+const dynamicLoadingScopeByAnalysis = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasDynamicLoadingScope = (scopes: ScopeAnalysis): boolean => {
+  const cached = dynamicLoadingScopeByAnalysis.get(scopes);
+  if (cached !== undefined) return cached;
+  let hasDynamicLookup = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasDynamicLookup) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (isNodeOfType(callee, "Identifier") && callee.name === "eval") hasDynamicLookup = true;
+  });
+  dynamicLoadingScopeByAnalysis.set(scopes, hasDynamicLookup);
+  return hasDynamicLookup;
+};
+
+const collectAwaitsAfterCompletedLoadingClear = (
+  functionNode: EsTreeNode,
+  calls: readonly SetterCall[],
+  riskyAwaits: readonly AwaitSite[],
+  context: RuleContext,
+): ReadonlySet<EsTreeNode> => {
+  const clearedAwaits = new Set<EsTreeNode>();
+  if (!isFunctionLike(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement"))
+    return clearedAwaits;
+  const body = functionNode.body;
+  const initialActivation = calls.find((call) => call.value)?.node;
+  if (!isNodeOfType(initialActivation, "CallExpression")) return clearedAwaits;
+  const callee = initialActivation.callee;
+  const clears = calls.filter(
+    (call) => !call.value && isTopLevelLoadingClear(call, body, callee, context),
+  );
+  if (clears.length === 0 || !isClosedReactStateSetter(callee, functionNode, context))
+    return clearedAwaits;
+
+  if (hasDynamicLoadingScope(context.scopes)) return clearedAwaits;
+
+  for (const awaitSite of riskyAwaits) {
+    const awaitEnd = getNodeEnd(awaitSite.node);
+    if (awaitEnd === null || !isTopLevelAwait(awaitSite.node, body)) continue;
+    if (
+      clears.some(
+        (clear) =>
+          clear.start < awaitSite.start &&
+          !calls.some((call) => call.value && clear.start < call.start && call.start < awaitEnd) &&
+          nodeDominatesNode(clear.node, awaitSite.node, context),
+      )
+    ) {
+      clearedAwaits.add(awaitSite.node);
+    }
+  }
+  return clearedAwaits;
+};
+
 const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void => {
   if (!isFunctionLike(functionNode) || !functionNode.async) return;
   const awaitSites: AwaitSite[] = [];
@@ -3253,6 +3399,14 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
     }
     const plainResets = calls.filter((call) => !call.value && call.context === "plain");
 
+    if (plainResets.length === 0) continue;
+    const clearedAwaits = collectAwaitsAfterCompletedLoadingClear(
+      functionNode,
+      calls,
+      riskyAwaitsWithTruthySet,
+      context,
+    );
+
     for (const reset of plainResets) {
       for (let truthyIndex = truthySets.length - 1; truthyIndex >= 0; truthyIndex -= 1) {
         const truthySet = truthySets[truthyIndex];
@@ -3267,6 +3421,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
             areOnExclusiveBranches(awaitSite.node, reset.node, functionNode) ||
             !rejectingAwaitNodes.has(awaitSite.node) ||
             exceptionallyProtectedAwaits.has(awaitSite.node) ||
+            clearedAwaits.has(awaitSite.node) ||
             isRejectionSwallowedBeforeReset(
               awaitSite.node,
               functionNode,

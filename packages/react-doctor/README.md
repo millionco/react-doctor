@@ -53,6 +53,10 @@ With `customRulesOnly: true`, explicit `rules` settings of `"warn"` or `"error"`
 enable selected ported rules. Legacy rule names also work. Other ported rules and
 the React Compiler plugin stay off.
 
+Mixed classic and automatic JSX projects can use
+`automaticJsxRuntimeFiles` to tell the opt-in JSX scope rule which exact
+project-relative paths use the automatic transform.
+
 [Configuration docs →](https://react.doctor/docs/configuration/config-files)
 
 ## Runtime performance traces

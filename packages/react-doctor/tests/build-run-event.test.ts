@@ -726,6 +726,17 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.customRulesOnly"]).toBe(false);
   });
 
+  it("records automatic JSX configuration without sending source paths", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({ userConfig: { automaticJsxRuntimeFiles: ["src/modern/Panel.tsx"] } }),
+    );
+    expect(attributes["scan.automaticJsxRuntimeConfigured"]).toBe(true);
+    expect(JSON.stringify(attributes)).not.toContain("src/modern/Panel.tsx");
+    expect(buildRunEventAttributes(baseInput({}))["scan.automaticJsxRuntimeConfigured"]).toBe(
+      false,
+    );
+  });
+
   it("records whether only-export-components options are configured", () => {
     const configured = buildRunEventAttributes(
       baseInput({ userConfig: { onlyExportComponents: { customHOCs: ["withErrorBoundary"] } } }),

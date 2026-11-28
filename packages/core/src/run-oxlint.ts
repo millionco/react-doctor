@@ -576,6 +576,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         includedTags,
         includeTagDefaults,
         runtimeGlobals,
+        automaticJsxRuntimeFiles: userConfig?.automaticJsxRuntimeFiles,
         unpluginAutoImportGlobalScopes,
         serverAuthFunctionNames,
         onlyExportComponents: userConfig?.onlyExportComponents,

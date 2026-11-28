@@ -494,6 +494,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     ignoredTagCount: input.ignoredTagCount,
     hasCustomConfig: input.hasCustomConfig,
     customRulesOnly: input.userConfig?.customRulesOnly ?? false,
+    automaticJsxRuntimeConfigured: Boolean(input.userConfig?.automaticJsxRuntimeFiles?.length),
     onlyExportComponentsConfigured: input.userConfig?.onlyExportComponents !== undefined,
     rulesConfigured: ruleKeys.length,
     unknownBundledRuleCount: getUnknownBundledRuleKeys(input.userConfig?.rules).length,

@@ -64,6 +64,18 @@ describe("validateConfigTypes", () => {
     expect(stderrSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("validates automatic JSX runtime paths as a string array", () => {
+    expect(validateConfigTypes({ automaticJsxRuntimeFiles: ["src/Panel.tsx"] })).toEqual({
+      automaticJsxRuntimeFiles: ["src/Panel.tsx"],
+    });
+    expect(
+      validateConfigTypes({
+        automaticJsxRuntimeFiles: "src/Panel.tsx" as unknown as string[],
+      }).automaticJsxRuntimeFiles,
+    ).toBeUndefined();
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("automaticJsxRuntimeFiles"));
+  });
+
   it("preserves valid ignore fields", () => {
     const input: ReactDoctorConfig = {
       ignore: {

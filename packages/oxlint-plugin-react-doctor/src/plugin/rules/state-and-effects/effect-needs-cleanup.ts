@@ -80,13 +80,13 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import {
   getSubscribeOrObserveMethodName,
   isCleanupReturningSubscribeLikeCallExpression,
-  isSubscribeOrObserveCallExpression,
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isPrivateCoordinateSubtractionCall } from "./utils/is-private-coordinate-subtraction-call.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
@@ -1738,7 +1738,7 @@ const collectEffectOwnedResourceCallbackFunctions = (
         if (promiseCallback && isAstNode(promiseCallback)) {
           callbackArgument = promiseCallback;
         }
-        const registrationVerbName = getSubscribeOrObserveMethodName(child);
+        const registrationVerbName = getPotentialSubscriptionMethod(child, context);
         if (registrationVerbName !== null) {
           const registrationDetails = getCallRegistrationDetails(child, context);
           callbackArgument = getSubscribeUsageCallbackArgument({
@@ -1759,6 +1759,11 @@ const collectEffectOwnedResourceCallbackFunctions = (
     });
   }
   return ownedFunctions;
+};
+
+const getPotentialSubscriptionMethod = (node: EsTreeNode, context: RuleContext): string | null => {
+  const method = getSubscribeOrObserveMethodName(node);
+  return method === "sub" && isPrivateCoordinateSubtractionCall(node, context) ? null : method;
 };
 
 const findSubscribeLikeUsages = (
@@ -1822,7 +1827,7 @@ const findSubscribeLikeUsages = (
       return;
     }
 
-    const subscribeOrObserveMethodName = getSubscribeOrObserveMethodName(child);
+    const subscribeOrObserveMethodName = getPotentialSubscriptionMethod(child, context);
     if (subscribeOrObserveMethodName !== null) {
       const registrationDetails = getCallRegistrationDetails(child, context);
       usages.push({
@@ -11088,7 +11093,7 @@ const findRetainedFunctionLeak = (
     }
 
     if (
-      isSubscribeOrObserveCallExpression(child) &&
+      getPotentialSubscriptionMethod(child, context) !== null &&
       (!doesResourceResultEscape(
         child,
         allowReturnedResourceEscape,

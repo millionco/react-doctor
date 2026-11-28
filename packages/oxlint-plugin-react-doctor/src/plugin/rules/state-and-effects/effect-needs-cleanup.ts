@@ -55,6 +55,7 @@ import { getImportDeclarationForSymbol } from "../../utils/get-import-declaratio
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getNodeEndIndex } from "../../utils/get-node-end-index.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getSymbolTypeAnnotation } from "../../utils/get-symbol-type-annotation.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
@@ -6457,6 +6458,89 @@ const hasGuardedDeferredCleanup = (
   );
 };
 
+const readSynchronousSingleCleanupCall = (
+  functionNode: EsTreeNode,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (!isFunctionLike(functionNode) || functionNode.async || functionNode.generator) return null;
+  const [statement] = isNodeOfType(functionNode.body, "BlockStatement")
+    ? functionNode.body.body
+    : [];
+  const expression =
+    isNodeOfType(functionNode.body, "BlockStatement") &&
+    functionNode.body.body.length === 1 &&
+    isNodeOfType(statement, "ExpressionStatement")
+      ? statement.expression
+      : getSingleReturnExpression(functionNode);
+  const call = expression ? stripParenExpression(expression) : null;
+  return isNodeOfType(call, "CallExpression") && !call.optional ? call : null;
+};
+
+const resolveForwardedCleanupRegistry = (
+  cleanupFunction: EsTreeNode,
+  effectBody: EsTreeNode,
+  cleanupReturn: EsTreeNode,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  let replayFunction = cleanupFunction;
+  const visited = new Set<EsTreeNode>();
+  for (;;) {
+    if (
+      !isFunctionLike(replayFunction) ||
+      replayFunction.params.length !== 0 ||
+      visited.has(replayFunction)
+    ) {
+      return null;
+    }
+    visited.add(replayFunction);
+    const replayCall = readSynchronousSingleCleanupCall(replayFunction);
+    if (!replayCall) return null;
+    const replayCallee = stripParenExpression(replayCall.callee);
+    if (!isNodeOfType(replayCallee, "Identifier")) {
+      if (
+        replayFunction === cleanupFunction ||
+        !isNodeOfType(replayCallee, "MemberExpression") ||
+        replayCallee.optional ||
+        getStaticPropertyKeyName(replayCallee) !== "forEach" ||
+        replayCall.arguments.length !== 1
+      ) {
+        return null;
+      }
+      const [callback] = replayCall.arguments;
+      if (!isFunctionLike(callback) || callback.params.length !== 1) return null;
+      const [disposer] = callback.params;
+      const invoke = readSynchronousSingleCleanupCall(callback);
+      const invokedValue = invoke ? stripParenExpression(invoke.callee) : null;
+      const parameterSymbol = isNodeOfType(disposer, "Identifier")
+        ? context.scopes.symbolFor(disposer)
+        : null;
+      return invoke &&
+        invoke.arguments.length === 0 &&
+        isNodeOfType(invokedValue, "Identifier") &&
+        parameterSymbol &&
+        context.scopes.symbolFor(invokedValue) === parameterSymbol
+        ? context.scopes.symbolFor(stripParenExpression(replayCallee.object))
+        : null;
+    }
+    const helper = context.scopes.symbolFor(replayCallee);
+    const declaration = helper?.declarationNode;
+    if (
+      replayCall.arguments.length !== 0 ||
+      helper?.kind !== "const" ||
+      !helper.initializer ||
+      !isNodeOfType(declaration, "VariableDeclarator") ||
+      declaration.id !== helper.bindingIdentifier ||
+      declaration.parent?.parent !== effectBody ||
+      declaration.range[0] >= cleanupReturn.range[0] ||
+      helper.references.length !== 1 ||
+      helper.references[0].flag !== "read" ||
+      !hasCompleteSymbolReferences(helper, context.scopes.rootScope.node, context.scopes)
+    ) {
+      return null;
+    }
+    replayFunction = stripParenExpression(helper.initializer);
+  }
+};
+
 const cleanupRegistryReleasesUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6464,6 +6548,8 @@ const cleanupRegistryReleasesUsage = (
 ): boolean => {
   if (!isFunctionLike(callback) || !isNodeOfType(callback.body, "BlockStatement")) return false;
   const cleanupRegistrySymbols = new Set<SymbolDescriptor>();
+  const directRegistrySymbols = new Set<SymbolDescriptor>();
+  const replayedCleanupReturns: EsTreeNode[] = [];
   walkAst(callback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = stripParenExpression(child.callee);
@@ -6484,6 +6570,11 @@ const cleanupRegistryReleasesUsage = (
       return;
     }
     let doesReleaseUsage = false;
+    let isDirectRelease = false;
+    const directReleaseCall =
+      cleanupFunction.params.length === 0
+        ? readSynchronousSingleCleanupCall(cleanupFunction)
+        : null;
     walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
       if (
         doesReleaseUsage ||
@@ -6509,6 +6600,12 @@ const cleanupRegistryReleasesUsage = (
         )
       ) {
         doesReleaseUsage = true;
+        isDirectRelease =
+          cleanupChild === directReleaseCall &&
+          !releaseCallee.optional &&
+          cleanupChild.arguments.length >= 2 &&
+          cleanupChild.arguments.length <= 3 &&
+          cleanupChild.arguments.every((argument) => !isNodeOfType(argument, "SpreadElement"));
         return false;
       }
     });
@@ -6549,6 +6646,7 @@ const cleanupRegistryReleasesUsage = (
     ) {
       return;
     }
+    let appendSiteCount = 0;
     const hasOnlyAppendAndReplayReferences = registrySymbol.references.every((reference) => {
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
       if (
@@ -6563,6 +6661,7 @@ const cleanupRegistryReleasesUsage = (
         return false;
       }
       const call = findTransparentExpressionRoot(member).parent;
+      if (getStaticPropertyKeyName(member) === "push") appendSiteCount += 1;
       return Boolean(
         call &&
         isNodeOfType(call, "CallExpression") &&
@@ -6570,7 +6669,20 @@ const cleanupRegistryReleasesUsage = (
         ["forEach", "push"].includes(getStaticPropertyKeyName(member) ?? ""),
       );
     });
-    if (hasOnlyAppendAndReplayReferences) cleanupRegistrySymbols.add(registrySymbol);
+    if (!hasOnlyAppendAndReplayReferences) return;
+    cleanupRegistrySymbols.add(registrySymbol);
+    if (
+      isDirectRelease &&
+      !child.optional &&
+      !callee.optional &&
+      child.arguments.length === 1 &&
+      appendSiteCount === 1 &&
+      getDirectUnreassignedInitializer(registrySymbol) === registrySymbol.initializer &&
+      registrySymbol.declarationNode.parent?.parent === callback.body &&
+      hasCompleteSymbolReferences(registrySymbol, context.scopes.rootScope.node, context.scopes)
+    ) {
+      directRegistrySymbols.add(registrySymbol);
+    }
   });
   if (cleanupRegistrySymbols.size === 0) return false;
   let hasExhaustiveReplay = false;
@@ -6581,6 +6693,17 @@ const cleanupRegistryReleasesUsage = (
       ? returnedCleanupValue
       : resolveStableValue(child.argument, context);
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+    if (directRegistrySymbols.size > 0) {
+      const registry = resolveForwardedCleanupRegistry(
+        cleanupFunction,
+        callback.body,
+        child,
+        context,
+      );
+      if (registry && directRegistrySymbols.has(registry)) {
+        replayedCleanupReturns.push(child);
+      }
+    }
     walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
       if (hasExhaustiveReplay) return false;
       if (!isNodeOfType(cleanupChild, "CallExpression")) return;
@@ -6633,7 +6756,15 @@ const cleanupRegistryReleasesUsage = (
       return hasExhaustiveReplay ? false : undefined;
     });
   });
-  return hasExhaustiveReplay;
+  return (
+    hasExhaustiveReplay ||
+    (replayedCleanupReturns.length > 0 &&
+      doMatchingNodesCoverEveryPathAfterUsage(
+        resolveCleanupPathAnchor(usage.node, callback, context, usage),
+        replayedCleanupReturns,
+        context,
+      ))
+  );
 };
 
 const symmetricForEachListenerCleanupReleasesUsage = (

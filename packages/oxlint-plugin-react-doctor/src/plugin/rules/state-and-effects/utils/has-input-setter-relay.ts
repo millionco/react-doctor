@@ -1,8 +1,13 @@
+import { analyzeScopes } from "../../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { findExportedValue } from "../../../utils/find-exported-value.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
 import { getDestructuredBindingPropertyName } from "../../../utils/get-destructured-binding-property-name.js";
+import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
+import { getImportedName } from "../../../utils/get-imported-name.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
 import { getSingleReturnExpression } from "../../../utils/get-single-return-expression.js";
 import { hasCompleteSymbolReferences } from "../../../utils/has-complete-symbol-references.js";
@@ -10,7 +15,9 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../../utils/is-react-api-call.js";
+import { parseSourceFile } from "../../../utils/parse-source-file.js";
 import { readStaticBoolean } from "../../../utils/read-static-boolean.js";
+import { resolveUniqueRelativeSourceFile } from "../../../utils/resolve-relative-import-path.js";
 import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
 import { resolveStaticJsxAttribute } from "../../../utils/resolve-static-jsx-attribute.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
@@ -80,6 +87,25 @@ const hasUnprovenInputAttributes = (
     );
   });
 
+const hasPassiveAdditionalAttributes = (
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+  provenNames: readonly string[] = [],
+): boolean => {
+  const names = new Set<string>();
+  return opening.attributes.every((attribute) => {
+    if (!isNodeOfType(attribute, "JSXAttribute")) return false;
+    const name = getJsxAttributeName(attribute.name);
+    if (!name || names.has(name)) return false;
+    names.add(name);
+    return (
+      provenNames.includes(name) ||
+      attribute.value === null ||
+      isNodeOfType(attribute.value, "Literal") ||
+      isNodeOfType(getAttributeExpression(attribute), "Literal")
+    );
+  });
+};
+
 const isRenderedChild = (
   opening: EsTreeNodeOfType<"JSXOpeningElement">,
   component: EsTreeNode,
@@ -106,6 +132,7 @@ const isRenderedChild = (
         !isAttributeAbsentOrFalse(ancestor, "hidden", false) ||
         !isAttributeAbsentOrFalse(ancestor, "inert", false) ||
         hasUnprovenInputAttributes(ancestor) ||
+        !hasPassiveAdditionalAttributes(ancestor) ||
         (name.name === "fieldset" && !isAttributeAbsentOrFalse(ancestor, "disabled", false))
       )
         return false;
@@ -115,23 +142,25 @@ const isRenderedChild = (
   return false;
 };
 
-const getProvider = (name: EsTreeNode, context: RuleContext): EsTreeNode | null => {
-  const symbol = context.scopes.symbolFor(name);
+const hasOnlyJsxReferences = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean =>
+  hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes) &&
+  symbol.references.every(
+    ({ flag, identifier }) =>
+      flag === "read" &&
+      isNodeOfType(identifier, "JSXIdentifier") &&
+      (isNodeOfType(identifier.parent, "JSXOpeningElement") ||
+        isNodeOfType(identifier.parent, "JSXClosingElement")) &&
+      identifier.parent.name === identifier,
+  ) &&
+  symbol.scope.symbols.filter((entry) => entry.name === symbol.name).length === 1;
+
+const getLocalProvider = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): EsTreeNode | null => {
   if (
-    !symbol?.initializer ||
+    !symbol.initializer ||
     (symbol.kind !== "const" && symbol.kind !== "function") ||
-    !isNodeOfType(context.scopes.rootScope.node, "Program") ||
-    context.scopes.rootScope.node.sourceType !== "module" ||
-    !hasCompleteSymbolReferences(symbol, context.scopes.rootScope.node, context.scopes) ||
-    symbol.references.some(
-      ({ flag, identifier }) =>
-        flag !== "read" ||
-        !isNodeOfType(identifier, "JSXIdentifier") ||
-        (!isNodeOfType(identifier.parent, "JSXOpeningElement") &&
-          !isNodeOfType(identifier.parent, "JSXClosingElement")) ||
-        identifier.parent.name !== identifier,
-    ) ||
-    symbol.scope.symbols.filter((entry) => entry.name === symbol.name).length !== 1
+    !isNodeOfType(scopes.rootScope.node, "Program") ||
+    scopes.rootScope.node.sourceType !== "module" ||
+    !hasOnlyJsxReferences(symbol, scopes)
   )
     return null;
   const declarationParent =
@@ -148,8 +177,8 @@ const getProvider = (name: EsTreeNode, context: RuleContext): EsTreeNode | null 
     !initializer.optional &&
     initializer.arguments.length === 1 &&
     isNodeOfType(initializer.callee, "Identifier") &&
-    context.scopes.symbolFor(initializer.callee)?.kind === "import" &&
-    isReactApiCall(initializer, "forwardRef", context.scopes)
+    scopes.symbolFor(initializer.callee)?.kind === "import" &&
+    isReactApiCall(initializer, "forwardRef", scopes)
   ) {
     const [render] = initializer.arguments;
     return isFunctionLike(render) ? render : null;
@@ -157,13 +186,76 @@ const getProvider = (name: EsTreeNode, context: RuleContext): EsTreeNode | null 
   return null;
 };
 
+interface InputProvider {
+  render: EsTreeNode;
+  scopes: ScopeAnalysis;
+  isImported: boolean;
+}
+
+const providerScopes = new WeakMap<EsTreeNode, ScopeAnalysis>();
+
+const getImportedProvider = (
+  symbol: SymbolDescriptor,
+  context: RuleContext,
+): InputProvider | null => {
+  const specifier = symbol.declarationNode;
+  const declaration = getImportDeclarationForSymbol(symbol);
+  if (
+    !context.filename ||
+    !declaration ||
+    declaration.importKind === "type" ||
+    typeof declaration.source.value !== "string" ||
+    !isNodeOfType(specifier, "ImportSpecifier") ||
+    specifier.importKind === "type" ||
+    !hasOnlyJsxReferences(symbol, context.scopes)
+  )
+    return null;
+  const exportName = getImportedName(specifier);
+  if (!exportName || exportName === "default") return null;
+  const filename = resolveUniqueRelativeSourceFile(context.filename, declaration.source.value);
+  if (!filename) return null;
+  const program = parseSourceFile(filename);
+  if (!isNodeOfType(program, "Program") || program.sourceType !== "module") return null;
+  const render = findExportedValue(program, exportName);
+  const declarator = render ? findTransparentExpressionRoot(render).parent : null;
+  const variableDeclaration = declarator?.parent;
+  if (
+    !isNodeOfType(render, "ArrowFunctionExpression") ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    declarator.id.name !== exportName ||
+    !isNodeOfType(variableDeclaration, "VariableDeclaration") ||
+    variableDeclaration.kind !== "const" ||
+    !isNodeOfType(variableDeclaration.parent, "ExportNamedDeclaration") ||
+    variableDeclaration.parent.parent !== program
+  )
+    return null;
+  let scopes = providerScopes.get(program);
+  if (!scopes) {
+    scopes = analyzeScopes(program);
+    providerScopes.set(program, scopes);
+  }
+  const binding = scopes.symbolFor(declarator.id);
+  return binding && hasOnlyJsxReferences(binding, scopes)
+    ? { render, scopes, isImported: true }
+    : null;
+};
+
+const getProvider = (name: EsTreeNode, context: RuleContext): InputProvider | null => {
+  const symbol = context.scopes.symbolFor(name);
+  if (!symbol) return null;
+  if (symbol.kind === "import") return getImportedProvider(symbol, context);
+  const render = getLocalProvider(symbol, context.scopes);
+  return render ? { render, scopes: context.scopes, isImported: false } : null;
+};
+
 const getDirectPropName = (
   expression: EsTreeNode | null,
   parameter: EsTreeNode,
-  context: RuleContext,
+  scopes: ScopeAnalysis,
 ): string | null => {
   if (!isNodeOfType(expression, "Identifier")) return null;
-  const symbol = context.scopes.symbolFor(expression);
+  const symbol = scopes.symbolFor(expression);
   const binding = symbol?.bindingIdentifier;
   if (
     !binding ||
@@ -179,7 +271,7 @@ const isUnblockedInput = (
   input: EsTreeNodeOfType<"JSXOpeningElement">,
   caller: EsTreeNodeOfType<"JSXOpeningElement">,
   props: EsTreeNode,
-  context: RuleContext,
+  scopes: ScopeAnalysis,
 ): boolean => {
   return ["disabled", "readOnly", "hidden", "inert"].every((name) => {
     if (
@@ -195,7 +287,7 @@ const isUnblockedInput = (
     const attr = getAuthoritativeJsxAttribute(input.attributes, name);
     const value = getAttributeExpression(attr);
     if (!isNodeOfType(value, "Identifier")) return false;
-    const binding = context.scopes.symbolFor(value);
+    const binding = scopes.symbolFor(value);
     const defaultValue = binding?.bindingIdentifier.parent;
     if (
       !binding ||
@@ -222,7 +314,7 @@ const getChangeHandlerCall = (handler: EsTreeNode): EsTreeNode | null => {
     : null;
 };
 
-export const hasLocalInputSetterRelay = (
+export const hasInputSetterRelay = (
   setter: EsTreeNode,
   component: EsTreeNode,
   context: RuleContext,
@@ -249,20 +341,23 @@ export const hasLocalInputSetterRelay = (
   )
     return false;
   const provider = getProvider(opening.name, context);
-  if (!isFunctionLike(provider) || provider.async || provider.generator) return false;
-  const [props, forwardedRef] = provider.params;
-  const rendered = getSingleReturnExpression(provider);
+  if (!provider) return false;
+  const { render, scopes: providerScope, isImported } = provider;
+  if (!isFunctionLike(render) || render.async || render.generator) return false;
+  const [props, forwardedRef] = render.params;
+  const rendered = getSingleReturnExpression(render);
   const input = rendered ? stripParenExpression(rendered) : null;
   if (
     !isNodeOfType(props, "ObjectPattern") ||
-    provider.params.length > 2 ||
+    render.params.length > (isImported ? 1 : 2) ||
     (forwardedRef && !isNodeOfType(forwardedRef, "Identifier")) ||
     props.properties.some(
       (property) =>
         !isNodeOfType(property, "Property") ||
         property.computed ||
         (!isNodeOfType(property.value, "Identifier") &&
-          (!isNodeOfType(property.value, "AssignmentPattern") ||
+          (isImported ||
+            !isNodeOfType(property.value, "AssignmentPattern") ||
             !isNodeOfType(property.value.left, "Identifier") ||
             readStaticBoolean(property.value.right) !== false)),
     ) ||
@@ -278,22 +373,37 @@ export const hasLocalInputSetterRelay = (
   const explicitTypeNode = getAttributeExpression(type.attribute) ?? type.expression ?? typeValue;
   if (
     hasUnprovenInputAttributes(inputOpening, true) ||
+    !hasPassiveAdditionalAttributes(inputOpening, [
+      "disabled",
+      "readOnly",
+      "hidden",
+      "inert",
+      "type",
+      "value",
+      "onChange",
+    ]) ||
     type.isUnknown ||
     (type.isPresent &&
       (!isNodeOfType(explicitTypeNode, "Literal") ||
         typeof explicitTypeNode.value !== "string" ||
         !EDITABLE_INPUT_TYPES.has(explicitTypeNode.value.toLowerCase()))) ||
-    !isUnblockedInput(inputOpening, opening, props, context)
+    !isUnblockedInput(inputOpening, opening, props, providerScope)
   )
     return false;
   const inputValue = getAuthoritativeJsxAttribute(inputOpening.attributes, "value");
-  const valueProp = getDirectPropName(getAttributeExpression(inputValue), props, context);
+  const valueProp = getDirectPropName(getAttributeExpression(inputValue), props, providerScope);
   if (!valueProp || RESERVED_JSX_PROPS.has(valueProp) || valueProp === setterName) return false;
   const consumedValue = getAttributeExpression(
     getAuthoritativeJsxAttribute(opening.attributes, valueProp),
   );
   const state = resolveReactUseStatePair(setter, context.scopes)?.stateSymbol;
-  if (!state || !consumedValue || context.scopes.symbolFor(consumedValue) !== state) return false;
+  if (
+    !state ||
+    !consumedValue ||
+    context.scopes.symbolFor(consumedValue) !== state ||
+    !hasPassiveAdditionalAttributes(opening, [valueProp, setterName])
+  )
+    return false;
 
   const handler = getAttributeExpression(
     getAuthoritativeJsxAttribute(inputOpening.attributes, "onChange"),
@@ -306,7 +416,7 @@ export const hasLocalInputSetterRelay = (
     !isNodeOfType(call, "CallExpression") ||
     call.optional ||
     call.arguments.length !== 1 ||
-    getDirectPropName(stripParenExpression(call.callee), props, context) !== setterName
+    getDirectPropName(stripParenExpression(call.callee), props, providerScope) !== setterName
   )
     return false;
   const [argument] = call.arguments;
@@ -319,13 +429,12 @@ export const hasLocalInputSetterRelay = (
     return false;
   }
   const target = stripParenExpression(value.object);
-  const eventSymbol = context.scopes.symbolFor(event);
+  const eventSymbol = providerScope.symbolFor(event);
   return (
     Boolean(eventSymbol) &&
     isNodeOfType(target, "MemberExpression") &&
     !target.optional &&
     getStaticPropertyName(target) === "target" &&
-    context.scopes.symbolFor(stripParenExpression(target.object)) ===
-      context.scopes.symbolFor(event)
+    providerScope.symbolFor(stripParenExpression(target.object)) === eventSymbol
   );
 };

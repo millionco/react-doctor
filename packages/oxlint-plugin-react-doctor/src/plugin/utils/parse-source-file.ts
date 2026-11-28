@@ -75,6 +75,8 @@ export const parseCrossFileSource = (
 
 interface CacheEntry {
   readonly mtimeMs: number;
+  readonly ctimeMs: number;
+  readonly inode: number;
   readonly size: number;
   readonly program: EsTreeNode | null;
 }
@@ -103,7 +105,7 @@ export const parseSourceText = ({
 };
 
 // Module-level cache of parsed Programs keyed by absolute file path.
-// Each entry stores the file's mtime + byte size at parse time so a
+// Each entry stores the file's timestamps, inode, and size at parse time so a
 // changed file invalidates the cache automatically. Storing `null`
 // for known-broken files prevents re-parsing the same .d.ts /
 // generated / unparseable file on every rule invocation.
@@ -129,7 +131,7 @@ const rememberParsedFile = (absoluteFilePath: string, entry: CacheEntry): void =
 // with parent references attached, or null when the file is missing
 // / too large / .d.ts-only / fails to parse.
 //
-// Cached by (absolute path, mtime, size). Re-parsing only happens
+// Cached by absolute path, timestamps, inode, and size. Re-parsing only happens
 // when one of those changes. Cache lives for the lifetime of the
 // Node process, which matches the way oxlint runs a single batch
 // of files per process.
@@ -155,7 +157,13 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) return null;
 
   const cached = parseCache.get(absoluteFilePath);
-  if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+  if (
+    cached &&
+    cached.mtimeMs === fileStat.mtimeMs &&
+    cached.ctimeMs === fileStat.ctimeMs &&
+    cached.inode === fileStat.ino &&
+    cached.size === fileStat.size
+  ) {
     rememberParsedFile(absoluteFilePath, cached);
     return cached.program;
   }
@@ -172,6 +180,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   ) {
     rememberParsedFile(absoluteFilePath, {
       mtimeMs: fileStat.mtimeMs,
+      ctimeMs: fileStat.ctimeMs,
+      inode: fileStat.ino,
       size: fileStat.size,
       program: null,
     });
@@ -184,6 +194,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   } catch {
     rememberParsedFile(absoluteFilePath, {
       mtimeMs: fileStat.mtimeMs,
+      ctimeMs: fileStat.ctimeMs,
+      inode: fileStat.ino,
       size: fileStat.size,
       program: null,
     });
@@ -197,6 +209,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
 
   rememberParsedFile(absoluteFilePath, {
     mtimeMs: fileStat.mtimeMs,
+    ctimeMs: fileStat.ctimeMs,
+    inode: fileStat.ino,
     size: fileStat.size,
     program: parsedProgram,
   });

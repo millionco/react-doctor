@@ -40,7 +40,10 @@ import {
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
-import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
+import {
+  resolveRelativeImportPath,
+  resolveUniqueRelativeSourceFile,
+} from "./utils/resolve-relative-import-path.js";
 import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
@@ -196,6 +199,20 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectEffectInputProviderDependencies: CrossFileDependencyCollector = (input) => {
+  collectEffectValueHelperDependencies(input);
+  collectImportedJsxComponentDependencies({
+    absoluteFilePath: input.absoluteFilePath,
+    staticImports: input.staticImports,
+    program: input.getProgram(),
+    resolveComponent: (filename, source, exportedName) => {
+      if (exportedName === "default") return;
+      const resolved = resolveUniqueRelativeSourceFile(filename, source);
+      if (resolved) parseSourceFile(resolved);
+    },
+  });
 };
 
 const collectImportedHookDependencies: CrossFileDependencyCollector = ({
@@ -596,13 +613,13 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-create-ref-in-function-component", collectCreateRefDependencies],
-    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-adjust-state-on-prop-change", collectEffectInputProviderDependencies],
     ["no-set-state-after-await-in-effect", collectEffectValueHelperDependencies],
     ["forwarded-set-state-in-effect", collectEffectValueHelperDependencies],
-    ["no-derived-state", collectEffectValueHelperDependencies],
-    ["no-derived-state-effect", collectEffectValueHelperDependencies],
+    ["no-derived-state", collectEffectInputProviderDependencies],
+    ["no-derived-state-effect", collectEffectInputProviderDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
-    ["no-initialize-state", collectEffectValueHelperDependencies],
+    ["no-initialize-state", collectEffectInputProviderDependencies],
     ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],

@@ -84,4 +84,82 @@ describe("assignFixGroups", () => {
     const second = assignFixGroups(sites)[0].fixGroupId;
     expect(first).toBe(second);
   });
+
+  it("links exact prop reset writes to their own effects", () => {
+    const effects = [100, 250].map((offset) =>
+      buildDiagnostic({
+        rule: "no-reset-all-state-on-prop-change",
+        offset,
+        length: 60,
+        contextRanges: [
+          { offset: offset + 10, length: 8 },
+          { offset: offset + 25, length: 12 },
+        ],
+      }),
+    );
+    const writers = effects.flatMap((effect) =>
+      effect.contextRanges!.map((span) =>
+        buildDiagnostic({ rule: "no-adjust-state-on-prop-change", ...span }),
+      ),
+    );
+    const unrelated = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 440,
+      length: 12,
+    });
+    const diagnostics = [...effects, ...writers, unrelated];
+    const result = assignFixGroups(diagnostics);
+    const ids = result.map((diagnostic) => diagnostic.fixGroupId);
+    expect(ids[0]).toEqual(expect.any(String));
+    expect(ids[0]).toBe(ids[2]);
+    expect(ids[0]).toBe(ids[3]);
+    expect(ids[1]).toEqual(expect.any(String));
+    expect(ids[1]).toBe(ids[4]);
+    expect(ids[1]).toBe(ids[5]);
+    expect(ids[1]).not.toBe(ids[0]);
+    expect(ids[6]).toBeUndefined();
+    expect(result.every((diagnostic) => diagnostic.contextRanges === undefined)).toBe(true);
+    expect(assignFixGroups(diagnostics.toReversed()).toReversed()).toEqual(result);
+    const firstPackage = assignFixGroups(diagnostics, "/workspace/packages/first");
+    const secondPackage = assignFixGroups(diagnostics, "/workspace/packages/second");
+    expect(firstPackage[0].fixGroupId).not.toBe(secondPackage[0].fixGroupId);
+  });
+
+  it.each([
+    { length: 11 },
+    { filePath: "src/Other.tsx" },
+    { rule: "no-adjust-state-on-prop-change", plugin: "custom" },
+  ])("keeps a reset separate from incomplete span coverage %o", (overrides) => {
+    const reset = buildDiagnostic({
+      rule: "no-reset-all-state-on-prop-change",
+      offset: 100,
+      length: 60,
+      contextRanges: [
+        { offset: 110, length: 8 },
+        { offset: 125, length: 12 },
+      ],
+    });
+    const firstWrite = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 110,
+      length: 8,
+    });
+    const secondWrite = buildDiagnostic({
+      rule: "no-adjust-state-on-prop-change",
+      offset: 125,
+      length: 12,
+      ...overrides,
+    });
+    expect(assignFixGroups([reset, firstWrite, secondWrite])[0].fixGroupId).toBeUndefined();
+    const { contextRanges: _contextRanges, ...publicReset } = reset;
+    expect(assignFixGroups([reset, firstWrite])).toEqual([publicReset, firstWrite]);
+  });
+
+  it("keeps contextual diff ranges on other rules", () => {
+    const dependency = buildDiagnostic({
+      rule: "exhaustive-deps",
+      contextRanges: [{ offset: 110, length: 8 }],
+    });
+    expect(assignFixGroups([dependency])).toEqual([dependency]);
+  });
 });

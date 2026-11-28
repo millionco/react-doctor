@@ -5,20 +5,23 @@ import {
   ROOT_CAUSE_GROUPABLE_RULE_KEYS,
 } from "../constants.js";
 import type { Diagnostic } from "../types/index.js";
+import { collectExactPropResetGroups } from "./collect-exact-prop-reset-groups.js";
+import { stripPropResetGroupContext } from "./strip-prop-reset-group-context.js";
 
 // Stable, content-derived id for the root-cause group a finding belongs to.
-// Same file + rule + message means one fix (e.g. four state resets on a single
-// prop change all clear with one `key` prop), so those findings share an id.
+// Exact prop resets are keyed by the owning effect. Other groupable
+// findings use the existing file, rule and message identity.
 // The fields are JSON-encoded before hashing so no manual delimiter can let one
 // field's tail alias the next; sha1 keeps the id stable across runs, matching
 // `buildDiagnosticIdentity`'s content-keyed philosophy.
-const buildFixGroupId = (diagnostic: Diagnostic): string =>
+const buildFixGroupId = (diagnostic: Diagnostic, exactRoot?: string): string =>
   createHash("sha1")
     .update(
       JSON.stringify([
         diagnostic.filePath,
         `${diagnostic.plugin}/${diagnostic.rule}`,
         diagnostic.message,
+        ...(exactRoot !== undefined ? [exactRoot, diagnostic.offset, diagnostic.length] : []),
       ]),
     )
     .digest("hex")
@@ -29,22 +32,27 @@ const isGroupableRule = (diagnostic: Diagnostic): boolean =>
 
 // Stamps a shared `fixGroupId` on findings that one fix resolves together, so
 // a consumer that turns findings into tasks counts a single root cause as one
-// task rather than N. Only findings of a root-cause-groupable rule that share
-// (file, rule, message) with at least one sibling get an id; everything else
-// passes through untouched. Score-neutral — the score reads neither the field
-// nor the count — so this runs purely as a presentation/report concern.
-export const assignFixGroups = (diagnostics: ReadonlyArray<Diagnostic>): Diagnostic[] => {
+// task rather than N. Complete prop resets share an ID with their exact setter
+// findings. Other groupable findings use the file, rule and message fallback.
+export const assignFixGroups = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  rootDirectory = "",
+): Diagnostic[] => {
+  const exactResetGroups = collectExactPropResetGroups(diagnostics);
   const siteCountByGroupId = new Map<string, number>();
   for (const diagnostic of diagnostics) {
-    if (!isGroupableRule(diagnostic)) continue;
+    if (exactResetGroups.has(diagnostic) || !isGroupableRule(diagnostic)) continue;
     const groupId = buildFixGroupId(diagnostic);
     siteCountByGroupId.set(groupId, (siteCountByGroupId.get(groupId) ?? 0) + 1);
   }
 
   return diagnostics.map((diagnostic) => {
-    if (!isGroupableRule(diagnostic)) return diagnostic;
+    const exactOwner = exactResetGroups.get(diagnostic);
+    const result = stripPropResetGroupContext(diagnostic);
+    if (exactOwner) return { ...result, fixGroupId: buildFixGroupId(exactOwner, rootDirectory) };
+    if (!isGroupableRule(diagnostic)) return result;
     const groupId = buildFixGroupId(diagnostic);
-    if ((siteCountByGroupId.get(groupId) ?? 0) < MIN_SHARED_FIX_SITE_COUNT) return diagnostic;
-    return { ...diagnostic, fixGroupId: groupId };
+    if ((siteCountByGroupId.get(groupId) ?? 0) < MIN_SHARED_FIX_SITE_COUNT) return result;
+    return { ...result, fixGroupId: groupId };
   });
 };

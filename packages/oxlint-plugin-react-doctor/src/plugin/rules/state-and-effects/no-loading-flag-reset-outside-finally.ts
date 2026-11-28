@@ -14,9 +14,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
+import { getRuntimeStaticDependencySource } from "../../utils/get-runtime-static-dependency-source.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
@@ -31,6 +34,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
+import { isProvenPromiseExpression } from "../../utils/is-proven-promise-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
@@ -355,6 +359,149 @@ const isAllSettledArrayExpressionEvaluationSafe = (
     );
   });
 
+const PROMISE_ARRAY_INTRINSIC_ACCESS = new Set([
+  "Array",
+  "Object",
+  "Reflect",
+  "Symbol",
+  "globalThis",
+  "window",
+  "document",
+  "self",
+  "global",
+  "process",
+  "parent",
+  "top",
+  "frames",
+  "Function",
+  "eval",
+  "require",
+  "module",
+  "exports",
+]);
+const INTRINSIC_PROTOTYPE_PROPERTIES = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+  "getPrototypeOf",
+]);
+const CLOSED_PROMISE_FACTORY_METHODS = new Set(["resolve", "reject", "allSettled"]);
+const closedPromiseArrayScope = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasClosedPromiseArrayIntrinsics = (scopes: ScopeAnalysis): boolean => {
+  const cached = closedPromiseArrayScope.get(scopes);
+  if (cached !== undefined) return cached;
+  let closed = true;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (!closed) return false;
+    const dependency = getRuntimeStaticDependencySource(node);
+    if (
+      (dependency !== null && dependency !== "react") ||
+      isNodeOfType(node, "ThisExpression") ||
+      isNodeOfType(node, "ImportExpression") ||
+      (isNodeOfType(node, "TSImportEqualsDeclaration") && node.importKind !== "type")
+    ) {
+      closed = false;
+      return false;
+    }
+    if (isNodeOfType(node, "MemberExpression")) {
+      const name = getStaticPropertyName(node);
+      if (name === null || INTRINSIC_PROTOTYPE_PROPERTIES.has(name)) closed = false;
+    }
+    if (
+      isNodeOfType(node, "ObjectPattern") &&
+      node.properties.some((property) => {
+        if (!isNodeOfType(property, "Property")) return false;
+        const name = getStaticPropertyKeyName(property, { allowComputedString: true });
+        return name === null || INTRINSIC_PROTOTYPE_PROPERTIES.has(name);
+      })
+    )
+      closed = false;
+    if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
+    if (PROMISE_ARRAY_INTRINSIC_ACCESS.has(node.name)) closed = false;
+    if (node.name !== "Promise") return;
+    const member = node.parent;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== node ||
+      member.optional ||
+      !CLOSED_PROMISE_FACTORY_METHODS.has(getStaticPropertyName(member) ?? "") ||
+      !isNodeOfType(member.parent, "CallExpression") ||
+      member.parent.callee !== member ||
+      member.parent.optional
+    ) {
+      closed = false;
+    }
+  });
+  closedPromiseArrayScope.set(scopes, closed);
+  return closed;
+};
+
+const isScalarConstant = (rawValue: EsTreeNode): boolean => {
+  const value = stripParenExpression(rawValue);
+  if (isNodeOfType(value, "TemplateLiteral")) return value.expressions.length === 0;
+  return (
+    isNodeOfType(value, "Literal") &&
+    !("regex" in value) &&
+    (value.value === null || typeof value.value !== "object")
+  );
+};
+
+const getInitializedConstTask = (
+  callee: EsTreeNodeOfType<"Identifier">,
+  invocation: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const symbol = scopes.symbolFor(callee);
+  const initializer = symbol ? getDirectConstInitializer(symbol) : null;
+  const declaration = symbol?.declarationNode.parent;
+  const block = declaration?.parent;
+  if (
+    !initializer ||
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    !isNodeOfType(block, "BlockStatement") ||
+    findEnclosingFunction(declaration) !== findEnclosingFunction(invocation)
+  )
+    return null;
+  let useStatement: EsTreeNode = invocation;
+  while (useStatement.parent && useStatement.parent !== block) {
+    useStatement = useStatement.parent;
+  }
+  const declarationIndex = block.body.findIndex((statement) => statement === declaration);
+  const useIndex = block.body.findIndex((statement) => statement === useStatement);
+  return declarationIndex >= 0 && useIndex > declarationIndex
+    ? stripParenExpression(initializer)
+    : null;
+};
+
+const isEagerSafePromiseArrayElement = (element: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const call = stripParenExpression(element);
+  if (isScalarConstant(call)) return true;
+  if (!isNodeOfType(call, "CallExpression") || call.optional) return false;
+  const method = getPromiseCombinatorMethodName(call, scopes);
+  if (method === "resolve" || method === "reject") {
+    return (
+      call.arguments.length <= 1 &&
+      call.arguments.every(isScalarConstant) &&
+      isProvenPromiseExpression(call, scopes, { requireUnmodifiedGlobalPromise: true })
+    );
+  }
+  if (call.arguments.length !== 0) return false;
+  const callee = stripParenExpression(call.callee);
+  const task = isNodeOfType(callee, "Identifier")
+    ? getInitializedConstTask(callee, call, scopes)
+    : callee;
+  if (!isFunctionLike(task) || !task.async || task.generator || task.params.length !== 0)
+    return false;
+  if (!isNodeOfType(task.body, "BlockStatement")) return isScalarConstant(task.body);
+  if (task.body.body.length !== 1) return false;
+  const [completion] = task.body.body;
+  return (
+    (isNodeOfType(completion, "ReturnStatement") || isNodeOfType(completion, "ThrowStatement")) &&
+    (!completion.argument || isScalarConstant(completion.argument))
+  );
+};
+
 const isProvenLocalArrayBinding = (argument: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
   if (!scopes || !isNodeOfType(argument, "Identifier")) return false;
   const symbol = scopes.symbolFor(argument);
@@ -436,7 +583,19 @@ const isNeverRejectingPromiseCombinatorCall = (
     const argument = callNode.arguments[0] ? stripParenExpression(callNode.arguments[0]) : null;
     if (!argument) return false;
     if (isNodeOfType(argument, "ArrayExpression")) {
-      return isAllSettledArrayExpressionEvaluationSafe(argument, scopes);
+      return (
+        isAllSettledArrayExpressionEvaluationSafe(argument, scopes) ||
+        Boolean(
+          scopes &&
+          !callNode.optional &&
+          callNode.arguments.length === 1 &&
+          argument.elements.every((element) =>
+            Boolean(element && isEagerSafePromiseArrayElement(element, scopes)),
+          ) &&
+          isProvenPromiseExpression(callNode, scopes, { requireUnmodifiedGlobalPromise: true }) &&
+          hasClosedPromiseArrayIntrinsics(scopes),
+        )
+      );
     }
     if (isProvenLocalArrayBinding(argument, scopes)) return true;
     if (isProvenNonThrowingArrayFactoryCall(argument, depth, scopes)) return true;

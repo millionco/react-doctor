@@ -29,7 +29,7 @@ const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
 // Ambiguous property names: `.current` and the layout measures also occur on
 // plain data objects (`pagination.current`, a swiper API's `offsetLeft`), so
 // they only count as a post-mount read when the receiver is ref-like.
-const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
+export const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "current",
   "textContent",
   "innerText",

@@ -1,3 +1,4 @@
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
@@ -17,6 +18,7 @@ import {
   getRef,
   getUpstreamRefs,
 } from "./utils/effect/ast.js";
+import { isOwnedDomMeasurementValue } from "./utils/is-owned-dom-measurement-value.js";
 import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { createStateTriggerReachability } from "./utils/create-state-trigger-reachability.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
@@ -199,6 +201,7 @@ export const noChainStateUpdates = defineRule({
       // The whole state is exempt, including its fallback resets in the same
       // effect (the `catch { setAnchors([]) }` arm of the DOM-sync flow).
       const domSyncedStateDeclarators = new Set<EsTreeNode>();
+      const ownedMeasurementReceivers = new WeakMap<SymbolDescriptor, boolean>();
       for (const ref of effectFnRefs) {
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
@@ -236,6 +239,18 @@ export const noChainStateUpdates = defineRule({
           resolveStateSetterReference(analysis, ref) ?? ref,
         );
         if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
+        if (
+          isNodeOfType(callExpr, "CallExpression") &&
+          callExpr.arguments.length === 1 &&
+          isOwnedDomMeasurementValue(
+            callExpr.arguments[0],
+            effectFn,
+            context.scopes,
+            ownedMeasurementReceivers,
+          )
+        ) {
+          continue;
+        }
         const isSelfTargeting =
           setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);
         const setterArguments = isNodeOfType(callExpr, "CallExpression")

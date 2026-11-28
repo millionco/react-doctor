@@ -45,6 +45,40 @@ describe("resolveTsconfigAliasPath", () => {
     expect(resolveTsconfigAliasPath(fromFile, "~/widgets/Bar")).toBe(target);
   });
 
+  it("selects an exact alias even after an equally long wildcard prefix", () => {
+    const config = writeFile(
+      "tsconfig.json",
+      JSON.stringify({
+        compilerOptions: {
+          paths: { "@field*": ["./wildcard*"], "@field": ["./missing", "./exact"] },
+        },
+      }),
+    );
+    const wildcard = writeFile("wildcard.ts", "export const field = 'wildcard';");
+    const exact = writeFile("exact.ts", "export const field = 'exact';");
+    const fromFile = path.join(temporaryDirectory, "page.tsx");
+    const trace = collectCrossFileProbes(() => {
+      expect(resolveTsconfigAliasPath(fromFile, "@field")).toBe(exact);
+    });
+
+    expect(trace.contentPaths.has(config)).toBe(true);
+    expect(trace.existencePaths.has(path.join(temporaryDirectory, "missing.ts"))).toBe(true);
+    expect(trace.existencePaths.has(exact)).toBe(true);
+    expect(trace.existencePaths.has(wildcard)).toBe(false);
+  });
+
+  it("does not fall back to the wildcard when the exact alias has no existing target", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({
+        compilerOptions: { paths: { "@field*": ["./wildcard*"], "@field": ["./missing"] } },
+      }),
+    );
+    writeFile("wildcard.ts", "export const field = 'wildcard';");
+    const fromFile = path.join(temporaryDirectory, "page.tsx");
+    expect(resolveTsconfigAliasPath(fromFile, "@field")).toBeNull();
+  });
+
   it("parses JSONC tsconfig with comments and trailing commas", () => {
     writeFile(
       "tsconfig.json",

@@ -9,6 +9,7 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
+import { hasLocalInputSetterRelay } from "./has-local-input-setter-relay.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 import { getCallExpr } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
@@ -274,6 +275,7 @@ export const hasUserInputSetterWriter = (
       return true;
     }
     if (!isNodeReachableWithinFunction(identifier, context)) continue;
+    if (hasLocalInputSetterRelay(identifier, componentFunction, context)) return true;
     const writerFunction = findEnclosingFunction(identifier);
     if (!writerFunction || writerFunction === componentFunction) continue;
     const writerVariable = getImmutableFunctionVariable(

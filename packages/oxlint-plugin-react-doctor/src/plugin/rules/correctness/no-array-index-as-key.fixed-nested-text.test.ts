@@ -4,6 +4,7 @@ import { noArrayIndexAsKey } from "./no-array-index-as-key.js";
 
 const fixedTextSlots = `
 import { Line } from "./display-ui";
+import { createRoot } from "react-dom/client";
 
 const days = [
   { heading: "Monday", tasks: ["Water the plants", "Set up the desk"] },
@@ -23,7 +24,20 @@ function Schedule({ offset = 0 }) {
   </div>;
 }
 
-export function Planner() { return <Schedule />; }
+const root = createRoot(document.getElementById("main"));
+function Planner() { return <main><Schedule /></main>; }
+root.render(<Planner />);
+`;
+
+const forwardedTextSlots =
+  fixedTextSlots
+    .replace("<section>", "<Bridge>")
+    .replace("</section>", "</Bridge>")
+    .replace("<article key={outerIndex}>", "<Card key={outerIndex}>")
+    .replace("</article>", "</Card>") +
+  `
+const Bridge = ({ children }) => <section className="list">{children}</section>;
+function Card({ children: rows }) { return <article>{rows}</article>; }
 `;
 
 const rowSelector = `
@@ -48,7 +62,36 @@ describe.each(["curated", "upstream"] as const)("fixed nested text keys in %s mo
     expect(diagnostics.some(({ line }) => line === inner)).toBe(false);
   });
 
+  it("accepts private wrappers that forward the same child slot directly", () => {
+    const inner =
+      forwardedTextSlots.split("\n").findIndex((line) => line.includes("key={index}")) + 1;
+    expect(analyze(forwardedTextSlots, mode).some(({ line }) => line === inner)).toBe(false);
+  });
+
   it.each([
+    [
+      "a local wrapper that indexes into children",
+      forwardedTextSlots.replace("{children}</section>", "{children.at(0)}</section>"),
+    ],
+    [
+      "a local wrapper that publishes children",
+      forwardedTextSlots.replace("{children}</section>", "{publish(children)}</section>"),
+    ],
+    [
+      "a local wrapper that duplicates the slot",
+      forwardedTextSlots.replace("{children}</section>", "{children}{children}</section>"),
+    ],
+    ["an exported wrapper", forwardedTextSlots.replace("const Bridge =", "export const Bridge =")],
+    [
+      "a wrapper with dynamic host output",
+      forwardedTextSlots
+        .replace("<section className", "<ActiveHost className")
+        .replace("</section>", "</ActiveHost>"),
+    ],
+    [
+      "a wrapper with a directly captured component value",
+      forwardedTextSlots + "\nconsume(Bridge);",
+    ],
     [
       "an ancestor that replaces the keyed outer row",
       fixedTextSlots
@@ -73,6 +116,34 @@ describe.each(["curated", "upstream"] as const)("fixed nested text keys in %s mo
     [
       "a component whose JSX may escape through its export",
       fixedTextSlots.replace("function Schedule", "export function Schedule"),
+    ],
+    [
+      "a schedule element captured outside the render path",
+      forwardedTextSlots + "\nconst specimen = <Schedule />; consume(specimen.type);",
+    ],
+    [
+      "a schedule passed through a row selector",
+      forwardedTextSlots.replace(
+        "<main><Schedule /></main>",
+        "<Pick active={0}><Schedule /></Pick>",
+      ) +
+        rowSelector.replace(
+          "children.at(active)",
+          "children.type(children.props).props.children.at(active)",
+        ),
+    ],
+    [
+      "an exported ancestor whose return can expose the schedule",
+      forwardedTextSlots.replace("function Planner", "export function Planner"),
+    ],
+    ["a root receiver that escapes", forwardedTextSlots + "\nconsume(root);"],
+    [
+      "an opaque renderer that pretends to be React DOM",
+      forwardedTextSlots.replace('"react-dom/client"', '"other-client"'),
+    ],
+    [
+      "an exported React root receiver",
+      forwardedTextSlots.replace("const root = createRoot", "export const root = createRoot"),
     ],
     ["an escaping table", fixedTextSlots + "\nconsume(days);"],
     ["an exported table", fixedTextSlots + "\nexport { days };"],

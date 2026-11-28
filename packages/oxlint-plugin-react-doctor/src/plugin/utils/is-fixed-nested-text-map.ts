@@ -1,14 +1,18 @@
 import { HTML_TAGS } from "../constants/html-tags.js";
-import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
 import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
+import { getSingleReturnExpression } from "./get-single-return-expression.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { hasCompleteSymbolReferences } from "./has-complete-symbol-references.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveImportedApiReference } from "./resolve-imported-api-reference.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
 const PROTOCOL_GLOBALS = new Set([
@@ -71,9 +75,7 @@ const getDirectJsxMapCallback = (
     : null;
 };
 
-const isForwardingJsx = (
-  node: EsTreeNode | null | undefined,
-): node is EsTreeNodeOfType<"JSXElement" | "JSXFragment"> => {
+const isForwardingHtml = (node: EsTreeNode | null | undefined): boolean => {
   if (isNodeOfType(node, "JSXFragment")) return true;
   if (!isNodeOfType(node, "JSXElement")) return false;
   const { name, attributes } = node.openingElement;
@@ -90,14 +92,203 @@ const isForwardingJsx = (
   );
 };
 
-const getForwardingJsxRoot = (map: EsTreeNode): EsTreeNode | null => {
-  let child = map.parent;
-  while (child) {
-    const parent = child.parent;
-    if (!isForwardingJsx(parent) || !parent.children.some((entry) => entry === child)) break;
+const hasJsxOnlyReferences = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean =>
+  symbol.references.length > 0 &&
+  hasCompleteSymbolReferences(symbol, scopes.rootScope.node, scopes) &&
+  symbol.references.every(({ identifier, flag }) => {
+    const parent = identifier.parent;
+    return (
+      flag === "read" &&
+      (isNodeOfType(parent, "JSXOpeningElement") || isNodeOfType(parent, "JSXClosingElement")) &&
+      parent.name === identifier
+    );
+  });
+
+const localForwardingBySymbol = new WeakMap<SymbolDescriptor, boolean>();
+
+const forwardsChildrenToFixedHtml = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
+  const declaration = symbol.declarationNode;
+  const initializer = getDirectConstInitializer(symbol);
+  const definition = initializer ? stripParenExpression(initializer) : declaration;
+  if (
+    !isFunctionLike(definition) ||
+    definition.async ||
+    ("generator" in definition && definition.generator)
+  ) {
+    return false;
+  }
+  const statement = initializer ? declaration.parent : declaration;
+  if (statement?.parent !== scopes.rootScope.node || !hasJsxOnlyReferences(symbol, scopes))
+    return false;
+
+  const parameter = definition.params[0];
+  if (
+    definition.params.length !== 1 ||
+    !isNodeOfType(parameter, "ObjectPattern") ||
+    parameter.properties.length !== 1
+  )
+    return false;
+  const property = parameter.properties[0];
+  if (
+    !isNodeOfType(property, "Property") ||
+    property.computed ||
+    getStaticPropertyKeyName(property) !== "children" ||
+    !isNodeOfType(property.value, "Identifier")
+  ) {
+    return false;
+  }
+  const binding = scopes.symbolFor(property.value);
+  const reference = binding?.references[0];
+  if (
+    !binding ||
+    binding.references.length !== 1 ||
+    !reference ||
+    reference.flag !== "read" ||
+    !hasCompleteSymbolReferences(binding, scopes.rootScope.node, scopes)
+  )
+    return false;
+  const root = getSingleReturnExpression(definition);
+  let child = reference.identifier.parent;
+  if (!isNodeOfType(child, "JSXExpressionContainer") || child.expression !== reference.identifier)
+    return false;
+  while (child && child !== root) {
+    const parent: EsTreeNode | null | undefined = child.parent;
+    if (!isNodeOfType(parent, "JSXElement") && !isNodeOfType(parent, "JSXFragment")) return false;
+    if (
+      !isForwardingHtml(parent) ||
+      !parent.children.some((entry) => entry === child) ||
+      parent.children.some(
+        (sibling) =>
+          sibling !== child && (!isNodeOfType(sibling, "JSXText") || sibling.value.trim() !== ""),
+      )
+    )
+      return false;
+    if (
+      isNodeOfType(parent, "JSXElement") &&
+      parent.openingElement.attributes.some(
+        (attribute) =>
+          !isNodeOfType(attribute, "JSXAttribute") ||
+          !isNodeOfType(attribute.name, "JSXIdentifier") ||
+          attribute.name.name === "children" ||
+          attribute.name.name === "dangerouslySetInnerHTML" ||
+          (attribute.value !== null && !isNodeOfType(attribute.value, "Literal")),
+      )
+    )
+      return false;
     child = parent;
   }
-  return isForwardingJsx(child) ? child : null;
+  return child === root && isForwardingHtml(root);
+};
+
+const isForwardingJsx = (
+  node: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): node is EsTreeNodeOfType<"JSXElement" | "JSXFragment"> => {
+  if (isForwardingHtml(node)) return true;
+  if (!isNodeOfType(node, "JSXElement")) return false;
+  const { name, attributes } = node.openingElement;
+  if (
+    !isNodeOfType(name, "JSXIdentifier") ||
+    attributes.some(
+      (attribute) =>
+        !isNodeOfType(attribute, "JSXAttribute") ||
+        !isNodeOfType(attribute.name, "JSXIdentifier") ||
+        ["children", "ref", "is"].includes(attribute.name.name),
+    )
+  )
+    return false;
+  const symbol = scopes.symbolFor(name);
+  if (!symbol) return false;
+  const cached = localForwardingBySymbol.get(symbol);
+  if (cached !== undefined) return cached;
+  const forwards = forwardsChildrenToFixedHtml(symbol, scopes);
+  localForwardingBySymbol.set(symbol, forwards);
+  return forwards;
+};
+
+const getForwardingJsxRoot = (
+  initialChild: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  let child = initialChild;
+  while (child) {
+    const parent = child.parent;
+    if (!isForwardingJsx(parent, scopes) || !parent.children.some((entry) => entry === child))
+      break;
+    child = parent;
+  }
+  return isNodeOfType(child, "JSXElement") || isNodeOfType(child, "JSXFragment") ? child : null;
+};
+
+const getReturningFunction = (tree: EsTreeNode | null): EsTreeNode | null => {
+  const container = tree?.parent;
+  if (isNodeOfType(container, "ReturnStatement") && container.argument === tree) {
+    return findEnclosingFunction(container);
+  }
+  return isNodeOfType(container, "ArrowFunctionExpression") && container.body === tree
+    ? container
+    : null;
+};
+
+const isReactDomRootFactory = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    node.optional ||
+    !isNodeOfType(node.callee, "Identifier")
+  )
+    return false;
+  const binding = scopes.symbolFor(node.callee);
+  if (!binding || !isNodeOfType(binding.declarationNode, "ImportSpecifier")) return false;
+  const imported = resolveImportedApiReference(node.callee, scopes);
+  return imported?.source === "react-dom/client" && imported.importedName === "createRoot";
+};
+
+const getRootMethod = (receiver: EsTreeNode): string | null => {
+  const member = receiver.parent;
+  if (
+    !isNodeOfType(member, "MemberExpression") ||
+    member.object !== receiver ||
+    member.computed ||
+    member.optional ||
+    !isNodeOfType(member.property, "Identifier")
+  )
+    return null;
+  const call = member.parent;
+  return isNodeOfType(call, "CallExpression") && call.callee === member && !call.optional
+    ? member.property.name
+    : null;
+};
+
+const isOwnedReactRootRender = (tree: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const call = tree.parent;
+  if (
+    !isNodeOfType(call, "CallExpression") ||
+    call.arguments.length !== 1 ||
+    call.arguments[0] !== tree ||
+    !isNodeOfType(call.callee, "MemberExpression")
+  )
+    return false;
+  const receiver = call.callee.object;
+  if (getRootMethod(receiver) !== "render") return false;
+  if (isReactDomRootFactory(receiver, scopes)) return true;
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const root = scopes.symbolFor(receiver);
+  if (!root) return false;
+  const declarationContainer = root.declarationNode.parent?.parent;
+  if (
+    !isNodeOfType(declarationContainer, "Program") &&
+    !isNodeOfType(declarationContainer, "BlockStatement")
+  )
+    return false;
+  const initializer = getDirectConstInitializer(root);
+  if (!initializer || !isReactDomRootFactory(initializer, scopes)) return false;
+  return (
+    hasCompleteSymbolReferences(root, scopes.rootScope.node, scopes) &&
+    root.references.every(
+      ({ identifier, flag }) =>
+        flag === "read" && ["render", "unmount"].includes(getRootMethod(identifier) ?? ""),
+    )
+  );
 };
 
 const hasPrivateJsxRenderOwner = (
@@ -105,39 +296,40 @@ const hasPrivateJsxRenderOwner = (
   program: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const tree = getForwardingJsxRoot(map);
-  if (!tree) return false;
-  const container = tree.parent;
-  const component =
-    isNodeOfType(container, "ReturnStatement") && container.argument === tree
-      ? findEnclosingFunction(container)
-      : isNodeOfType(container, "ArrowFunctionExpression") && container.body === tree
-        ? container
-        : null;
+  const component = getReturningFunction(getForwardingJsxRoot(map.parent, scopes));
   if (!component) return false;
-  const [owner] = getFunctionBindingSymbols(component, scopes);
-  if (!owner || !owner.references.length) return false;
-  const declaration = owner.declarationNode;
-  if (isNodeOfType(component, "FunctionDeclaration")) {
-    if (declaration !== component || declaration.parent !== program) return false;
-  } else if (
-    getDirectConstInitializer(owner) !== component ||
-    declaration.parent?.parent !== program
-  ) {
-    return false;
+  const remaining = [component];
+  const visited = new Set<EsTreeNode>();
+  let foundRoot = false;
+  while (remaining.length > 0) {
+    const ownerFunction = remaining.pop();
+    if (!ownerFunction || visited.has(ownerFunction)) continue;
+    visited.add(ownerFunction);
+    const [owner] = getFunctionBindingSymbols(ownerFunction, scopes);
+    if (!owner || !hasJsxOnlyReferences(owner, scopes)) return false;
+    const declaration = owner.declarationNode;
+    if (isNodeOfType(ownerFunction, "FunctionDeclaration")) {
+      if (declaration !== ownerFunction || declaration.parent !== program) return false;
+    } else if (
+      getDirectConstInitializer(owner) !== ownerFunction ||
+      declaration.parent?.parent !== program
+    ) {
+      return false;
+    }
+    for (const { identifier } of owner.references) {
+      if (!isNodeOfType(identifier.parent, "JSXOpeningElement")) continue;
+      const tree = getForwardingJsxRoot(identifier.parent.parent, scopes);
+      if (!tree) return false;
+      if (isOwnedReactRootRender(tree, scopes)) {
+        foundRoot = true;
+        continue;
+      }
+      const parentComponent = getReturningFunction(tree);
+      if (!parentComponent) return false;
+      remaining.push(parentComponent);
+    }
   }
-
-  return (
-    hasCompleteSymbolReferences(owner, program, scopes) &&
-    owner.references.every(({ identifier, flag }) => {
-      const parent = identifier.parent;
-      return (
-        flag === "read" &&
-        (isNodeOfType(parent, "JSXOpeningElement") || isNodeOfType(parent, "JSXClosingElement")) &&
-        parent.name === identifier
-      );
-    })
-  );
+  return foundRoot;
 };
 
 const hasStableOuterKey = (
@@ -170,7 +362,7 @@ const hasStableOuterKey = (
     return false;
   }
 
-  return getForwardingJsxRoot(innerCall) === callback.body;
+  return getForwardingJsxRoot(innerCall.parent, scopes) === callback.body;
 };
 
 const isStringLiteral = (node: EsTreeNode | null | undefined): boolean =>

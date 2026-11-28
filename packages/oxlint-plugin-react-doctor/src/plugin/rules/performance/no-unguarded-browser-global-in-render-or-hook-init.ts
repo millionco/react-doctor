@@ -17,6 +17,7 @@ import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initia
 import { isGatedByFalsyServerSnapshot } from "../../utils/is-gated-by-falsy-server-snapshot.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isSwitchCaseGuardedByBrowserAvailability } from "../../utils/is-switch-case-guarded-by-browser-availability.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
@@ -82,6 +83,12 @@ const isInsideAvailabilityGuard = (
       ) {
         return true;
       }
+    }
+    if (
+      isNodeOfType(parentNode, "SwitchCase") &&
+      isSwitchCaseGuardedByBrowserAvailability(parentNode, currentNode, browserGlobalName, context)
+    ) {
+      return true;
     }
     currentNode = parentNode;
     parentNode = currentNode.parent;

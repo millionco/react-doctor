@@ -37,6 +37,10 @@ export const MINIFIED_AVG_LINE_LENGTH_CHARS = 500;
 // Only read this many bytes when sniffing for minification — a minified
 // file's huge lines show up immediately, so we never read the whole bundle.
 export const MINIFIED_SNIFF_BYTES = 65_536;
+export const VITE_ENTRY_ASSET_FILE_PATTERN = /(?:^|[/\\])assets[/\\][^/\\]+-[\w-]{8}\.m?js$/;
+export const VITE_ENTRY_PRELUDE_SNIFF_BYTES = 1024;
+export const VITE_ENTRY_DENSITY_SAMPLE_BYTES = 32_768;
+export const VITE_ENTRY_MIN_SIZE_BYTES = MINIFIED_SNIFF_BYTES + 2 * VITE_ENTRY_DENSITY_SAMPLE_BYTES;
 // Skip the content sniff entirely for files smaller than this; minified
 // bundles are large, & this keeps full-tree discovery from reading every
 // small source file. Smaller minified files are still caught downstream

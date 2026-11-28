@@ -19,6 +19,7 @@ import { findJsxOpenerSpan } from "../../find-jsx-opener-span.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
 import { isRecord } from "../../utils/is-record.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
+import { isMinifiedViteEntry } from "../../utils/is-minified-vite-entry.js";
 import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { getCapabilities } from "../../project-info/capabilities.js";
@@ -442,7 +443,7 @@ export const parseOxlintOutput = (
     const absolutePath = resolveAbsolutePath(resolveSourceFilename(filename));
     const cached = minifiedFileCache.get(absolutePath);
     if (cached !== undefined) return cached;
-    const minified = isMinifiedSource(absolutePath);
+    const minified = isMinifiedSource(absolutePath) || isMinifiedViteEntry(absolutePath);
     minifiedFileCache.set(absolutePath, minified);
     return minified;
   };

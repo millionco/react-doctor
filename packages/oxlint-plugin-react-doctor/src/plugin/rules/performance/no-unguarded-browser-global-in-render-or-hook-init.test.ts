@@ -6,6 +6,81 @@ const run = (code: string, filename = "app/page.tsx") =>
   runRule(noUnguardedBrowserGlobalInRenderOrHookInit, code, { filename });
 
 describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
+  describe("switch availability guards", () => {
+    it.each([
+      [
+        "an undefined case that returns before the default",
+        `switch (typeof window) { case "undefined": return null; default: return <div>{window.innerWidth}</div>; }`,
+      ],
+      [
+        "an undefined case that breaks before the browser case",
+        `switch (typeof window) { case "undefined": break; case "object": return <div>{window.innerWidth}</div>; } return null;`,
+      ],
+      [
+        "a browser case with no server match or default",
+        `switch (typeof navigator) { case "object": return <div>{navigator.language}</div>; } return null;`,
+      ],
+      [
+        "a default before the matching undefined case",
+        `switch (typeof globalThis.window) { default: return <div>{globalThis.window.innerWidth}</div>; case "undefined": return null; }`,
+      ],
+      [
+        "a boolean comparison of typeof to undefined",
+        `switch (typeof window !== "undefined") { case true: return <div>{window.innerWidth}</div>; default: return null; }`,
+      ],
+    ])("accepts %s", (_name, body) => {
+      const result = run(`export const Page = () => { ${body} };`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it.each([
+      [
+        "the default when nothing matches",
+        `switch (typeof window) { case "object": return null; default: return <div>{window.innerWidth}</div>; }`,
+      ],
+      [
+        "fallthrough from an undefined case",
+        `switch (typeof window) { case "undefined": case "object": return <div>{window.innerWidth}</div>; default: return null; }`,
+      ],
+      [
+        "fallthrough from a default before the browser case",
+        `switch (typeof window) { default: case "object": return <div>{window.innerWidth}</div>; }`,
+      ],
+      [
+        "fallthrough from a case containing a nested break",
+        `switch (typeof window) { case "undefined": for (const value of [1]) { if (value) break; } case "object": return <div>{window.innerWidth}</div>; } return null;`,
+      ],
+      [
+        "a read outside the switch",
+        `switch (typeof window) { case "undefined": break; default: return null; } return <div>{window.innerWidth}</div>;`,
+      ],
+      [
+        "a read in a case selector",
+        `switch (typeof window) { case window.name: return null; case "undefined": return null; } return null;`,
+      ],
+      [
+        "a case with a computed selector",
+        `switch (typeof window) { case getType(): return <div>{window.innerWidth}</div>; case "undefined": return null; } return null;`,
+      ],
+      [
+        "a guard for a different global",
+        `switch (typeof document) { case "undefined": return null; default: return <div>{window.innerWidth}</div>; }`,
+      ],
+      [
+        "an evaluated boolean expression with nonboolean results",
+        `switch (ready && typeof window !== "undefined") { case false: return null; default: return <div>{window.innerWidth}</div>; }`,
+      ],
+      [
+        "a boolean guard for an unrelated global",
+        `switch (typeof document !== "undefined") { case false: return null; default: return <div>{window.innerWidth}</div>; }`,
+      ],
+    ])("reports %s", (_name, body) => {
+      const result = run(`export const Page = ({ ready }) => { ${body} };`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
   it.each([
     ["render body", `"use client"; export const Page = () => <div>{window.innerWidth}</div>;`],
     [

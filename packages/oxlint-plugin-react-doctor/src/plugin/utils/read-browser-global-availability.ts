@@ -15,7 +15,7 @@ const BROWSER_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "matchMedia",
 ]);
 
-const getTypeofBrowserGlobalName = (
+export const getTypeofBrowserGlobalName = (
   expression: EsTreeNode,
   context: RuleContext,
 ): string | null => {

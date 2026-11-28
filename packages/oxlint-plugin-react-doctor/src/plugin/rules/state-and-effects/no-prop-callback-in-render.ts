@@ -14,6 +14,7 @@ import { getDestructuredBindingPropertyName } from "../../utils/get-destructured
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isInsideStaticallyUnreachableBranch } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
@@ -393,6 +394,7 @@ export const noPropCallbackInRender = defineRule({
       const callee = stripParenExpression(node.callee);
       if (isFunctionLike(callee)) return;
       if (!calleeMayReferenceProp(callee, context.scopes)) return;
+      if (isInsideStaticallyUnreachableBranch(node)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       if (

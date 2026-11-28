@@ -669,3 +669,34 @@ describe("notifications without state payloads", () => {
     },
   );
 });
+
+describe("no-prop-callback-in-effect with statically unreachable branches", () => {
+  it.each([
+    ["false if arm", "if (false) { onChange(value); }", 0],
+    ["dead else arm", "if (true) { void 0; } else { onChange(value); }", 0],
+    ["short circuit", "false && onChange(value);", 0],
+    ["dead ternary arm", "true ? undefined : onChange(value);", 0],
+    ["false while body", "while (false) { onChange(value); }", 0],
+    ["false for body", "for (; false;) { onChange(value); }", 0],
+    ["dynamic guard", "if (enabled) { onChange(value); }", 1],
+    ["evaluated test", "if ((onChange(value), false)) {}", 1],
+    ["do while body", "do { onChange(value); } while (false);", 1],
+    ["catch body", "try { work(); } catch { onChange(value); }", 1],
+    ["finally body", "try { return; } finally { onChange(value); }", 1],
+    ["direct call", "onChange(value);", 1],
+  ])("preserves the warning only for reachable calls in %s", (_label, statement, expected) => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `
+      import { useEffect, useState } from "react";
+      export function Panel({ onChange, enabled }: { onChange: (value: string) => void; enabled: boolean }) {
+        const [value, setValue] = useState("");
+        useEffect(() => { ${statement} }, [value, onChange, enabled]);
+        return <input value={value} onChange={(event) => setValue(event.target.value)} />;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

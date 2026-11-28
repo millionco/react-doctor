@@ -1061,9 +1061,14 @@ const collectOrderedAsyncEvents = (root: EsTreeNode, context: RuleContext): EsTr
       events.push(child);
     }
   });
-  return events.sort(
-    (left, right) => ((left as { end?: number }).end ?? 0) - ((right as { end?: number }).end ?? 0),
-  );
+  return events.sort((left, right) => {
+    const endDifference =
+      ((left as { end?: number }).end ?? 0) - ((right as { end?: number }).end ?? 0);
+    if (endDifference !== 0) return endDifference;
+    if (isNodeOfType(left, "AwaitExpression") && isAstDescendant(right, left.argument)) return 1;
+    if (isNodeOfType(right, "AwaitExpression") && isAstDescendant(left, right.argument)) return -1;
+    return 0;
+  });
 };
 
 const analyzeAsyncEvents = (

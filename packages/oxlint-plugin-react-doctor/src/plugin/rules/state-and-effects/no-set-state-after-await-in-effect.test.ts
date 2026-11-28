@@ -3,6 +3,84 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noSetStateAfterAwaitInEffect } from "./no-set-state-after-await-in-effect.js";
 
 describe("no-set-state-after-await-in-effect", () => {
+  it.each([
+    {
+      name: "direct-operand",
+      body: "await setValue(query);",
+      expected: 0,
+    },
+    {
+      name: "nested-await",
+      body: "await await setValue(query);",
+      expected: 0,
+    },
+    {
+      name: "return-await",
+      body: "return await setValue(query);",
+      expected: 0,
+    },
+    {
+      name: "initializer-await",
+      body: "const next = await setValue(query);",
+      expected: 0,
+    },
+    {
+      name: "parenthesized-operand",
+      body: "await (setValue(query));",
+      expected: 0,
+    },
+    {
+      name: "setter-before-await",
+      body: "setValue(query); await load(query);",
+      expected: 0,
+    },
+    {
+      name: "awaited-setter-argument",
+      body: "setValue(await load(query));",
+      expected: 1,
+    },
+    {
+      name: "separate-await",
+      body: "await load(query); setValue(query);",
+      expected: 1,
+    },
+    {
+      name: "prior-await-direct-operand",
+      body: "await load(query); await setValue(query);",
+      expected: 1,
+    },
+    {
+      name: "nested-await-sequence",
+      body: "await (await load(query), setValue(query));",
+      expected: 1,
+    },
+    {
+      name: "nested-for-await",
+      body: "while (query) { for await (const item of stream(query)) setValue(item) }",
+      expected: 1,
+    },
+    {
+      name: "deferred-callback",
+      body: "queueMicrotask(async () => { await setValue(query); });",
+      expected: 1,
+    },
+  ])("preserves evaluation order for $name", ({ body, expected }) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `import { useEffect, useState } from "react";
+        function Widget({ query }) {
+          const [value, setValue] = useState("");
+          useEffect(() => {
+            const update = async () => { ${body} };
+            update();
+          }, [query]);
+          return <span>{value}</span>;
+        }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
   it("flags a declared-then-called inner async function that sets state after await", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

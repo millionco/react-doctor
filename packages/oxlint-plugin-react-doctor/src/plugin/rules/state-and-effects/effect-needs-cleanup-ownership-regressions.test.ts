@@ -919,3 +919,62 @@ describe("intrinsic callback-ref listener cleanup on detach", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("single-use file readers", () => {
+  const makeCase = ({
+    prelude = "",
+    callback = "() => setPreview(handle.result)",
+    read = "handle.readAsDataURL(input);",
+    afterRead = "",
+    extraStart = "",
+  } = {}) => `
+    import { useEffect, useState } from "react";
+    ${prelude}
+    export function FilePreview({ file }) {
+      const [preview, setPreview] = useState(null);
+      const readPreview = (input) => {
+        const handle = new FileReader();
+        handle.addEventListener("load", ${callback});
+        ${read}
+        ${afterRead}
+      };
+      const onChoose = () => readPreview(file);
+      ${extraStart}
+      return <button onClick={onChoose}>{preview}</button>;
+    }
+  `;
+
+  it("recognizes the completion listener of a private reader started from a DOM event", () => {
+    const { parseErrors, diagnostics } = runRule(effectNeedsCleanup, makeCase(), {
+      filename: "src/file-preview.tsx",
+    });
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["the returned reader", { afterRead: "return handle;" }],
+    ["a retained reader", { afterRead: "keepReader(handle);" }],
+    ["an event target passed to another function", { callback: "(event) => report(event.target)" }],
+    ["a read restarted by its callback", { callback: "() => handle.readAsDataURL(input)" }],
+    ["a missing read", { read: "" }],
+    ["multiple reads of the same reader", { afterRead: "handle.readAsText(input);" }],
+    ["a shadowed constructor", { prelude: "const FileReader = createTestReader();" }],
+    ["a replacement constructor", { prelude: "window.FileReader = createTestReader();" }],
+    [
+      "a change to the inherited listener method",
+      { prelude: "EventTarget.prototype.addEventListener = register;" },
+    ],
+    ["a direct effect start", { extraStart: "useEffect(() => { readPreview(file); }, [file]);" }],
+    ["a delegated effect start", { extraStart: "useEffect(() => { onChoose(); }, [file]);" }],
+    ["a direct render start", { extraStart: "onChoose();" }],
+    ["a handler passed to an unknown function", { extraStart: "sendHandler(onChoose);" }],
+    ["an explicit JSX factory", { prelude: "/** @jsx custom */" }],
+  ])("still reports %s", (_name, amendments) => {
+    const { parseErrors, diagnostics } = runRule(effectNeedsCleanup, makeCase(amendments), {
+      filename: "src/file-preview.tsx",
+    });
+    expect(parseErrors).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+  });
+});

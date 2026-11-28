@@ -89,6 +89,7 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { isEventOwnedFileReaderListener } from "./utils/is-event-owned-file-reader-listener.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -11356,6 +11357,8 @@ const findRetainedFunctionLeak = (
       };
       if (
         !hasSelfReleasingListenerOptions(child, context) &&
+        (options?.isEffectInvoked ||
+          !isEventOwnedFileReaderListener(child, retainedFunction, context)) &&
         !hasReleaseForUsage(subscriptionUsage)
       ) {
         leak = subscriptionUsage;

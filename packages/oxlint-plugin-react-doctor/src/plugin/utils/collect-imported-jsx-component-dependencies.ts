@@ -7,12 +7,14 @@ export interface CollectImportedJsxComponentDependenciesInput {
   readonly absoluteFilePath: string;
   readonly staticImports: ReadonlyArray<StaticImport>;
   readonly program: EsTreeNode;
+  readonly resolveComponent?: (filename: string, source: string, exportedName: string) => unknown;
 }
 
 export const collectImportedJsxComponentDependencies = ({
   absoluteFilePath,
   staticImports,
   program,
+  resolveComponent = resolveCrossFileFunctionExport,
 }: CollectImportedJsxComponentDependenciesInput): void => {
   const jsxNames = new Set<string>();
   walkAst(program, (node) => {
@@ -41,11 +43,7 @@ export const collectImportedJsxComponentDependencies = ({
       if (!jsxNames.has(entry.localName.value)) continue;
       const exportedName = importName.kind === "Default" ? "default" : importName.name;
       if (exportedName) {
-        resolveCrossFileFunctionExport(
-          absoluteFilePath,
-          staticImport.moduleRequest.value,
-          exportedName,
-        );
+        resolveComponent(absoluteFilePath, staticImport.moduleRequest.value, exportedName);
       }
     }
   }

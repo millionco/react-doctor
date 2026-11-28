@@ -168,6 +168,26 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
 
+export const resolveUniqueRelativeSourceFile = (
+  filename: string,
+  source: string,
+): string | null => {
+  if (!source.startsWith("./") && !source.startsWith("../")) return null;
+  const modulePath = path.resolve(path.dirname(filename), source);
+  const extension = path.extname(modulePath);
+  const candidates = new Set(getModuleFilePathCandidates(modulePath));
+  const files = [...candidates].filter((candidate) => getExistingFilePath(candidate));
+  if (files.length !== 1 || !files[0]) return null;
+  if (extension) return files[0] === modulePath ? modulePath : null;
+  if (getExistingFilePath(modulePath) || getExistingDirectoryPath(modulePath)) return null;
+  for (const platform of ["android", "ios", "native", "web"]) {
+    for (const suffix of MODULE_FILE_EXTENSIONS) {
+      if (getExistingFilePath(`${modulePath}.${platform}${suffix}`)) return null;
+    }
+  }
+  return files[0];
+};
+
 export const resetModuleResolutionCaches = (): void => {
   filesystemEntryByPath.clear();
   packageJsonByPath.clear();

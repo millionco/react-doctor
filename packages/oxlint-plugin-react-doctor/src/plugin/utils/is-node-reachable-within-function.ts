@@ -2,7 +2,12 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import type { RuleContext } from "./rule-context.js";
 
-const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
+const readLiteralTruthiness = (node: EsTreeNode): boolean | null => {
+  if (!isNodeOfType(node, "Literal")) return null;
+  return "regex" in node || Boolean(node.value);
+};
+
+export const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
   let child = node;
   let parent = node.parent;
   while (parent) {
@@ -18,16 +23,15 @@ const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
       (isNodeOfType(parent, "WhileStatement") || isNodeOfType(parent, "ForStatement")) &&
       parent.body === child &&
       parent.test &&
-      isNodeOfType(parent.test, "Literal") &&
-      !parent.test.value
+      readLiteralTruthiness(parent.test) === false
     ) {
       return true;
     }
     if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
+      const leftTruthiness = readLiteralTruthiness(parent.left);
       if (
-        isNodeOfType(parent.left, "Literal") &&
-        ((parent.operator === "&&" && !parent.left.value) ||
-          (parent.operator === "||" && Boolean(parent.left.value)))
+        (parent.operator === "&&" && leftTruthiness === false) ||
+        (parent.operator === "||" && leftTruthiness === true)
       ) {
         return true;
       }

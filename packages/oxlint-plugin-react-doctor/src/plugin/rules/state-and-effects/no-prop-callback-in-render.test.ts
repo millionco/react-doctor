@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { runRule } from "../../../test-utils/run-rule.js";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
+import { runRule, runRuleOnParsedFixture } from "../../../test-utils/run-rule.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { noPropCallbackInRender } from "./no-prop-callback-in-render.js";
 
 const run = (code: string) => runRule(noPropCallbackInRender, code);
@@ -1077,5 +1079,54 @@ describe("no-prop-callback-in-render", () => {
     const result = run(sourceCode);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(expectedDiagnosticCount);
+  });
+});
+
+describe("no-prop-callback-in-render with statically unreachable branches", () => {
+  it.each([
+    ["&&", 1],
+    ["||", 0],
+  ])(
+    "uses regex metadata when a host cannot materialize the literal value in %s",
+    (operator, expected) => {
+      const source = `export function Panel({ onReady }) {
+      /ready/ ${operator} onReady();
+      return <div />;
+    }`;
+      const parsed = parseFixture(source);
+      walkAst(parsed.program, (node) => {
+        if (node.type === "Literal" && "regex" in node) Object.assign(node, { value: null });
+      });
+      const result = runRuleOnParsedFixture(noPropCallbackInRender, source, parsed);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+    },
+  );
+
+  it.each([
+    ["false if arm", "if (false) { onReady(); }", 0],
+    ["dead else arm", "if (true) { void 0; } else { onReady(); }", 0],
+    ["short circuit", "false && onReady();", 0],
+    ["dead ternary arm", "true ? undefined : onReady();", 0],
+    ["false while body", "while (false) { onReady(); }", 0],
+    ["false for body", "for (; false;) { onReady(); }", 0],
+    ["dynamic guard", "if (enabled) { onReady(); }", 1],
+    ["evaluated test", "if ((onReady(), false)) {}", 1],
+    ["do while body", "do { onReady(); } while (false);", 1],
+    ["catch body", "try { work(); } catch { onReady(); }", 1],
+    ["finally body", "try { return; } finally { onReady(); }", 1],
+    ["direct call", "onReady();", 1],
+  ])("preserves the warning only for reachable calls in %s", (_label, statement, expected) => {
+    const result = runRule(
+      noPropCallbackInRender,
+      `
+      export function Panel({ onReady, enabled }: { onReady: () => void; enabled: boolean }) {
+        ${statement}
+        return <div />;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
   });
 });

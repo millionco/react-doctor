@@ -16,6 +16,7 @@ import type { Reference } from "eslint-scope";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isInsideStaticallyUnreachableBranch } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
@@ -391,7 +392,7 @@ export const noPropCallbackInEffect = defineRule({
           if (!isNodeOfType(child, "CallExpression")) return;
           if (child.arguments.length === 0) return;
           const calleeName = getPropCallbackName(child);
-          if (!calleeName) return;
+          if (!calleeName || isInsideStaticallyUnreachableBranch(child)) return;
           if (analysis) {
             const doesUseStateDependency = doesCallUseStateDependency(
               analysis,

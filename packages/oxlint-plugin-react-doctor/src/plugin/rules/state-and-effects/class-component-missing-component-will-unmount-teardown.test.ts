@@ -50,6 +50,76 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    "const timer = setTimeout(() => this.setState({ ready: true })); clearTimeout(timer);",
+    "if (enabled) { const timer = setInterval(() => this.tick(), 1000); clearInterval(timer); }",
+    "const timer = (setInterval(function () {})); (clearInterval)((timer));",
+  ])("accepts a mount timer synchronously cleared in the next statement (%s)", (mount) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Clock extends React.Component { componentDidMount() { ${mount} } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["", "const timer = setInterval(() => this.tick(), 1000); clearInterval(other);"],
+    ["", "const timer = setInterval(() => this.tick(), 1000); if (flag) clearInterval(timer);"],
+    ["", "const timer = setInterval(() => this.tick(), 1000); work(); clearInterval(timer);"],
+    ["", "const timer = setInterval(() => this.tick(), 1000); await work(); clearInterval(timer);"],
+    ["", "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer, work());"],
+    ["", "const timer = setInterval(() => this.tick(), wait); clearInterval(timer);"],
+    [
+      "",
+      "const timer = setInterval(() => this.tick(), 1000), result = work(); clearInterval(timer);",
+    ],
+    [
+      "",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer); useTimer(timer);",
+    ],
+    [
+      "const clearInterval = () => {};",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "globalThis.clearInterval = () => {};",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "({ clearInterval } = { clearInterval: () => {} });",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "const timers = globalThis; for (timers.clearInterval of [() => {}]) {}",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "const run = eval; run('globalThis.clearInterval = () => {}');",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "let runtime = globalThis; runtime.clearInterval = () => {};",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "globalThis.globalThis.clearInterval = () => {};",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+    [
+      "const run = Function('globalThis.clearInterval = () => {}'); run();",
+      "const timer = setInterval(() => this.tick(), 1000); clearInterval(timer);",
+    ],
+  ])("keeps the warning when immediate cancellation is uncertain (%s %s)", (prelude, mount) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `${prelude} class Clock extends React.Component { async componentDidMount() { ${mount} } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags setTimeout whose callback calls this.setState", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

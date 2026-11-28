@@ -19,7 +19,9 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -1103,6 +1105,119 @@ const storedCallResultReferenceKey = (
   return storageTarget ? serializeLifecycleReference(storageTarget, scopes, classBody) : null;
 };
 
+const mountTimerGlobalNames = new Set([
+  "setInterval",
+  "clearInterval",
+  "setTimeout",
+  "clearTimeout",
+]);
+const timerGlobalUncertainty = new WeakMap<ScopeAnalysis, boolean>();
+
+const hasUncertainTimerGlobals = (scopes: ScopeAnalysis): boolean => {
+  const cached = timerGlobalUncertainty.get(scopes);
+  if (cached !== undefined) return cached;
+  let uncertain = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (uncertain) return false;
+    if (!isNodeOfType(node, "Identifier") || !scopes.isGlobalReference(node)) return;
+    if (
+      node.name === "eval" ||
+      node.name === "Function" ||
+      (mountTimerGlobalNames.has(node.name) && isWithinAssignmentTarget(node))
+    ) {
+      uncertain = true;
+      return false;
+    }
+    if (!GLOBAL_OBJECT_NAMES.has(node.name)) return;
+
+    // Global aliases and computed reads can hide a replacement of either timer API.
+    const root = findTransparentExpressionRoot(node);
+    const access = root.parent;
+    if (
+      !isNodeOfType(access, "MemberExpression") ||
+      access.object !== root ||
+      isWithinAssignmentTarget(access)
+    ) {
+      uncertain = true;
+      return false;
+    }
+    const property = getStaticPropertyName(access);
+    uncertain =
+      property === null ||
+      property === "eval" ||
+      property === "Function" ||
+      GLOBAL_OBJECT_NAMES.has(property);
+  });
+  timerGlobalUncertainty.set(scopes, uncertain);
+  return uncertain;
+};
+
+const isTimerClearedInNextStatement = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scheduleName: "setInterval" | "setTimeout",
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  const [callback, delay] = call.arguments;
+  if (
+    call.optional ||
+    !isNodeOfType(callee, "Identifier") ||
+    callee.name !== scheduleName ||
+    !scopes.isGlobalReference(callee) ||
+    !callback ||
+    !isFunctionLike(stripParenExpression(callback)) ||
+    call.arguments.length > 2 ||
+    (delay && (!isNodeOfType(delay, "Literal") || typeof delay.value !== "number"))
+  ) {
+    return false;
+  }
+
+  const declarator = findTransparentExpressionRoot(call).parent;
+  if (!isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const declaration = declarator.parent;
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    !isNodeOfType(declarator.id, "Identifier")
+  ) {
+    return false;
+  }
+  const block = declaration.parent;
+  if (!isNodeOfType(block, "BlockStatement")) return false;
+
+  const declarationIndex = block.body.findIndex(
+    (statement: EsTreeNode) => statement === declaration,
+  );
+  const nextStatement = block.body[declarationIndex + 1];
+  if (!isNodeOfType(nextStatement, "ExpressionStatement")) return false;
+  const clearCall = stripParenExpression(nextStatement.expression);
+  if (!isNodeOfType(clearCall, "CallExpression") || clearCall.optional) return false;
+  const clearName = scheduleName === "setInterval" ? "clearInterval" : "clearTimeout";
+  const clearCallee = stripParenExpression(clearCall.callee);
+  const [handle] = clearCall.arguments;
+  if (
+    !isNodeOfType(clearCallee, "Identifier") ||
+    clearCallee.name !== clearName ||
+    !scopes.isGlobalReference(clearCallee) ||
+    clearCall.arguments.length !== 1 ||
+    !handle
+  ) {
+    return false;
+  }
+  const handleIdentifier = stripParenExpression(handle);
+  const timer = scopes.symbolFor(declarator.id);
+  return (
+    isNodeOfType(handleIdentifier, "Identifier") &&
+    timer !== null &&
+    timer.references.length === 1 &&
+    timer.references[0]?.identifier === handleIdentifier &&
+    !hasUncertainTimerGlobals(scopes) &&
+    isProvenUnmodifiedGlobalNamespaceReference(callee, scheduleName, scopes, undefined, true) &&
+    isProvenUnmodifiedGlobalNamespaceReference(clearCallee, clearName, scopes, undefined, true)
+  );
+};
+
 const isProvenDisposeOnUnmountCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -1794,6 +1909,12 @@ const isMountHazard = (
   }
 
   const timerCalleeName = getTimerCalleeName(node, scopes);
+  if (
+    (timerCalleeName === "setInterval" || timerCalleeName === "setTimeout") &&
+    isTimerClearedInNextStatement(node, timerCalleeName, scopes)
+  ) {
+    return null;
+  }
   if (timerCalleeName === "setInterval") {
     const handleKey = storedCallResultReferenceKey(node, scopes, classBody);
     return {

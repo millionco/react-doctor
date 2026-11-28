@@ -16,6 +16,7 @@ import {
   getImportBindingForName,
   getImportSourceForName,
 } from "../../utils/find-import-source-for-name.js";
+import { isAliasedHookFreeDataFunction } from "../../utils/is-aliased-hook-free-data-function.js";
 import { isImportedStaticDataGetter } from "../../utils/is-imported-static-data-getter.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
@@ -727,8 +728,9 @@ const isLocalNonHookFunctionCallee = (
   if (!symbol) return false;
   const localFunction =
     symbol.initializer && isFunctionLike(symbol.initializer) ? symbol.initializer : null;
-  if (!localFunction) return false;
-  return countOwnScopeHookCalls(localFunction, scopes, settings, countedFunctionNodes) === 0;
+  return localFunction
+    ? countOwnScopeHookCalls(localFunction, scopes, settings, countedFunctionNodes) === 0
+    : isAliasedHookFreeDataFunction(call, scopes);
 };
 
 // Path-alias prefixes (`@/`, `~/`) resolve to project-local files, which

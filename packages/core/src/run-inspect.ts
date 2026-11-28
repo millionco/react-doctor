@@ -12,6 +12,7 @@ import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js"
 import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 import { scrubSensitivePaths } from "./utils/scrub-sensitive-paths.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
+import { stripPropResetGroupContext } from "./utils/strip-prop-reset-group-context.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
@@ -735,7 +736,11 @@ export const runInspect = <HooksR = never>(
           ),
         );
     const lintCollected = dedupeRelatedDiagnostics(filteredLintDiagnostics);
-    yield* Effect.forEach(lintCollected, reporterService.emit, { discard: true });
+    yield* Effect.forEach(
+      lintCollected,
+      (diagnostic) => reporterService.emit(stripPropResetGroupContext(diagnostic)),
+      { discard: true },
+    );
     const lintFailureState = yield* Ref.get(lintFailure);
     yield* afterLint(lintFailureState.didFail);
 
@@ -844,13 +849,16 @@ export const runInspect = <HooksR = never>(
     // reproducible run-to-run, independent of the (parallel, cost-reordered)
     // lint arrival order.
     const finalDiagnostics: ReadonlyArray<Diagnostic> = sortDiagnosticsStable(
-      assignFixGroups([
-        ...envCollected,
-        ...securityScanCollected,
-        ...supplyChainCollected,
-        ...lintCollected,
-        ...maintainabilityCollected,
-      ]),
+      assignFixGroups(
+        [
+          ...envCollected,
+          ...securityScanCollected,
+          ...supplyChainCollected,
+          ...lintCollected,
+          ...maintainabilityCollected,
+        ],
+        scanDirectory,
+      ),
     );
 
     const { repo, sha, defaultBranch, githubViewerPermission } =

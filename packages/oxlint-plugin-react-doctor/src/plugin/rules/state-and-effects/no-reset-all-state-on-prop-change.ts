@@ -7,8 +7,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getNodeEndIndex } from "../../utils/get-node-end-index.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { hasEnclosingTypeParameterNamed } from "../../utils/has-enclosing-type-parameter-named.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
@@ -1266,7 +1268,7 @@ const areAllResetStateReadsHiddenUntilReset = (
   );
 };
 
-const findPropUsedToResetAllState = (
+const findPropChangeResetSites = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   effectFnRefs: Reference[],
@@ -1274,7 +1276,7 @@ const findPropUsedToResetAllState = (
   useEffectNode: EsTreeNode,
   effectFn: EsTreeNode,
   mediaReceiverCache: WeakMap<SymbolDescriptor, boolean>,
-): Reference | null => {
+): ReadonlyArray<EsTreeNode> | null => {
   // A setter that only runs inside a listener / observer / subscription
   // callback fires on that event, not when the prop changes — only
   // synchronous setter calls are the reset-on-prop-change shape.
@@ -1358,12 +1360,38 @@ const findPropUsedToResetAllState = (
     return null;
   }
 
-  for (const depRef of depsRefs) {
-    for (const upRef of getUpstreamRefs(analysis, depRef)) {
-      if (isProp(analysis, upRef)) return upRef;
+  const hasPropDependency = depsRefs.some((dependency) =>
+    getUpstreamRefs(analysis, dependency).some((reference) => isProp(analysis, reference)),
+  );
+  if (!hasPropDependency) return null;
+
+  const effectStart = getRangeStart(useEffectNode);
+  const effectEnd = getNodeEndIndex(useEffectNode);
+  if (effectStart === null || effectEnd <= effectStart) return [];
+  const resetSites = new Set<EsTreeNode>();
+  for (const setterReference of stateSetterRefs) {
+    const site = getCallExpr(setterReference);
+    if (
+      forwardedWritesByReference.has(setterReference) ||
+      !isNodeOfType(site, "CallExpression") ||
+      findEnclosingFunction(site) !== effectFn ||
+      !isAstDescendant(site, useEffectNode)
+    ) {
+      return [];
     }
+    const siteStart = getRangeStart(site);
+    const siteEnd = getNodeEndIndex(site);
+    if (
+      siteStart === null ||
+      siteStart < effectStart ||
+      siteEnd <= siteStart ||
+      siteEnd > effectEnd
+    ) {
+      return [];
+    }
+    resetSites.add(site);
   }
-  return null;
+  return [...resetSites];
 };
 
 export const noResetAllStateOnPropChange = defineRule({
@@ -1388,7 +1416,7 @@ export const noResetAllStateOnPropChange = defineRule({
         const effectFn = getEffectFn(analysis, node);
         if (!effectFn) return;
 
-        const propUsedToReset = findPropUsedToResetAllState(
+        const resetSites = findPropChangeResetSites(
           analysis,
           context,
           effectFnRefs,
@@ -1397,9 +1425,10 @@ export const noResetAllStateOnPropChange = defineRule({
           effectFn,
           mediaReceiverCache,
         );
-        if (!propUsedToReset) return;
+        if (!resetSites) return;
         context.report({
           node,
+          ...(resetSites.length > 0 ? { contextNodes: resetSites } : {}),
           message:
             "This effect clears all state after a prop changes, which costs an extra render.",
         });

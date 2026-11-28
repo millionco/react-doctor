@@ -52,7 +52,9 @@ import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getRuntimeStaticDependencySource } from "../../utils/get-runtime-static-dependency-source.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getNodeEndIndex } from "../../utils/get-node-end-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -90,6 +92,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
+import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import {
   isSynchronousIteratorCallback,
   isSynchronousIteratorCallbackCall,
@@ -99,6 +102,25 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 const CLEANUP_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
+const DOM_LISTENER_RUNTIME_GLOBALS = new Set([
+  "document",
+  "window",
+  "globalThis",
+  "self",
+  "global",
+  "parent",
+  "top",
+  "frames",
+  "EventTarget",
+  "Window",
+  "Document",
+  "HTMLDocument",
+  "Node",
+  "Function",
+  "require",
+  "module",
+  "exports",
+]);
 const IMPORTED_CLEANUP_EFFECT_WRAPPER_NAMES = new Set([
   "useIsomorphicEffect",
   "useIsomorphicLayoutEffect",
@@ -7547,6 +7569,213 @@ const effectHasCleanupForUsage = (
   );
 };
 
+const hasClosedDomListenerRuntime = (
+  registrationReceiver: EsTreeNode,
+  cleanupReceiver: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let closed = true;
+  walkAst(context.scopes.rootScope.node, (node) => {
+    if (!closed || node === registrationReceiver || node === cleanupReceiver) return false;
+    const dependency = getRuntimeStaticDependencySource(node);
+    if (
+      (dependency !== null && dependency !== "react") ||
+      isNodeOfType(node, "ImportExpression") ||
+      (isNodeOfType(node, "TSImportEqualsDeclaration") && node.importKind !== "type")
+    ) {
+      closed = false;
+      return false;
+    }
+    if (isNodeOfType(node, "ImportDeclaration") && dependency === "react") {
+      closed = node.specifiers.every(
+        (specifier) =>
+          isNodeOfType(specifier, "ImportSpecifier") && getImportedName(specifier) !== "default",
+      );
+    }
+    if (
+      isNodeOfType(node, "Identifier") &&
+      DOM_LISTENER_RUNTIME_GLOBALS.has(node.name) &&
+      context.scopes.isGlobalReference(node)
+    ) {
+      closed = false;
+      return false;
+    }
+  });
+  return closed;
+};
+
+const isClosedLocalListenerHandler = (
+  argument: EsTreeNode,
+  component: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const expression = stripParenExpression(argument);
+  const binding = isNodeOfType(expression, "Identifier")
+    ? context.scopes.symbolFor(expression)
+    : null;
+  const initializer = binding?.kind === "const" ? getDirectUnreassignedInitializer(binding) : null;
+  const handler = initializer ? stripParenExpression(initializer) : expression;
+  if (!isNodeOfType(handler, "ArrowFunctionExpression") || handler.async || handler.params.length)
+    return false;
+  const body = handler.body;
+  if (isNodeOfType(body, "BlockStatement") && body.body.length === 0) return true;
+  const statement = isNodeOfType(body, "BlockStatement") ? body.body[0] : null;
+  const update = isNodeOfType(body, "BlockStatement")
+    ? body.body.length === 1 && isNodeOfType(statement, "ExpressionStatement")
+      ? stripParenExpression(statement.expression)
+      : null
+    : stripParenExpression(body);
+  if (
+    !isNodeOfType(update, "CallExpression") ||
+    update.optional ||
+    !isNodeOfType(update.callee, "Identifier") ||
+    update.arguments.length !== 1 ||
+    !isNodeOfType(update.arguments[0], "Literal") ||
+    typeof update.arguments[0].value !== "boolean"
+  )
+    return false;
+  const state = resolveReactUseStatePair(update.callee, context.scopes);
+  return Boolean(
+    state &&
+    state.setterSymbol.kind === "const" &&
+    state.setterSymbol.references.every(
+      ({ identifier, flag }) => flag === "read" && !isWithinAssignmentTarget(identifier),
+    ) &&
+    findEnclosingFunction(state.declarator) === component &&
+    isNodeOfType(state.declarator.init, "CallExpression") &&
+    isReactApiCall(state.declarator.init, "useState", context.scopes, {
+      allowGlobalReactNamespace: false,
+      allowUnboundBareCalls: false,
+    }),
+  );
+};
+
+const hasReturnedLocalListenerCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "on" ||
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    callback.params.length !== 0 ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    !isNodeOfType(usage.node.callee, "MemberExpression") ||
+    usage.node.arguments.length !== 1
+  )
+    return false;
+  const returnedCall = findTransparentExpressionRoot(usage.node);
+  const returnStatement = returnedCall.parent;
+  if (
+    returnedCall !== callback.body &&
+    (!isNodeOfType(returnStatement, "ReturnStatement") ||
+      returnStatement.argument !== returnedCall ||
+      returnStatement.parent !== callback.body)
+  )
+    return false;
+  const localReceiver = usage.node.callee.object;
+  if (!isNodeOfType(localReceiver, "Identifier")) return false;
+  const receiverSymbol = context.scopes.symbolFor(localReceiver);
+  const component = findEnclosingFunction(callback);
+  const effectCall = findTransparentExpressionRoot(callback).parent;
+  if (
+    !component ||
+    !receiverSymbol ||
+    findEnclosingFunction(receiverSymbol.declarationNode) !== component ||
+    !usage.node.arguments[0] ||
+    !isClosedLocalListenerHandler(usage.node.arguments[0], component, context) ||
+    !isNodeOfType(effectCall, "CallExpression") ||
+    !isNodeOfType(effectCall.callee, "Identifier") ||
+    !isNodeOfType(
+      context.scopes.symbolFor(effectCall.callee)?.declarationNode,
+      "ImportSpecifier",
+    ) ||
+    resolveImportedApiReference(effectCall.callee, context.scopes)?.source !== "react"
+  )
+    return false;
+
+  return hasClosedLocalCallableListenerRegistration(usage.node, context, "on", (registration) => {
+    if (
+      !isFunctionLike(registration) ||
+      registration.params.length !== 1 ||
+      !isNodeOfType(registration.params[0], "Identifier") ||
+      !isNodeOfType(registration.body, "BlockStatement") ||
+      registration.body.body.length !== 2
+    )
+      return false;
+    const [registrationStatement, cleanupReturn] = registration.body.body;
+    if (
+      !isNodeOfType(registrationStatement, "ExpressionStatement") ||
+      !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+      !cleanupReturn.argument
+    )
+      return false;
+    const dispose = stripParenExpression(cleanupReturn.argument);
+    if (!isFunctionLike(dispose) || dispose.async || dispose.generator || dispose.params.length > 0)
+      return false;
+    const registrationCall = stripParenExpression(registrationStatement.expression);
+    const cleanupBody = dispose.body;
+    const releaseStatement = isNodeOfType(cleanupBody, "BlockStatement")
+      ? cleanupBody.body[0]
+      : null;
+    const releaseCall = isNodeOfType(cleanupBody, "BlockStatement")
+      ? cleanupBody.body.length === 1 && isNodeOfType(releaseStatement, "ExpressionStatement")
+        ? stripParenExpression(releaseStatement.expression)
+        : null
+      : stripParenExpression(cleanupBody);
+    if (
+      !isNodeOfType(registrationCall, "CallExpression") ||
+      !isNodeOfType(registrationCall.callee, "MemberExpression") ||
+      !isNodeOfType(releaseCall, "CallExpression") ||
+      !isNodeOfType(releaseCall.callee, "MemberExpression")
+    )
+      return false;
+    const receiver = registrationCall.callee.object;
+    const releaseReceiver = releaseCall.callee.object;
+    if (
+      !isNodeOfType(receiver, "Identifier") ||
+      (receiver.name !== "document" && receiver.name !== "window") ||
+      !context.scopes.isGlobalReference(receiver) ||
+      !isNodeOfType(releaseReceiver, "Identifier") ||
+      releaseReceiver.name !== receiver.name ||
+      !context.scopes.isGlobalReference(releaseReceiver) ||
+      registrationCall.optional ||
+      registrationCall.callee.optional ||
+      releaseCall.optional ||
+      releaseCall.callee.optional ||
+      registrationCall.arguments.length !== 2 ||
+      !isNodeOfType(registrationCall.arguments[0], "Literal") ||
+      typeof registrationCall.arguments[0].value !== "string" ||
+      !isNodeOfType(registrationCall.arguments[1], "Identifier") ||
+      releaseCall.arguments.length !== 2 ||
+      !isNodeOfType(releaseCall.arguments[0], "Literal") ||
+      typeof releaseCall.arguments[0].value !== "string" ||
+      !isNodeOfType(releaseCall.arguments[1], "Identifier")
+    )
+      return false;
+    const handler = context.scopes.symbolFor(registration.params[0]);
+    if (
+      !handler ||
+      context.scopes.symbolFor(registrationCall.arguments[1]) !== handler ||
+      context.scopes.symbolFor(releaseCall.arguments[1]) !== handler
+    )
+      return false;
+    const allocations = findSubscribeLikeUsages(registration, context);
+    const [allocation] = allocations;
+    return (
+      allocations.length === 1 &&
+      allocation?.node === registrationCall &&
+      allocation.kind === "subscribe" &&
+      allocation.registrationVerbName === "addEventListener" &&
+      hasClosedDomListenerRuntime(receiver, releaseReceiver, context) &&
+      effectHasCleanupForUsage(registration, allocation, context, [allocation])
+    );
+  });
+};
+
 const findFirstUsageWithoutCleanup = (
   callback: EsTreeNode,
   usages: ReadonlyArray<SubscribeLikeUsage>,
@@ -7555,7 +7784,8 @@ const findFirstUsageWithoutCleanup = (
   for (const usage of usages) {
     if (
       !effectHasCleanupForUsage(callback, usage, context, usages) &&
-      !hasSplitLifecycleCleanup(callback, usage, context)
+      !hasSplitLifecycleCleanup(callback, usage, context) &&
+      !hasReturnedLocalListenerCleanup(callback, usage, context)
     ) {
       return usage;
     }

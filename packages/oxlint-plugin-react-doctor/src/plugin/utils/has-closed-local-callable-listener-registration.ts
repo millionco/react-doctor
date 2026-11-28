@@ -145,6 +145,8 @@ const hasClosedCallableReturns = (
 export const hasClosedLocalCallableListenerRegistration = (
   node: EsTreeNode,
   context: RuleContext,
+  methodName = "addListener",
+  matchesRegistration?: (registration: EsTreeNode) => boolean,
 ): boolean => {
   if (!isNodeOfType(node, "CallExpression") || node.optional) return false;
   const callee = stripParenExpression(node.callee);
@@ -153,7 +155,7 @@ export const hasClosedLocalCallableListenerRegistration = (
     callee.computed ||
     callee.optional ||
     !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== "addListener"
+    callee.property.name !== methodName
   )
     return false;
   const receiver = stripParenExpression(callee.object);
@@ -169,7 +171,7 @@ export const hasClosedLocalCallableListenerRegistration = (
       return false;
     const propertyName = getStaticPropertyKeyName(property);
     if (propertyName === null) return false;
-    if (propertyName === "addListener") {
+    if (propertyName === methodName) {
       if (hasRegistrationProperty) return false;
       hasRegistrationProperty = true;
       registrationFunction = stripParenExpression(property.value);
@@ -225,7 +227,7 @@ export const hasClosedLocalCallableListenerRegistration = (
         parent.computed ||
         parent.optional ||
         !isNodeOfType(parent.property, "Identifier") ||
-        parent.property.name !== "addListener"
+        parent.property.name !== methodName
       )
         return false;
       const memberRoot = findTransparentExpressionRoot(parent);
@@ -248,5 +250,9 @@ export const hasClosedLocalCallableListenerRegistration = (
     registration.generator
   )
     return false;
-  return !hasImplicitReceiver(registration) && hasClosedCallableReturns(registration, context);
+  return (
+    !hasImplicitReceiver(registration) &&
+    hasClosedCallableReturns(registration, context) &&
+    (matchesRegistration?.(registration) ?? true)
+  );
 };

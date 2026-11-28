@@ -76,6 +76,19 @@ describe("createOxlintConfig customRulesOnly", () => {
     },
   );
 
+  it("passes sorted automatic JSX paths without enabling the rule", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      automaticJsxRuntimeFiles: ["src/Z.tsx", "src/A.tsx", "src/Z.tsx"],
+    });
+    expect(config.settings["react-doctor"]).toHaveProperty("automaticJsxRuntimeFiles", [
+      "src/A.tsx",
+      "src/Z.tsx",
+    ]);
+    expect(config.rules).not.toHaveProperty("react-doctor/react-in-jsx-scope");
+  });
+
   it("keeps ported rules off without a rule override", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

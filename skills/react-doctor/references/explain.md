@@ -94,6 +94,23 @@ exports. `allowConstantExport` permits primitive constant exports, and `checkJS`
 enables checking `.js` files as well as JSX/TSX. Omitted options preserve the
 rule's existing defaults. These settings do not enable a disabled rule.
 
+## Automatic JSX runtime
+
+Use exact paths relative to the scanned project when a mixed-runtime project
+enables `react-doctor/react-in-jsx-scope`:
+
+```json
+{
+  "rules": { "react-doctor/react-in-jsx-scope": "warn" },
+  "automaticJsxRuntimeFiles": ["src/modern/Panel.tsx"]
+}
+```
+
+List files whose selected compiler uses the automatic JSX runtime. Use forward
+slashes in paths. The rule still checks explicit React references in tags such
+as `<React.Fragment>` and uses its regular check in files with their own JSX
+compiler pragma. The setting takes effect when the rule is enabled.
+
 ## Educating the user
 
 When explaining a rule, lead with the "Why it matters" guidance from `rules explain` and, when they want depth, the per-rule recipe at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`. Only after they understand it should you offer to disable it — many "bad" rules are catching real issues.

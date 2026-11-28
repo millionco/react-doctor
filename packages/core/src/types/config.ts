@@ -347,6 +347,12 @@ export interface ReactDoctorConfig {
    */
   runtimeGlobals?: string[];
   /**
+   * Exact project-relative source paths whose selected compiler uses automatic JSX.
+   * Use forward slashes. The opt-in JSX scope rule still checks JSX tags that
+   * explicitly read the React binding.
+   */
+  automaticJsxRuntimeFiles?: string[];
+  /**
    * Project-level allowlist of function names that the
    * `server-auth-actions` rule treats as an auth check at the top of
    * a server action. Names are accepted whether called as a bare

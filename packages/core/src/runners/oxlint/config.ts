@@ -31,6 +31,7 @@ export interface OxlintConfigOptions {
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
   runtimeGlobals?: ReadonlyArray<string>;
+  automaticJsxRuntimeFiles?: ReadonlyArray<string>;
   unpluginAutoImportGlobalScopes?: ReadonlyArray<UnpluginAutoImportGlobalScope>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
   onlyExportComponents?: OnlyExportComponentsConfig;
@@ -145,6 +146,7 @@ export const createOxlintConfig = ({
   includedTags = new Set<string>(),
   includeTagDefaults = false,
   runtimeGlobals,
+  automaticJsxRuntimeFiles,
   unpluginAutoImportGlobalScopes,
   serverAuthFunctionNames,
   onlyExportComponents,
@@ -327,6 +329,9 @@ export const createOxlintConfig = ({
         capabilities: [...capabilities].sort(),
         ...(runtimeGlobals && runtimeGlobals.length > 0
           ? { runtimeGlobals: [...runtimeGlobals] }
+          : {}),
+        ...(Array.isArray(automaticJsxRuntimeFiles) && automaticJsxRuntimeFiles.length > 0
+          ? { automaticJsxRuntimeFiles: [...new Set(automaticJsxRuntimeFiles)].sort() }
           : {}),
         ...(unpluginAutoImportGlobalScopes && unpluginAutoImportGlobalScopes.length > 0
           ? {

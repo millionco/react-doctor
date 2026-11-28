@@ -64,6 +64,7 @@ const STRING_ARRAY_FIELD_NAMES = [
   "textComponents",
   "rawTextWrapperComponents",
   "runtimeGlobals",
+  "automaticJsxRuntimeFiles",
   "serverAuthFunctionNames",
 ] as const satisfies ReadonlyArray<keyof ReactDoctorConfig>;
 

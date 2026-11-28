@@ -109,10 +109,18 @@ const checkExpressionContainer = (
   context: Parameters<Rule["create"]>[0],
   settings: Required<JsxCurlyBracePresenceSettings>,
 ): void => {
-  const containerSource = context.sourceCode?.getText?.(container) ?? "";
-  if (containerSource.includes("/*") || containerSource.includes("//")) return;
   const expression = container.expression as EsTreeNode;
   if (expression.type === "JSXEmptyExpression") return;
+  const source = context.sourceCode;
+  const containerSource = source?.getText?.(container) ?? "";
+  const expressionSource =
+    isNodeOfType(expression, "Literal") && typeof expression.value === "string"
+      ? source?.getText?.(expression)
+      : undefined;
+  const surroundingSource = expressionSource
+    ? containerSource.replace(expressionSource, "")
+    : containerSource;
+  if (surroundingSource.includes("/*") || surroundingSource.includes("//")) return;
   const allowed = parentIsAttribute ? settings.props : settings.children;
 
   if (isNodeOfType(expression, "JSXFragment")) {

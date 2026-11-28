@@ -54,6 +54,36 @@ describe("explicit automatic TypeScript JSX runtime", () => {
     },
   );
 
+  it("checks unbound React tags in an automatic file and honors lexical value bindings", () => {
+    const source =
+      AUTOMATIC_PRAGMA +
+      [
+        "export const host = <><section /><Other.React /></>;",
+        "export const direct = <React />;",
+        "export const member = <React.Menu.Item />;",
+        'export const bound = (React: typeof import("react")) => <React.Fragment />;',
+        "export const sibling = () => <React.Fragment />;",
+      ].join("\n");
+    withProject("react", source, (_root, filename) => {
+      const result = runRule(reactInJsxScope, source, { filename, includeLocations: true });
+      expect(result.diagnostics.map(({ line }) => line)).toEqual([3, 4, 6]);
+    });
+  });
+
+  it("requires a value even when an automatic file imports the React type", () => {
+    const source =
+      AUTOMATIC_PRAGMA +
+      [
+        'import type React from "react";',
+        "export const host = <section />;",
+        "export const member = <React.Fragment />;",
+      ].join("\n");
+    withProject("react-jsx", source, (_root, filename) => {
+      const result = runRule(reactInJsxScope, source, { filename, includeLocations: true });
+      expect(result.diagnostics.map(({ line }) => line)).toEqual([4]);
+    });
+  });
+
   it.each(["react", "react-jsx", "react-jsxdev"])(
     "keeps the warning for an unannotated file under %s",
     (jsx) => {

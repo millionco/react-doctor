@@ -6,9 +6,11 @@ import {
 } from "../../utils/resolve-direct-typescript-jsx.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { getValueImportDeclaration } from "../../utils/get-value-import-declaration.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const fileEmitsWithAutomaticTypeScriptJsx = (context: RuleContext): boolean => {
   const filename = context.filename;
@@ -35,16 +37,40 @@ const fileEmitsWithAutomaticTypeScriptJsx = (context: RuleContext): boolean => {
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
 
+const isValueBinding = (symbol: SymbolDescriptor): boolean => {
+  if (symbol.kind === "import") return getValueImportDeclaration(symbol) !== null;
+  if (isNodeOfType(symbol.declarationNode, "TSImportEqualsDeclaration")) {
+    return symbol.declarationNode.importKind !== "type";
+  }
+  return symbol.kind !== "ts-type-alias" && symbol.kind !== "ts-interface";
+};
+
+const hasReactBinding = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  for (
+    let scope: ScopeAnalysis["rootScope"] | null = scopes.scopeFor(node);
+    scope;
+    scope = scope.parent
+  ) {
+    const react = scope.symbolsByName.get("React");
+    if (!react) continue;
+    if (isValueBinding(react)) return true;
+    // TypeScript can declare a type and a value with the same name in one scope.
+    if (scope.symbols.some((symbol) => symbol.name === "React" && isValueBinding(symbol)))
+      return true;
+  }
+  return false;
+};
+
+const jsxTagEvaluatesReact = (tag: EsTreeNodeOfType<"JSXOpeningElement">["name"]): boolean => {
+  let component = tag;
+  while (isNodeOfType(component, "JSXMemberExpression")) component = component.object;
+  return isNodeOfType(component, "JSXIdentifier") && component.name === "React";
+};
+
 // Port of `oxc_linter::rules::react::react_in_jsx_scope`. Only relevant
 // for the legacy classic JSX runtime; tsconfig `jsx: "react-jsx"` (or
 // Babel's automatic runtime) makes this unnecessary. Rule fires per
 // JSX site when `React` isn't visible from that site's scope chain.
-//
-// Scope-aware: uses `findVariableInitializer` to resolve `React` from
-// the JSX site, so a `React` binding in a sibling function scope no
-// longer silences JSX in an unrelated function. The common shape
-// (module-level `import React from 'react'`) is still detected
-// because module-scope bindings are visible from every nested site.
 export const reactInJsxScope = defineRule({
   id: "react-in-jsx-scope",
   title: "React not in scope for JSX",
@@ -58,14 +84,16 @@ export const reactInJsxScope = defineRule({
   recommendation:
     "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
   create: (context) => {
-    if (fileEmitsWithAutomaticTypeScriptJsx(context)) return EMPTY_RULE_VISITORS;
+    let automaticJsx: boolean | undefined;
+    const usesAutomaticJsx = () => (automaticJsx ??= fileEmitsWithAutomaticTypeScriptJsx(context));
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (findVariableInitializer(node, "React")) return;
+        if (hasReactBinding(node, context.scopes)) return;
+        if (!jsxTagEvaluatesReact(node.name) && usesAutomaticJsx()) return;
         context.report({ node: node.name, message: MESSAGE });
       },
       JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-        if (findVariableInitializer(node, "React")) return;
+        if (hasReactBinding(node, context.scopes) || usesAutomaticJsx()) return;
         context.report({ node: node.openingFragment, message: MESSAGE });
       },
     };

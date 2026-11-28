@@ -347,11 +347,11 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
     const capture = matchPathPattern(source, pattern);
     if (capture === null) continue;
     const starIndex = pattern.indexOf("*");
-    const prefixLength = starIndex === -1 ? pattern.length : starIndex;
-    if (prefixLength > bestPrefixLength) {
+    if (starIndex === -1 || starIndex > bestPrefixLength) {
       bestPattern = pattern;
       bestCapture = capture;
-      bestPrefixLength = prefixLength;
+      if (starIndex === -1) break;
+      bestPrefixLength = starIndex;
     }
   }
 

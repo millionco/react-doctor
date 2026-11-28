@@ -56,6 +56,36 @@ function Field({ value }) {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [0, "value.trim()", "readCurrentLabel(value)"],
+    [1, "readCurrentLabel(value)", "value.trim()"],
+  ])(
+    "uses the exact tsconfig helper before an equally specific wildcard (%i warnings)",
+    (diagnosticCount, wildcardBody, exactBody) => {
+      writeFile(
+        "tsconfig.json",
+        JSON.stringify({
+          compilerOptions: {
+            paths: { "@label*": ["./src/general*"], "@label": ["./src/specific"] },
+          },
+        }),
+      );
+      writeFile("src/general.ts", `export const labelFor = (value) => ${wildcardBody};\n`);
+      writeFile("src/specific.ts", `export const labelFor = (value) => ${exactBody};\n`);
+      const result = runConsumer(`
+import { useEffect, useState } from "react";
+import { labelFor } from "@label";
+function Preview({ source }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => setLabel(labelFor(source)), [source]);
+  return label;
+}
+`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(diagnosticCount);
+    },
+  );
+
   it("flags a named helper imported under an alias", () => {
     writeFile(
       "src/select-visible.ts",

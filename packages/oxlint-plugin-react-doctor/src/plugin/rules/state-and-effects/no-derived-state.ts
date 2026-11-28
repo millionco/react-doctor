@@ -9,6 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { hasNativeResizeStateWriter } from "./utils/has-native-resize-state-writer.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
@@ -87,6 +88,8 @@ export const noDerivedState = defineRule({
           ) {
             continue;
           }
+          if (hasNativeResizeStateWriter(fact.stateDeclarator, node, fact.callExpression, context))
+            continue;
           reportStateWrite(fact.callExpression, fact.stateDeclarator);
         }
       },

@@ -70,6 +70,7 @@ import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { isProvenUnmodifiedGlobalNamespaceReference } from "../../utils/is-proven-unmodified-global-namespace-reference.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveCrossFileFunctionExportWithFilePath } from "../../utils/resolve-cross-file-function-export.js";
@@ -7227,6 +7228,344 @@ const hasOwnedObserverHelperCleanup = (
   });
 };
 
+const isStaticChildObserverOptions = (options: EsTreeNode): boolean => {
+  if (!isNodeOfType(options, "ObjectExpression")) return false;
+  let hasChildList = false;
+  let hasSubtree = false;
+  for (const property of options.properties) {
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.kind !== "init" ||
+      property.computed ||
+      property.method ||
+      !isNodeOfType(property.key, "Identifier") ||
+      !isNodeOfType(property.value, "Literal") ||
+      typeof property.value.value !== "boolean"
+    ) {
+      return false;
+    }
+    if (property.key.name === "childList" && !hasChildList && property.value.value) {
+      hasChildList = true;
+    } else if (property.key.name === "subtree" && !hasSubtree) {
+      hasSubtree = true;
+    } else {
+      return false;
+    }
+  }
+  return hasChildList;
+};
+
+const getPrivateNativeObserverCalls = (
+  construction: EsTreeNode,
+  constructorName: string,
+  effect: EsTreeNode,
+  context: RuleContext,
+): ReadonlyArray<EsTreeNodeOfType<"CallExpression">> | null => {
+  if (
+    !isGlobalObserverConstruction(construction, context) ||
+    !isNodeOfType(construction.callee, "Identifier") ||
+    construction.callee.name !== constructorName ||
+    !isProvenUnmodifiedGlobalNamespaceReference(
+      construction.callee,
+      constructorName,
+      context.scopes,
+      undefined,
+      true,
+    ) ||
+    construction.arguments.length !== 1 ||
+    !isNodeOfType(construction.parent, "VariableDeclarator") ||
+    construction.parent.init !== construction ||
+    !isNodeOfType(construction.parent.id, "Identifier") ||
+    findEnclosingFunction(construction) !== effect
+  )
+    return null;
+  const callbackValue = resolveStableValue(construction.arguments[0], context);
+  const callback =
+    isNodeOfType(callbackValue, "CallExpression") &&
+    isReactApiCall(callbackValue, "useCallback", context.scopes)
+      ? callbackValue.arguments[0]
+      : callbackValue;
+  // The native callback receives the observer as its second argument.
+  if (!isNodeOfType(callback, "ArrowFunctionExpression") || callback.params.length !== 0)
+    return null;
+  const storage = context.scopes.symbolFor(construction.parent.id);
+  if (
+    storage?.kind !== "const" ||
+    !hasCompleteSymbolReferences(storage, context.scopes.rootScope.node, context.scopes)
+  )
+    return null;
+  const calls: Array<EsTreeNodeOfType<"CallExpression">> = [];
+  for (const reference of storage.references) {
+    const member = reference.identifier.parent;
+    if (
+      reference.flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.optional ||
+      member.computed ||
+      member.object !== reference.identifier ||
+      !isNodeOfType(member.property, "Identifier") ||
+      (member.property.name !== "observe" && member.property.name !== "disconnect") ||
+      !isNodeOfType(member.parent, "CallExpression") ||
+      member.parent.optional ||
+      member.parent.callee !== member
+    )
+      return null;
+    calls.push(member.parent);
+  }
+  return calls;
+};
+
+const isPrivateIntrinsicChildrenObservation = (
+  helper: EsTreeNode,
+  observe: EsTreeNode,
+  trigger: EsTreeNode,
+  effect: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isFunctionLike(helper) ||
+    helper.async ||
+    helper.generator ||
+    helper.params.length !== 0 ||
+    !isNodeOfType(helper.body, "BlockStatement")
+  )
+    return false;
+  const [loop] = helper.body.body;
+  if (helper.body.body.length !== 1 || !isNodeOfType(loop, "ForOfStatement") || loop.await)
+    return false;
+  const loopBody =
+    isNodeOfType(loop.body, "BlockStatement") && loop.body.body.length === 1
+      ? loop.body.body[0]
+      : loop.body;
+  if (
+    !isNodeOfType(loopBody, "ExpressionStatement") ||
+    loopBody.expression !== observe ||
+    !isNodeOfType(observe, "CallExpression") ||
+    observe.arguments.length !== 1 ||
+    !isNodeOfType(loop.left, "VariableDeclaration") ||
+    loop.left.kind !== "const" ||
+    !isNodeOfType(loop.right, "MemberExpression") ||
+    loop.right.computed ||
+    loop.right.optional ||
+    !isNodeOfType(loop.right.property, "Identifier") ||
+    loop.right.property.name !== "children" ||
+    !isNodeOfType(loop.right.object, "Identifier")
+  )
+    return false;
+  const [iterationBinding] = loop.left.declarations;
+  const child = observe.arguments[0];
+  if (
+    !iterationBinding ||
+    !isNodeOfType(iterationBinding.id, "Identifier") ||
+    !isNodeOfType(child, "Identifier")
+  )
+    return false;
+  const iterationSymbol = context.scopes.symbolFor(iterationBinding.id);
+  if (!iterationSymbol || context.scopes.symbolFor(child)?.id !== iterationSymbol.id) return false;
+  const element = context.scopes.symbolFor(loop.right.object);
+  if (
+    element?.kind !== "const" ||
+    !element.initializer ||
+    !hasCompleteSymbolReferences(element, context.scopes.rootScope.node, context.scopes) ||
+    findEnclosingFunction(element.declarationNode) !== effect ||
+    !isNodeOfType(trigger, "CallExpression") ||
+    trigger.arguments.length !== 2 ||
+    !isStaticChildObserverOptions(stripParenExpression(trigger.arguments[1])) ||
+    !isNodeOfType(trigger.arguments[0], "Identifier") ||
+    context.scopes.symbolFor(trigger.arguments[0])?.id !== element.id
+  )
+    return false;
+  // Keep the DOM value local so an opaque caller cannot replace its children getter.
+  if (
+    !element.references.every(({ identifier, flag }) => {
+      const parent = identifier.parent;
+      return (
+        flag === "read" &&
+        (parent === loop.right ||
+          identifier === trigger.arguments[0] ||
+          (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!"))
+      );
+    })
+  )
+    return false;
+  const origin = stripParenExpression(element.initializer);
+  const ref = resolveReactRefSymbol(origin, context.scopes);
+  if (
+    !ref ||
+    ref.references.length !== 2 ||
+    !hasCompleteSymbolReferences(ref, context.scopes.rootScope.node, context.scopes) ||
+    ref.initializer?.type !== "CallExpression" ||
+    ref.initializer.arguments.length !== 1 ||
+    !isNodeOfType(ref.initializer.arguments[0], "Literal") ||
+    ref.initializer.arguments[0].value !== null
+  )
+    return false;
+  return ref.references.every(({ identifier, flag }) => {
+    if (flag !== "read") return false;
+    if (identifier.parent === origin) return true;
+    const expression = identifier.parent;
+    const attribute = expression?.parent;
+    const opening = attribute?.parent;
+    return (
+      isNodeOfType(expression, "JSXExpressionContainer") &&
+      expression.expression === identifier &&
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      attribute.name.name === "ref" &&
+      isNodeOfType(opening, "JSXOpeningElement") &&
+      isNodeOfType(opening.name, "JSXIdentifier") &&
+      opening.name.name === "div" &&
+      opening.attributes.every(
+        (other) =>
+          isNodeOfType(other, "JSXAttribute") &&
+          isNodeOfType(other.name, "JSXIdentifier") &&
+          other.name.name !== "is",
+      ) &&
+      opening.attributes.at(-1) === attribute
+    );
+  });
+};
+
+const hasOwnedMutationObserverInvocation = (
+  effect: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  resizeObserver: EsTreeNode,
+  helper: EsTreeNode,
+  allUsages: ReadonlyArray<SubscribeLikeUsage>,
+  cleanupReturns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  const resizeCalls = getPrivateNativeObserverCalls(
+    resizeObserver,
+    "ResizeObserver",
+    effect,
+    context,
+  );
+  const binding = getFunctionBindingIdentifier(helper);
+  const symbol = binding ? context.scopes.symbolFor(binding) : null;
+  if (
+    !resizeCalls ||
+    symbol?.kind !== "const" ||
+    symbol.references.length !== 2 ||
+    !hasCompleteSymbolReferences(symbol, context.scopes.rootScope.node, context.scopes) ||
+    !isFunctionLike(effect) ||
+    !isNodeOfType(effect.body, "BlockStatement") ||
+    resizeCalls.some(
+      (call) =>
+        getCalleeName(call) === "observe" &&
+        call !== usage.node &&
+        findEnclosingFunction(call) !== effect,
+    )
+  )
+    return false;
+  let setupStatement: EsTreeNodeOfType<"ExpressionStatement"> | undefined;
+  let trigger: SubscribeLikeUsage | undefined;
+  let triggerAllocation: EsTreeNode | undefined;
+  let triggerCalls: ReadonlyArray<EsTreeNodeOfType<"CallExpression">> | null = null;
+  for (const reference of symbol.references) {
+    const call = findDirectCallForReference(reference.identifier);
+    const caller = call ? findEnclosingFunction(call) : null;
+    if (
+      !isNodeOfType(call, "CallExpression") ||
+      call.optional ||
+      call.arguments.length !== 0 ||
+      !isNodeOfType(call.parent, "ExpressionStatement") ||
+      !isFunctionLike(caller) ||
+      caller.async ||
+      caller.generator ||
+      !isNodeOfType(caller.body, "BlockStatement") ||
+      call.parent.parent !== caller.body
+    )
+      return false;
+    if (caller === effect) {
+      setupStatement = call.parent;
+      continue;
+    }
+    // Code before the helper could synchronously run cleanup and then re-observe.
+    if (
+      !isNodeOfType(caller, "ArrowFunctionExpression") ||
+      caller.params.length !== 0 ||
+      caller.body.body[0] !== call.parent ||
+      !isNodeOfType(caller.parent, "NewExpression") ||
+      caller.parent.arguments[0] !== caller
+    )
+      return false;
+    triggerAllocation = caller.parent.parent?.parent ?? undefined;
+    triggerCalls = getPrivateNativeObserverCalls(
+      caller.parent,
+      "MutationObserver",
+      effect,
+      context,
+    );
+    const registrations = triggerCalls?.filter((method) => getCalleeName(method) === "observe");
+    if (registrations?.length !== 1) return false;
+    const [registration] = registrations;
+    if (findEnclosingFunction(registration) !== effect) return false;
+    trigger = allUsages.find((candidate) => candidate.node === registration);
+  }
+  if (
+    !setupStatement ||
+    !trigger ||
+    !triggerCalls ||
+    !isPrivateIntrinsicChildrenObservation(helper, usage.node, trigger.node, effect, context)
+  )
+    return false;
+  const effectStatements = effect.body.body;
+  const setupIndex = effectStatements.findIndex((statement) => statement === setupStatement);
+  const cleanupReturn = effectStatements[setupIndex + 3];
+  if (
+    setupIndex < 0 ||
+    !triggerAllocation ||
+    !isNodeOfType(triggerAllocation, "VariableDeclaration") ||
+    triggerAllocation.declarations.length !== 1 ||
+    effectStatements[setupIndex + 1] !== triggerAllocation ||
+    !isNodeOfType(trigger.node.parent, "ExpressionStatement") ||
+    effectStatements[setupIndex + 2] !== trigger.node.parent ||
+    !cleanupReturn ||
+    !cleanupReturns.includes(cleanupReturn)
+  )
+    return false;
+  const sourceText = context.sourceCode?.getText?.();
+  return (
+    sourceText !== undefined &&
+    !/@jsx(?:Runtime|ImportSource|Frag)?\b/u.test(sourceText) &&
+    hasAdjacentObserverDisconnects(cleanupReturn, resizeCalls, triggerCalls, context)
+  );
+};
+
+const hasAdjacentObserverDisconnects = (
+  cleanupReturn: EsTreeNode,
+  resizeCalls: ReadonlyArray<EsTreeNodeOfType<"CallExpression">>,
+  triggerCalls: ReadonlyArray<EsTreeNodeOfType<"CallExpression">>,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(cleanupReturn, "ReturnStatement")) return false;
+  const cleanup = resolveStableValue(cleanupReturn.argument, context);
+  if (
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    !isNodeOfType(cleanup.body, "BlockStatement")
+  )
+    return false;
+  const [first, second] = cleanup.body.body;
+  const mutationCalls = triggerCalls;
+  const releasedAtEntry = (calls: typeof resizeCalls, statement: EsTreeNode): boolean =>
+    isNodeOfType(statement, "ExpressionStatement") &&
+    calls.some(
+      (call) =>
+        call === statement.expression &&
+        getCalleeName(call) === "disconnect" &&
+        call.arguments.length === 0,
+    );
+  return Boolean(
+    first &&
+    second &&
+    ((releasedAtEntry(resizeCalls, first) && releasedAtEntry(mutationCalls, second)) ||
+      (releasedAtEntry(mutationCalls, first) && releasedAtEntry(resizeCalls, second))),
+  );
+};
+
 const hasReturnedObserverDisconnect = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -7296,6 +7635,20 @@ const hasReturnedObserverDisconnect = (
       ) &&
       doNodesCoverEveryPathFromFunctionEntry(callback, matchingCleanupReturns, context)
     );
+  }
+  if (
+    receiverSymbol.initializer &&
+    hasOwnedMutationObserverInvocation(
+      callback,
+      usage,
+      stripParenExpression(receiverSymbol.initializer),
+      usageFunction,
+      allUsages,
+      matchingCleanupReturns,
+      context,
+    )
+  ) {
+    return true;
   }
   if (
     !isFunctionLike(usageFunction) ||

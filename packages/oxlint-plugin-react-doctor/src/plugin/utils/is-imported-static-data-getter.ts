@@ -1,3 +1,5 @@
+import { extname, normalize } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { analyzeScopes, type ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
@@ -11,6 +13,36 @@ import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const staticGetterByFunction = new WeakMap<EsTreeNode, boolean>();
+const EXPLICIT_ESM_EXTENSIONS = new Set([".mjs", ".mts"]);
+
+const isDirectImmutableExport = (expression: EsTreeNode, exportedName: string): boolean => {
+  const declarator = expression.parent;
+  const declaration = declarator?.parent;
+  return (
+    isNodeOfType(declarator, "VariableDeclarator") &&
+    declarator.init === expression &&
+    isNodeOfType(declarator.id, "Identifier") &&
+    declarator.id.name === exportedName &&
+    isNodeOfType(declaration, "VariableDeclaration") &&
+    declaration.kind === "const" &&
+    isNodeOfType(declaration.parent, "ExportNamedDeclaration")
+  );
+};
+
+const isExactRelativeFileUrl = (
+  filename: string,
+  source: string,
+  resolvedPath: string,
+): boolean => {
+  if (!/^\.{1,2}\//.test(source)) return false;
+  try {
+    return (
+      normalize(fileURLToPath(new URL(source, pathToFileURL(filename)))) === normalize(resolvedPath)
+    );
+  } catch {
+    return false;
+  }
+};
 
 const isStaticDataExpression = (
   expression: EsTreeNode,
@@ -65,6 +97,19 @@ export const isImportedStaticDataGetter = (callee: EsTreeNode, context: RuleCont
     imported.importedName,
   );
   if (!resolved || !isFunctionLike(resolved.functionNode)) return false;
+  const isAsync = resolved.functionNode.async;
+  if (
+    isAsync &&
+    (!isNodeOfType(callee, "Identifier") ||
+      !isNodeOfType(context.scopes.symbolFor(callee)?.declarationNode, "ImportSpecifier") ||
+      imported.importedName === "default" ||
+      !EXPLICIT_ESM_EXTENSIONS.has(extname(context.filename)) ||
+      !EXPLICIT_ESM_EXTENSIONS.has(extname(resolved.filePath)) ||
+      !isDirectImmutableExport(resolved.functionNode, imported.importedName) ||
+      !isExactRelativeFileUrl(context.filename, imported.source, resolved.filePath))
+  ) {
+    return false;
+  }
   const cached = staticGetterByFunction.get(resolved.functionNode);
   if (cached !== undefined) return cached;
   const scopes = analyzeScopes(resolved.programNode);
@@ -72,13 +117,12 @@ export const isImportedStaticDataGetter = (callee: EsTreeNode, context: RuleCont
   const bindings = getFunctionBindingSymbols(resolved.functionNode, scopes);
   const isStaticGetter = Boolean(
     resolved.functionNode.params.length === 0 &&
-    !resolved.functionNode.async &&
     !resolved.functionNode.generator &&
     bindings.every((binding) =>
       binding.references.every((reference) => reference.flag === "read"),
     ) &&
     returned &&
-    isStaticDataExpression(returned, scopes),
+    isStaticDataExpression(returned, scopes, new Set(), isAsync),
   );
   staticGetterByFunction.set(resolved.functionNode, isStaticGetter);
   return isStaticGetter;

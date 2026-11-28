@@ -1,4 +1,6 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { hasRootKeyedEffectDependency } from "./utils/has-root-keyed-effect-dependency.js";
+import { isDirectLiteralStateReset } from "./utils/is-direct-literal-state-reset.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
@@ -100,6 +102,16 @@ export const noAdjustStateOnPropChange = defineRule({
         if (!hasPropDependency) return;
         const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename, true);
         if (hasCleanup(analysis, node)) return;
+        if (
+          facts.length > 0 &&
+          facts.every(
+            (fact) =>
+              !fact.isForwardedWrite &&
+              isDirectLiteralStateReset(fact.stateDeclarator, fact.writeSite.value),
+          ) &&
+          hasRootKeyedEffectDependency(node, context.scopes)
+        )
+          return;
         for (const fact of facts) {
           if (
             fact.isDeferred ||

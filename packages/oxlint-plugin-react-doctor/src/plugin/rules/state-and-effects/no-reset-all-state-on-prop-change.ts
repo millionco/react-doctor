@@ -1,5 +1,7 @@
 import type { Reference } from "eslint-scope";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { hasRootKeyedEffectDependency } from "./utils/has-root-keyed-effect-dependency.js";
+import { isDirectLiteralStateReset } from "./utils/is-direct-literal-state-reset.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
@@ -1300,6 +1302,19 @@ const findPropUsedToResetAllState = (
     isSetStateToInitialValue(analysis, context, ref, forwardedWritesByReference.get(ref)),
   );
   if (!allResetToInitial) return null;
+  if (
+    isNodeOfType(useEffectNode, "CallExpression") &&
+    stateSetterRefs.every((reference) => {
+      if (forwardedWritesByReference.has(reference)) return false;
+      const call = getCallExpr(reference);
+      return (
+        isNodeOfType(call, "CallExpression") &&
+        isDirectLiteralStateReset(getUseStateDecl(analysis, reference), call.arguments[0])
+      );
+    }) &&
+    hasRootKeyedEffectDependency(useEffectNode, context.scopes)
+  )
+    return null;
   if (hasSynchronousResourceLifecycleTransition(effectFn, context.scopes)) return null;
   if (
     stateSetterRefs.every((setterReference) =>

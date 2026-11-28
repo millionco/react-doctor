@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -605,6 +606,81 @@ const hasRebindBeforeCall = (
   });
 };
 
+const hasAdjacentArrayCopyRebind = (
+  receiver: EsTreeNodeOfType<"Identifier">,
+  call: EsTreeNodeOfType<"CallExpression">,
+  binding: BindingInfo,
+  context: RuleContext,
+): boolean => {
+  let statement: EsTreeNode = call;
+  while (statement.parent && !isNodeOfType(statement.parent, "BlockStatement")) {
+    statement = statement.parent;
+    if (isFunctionLike(statement)) return false;
+  }
+  const block = statement.parent;
+  if (!isNodeOfType(block, "BlockStatement")) return false;
+  const index = block.body.findIndex((child: EsTreeNode) => child === statement);
+  const declaration = block.body[index - 2];
+  const rebind = block.body[index - 1];
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    !isNodeOfType(rebind, "ExpressionStatement")
+  ) {
+    return false;
+  }
+
+  const assignment = stripParenExpression(rebind.expression);
+  if (
+    !isNodeOfType(assignment, "AssignmentExpression") ||
+    assignment.operator !== "=" ||
+    !isNodeOfType(assignment.left, "Identifier")
+  ) {
+    return false;
+  }
+  const source = stripParenExpression(assignment.right);
+  if (!isNodeOfType(source, "Identifier")) return false;
+  const alias = context.scopes.symbolFor(source);
+  const original = context.scopes.symbolFor(receiver);
+  if (
+    !alias ||
+    alias.declarationNode.parent !== declaration ||
+    alias.references.length !== 1 ||
+    alias.references[0]?.identifier !== source ||
+    !original ||
+    original !== context.scopes.symbolFor(assignment.left)
+  ) {
+    return false;
+  }
+  const initializer = getDirectConstInitializer(alias);
+  const copy = initializer && stripParenExpression(initializer);
+  if (!isNodeOfType(copy, "ArrayExpression")) return false;
+  if (
+    !original.references.every(({ identifier }) => {
+      const parent = identifier.parent;
+      return (
+        identifier === receiver ||
+        identifier === assignment.left ||
+        (isNodeOfType(parent, "SpreadElement") && parent.parent === copy)
+      );
+    })
+  ) {
+    return false;
+  }
+
+  let hasDirectEval = false;
+  walkAst(binding.scopeOwner, (node) => {
+    if (hasDirectEval) return false;
+    if (
+      isNodeOfType(node, "Identifier") &&
+      node.name === "eval" &&
+      context.scopes.isGlobalReference(node)
+    ) {
+      hasDirectEval = true;
+    }
+  });
+  return !hasDirectEval;
+};
+
 const isProvableArrayContainerHookBinding = (binding: BindingInfo): boolean => {
   const initializer = binding.initializer ? stripParenExpression(binding.initializer) : null;
   const declaratorInitializer = declaratorInitFor(binding);
@@ -667,6 +743,13 @@ const resolveSharedArraySource = (
   if (!binding) return null;
   if (bindingDeclaresNonArrayMethod(binding, mutatingMethodName)) return null;
   if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode, context)) return null;
+  if (
+    depth === 0 &&
+    !reachesThroughMemberAccess &&
+    hasAdjacentArrayCopyRebind(rootIdentifier, callNode, binding, context)
+  ) {
+    return null;
+  }
   if (!reachesThroughMemberAccess && isBoundThroughRestElement(binding)) return null;
   if (isDerivedFromHookCall(binding)) {
     if (!isProvableArrayContainerHookBinding(binding)) return null;

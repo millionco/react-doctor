@@ -10,6 +10,36 @@ const getDiagnosticLines = (source: string): ReadonlyArray<number | undefined> =
   return result.diagnostics.map((diagnostic) => diagnostic.line);
 };
 
+describe("no-adjust-state-on-prop-change diagnostic locations", () => {
+  it("reports a shared setter once and keeps a separate setter call", () => {
+    const source = `
+      import { useCallback, useEffect, useState } from "react";
+      function Panel({ first, second }) {
+        const [cursor, setCursor] = useState(0);
+        const reset = useCallback(() => setCursor(-1), []);
+        useEffect(() => { if (first) reset(); }, [first, reset]);
+        useEffect(() => { if (second) reset(); setCursor(-2); }, [second, reset]);
+        return <span>{cursor}</span>;
+      }
+    `;
+    expect(getDiagnosticLines(source)).toEqual([5, 7]);
+  });
+
+  it("keeps distinct forwarded setter calls", () => {
+    const source = `
+      import { useEffect, useState } from "react";
+      ${ASSIGN_HELPER}
+      function Panel({ first, second }) {
+        const [cursor, setCursor] = useState(0);
+        useEffect(() => { if (first) assign(setCursor, -1); }, [first]);
+        useEffect(() => { if (second) assign(setCursor, -2); }, [second]);
+        return <span>{cursor}</span>;
+      }
+    `;
+    expect(getDiagnosticLines(source)).toEqual([6, 7]);
+  });
+});
+
 const buildEditableReset = (helper: string, write: string, effectHook = "useEffect"): string => `
   import { useState, useEffect, useLayoutEffect } from "react";
   ${helper}

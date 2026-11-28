@@ -1,3 +1,4 @@
+import { isClosedLiteralTextPlaceholder } from "../../utils/is-closed-literal-text-placeholder.js";
 import { isReactPropRegExpTextLeaf } from "../../utils/is-react-prop-regexp-text-leaf.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
@@ -1977,6 +1978,20 @@ export const noArrayIndexAsKey = defineRule({
         )
           return;
         const indexName = indexUse.identifier.name;
+        const iteratorCall = indexUse.binding.iteratorCall;
+        const keyedElement = node.parent?.parent;
+        if (
+          iteratorCall &&
+          isNodeOfType(keyedElement, "JSXElement") &&
+          isClosedLiteralTextPlaceholder({
+            jsxElement: keyedElement,
+            keyAttribute: node,
+            iteratorCall,
+            scopes: context.scopes,
+          })
+        ) {
+          return;
+        }
         const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
 
         const itemNames = findIteratorItemNamesOfBinding(indexUse.binding);

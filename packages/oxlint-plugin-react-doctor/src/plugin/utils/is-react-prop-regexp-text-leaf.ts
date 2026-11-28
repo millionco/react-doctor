@@ -4,6 +4,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { findSameFileTypeDeclarations } from "./find-same-file-type-declaration.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getSymbolMutationInspector } from "./get-symbol-mutation-inspector.js";
 import { isComponentFunction } from "./is-component-function.js";
 import { isFunctionLike } from "./is-function-like.js";
@@ -40,10 +41,19 @@ const textProtocolGlobals = new Set([
   "window",
   "self",
 ]);
+const textProtocolProperties = new Set(["constructor", "__proto__", "prototype"]);
+
+interface RestrictedTextProtocolAccess {
+  allowedTableLookup?: EsTreeNodeOfType<"MemberExpression">;
+}
+
 const unsupportedProtocolAccessByScopes = new WeakMap<ScopeAnalysis, boolean>();
 
-const hasUnsupportedProtocolAccess = (scopes: ScopeAnalysis): boolean => {
-  const cached = unsupportedProtocolAccessByScopes.get(scopes);
+export const hasUnsupportedProtocolAccess = (
+  scopes: ScopeAnalysis,
+  restricted?: RestrictedTextProtocolAccess,
+): boolean => {
+  const cached = restricted ? undefined : unsupportedProtocolAccessByScopes.get(scopes);
   if (cached !== undefined) return cached;
   let unsupported = false;
   walkAst(scopes.rootScope.node, (node) => {
@@ -51,18 +61,20 @@ const hasUnsupportedProtocolAccess = (scopes: ScopeAnalysis): boolean => {
     if (
       isNodeOfType(node, "WithStatement") ||
       (isNodeOfType(node, "MemberExpression") &&
-        (node.computed ||
+        ((node.computed && node !== restricted?.allowedTableLookup) ||
           (isNodeOfType(node.property, "Identifier") &&
-            (node.property.name === "constructor" ||
-              node.property.name === "__proto__" ||
-              node.property.name === "prototype")))) ||
+            textProtocolProperties.has(node.property.name)))) ||
+      (restricted &&
+        isNodeOfType(node, "Property") &&
+        isNodeOfType(node.parent, "ObjectPattern") &&
+        (node.computed || textProtocolProperties.has(getStaticPropertyKeyName(node) ?? ""))) ||
       (isNodeOfType(node, "Identifier") &&
         textProtocolGlobals.has(node.name) &&
         scopes.isGlobalReference(node))
     )
       unsupported = true;
   });
-  unsupportedProtocolAccessByScopes.set(scopes, unsupported);
+  if (!restricted) unsupportedProtocolAccessByScopes.set(scopes, unsupported);
   return unsupported;
 };
 

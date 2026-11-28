@@ -84,6 +84,7 @@ import {
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { hasReturnedOwnedHistoryListener } from "./utils/has-returned-owned-history-listener.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -7384,6 +7385,13 @@ const effectHasCleanupForUsage = (
     return false;
   }
   if (callback.async) return false;
+  if (
+    usage.registrationVerbName === "listen" &&
+    isNodeOfType(usage.node, "CallExpression") &&
+    hasReturnedOwnedHistoryListener(callback, usage.node, context)
+  ) {
+    return true;
+  }
   const usageCallee = isNodeOfType(usage.node, "CallExpression")
     ? stripParenExpression(usage.node.callee)
     : null;

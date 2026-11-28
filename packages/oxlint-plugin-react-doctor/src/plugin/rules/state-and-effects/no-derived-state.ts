@@ -9,6 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isDirectNumericStateAccumulation } from "./utils/is-direct-numeric-state-accumulation.js";
 import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
@@ -82,7 +83,9 @@ export const noDerivedState = defineRule({
           context.filename,
         )) {
           if (
-            (!fact.isRenderKnownCopy || fact.resetsSourceState) &&
+            (!fact.isRenderKnownCopy ||
+              fact.resetsSourceState ||
+              isDirectNumericStateAccumulation(context, node, fact)) &&
             !isRenderKnownSelectionRepair(analysis, node, fact)
           ) {
             continue;

@@ -83,6 +83,7 @@ import {
   isSubscribeOrObserveCallExpression,
   OBSERVER_REGISTRATION_METHOD_NAME,
 } from "./utils/is-subscribe-like-call-expression.js";
+import { isOwnedCesiumEventListenerPair } from "./utils/is-owned-cesium-event-listener-pair.js";
 import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
 import { isSubscriptionPromise } from "./utils/is-subscription-promise.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -8884,6 +8885,63 @@ const doesReleaseCallMatchUsage = (
     ? PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(usage.registrationVerbName)
     : null;
   if (!pairedVerbNames || !matchesPairedReleaseVerb(releaseVerbName, pairedVerbNames)) return false;
+
+  if (
+    usage.registrationVerbName === "addEventListener" &&
+    releaseVerbName === "removeEventListener" &&
+    isNodeOfType(usage.node, "CallExpression") &&
+    usage.node.arguments.length === UNARY_LISTENER_ARGUMENT_COUNT &&
+    callNode.arguments.length === UNARY_LISTENER_ARGUMENT_COUNT
+  ) {
+    const registrationStatement = usage.node.parent;
+    const setup = findEnclosingFunction(usage.node);
+    const cleanup = findEnclosingFunction(callNode);
+    if (
+      !isFunctionLike(setup) ||
+      setup.async ||
+      setup.generator ||
+      !isNodeOfType(setup.body, "BlockStatement") ||
+      !isNodeOfType(registrationStatement, "ExpressionStatement") ||
+      registrationStatement.expression !== usage.node ||
+      !isFunctionLike(cleanup) ||
+      cleanup.async ||
+      cleanup.generator ||
+      cleanup.params.length !== 0 ||
+      !isNodeOfType(cleanup.body, "BlockStatement")
+    ) {
+      return false;
+    }
+    const cleanupReturn = cleanup.parent;
+    const cleanupStatement = callNode.parent;
+    if (
+      !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+      cleanupReturn.argument !== cleanup ||
+      setup.body.body.at(-2) !== registrationStatement ||
+      setup.body.body.at(-1) !== cleanupReturn ||
+      !isReturnedEffectCleanupFunction(cleanup, context) ||
+      cleanup.body.body.length !== 1 ||
+      cleanup.body.body[0] !== cleanupStatement ||
+      !isNodeOfType(cleanupStatement, "ExpressionStatement") ||
+      cleanupStatement.expression !== callNode
+    ) {
+      return false;
+    }
+    const registrationHandler = stripParenExpression(usage.node.arguments[0]);
+    const releaseHandler = stripParenExpression(callNode.arguments[0]);
+    if (
+      !isNodeOfType(registrationHandler, "Identifier") ||
+      !isNodeOfType(releaseHandler, "Identifier")
+    ) {
+      return false;
+    }
+    const callback = context.scopes.symbolFor(registrationHandler);
+    return (
+      callback?.kind === "const" &&
+      isSymbolReadOnly(callback) &&
+      callback === context.scopes.symbolFor(releaseHandler) &&
+      isOwnedCesiumEventListenerPair(usage.node, callNode, context)
+    );
+  }
 
   const usageEventArgument = isNodeOfType(usage.node, "CallExpression")
     ? usage.node.arguments?.[0]

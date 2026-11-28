@@ -55,6 +55,13 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     "const timer = setTimeout(() => this.setState({ ready: true })); clearTimeout(timer);",
     "if (enabled) { const timer = setInterval(() => this.tick(), 1000); clearInterval(timer); }",
     "const timer = (setInterval(function () {})); (clearInterval)((timer));",
+    "const timer = setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    "const timer = globalThis.setInterval(() => this.tick(), 100); clearInterval(timer);",
+    "const timer = window.setInterval(() => this.tick(), 100); window['clearInterval'](timer);",
+    "const timer = self.setTimeout(() => this.setState({ ready: true })); self.clearTimeout(timer);",
+    "const timer = global.setInterval(() => this.tick(), 100); global.clearInterval(timer);",
+    "const timer = globalThis.setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    "const timer = window['setInterval'](() => this.tick(), 100); window.clearInterval(timer);",
   ])("accepts a mount timer synchronously cleared in the next statement (%s)", (mount) => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -66,6 +73,60 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
 
   it.each([
     ["", "const timer = setInterval(() => this.tick(), 1000); clearInterval(other);"],
+    ["", "const timer = window.setInterval(() => this.tick(), 100); global.clearInterval(timer);"],
+    ["", "const timer = global.setInterval(() => this.tick(), 100); self.clearInterval(timer);"],
+    ["", "const timer = setInterval(() => this.tick(), 100); window.clearInterval(timer);"],
+    [
+      "const owner = getGlobalObject(); Object.defineProperty(owner, 'globalThis', { value: { clearInterval() {} } });",
+      "const timer = setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    ],
+    ["", "const timer = window.setInterval(() => this.tick(), 100); self.clearInterval(timer);"],
+    [
+      "",
+      "const timer = global.setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    ],
+    [
+      "",
+      "const timer = window.setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    ],
+    [
+      "const owner = document.querySelector('iframe').contentWindow.parent; Object.defineProperty(owner, 'clearInterval', { value: () => {} });",
+      "const timer = setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    ],
+    ["", "const timer = setInterval(() => this.tick(), 100); window.clearTimeout(timer);"],
+    [
+      "",
+      "const timer = window.setInterval(() => this.tick(), 100); globalThis.clearInterval(other);",
+    ],
+    [
+      "",
+      "const timer = window.setInterval(() => this.tick(), 100); if (flag) window.clearInterval(timer);",
+    ],
+    [
+      "",
+      "const timer = window.setInterval(() => this.tick(), 100); window.clearInterval?.(timer);",
+    ],
+    [
+      "",
+      "const timer = window.setInterval(() => this.tick(), 100); document.defaultView.clearInterval(timer);",
+    ],
+    ["", "const timer = window.setInterval(() => this.tick(), 100); window[key](timer);"],
+    [
+      "const globalThis = { clearInterval() {} };",
+      "const timer = setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    ],
+    [
+      "self.clearInterval = () => {};",
+      "const timer = setInterval(() => this.tick(), 100); globalThis.clearInterval(timer);",
+    ],
+    [
+      "const realm = window;",
+      "const timer = setInterval(() => this.tick(), 100); realm.clearInterval(timer);",
+    ],
+    [
+      "const realm = document.defaultView; realm.clearInterval = () => {};",
+      "const timer = setInterval(() => this.tick(), 100); window.clearInterval(timer);",
+    ],
     ["", "const timer = setInterval(() => this.tick(), 1000); if (flag) clearInterval(timer);"],
     ["", "const timer = setInterval(() => this.tick(), 1000); work(); clearInterval(timer);"],
     ["", "const timer = setInterval(() => this.tick(), 1000); await work(); clearInterval(timer);"],

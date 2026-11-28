@@ -10,6 +10,7 @@ import {
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getClosedGlobalTimerCall } from "../../utils/get-closed-global-timer-call.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasPossibleStaticPropertyWriteBefore } from "../../utils/has-static-property-write-before.js";
@@ -1157,13 +1158,9 @@ const isTimerClearedInNextStatement = (
   scheduleName: "setInterval" | "setTimeout",
   scopes: ScopeAnalysis,
 ): boolean => {
-  const callee = stripParenExpression(call.callee);
   const [callback, delay] = call.arguments;
   if (
     call.optional ||
-    !isNodeOfType(callee, "Identifier") ||
-    callee.name !== scheduleName ||
-    !scopes.isGlobalReference(callee) ||
     !callback ||
     !isFunctionLike(stripParenExpression(callback)) ||
     call.arguments.length > 2 ||
@@ -1196,25 +1193,41 @@ const isTimerClearedInNextStatement = (
   const clearName = scheduleName === "setInterval" ? "clearInterval" : "clearTimeout";
   const clearCallee = stripParenExpression(clearCall.callee);
   const [handle] = clearCall.arguments;
+  if (clearCall.arguments.length !== 1 || !handle) return false;
+  const handleIdentifier = stripParenExpression(handle);
+  const timer = scopes.symbolFor(declarator.id);
   if (
-    !isNodeOfType(clearCallee, "Identifier") ||
-    clearCallee.name !== clearName ||
-    !scopes.isGlobalReference(clearCallee) ||
-    clearCall.arguments.length !== 1 ||
-    !handle
+    !isNodeOfType(handleIdentifier, "Identifier") ||
+    timer === null ||
+    timer.references.length !== 1 ||
+    timer.references[0]?.identifier !== handleIdentifier
   ) {
     return false;
   }
-  const handleIdentifier = stripParenExpression(handle);
-  const timer = scopes.symbolFor(declarator.id);
+
+  const callee = stripParenExpression(call.callee);
+  if (
+    hasUncertainTimerGlobals(scopes) ||
+    !isProvenUnmodifiedGlobalNamespaceReference(callee, scheduleName, scopes, undefined, true) ||
+    !isProvenUnmodifiedGlobalNamespaceReference(clearCallee, clearName, scopes, undefined, true)
+  ) {
+    return false;
+  }
+  if (isNodeOfType(callee, "Identifier") && isNodeOfType(clearCallee, "Identifier")) {
+    return (
+      callee.name === scheduleName &&
+      clearCallee.name === clearName &&
+      scopes.isGlobalReference(callee) &&
+      scopes.isGlobalReference(clearCallee)
+    );
+  }
+
+  const scheduler = getClosedGlobalTimerCall(call, scopes);
+  const clearer = getClosedGlobalTimerCall(clearCall, scopes);
   return (
-    isNodeOfType(handleIdentifier, "Identifier") &&
-    timer !== null &&
-    timer.references.length === 1 &&
-    timer.references[0]?.identifier === handleIdentifier &&
-    !hasUncertainTimerGlobals(scopes) &&
-    isProvenUnmodifiedGlobalNamespaceReference(callee, scheduleName, scopes, undefined, true) &&
-    isProvenUnmodifiedGlobalNamespaceReference(clearCallee, clearName, scopes, undefined, true)
+    scheduler?.name === scheduleName &&
+    clearer?.name === clearName &&
+    scheduler.realm === clearer.realm
   );
 };
 

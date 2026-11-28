@@ -15,3 +15,14 @@ export class Clock extends Component {
     return null;
   }
 }
+
+export class GlobalClock extends Component {
+  componentDidMount() {
+    const timer = setInterval(() => this.forceUpdate(), 1_000);
+    globalThis.clearInterval(timer);
+  }
+
+  render() {
+    return null;
+  }
+}

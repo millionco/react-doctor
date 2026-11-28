@@ -267,6 +267,76 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    [
+      "copy",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; items = next; return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "hook",
+      'import { useState } from "react";\nexport function List({ initial }: { initial: string[] }) {\n  let [items, setItems] = useState(initial);\n  const copy = [...items];\n  items = copy;\n  return <div>{items.reverse().join(",")}</div>;\n}',
+    ],
+    [
+      "empty",
+      "export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next: string[] = []; items = next; return <div>{items.splice(0, 1)}</div>; }",
+    ],
+  ])("accepts an isolated adjacent array copy rebind (%s)", (_label, source) => {
+    const result = runRule(noMutatingArrayMethodOnPropOrHookResult, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "alias",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = original; items = next; return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "mutable",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { let next = [...items]; next = original; items = next; return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "subsequent",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; items = next; items = original; return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "oldAlias",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const old = items; const next = [...items]; items = next; return <div>{old.sort().join(",")}</div>; }',
+    ],
+    [
+      "escape",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; const escaped = next; escaped.sort = original.sort.bind(original); items = next; return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "member",
+      'export function List({ items, original, enabled }: { items: string[][]; original: string[][]; enabled: boolean }) { const next = [...items]; items = next; return <div>{items[0].sort().join(",")}</div>; }',
+    ],
+    [
+      "conditional",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; if (enabled) items = next; return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "caught",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; try { work(); items = next; } catch {} return <div>{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "dynamic",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; items = next; return <div>{eval("0")}{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "opaque",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; items = next; return <div>{work(items)}{items.sort().join(",")}</div>; }',
+    ],
+    [
+      "late",
+      'export function List({ items, original, enabled }: { items: string[]; original: string[]; enabled: boolean }) { const next = [...items]; return <div>{items.sort().join(",")}</div>; items = next; }',
+    ],
+  ])("keeps warnings when an array copy rebind cannot be proven (%s)", (_label, source) => {
+    const result = runRule(noMutatingArrayMethodOnPropOrHookResult, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags when the rebind happens only after the mutating call", () => {
     const result = runRule(
       noMutatingArrayMethodOnPropOrHookResult,

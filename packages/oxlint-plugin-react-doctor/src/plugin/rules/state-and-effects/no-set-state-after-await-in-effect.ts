@@ -9,16 +9,20 @@ import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-fu
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getDeferredEffectCallbackCall } from "../../utils/get-deferred-effect-callback-call.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
 import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import { canNodeExecuteBefore } from "../../utils/has-static-property-write-before.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -1066,18 +1070,242 @@ const collectOrderedAsyncEvents = (root: EsTreeNode, context: RuleContext): EsTr
   );
 };
 
+interface AsyncAbortProtection {
+  controllers: ReadonlySet<string>;
+  guardedSetters: ReadonlySet<EsTreeNode>;
+}
+
+const getDirectActionCall = (
+  node: EsTreeNode | undefined,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (!node) return null;
+  const expression = stripParenExpression(
+    isNodeOfType(node, "ExpressionStatement") ? node.expression : node,
+  );
+  const call =
+    isNodeOfType(expression, "UnaryExpression") && expression.operator === "void"
+      ? stripParenExpression(expression.argument)
+      : expression;
+  return isNodeOfType(call, "CallExpression") && !call.optional ? call : null;
+};
+
+const getExactAbortedReceiver = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  const aborted = stripParenExpression(node);
+  if (
+    !isNodeOfType(aborted, "MemberExpression") ||
+    aborted.optional ||
+    getStaticPropertyName(aborted) !== "aborted"
+  ) {
+    return null;
+  }
+  const signal = stripParenExpression(aborted.object);
+  if (
+    !isNodeOfType(signal, "MemberExpression") ||
+    signal.optional ||
+    getStaticPropertyName(signal) !== "signal"
+  ) {
+    return null;
+  }
+  const controller = stripParenExpression(signal.object);
+  return isNodeOfType(controller, "Identifier") ? controller : null;
+};
+
+const getOnlyBlockStatement = (node: EsTreeNode): EsTreeNode | undefined =>
+  isNodeOfType(node, "BlockStatement") ? (node.body.length === 1 ? node.body[0] : undefined) : node;
+
+const isOwnedNativeAbortController = (
+  checked: EsTreeNodeOfType<"Identifier">,
+  aborted: EsTreeNodeOfType<"Identifier">,
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const { scopes } = context;
+  const symbol = scopes.symbolFor(checked);
+  if (
+    !symbol ||
+    scopes.symbolFor(aborted) !== symbol ||
+    symbol.references.length !== 2 ||
+    !symbol.references.every(
+      ({ identifier }) => identifier === checked || identifier === aborted,
+    ) ||
+    findEnclosingFunction(symbol.declarationNode) !== effectCallback
+  ) {
+    return false;
+  }
+  const initializer = getDirectConstInitializer(symbol);
+  const constructor = initializer && stripParenExpression(initializer);
+  if (
+    !isNodeOfType(constructor, "NewExpression") ||
+    constructor.arguments.length !== 0 ||
+    !isNodeOfType(constructor.callee, "Identifier") ||
+    constructor.callee.name !== "AbortController" ||
+    !scopes.isGlobalReference(constructor.callee)
+  ) {
+    return false;
+  }
+
+  const ambientObjects = new Set(["globalThis", "global", "self", "window"]);
+  const mutableConstructors = new Set(["AbortController", "AbortSignal", "eval", "Function"]);
+  const signalProperties = new Set(["abort", "aborted", "signal"]);
+  const mutations = getSymbolMutationInspector(scopes);
+  let hasUncertainSignal = false;
+  walkAst(scopes.rootScope.node, (node) => {
+    if (hasUncertainSignal) return false;
+    if (isNodeOfType(node, "MemberExpression")) {
+      const property = getStaticPropertyName(node);
+      if (
+        property === "getPrototypeOf" ||
+        property === "setPrototypeOf" ||
+        property === "__proto__" ||
+        ((property === null || signalProperties.has(property)) && isWithinAssignmentTarget(node))
+      ) {
+        hasUncertainSignal = true;
+        return false;
+      }
+    }
+    if (isNodeOfType(node, "CallExpression")) {
+      const [target] = node.arguments;
+      const properties = target && mutations.getMutationPropertyNames(target);
+      if (
+        properties === null ||
+        (properties && [...properties].some((property) => signalProperties.has(property)))
+      ) {
+        hasUncertainSignal = true;
+        return false;
+      }
+    }
+    if (
+      !isNodeOfType(node, "Identifier") ||
+      node === constructor.callee ||
+      !scopes.isGlobalReference(node)
+    )
+      return;
+    if (mutableConstructors.has(node.name)) {
+      hasUncertainSignal = true;
+      return false;
+    }
+    if (!ambientObjects.has(node.name)) return;
+    const root = findTransparentExpressionRoot(node);
+    const member = root.parent;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== root ||
+      isWithinAssignmentTarget(member)
+    ) {
+      hasUncertainSignal = true;
+      return false;
+    }
+    const name = getStaticPropertyName(member);
+    hasUncertainSignal = name === null || ambientObjects.has(name) || mutableConstructors.has(name);
+  });
+  return !hasUncertainSignal;
+};
+
+const collectDirectAbortGuardedSetters = (
+  asyncFunction: EsTreeNode,
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): ReadonlySet<EsTreeNode> => {
+  const guardedSetters = new Set<EsTreeNode>();
+  if (
+    !isFunctionLike(asyncFunction) ||
+    !asyncFunction.async ||
+    asyncFunction.generator ||
+    !isNodeOfType(asyncFunction.body, "BlockStatement") ||
+    !isFunctionLike(effectCallback) ||
+    !isNodeOfType(effectCallback.body, "BlockStatement") ||
+    findEnclosingFunction(asyncFunction) !== effectCallback
+  ) {
+    return guardedSetters;
+  }
+  const [launchStatement, cleanupReturn] = effectCallback.body.body.slice(-2);
+  if (
+    !isNodeOfType(launchStatement, "ExpressionStatement") ||
+    !isNodeOfType(cleanupReturn, "ReturnStatement") ||
+    !cleanupReturn.argument
+  ) {
+    return guardedSetters;
+  }
+  const launch = getDirectActionCall(launchStatement);
+  if (!launch || launch.arguments.length !== 0 || !isNodeOfType(launch.callee, "Identifier"))
+    return guardedSetters;
+  const runner = context.scopes.symbolFor(launch.callee);
+  if (
+    !runner ||
+    runner.references.length !== 1 ||
+    runner.references[0]?.identifier !== launch.callee ||
+    resolveExactLocalFunction(launch.callee, context.scopes) !== asyncFunction
+  ) {
+    return guardedSetters;
+  }
+
+  const cleanup = stripParenExpression(cleanupReturn.argument);
+  if (
+    !isFunctionLike(cleanup) ||
+    cleanup.async ||
+    cleanup.generator ||
+    cleanup.params.length !== 0
+  ) {
+    return guardedSetters;
+  }
+  const abort = getDirectActionCall(getOnlyBlockStatement(cleanup.body));
+  if (!abort || abort.arguments.length !== 0) return guardedSetters;
+  const abortMethod = stripParenExpression(abort.callee);
+  if (
+    !isNodeOfType(abortMethod, "MemberExpression") ||
+    abortMethod.optional ||
+    getStaticPropertyName(abortMethod) !== "abort"
+  )
+    return guardedSetters;
+  const aborted = stripParenExpression(abortMethod.object);
+  if (!isNodeOfType(aborted, "Identifier")) return guardedSetters;
+
+  const statements = asyncFunction.body.body;
+  for (let index = 0; index < statements.length; index += 1) {
+    const guard = statements[index];
+    if (!isNodeOfType(guard, "IfStatement") || guard.alternate) continue;
+    const branch = getOnlyBlockStatement(guard.consequent);
+    const test = stripParenExpression(guard.test);
+    const takesSetter = isNodeOfType(test, "UnaryExpression") && test.operator === "!";
+    const checked = getExactAbortedReceiver(takesSetter ? test.argument : test);
+    if (!checked) continue;
+    if (!takesSetter && (!isNodeOfType(branch, "ReturnStatement") || branch.argument)) continue;
+    const action = takesSetter ? branch : statements[index + 1];
+    if (!isNodeOfType(action, "ExpressionStatement")) continue;
+    const setter = getDirectActionCall(action);
+    if (
+      !setter ||
+      !isNodeOfType(setter.callee, "Identifier") ||
+      !isStateDispatcherReference(setter.callee, context)
+    )
+      continue;
+    if (
+      !setter.arguments.every(
+        (argument) =>
+          isNodeOfType(argument, "Literal") ||
+          (isNodeOfType(argument, "Identifier") && context.scopes.symbolFor(argument)),
+      )
+    ) {
+      continue;
+    }
+    if (isOwnedNativeAbortController(checked, aborted, effectCallback, context))
+      guardedSetters.add(setter);
+  }
+  return guardedSetters;
+};
+
 const analyzeAsyncEvents = (
   root: EsTreeNode,
   initialStates: AsyncPathState[],
   context: RuleContext,
-  abortProtectedControllers: ReadonlySet<string>,
+  abortProtection: AsyncAbortProtection,
 ): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
   let states = initialStates;
   for (const event of collectOrderedAsyncEvents(root, context)) {
     if (isNodeOfType(event, "AwaitExpression")) {
       const isAbortProtected = awaitUsesAbortedControllerSignal(
         event,
-        abortProtectedControllers,
+        abortProtection.controllers,
         context,
       );
       states = states.map((state) => ({
@@ -1101,6 +1329,7 @@ const analyzeAsyncEvents = (
     }
     if (
       isNodeOfType(event, "CallExpression") &&
+      !abortProtection.guardedSetters.has(event) &&
       states.some(
         (state) =>
           state.didSuspend &&
@@ -1122,7 +1351,7 @@ const analyzeAsyncStatements = (
   initialStates: AsyncPathState[],
   context: RuleContext,
   cleanupWrites: ReadonlyMap<string, boolean>,
-  abortProtectedControllers: ReadonlySet<string>,
+  abortProtection: AsyncAbortProtection,
   sequenceSnapshots: ReadonlyMap<string, SequenceSnapshot>,
 ): { states: AsyncPathState[]; hasUnsafeSetter: boolean } => {
   let states = initialStates;
@@ -1130,12 +1359,7 @@ const analyzeAsyncStatements = (
     if (states.length === 0) break;
     if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
       if (statement.argument) {
-        const returned = analyzeAsyncEvents(
-          statement.argument,
-          states,
-          context,
-          abortProtectedControllers,
-        );
+        const returned = analyzeAsyncEvents(statement.argument, states, context, abortProtection);
         if (returned.hasUnsafeSetter) return returned;
       }
       states = [];
@@ -1147,7 +1371,7 @@ const analyzeAsyncStatements = (
         states,
         context,
         cleanupWrites,
-        abortProtectedControllers,
+        abortProtection,
         sequenceSnapshots,
       );
       if (nested.hasUnsafeSetter) return nested;
@@ -1155,7 +1379,7 @@ const analyzeAsyncStatements = (
       continue;
     }
     if (isNodeOfType(statement, "IfStatement")) {
-      const tested = analyzeAsyncEvents(statement.test, states, context, abortProtectedControllers);
+      const tested = analyzeAsyncEvents(statement.test, states, context, abortProtection);
       if (tested.hasUnsafeSetter) return tested;
       states = tested.states;
       if (!statement.alternate && isEarlyExitStatement(statement.consequent)) {
@@ -1205,7 +1429,7 @@ const analyzeAsyncStatements = (
         })),
         context,
         cleanupWrites,
-        abortProtectedControllers,
+        abortProtection,
         sequenceSnapshots,
       );
       if (consequent.hasUnsafeSetter) return consequent;
@@ -1217,7 +1441,7 @@ const analyzeAsyncStatements = (
             states.map((state) => ({ ...state })),
             context,
             cleanupWrites,
-            abortProtectedControllers,
+            abortProtection,
             sequenceSnapshots,
           )
         : { states: states.map((state) => ({ ...state })), hasUnsafeSetter: false };
@@ -1231,7 +1455,7 @@ const analyzeAsyncStatements = (
         statement.discriminant,
         states,
         context,
-        abortProtectedControllers,
+        abortProtection,
       );
       if (discriminated.hasUnsafeSetter) return discriminated;
       const switchStates: AsyncPathState[] = [];
@@ -1241,7 +1465,7 @@ const analyzeAsyncStatements = (
           discriminated.states.map((state) => ({ ...state })),
           context,
           cleanupWrites,
-          abortProtectedControllers,
+          abortProtection,
           sequenceSnapshots,
         );
         if (switched.hasUnsafeSetter) return switched;
@@ -1268,7 +1492,7 @@ const analyzeAsyncStatements = (
         suspendedStates,
         context,
         cleanupWrites,
-        abortProtectedControllers,
+        abortProtection,
         sequenceSnapshots,
       );
       if (body.hasUnsafeSetter) return body;
@@ -1281,7 +1505,7 @@ const analyzeAsyncStatements = (
         states,
         context,
         cleanupWrites,
-        abortProtectedControllers,
+        abortProtection,
         sequenceSnapshots,
       );
       if (tried.hasUnsafeSetter) return tried;
@@ -1306,7 +1530,7 @@ const analyzeAsyncStatements = (
             ),
             context,
             cleanupWrites,
-            abortProtectedControllers,
+            abortProtection,
             sequenceSnapshots,
           )
         : { states: [], hasUnsafeSetter: false };
@@ -1319,7 +1543,7 @@ const analyzeAsyncStatements = (
           states,
           context,
           cleanupWrites,
-          abortProtectedControllers,
+          abortProtection,
           sequenceSnapshots,
         );
         if (finalized.hasUnsafeSetter) return finalized;
@@ -1327,12 +1551,7 @@ const analyzeAsyncStatements = (
       }
       continue;
     }
-    const analyzedEvents = analyzeAsyncEvents(
-      statement,
-      states,
-      context,
-      abortProtectedControllers,
-    );
+    const analyzedEvents = analyzeAsyncEvents(statement, states, context, abortProtection);
     if (analyzedEvents.hasUnsafeSetter) return analyzedEvents;
     states = analyzedEvents.states;
   }
@@ -1398,7 +1617,10 @@ const hasUnsafePostAwaitSetter = (
     ],
     context,
     cleanupWrites,
-    abortProtectedControllers,
+    {
+      controllers: abortProtectedControllers,
+      guardedSetters: collectDirectAbortGuardedSetters(asyncFunction, effectCallback, context),
+    },
     sequenceSnapshots,
   ).hasUnsafeSetter;
 };

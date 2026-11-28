@@ -2674,3 +2674,188 @@ describe("fresh cancellation guard aliases", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("owned abort signals checked before async dispatch", () => {
+  it.each([
+    { name: "plain", warnings: 0 },
+    {
+      name: "block",
+      body: "const value = await load(id); if (controller.signal.aborted) { return; } setValue(value);",
+      cleanup: "return () => {controller.abort();};",
+      warnings: 0,
+    },
+    { name: "voidRun", launch: "void run();", warnings: 0 },
+    { name: "noCleanup", cleanup: "return () => {};", warnings: 1 },
+    {
+      name: "other",
+      controller: "const controller = new AbortController(); const other = new AbortController();",
+      cleanup: "return () => other.abort();",
+      warnings: 1,
+    },
+    {
+      name: "beforeAwait",
+      body: "if (controller.signal.aborted) return; const value=await load(id); setValue(value);",
+      warnings: 1,
+    },
+    {
+      name: "anotherAwait",
+      body: "const value=await load(id); if(controller.signal.aborted) return; await moreWork(); setValue(value);",
+      warnings: 1,
+    },
+    {
+      name: "reentrantArgument",
+      body: "const value=await load(id); if(controller.signal.aborted) return; setValue(transform(value));",
+      warnings: 1,
+    },
+    { name: "intervening", launch: "run(); notify();", warnings: 1 },
+    {
+      name: "conditionalCleanup",
+      cleanup: "return () => { if(enabled) controller.abort(); };",
+      warnings: 1,
+    },
+    {
+      name: "cleanupPrelude",
+      cleanup: "return () => { notify(); controller.abort(); };",
+      warnings: 1,
+    },
+    {
+      name: "inFinally",
+      body: "const value=await load(id); try { if(controller.signal.aborted) return; setValue(value); } finally { setValue(id); }",
+      warnings: 1,
+    },
+    {
+      name: "uncertainProvider",
+      controller:
+        "const AbortController = getControllerConstructor(); const controller = new AbortController();",
+      warnings: 1,
+    },
+    {
+      name: "escaped",
+      controller: "const controller = new AbortController(); register(controller);",
+      warnings: 1,
+    },
+    {
+      name: "changed",
+      controller: "let controller = new AbortController();",
+      launch: "run(); controller = new AbortController();",
+      warnings: 1,
+    },
+    {
+      name: "shadowedController",
+      body: "const controller = new AbortController(); const value=await load(id); if(controller.signal.aborted) return; setValue(value);",
+      warnings: 1,
+    },
+    {
+      name: "extraSetter",
+      body: "const value=await load(id); if(controller.signal.aborted) return; setValue(value); setValue(id);",
+      warnings: 1,
+    },
+    {
+      name: "preGuardSetter",
+      body: "const value=await load(id); setValue(value); if(controller.signal.aborted) return; setValue(value);",
+      warnings: 1,
+    },
+    {
+      name: "returnArgument",
+      body: "const value=await load(id); if(controller.signal.aborted) return setValue(id); setValue(value);",
+      warnings: 1,
+    },
+    { name: "multipleRuns", launch: "run(); run();", warnings: 1 },
+    {
+      name: "setterAwait",
+      body: "const value=await load(id); if(controller.signal.aborted) return; setValue(await transform(value));",
+      warnings: 1,
+    },
+    {
+      name: "positiveGuard",
+      body: "const value = await load(id); if (!controller.signal.aborted) setValue(value);",
+      warnings: 0,
+    },
+    {
+      name: "patchedController",
+      prelude: "globalThis.AbortController = makeController();",
+      warnings: 1,
+    },
+    {
+      name: "patchedSignal",
+      prelude: 'Object.defineProperty(AbortSignal.prototype, "aborted", {get: () => false});',
+      warnings: 1,
+    },
+    {
+      name: "mutatedMethod",
+      controller: "const controller = new AbortController(); controller.abort = () => {};",
+      warnings: 1,
+    },
+    {
+      name: "delayedCleanup",
+      cleanup: "return async () => { await notify(); controller.abort(); };",
+      warnings: 1,
+    },
+    {
+      name: "defaultParam",
+      cleanup: "return (unused = notify()) => controller.abort();",
+      warnings: 1,
+    },
+    {
+      name: "derivedSignalPrototype",
+      prelude:
+        'Object.defineProperty(Object.getPrototypeOf(new AbortController().signal), "aborted", { get: () => false });',
+      warnings: 1,
+    },
+    {
+      name: "destructuredGlobal",
+      prelude: "({ AbortController } = { AbortController: getControllerConstructor() });",
+      warnings: 1,
+    },
+    {
+      name: "mutableGlobalObject",
+      prelude: "let browser = globalThis; browser.AbortController = getControllerConstructor();",
+      warnings: 1,
+    },
+    {
+      name: "dynamicScope",
+      body: "const value = await eval(id); if (controller.signal.aborted) return; setValue(value);",
+      warnings: 1,
+    },
+    {
+      name: "sharedSignalPrototype",
+      prelude:
+        'Object.defineProperty(Object.getPrototypeOf(new Request("https://example.test").signal), "aborted", {get: () => false});',
+      warnings: 1,
+    },
+    {
+      name: "forwardedDispatcher",
+      prelude: "const relay = (setter, value) => setter(value);",
+      body: "const value = await load(id); if (controller.signal.aborted) return; relay(setValue, transform(value));",
+      warnings: 1,
+    },
+  ])("detects a stale setter only without demonstrated protection in $name", (sample) => {
+    const {
+      prelude = "",
+      controller = "const controller = new AbortController();",
+      body = "const value = await load(id); if (controller.signal.aborted) return; setValue(value);",
+      launch = "run();",
+      cleanup = "return () => controller.abort();",
+      warnings,
+    } = sample;
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      import { useEffect, useState } from "react";
+      ${prelude}
+      export function Panel({id, enabled}: {id:string; enabled:boolean}) {
+        const [, setValue] = useState("");
+        useEffect(() => {
+          ${controller}
+          const run = async () => { ${body} };
+          ${launch}
+          ${cleanup}
+        }, [id, enabled]);
+        return null;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(warnings);
+  });
+});

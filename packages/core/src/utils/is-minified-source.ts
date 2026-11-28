@@ -5,6 +5,16 @@ import {
   MINIFIED_SNIFF_BYTES,
 } from "../project-info/constants.js";
 
+export const hasMinifiedSample = (sample: string): boolean => {
+  const lines = sample.split("\n");
+  const longestLineLength = lines.reduce((longest, line) => Math.max(longest, line.length), 0);
+  const averageLineLength = sample.length / lines.length;
+  return (
+    longestLineLength > MINIFIED_MAX_LINE_LENGTH_CHARS &&
+    averageLineLength > MINIFIED_AVG_LINE_LENGTH_CHARS
+  );
+};
+
 // Content sniff for minified / generated files that carry an ordinary
 // source extension (e.g. a one-line `public/inject.js` bundle that the
 // path-based `isLintableSourceFile` gate can't catch). Reads only a small
@@ -20,14 +30,7 @@ export const isMinifiedSource = (absolutePath: string): boolean => {
     fileDescriptor = fs.openSync(absolutePath, "r");
     const buffer = Buffer.alloc(MINIFIED_SNIFF_BYTES);
     const bytesRead = fs.readSync(fileDescriptor, buffer, 0, MINIFIED_SNIFF_BYTES, 0);
-    const prefix = buffer.toString("utf8", 0, bytesRead);
-    const lines = prefix.split("\n");
-    const longestLineLength = lines.reduce((longest, line) => Math.max(longest, line.length), 0);
-    const averageLineLength = prefix.length / lines.length;
-    return (
-      longestLineLength > MINIFIED_MAX_LINE_LENGTH_CHARS &&
-      averageLineLength > MINIFIED_AVG_LINE_LENGTH_CHARS
-    );
+    return hasMinifiedSample(buffer.toString("utf8", 0, bytesRead));
   } catch {
     return false;
   } finally {

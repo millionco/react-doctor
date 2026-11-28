@@ -13,6 +13,7 @@ import { collectTypeScriptEmitDuplicateJsPaths } from "./collect-typescript-emit
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
+import { isMinifiedViteEntry } from "./is-minified-vite-entry.js";
 import { isMissingPath } from "./is-missing-path.js";
 import { walkSourceTreeFiles } from "./walk-source-tree-files.js";
 import { yieldToEventLoop } from "./yield-to-event-loop.js";
@@ -32,7 +33,12 @@ const toSizedSourceFileEntry = (
   const absolutePath = path.resolve(rootDirectory, relativePath);
   const sizeBytes = statSourceFileSize(absolutePath);
   if (sizeBytes === null && isMissingPath(absolutePath)) return null;
-  if (isLargeMinifiedFile(absolutePath, sizeBytes)) return null;
+  if (
+    isLargeMinifiedFile(absolutePath, sizeBytes) ||
+    isMinifiedViteEntry(absolutePath, sizeBytes)
+  ) {
+    return null;
+  }
   return { path: relativePath, sizeBytes: sizeBytes ?? 0 };
 };
 

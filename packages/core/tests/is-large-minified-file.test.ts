@@ -2,7 +2,13 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { MINIFIED_MAX_LINE_LENGTH_CHARS, MINIFIED_MIN_SIZE_BYTES } from "../src/constants.js";
+import {
+  MINIFIED_MAX_LINE_LENGTH_CHARS,
+  MINIFIED_MIN_SIZE_BYTES,
+  MINIFIED_SNIFF_BYTES,
+} from "../src/constants.js";
+import { parseOxlintOutput } from "../src/runners/oxlint/parse-output.js";
+import { buildProject } from "./helpers/oxlint-parse-harness.js";
 import { countSourceFiles } from "../src/project-info/count-source-files.js";
 import {
   clearMinifiedFileCache,
@@ -39,6 +45,7 @@ describe("isLargeMinifiedFile", () => {
 
   const writeFile = (name: string, contents: string): string => {
     const filePath = path.join(temporaryDirectory, name);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, contents);
     return filePath;
   };
@@ -77,6 +84,50 @@ describe("isLargeMinifiedFile", () => {
 
     clearMinifiedFileCache();
     expect(isLargeMinifiedFile(filePath)).toBe(true);
+  });
+
+  it("ignores a minified Vite entry with a sparse prefix in discovery and explicit-file diagnostics", () => {
+    const prelude = [
+      '(function(){const rel=document.createElement("link").relList;',
+      'if(rel?.supports("modulepreload"))return;',
+      "document.querySelectorAll('link[rel=\"modulepreload\"]');",
+      "new MutationObserver(()=>{}).observe(document,{subtree:true});})();\n",
+    ].join("");
+    const sparseSource = "void 'one line';\n".repeat(MINIFIED_SNIFF_BYTES / 8);
+    const minifiedPayload = "void 0;".repeat(MINIFIED_SNIFF_BYTES);
+    const generated = "assets/widget-B1cdE2f3.js";
+    const missingPrelude = "assets/widget-cDef0123.js";
+    const sparseTail = "assets/widget-ZXcvbn42.js";
+    const unhashedName = "assets/widget.js";
+
+    writeFile(generated, prelude + sparseSource + minifiedPayload);
+    writeFile(missingPrelude, sparseSource + minifiedPayload);
+    writeFile(sparseTail, prelude + sparseSource + minifiedPayload + sparseSource);
+    writeFile(unhashedName, prelude + sparseSource + minifiedPayload);
+
+    expect(countSourceFiles(temporaryDirectory)).toBe(3);
+    expect(listSourceFiles(temporaryDirectory).sort()).toEqual(
+      [missingPrelude, sparseTail, unhashedName].sort(),
+    );
+
+    const diagnostics = parseOxlintOutput(
+      JSON.stringify({
+        diagnostics: [generated, missingPrelude, sparseTail, unhashedName].map((filename) => ({
+          filename,
+          message: "Avoid using array index as key",
+          code: "react-doctor(no-array-index-as-key)",
+          severity: "warning",
+          labels: [{ span: { offset: 0, length: 1, line: 1, column: 1 } }],
+        })),
+        number_of_files: 4,
+        number_of_rules: 1,
+      }),
+      buildProject({ rootDirectory: temporaryDirectory }),
+      temporaryDirectory,
+    );
+    expect(diagnostics.map((diagnostic) => diagnostic.filePath).sort()).toEqual(
+      [missingPrelude, sparseTail, unhashedName].sort(),
+    );
   });
 
   it("shares one result across the discovery and lint walks", () => {

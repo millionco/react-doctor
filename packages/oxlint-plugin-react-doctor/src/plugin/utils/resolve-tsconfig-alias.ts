@@ -75,7 +75,7 @@ const stripJsonComments = (text: string): string => {
   return output.replace(/,(\s*[}\]])/g, "$1");
 };
 
-const parseTsconfigFile = (
+export const parseTsconfigFile = (
   configFilePath: string,
   probedPaths: string[],
 ): Record<string, unknown> | null => {

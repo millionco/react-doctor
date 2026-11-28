@@ -1,3 +1,6 @@
+import { getFunctionExportNames } from "../../utils/get-function-export-names.js";
+import { getDirectFunctionBindingIdentifier } from "../../utils/get-direct-function-binding-identifier.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { hasClosedLocalCallableListenerRegistration } from "../../utils/has-closed-local-callable-listener-registration.js";
 import { hasDeclaredCallableListenerRegistration } from "../../utils/has-declared-callable-listener-registration.js";
@@ -51,6 +54,7 @@ import { getFinalSequenceExpressionValue } from "../../utils/get-final-sequence-
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getImportDeclarationForSymbol } from "../../utils/get-import-declaration-for-symbol.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
@@ -62,6 +66,7 @@ import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { getProvenDomEventTargetPrototypeOwnerNames } from "../../utils/is-proven-browser-api-receiver.js";
+import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -8078,7 +8083,246 @@ const findCallbackRefSameReceiverEarlyExits = (
   return earlyExits;
 };
 
-const isReactRefListenerReplacementRelease = (
+const isSingleIntrinsicRefUse = (callback: EsTreeNode, context: RuleContext): boolean => {
+  const callbackRoot = findTransparentExpressionRoot(callback);
+  const callbackCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(callbackCall, "CallExpression") ||
+    callbackCall.arguments[0] !== callbackRoot ||
+    !isReactApiCall(callbackCall, "useCallback", context.scopes)
+  ) {
+    return false;
+  }
+  const binding = getFunctionBindingIdentifier(callback);
+  const symbol = binding ? context.scopes.symbolFor(binding) : null;
+  const program = findProgramRoot(callback);
+  const reference = symbol?.references[0];
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    symbol.references.length !== 1 ||
+    !reference ||
+    reference.flag !== "read" ||
+    !program ||
+    !hasCompleteSymbolReferences(symbol, program, context.scopes)
+  ) {
+    return false;
+  }
+  const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+  const container = referenceRoot.parent;
+  const attribute = container?.parent;
+  const opening = attribute?.parent;
+  if (
+    !isNodeOfType(container, "JSXExpressionContainer") ||
+    container.expression !== referenceRoot ||
+    !isNodeOfType(attribute, "JSXAttribute") ||
+    !isNodeOfType(attribute.name, "JSXIdentifier") ||
+    attribute.name.name !== "ref" ||
+    !isNodeOfType(opening, "JSXOpeningElement") ||
+    !isNodeOfType(opening.name, "JSXIdentifier") ||
+    !/^[a-z][a-zA-Z0-9]*$/.test(opening.name.name) ||
+    opening.attributes.some(
+      (candidate) =>
+        candidate !== attribute &&
+        (!isNodeOfType(candidate, "JSXAttribute") ||
+          !isNodeOfType(candidate.name, "JSXIdentifier") ||
+          candidate.name.name === "ref" ||
+          candidate.name.name === "is"),
+    ) ||
+    !isNodeOfType(opening.parent, "JSXElement")
+  ) {
+    return false;
+  }
+  const element = findTransparentExpressionRoot(opening.parent);
+  const owner = findEnclosingFunction(callback);
+  const ownerBinding = owner ? getDirectFunctionBindingIdentifier(owner) : null;
+  const source = context.sourceCode?.getText?.();
+  if (
+    !owner ||
+    (isNodeOfType(owner, "FunctionExpression") && owner.id !== null) ||
+    !isNodeOfType(program, "Program") ||
+    getFunctionExportNames(program, owner).length > 0 ||
+    !source ||
+    /@jsx(?:ImportSource)?\s/.test(source) ||
+    !ownerBinding ||
+    !isReactComponentName(ownerBinding.name) ||
+    !isNodeOfType(element.parent, "ReturnStatement") ||
+    element.parent.argument !== element ||
+    findEnclosingFunction(element) !== owner
+  ) {
+    return false;
+  }
+  const symbols = new Set(getFunctionBindingSymbols(owner, context.scopes));
+  const bindingSymbol = context.scopes.symbolFor(ownerBinding);
+  if (bindingSymbol) symbols.add(bindingSymbol);
+  const references = [...symbols].flatMap((symbol) => symbol.references);
+  if (
+    references.length === 0 ||
+    [...symbols].some((symbol) => !hasCompleteSymbolReferences(symbol, program, context.scopes))
+  ) {
+    return false;
+  }
+  return references.every(({ identifier, flag }) => {
+    if (flag !== "read") return false;
+    const root = findTransparentExpressionRoot(identifier);
+    const use = root.parent;
+    if (isNodeOfType(use, "JSXOpeningElement") || isNodeOfType(use, "JSXClosingElement")) {
+      return use.name === root;
+    }
+    return (
+      isNodeOfType(use, "CallExpression") &&
+      use.arguments[0] === root &&
+      isReactApiCall(use, "createElement", context.scopes)
+    );
+  });
+};
+
+const isReactRefListenerDetachRelease = (
+  registration: EsTreeNodeOfType<"CallExpression">,
+  release: EsTreeNodeOfType<"CallExpression">,
+  callback: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isFunctionLike(callback) ||
+    callback.async ||
+    callback.generator ||
+    callback.params.length !== 1
+  )
+    return false;
+  const callbackBody = callback.body;
+  if (!isNodeOfType(callbackBody, "BlockStatement") || callbackBody.body.length !== 1) {
+    return false;
+  }
+  const [attachment] = callbackBody.body;
+  if (
+    !isNodeOfType(attachment, "IfStatement") ||
+    !isNodeOfType(attachment.consequent, "BlockStatement") ||
+    !isNodeOfType(attachment.alternate, "IfStatement") ||
+    !isNodeOfType(attachment.alternate.consequent, "BlockStatement") ||
+    attachment.alternate.alternate
+  ) {
+    return false;
+  }
+  const attachmentParameterKey = resolveExpressionKey(callback.params[0], context);
+  const releaseCallee = stripParenExpression(release.callee);
+  if (
+    !attachmentParameterKey ||
+    resolveExpressionKey(attachment.test, context) !== attachmentParameterKey ||
+    !isNodeOfType(releaseCallee, "MemberExpression") ||
+    releaseCallee.optional ||
+    registration.optional ||
+    release.optional
+  ) {
+    return false;
+  }
+  const storageKey = resolveExpressionKey(releaseCallee.object, context);
+  const detachTest = attachment.alternate.test;
+  const detachBody = attachment.alternate.consequent.body;
+  const registrationStatement = findTransparentExpressionRoot(registration).parent;
+  const releaseStatement = findTransparentExpressionRoot(release).parent;
+  const [storeStatement, addStatement] = attachment.consequent.body;
+  const [removeStatement, resetStatement] = detachBody;
+  if (
+    !storageKey ||
+    resolveExpressionKey(detachTest, context) !== storageKey ||
+    !isNodeOfType(registrationStatement, "ExpressionStatement") ||
+    attachment.consequent.body.length !== 2 ||
+    registrationStatement !== addStatement ||
+    !isNodeOfType(releaseStatement, "ExpressionStatement") ||
+    detachBody.length > 2 ||
+    releaseStatement !== removeStatement ||
+    !isNodeOfType(storeStatement, "ExpressionStatement")
+  ) {
+    return false;
+  }
+  const store = stripParenExpression(storeStatement.expression);
+  if (
+    !isNodeOfType(store, "AssignmentExpression") ||
+    store.operator !== "=" ||
+    resolveExpressionKey(store.left, context) !== storageKey ||
+    resolveExpressionKey(store.right, context) !== attachmentParameterKey
+  ) {
+    return false;
+  }
+  const reset = isNodeOfType(resetStatement, "ExpressionStatement")
+    ? stripParenExpression(resetStatement.expression)
+    : null;
+  const resetTarget =
+    isNodeOfType(reset, "AssignmentExpression") &&
+    reset.operator === "=" &&
+    isNodeOfType(reset.right, "Literal") &&
+    reset.right.value === null &&
+    resolveExpressionKey(reset.left, context) === storageKey
+      ? reset.left
+      : null;
+  if (resetStatement && !resetTarget) return false;
+  const [event, handler] = registration.arguments;
+  const releaseEvent = release.arguments[0];
+  const releaseHandler = release.arguments[1];
+  const handlerSymbol = isNodeOfType(handler, "Identifier")
+    ? context.scopes.symbolFor(handler)
+    : null;
+  if (
+    !isNodeOfType(event, "Literal") ||
+    typeof event.value !== "string" ||
+    !isNodeOfType(releaseEvent, "Literal") ||
+    releaseEvent.value !== event.value ||
+    !isNodeOfType(releaseHandler, "Identifier") ||
+    !handlerSymbol ||
+    context.scopes.symbolFor(releaseHandler) !== handlerSymbol ||
+    handlerSymbol.kind === "import" ||
+    findEnclosingFunction(handlerSymbol.declarationNode) === callback ||
+    !isSymbolReadOnly(handlerSymbol) ||
+    ![registration, release].every(({ arguments: args }) => {
+      const [, , rawOptions, ...extraArguments] = args;
+      if (extraArguments.length > 0) return false;
+      if (!rawOptions) return true;
+      const options = stripParenExpression(rawOptions);
+      return (
+        (isNodeOfType(options, "Literal") && typeof options.value === "boolean") ||
+        (isNodeOfType(options, "ObjectExpression") &&
+          options.properties.every(
+            (property) =>
+              isNodeOfType(property, "Property") &&
+              !property.computed &&
+              property.kind === "init" &&
+              isNodeOfType(stripParenExpression(property.value), "Literal"),
+          ))
+      );
+    })
+  ) {
+    return false;
+  }
+  const storage = resolveReactRefCurrentOriginSymbol(releaseCallee.object, context.scopes);
+  const initializer = storage?.initializer && stripParenExpression(storage.initializer);
+  const program = findProgramRoot(callback);
+  if (
+    !storage ||
+    !program ||
+    !isSymbolReadOnly(storage) ||
+    !hasCompleteSymbolReferences(storage, program, context.scopes) ||
+    !isNodeOfType(initializer, "CallExpression") ||
+    !isReactApiCall(initializer, "useRef", context.scopes) ||
+    findEnclosingFunction(initializer) !== findEnclosingFunction(callback) ||
+    !isNodeOfType(initializer.arguments[0], "Literal") ||
+    initializer.arguments[0].value !== null ||
+    !isSingleIntrinsicRefUse(callback, context)
+  ) {
+    return false;
+  }
+  const allowedMembers = new Set(
+    [store.left, detachTest, releaseCallee.object, resetTarget]
+      .filter((member) => member !== null)
+      .map((member) => stripParenExpression(member)),
+  );
+  return storage.references.every(({ identifier }) => {
+    const member = findTransparentExpressionRoot(identifier).parent;
+    return Boolean(member && allowedMembers.has(member));
+  });
+};
+
+const isReactRefListenerRelease = (
   releaseCall: EsTreeNodeOfType<"CallExpression">,
   usage: SubscribeLikeUsage,
   context: RuleContext,
@@ -8186,6 +8430,9 @@ const isReactRefListenerReplacementRelease = (
     !doEventListenerCapturesMatch(usage.node.arguments?.[2], releaseCall.arguments?.[2], context)
   ) {
     return false;
+  }
+  if (isReactRefListenerDetachRelease(usage.node, releaseCall, usageFunction, context)) {
+    return true;
   }
   const releaseStart = getRangeStart(releaseCall);
   const matchingOwnershipAssignments: EsTreeNode[] = [];
@@ -8755,7 +9002,7 @@ const doesReleaseCallMatchUsage = (
   }
 
   if (
-    isReactRefListenerReplacementRelease(callNode, usage, context) ||
+    isReactRefListenerRelease(callNode, usage, context) ||
     isReactRefObserverReplacementRelease(callNode, usage, context)
   ) {
     return true;

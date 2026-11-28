@@ -796,3 +796,126 @@ describe("effect-needs-cleanup issue #1558", () => {
     },
   );
 });
+
+describe("intrinsic callback-ref listener cleanup on detach", () => {
+  const makeComponent = ({
+    options = "{ passive: true }",
+    removalOptions = "",
+    beforeAttach = "",
+    afterAttach = "",
+    beforeDetach = "",
+    afterDetach = "",
+    declaration = "const onScroll = () => {};",
+    imports = "",
+    callbackParameters = "el",
+    beforeBinding = "",
+    declarationPrefix = "function Scroller({ rows }) {",
+    declarationSuffix = "}",
+    afterComponent = "",
+    render = "<div ref={bind} />",
+  } = {}) => `
+    import { useCallback, useRef } from "react";
+    ${imports}
+
+    ${declarationPrefix}
+      const attached = useRef(null);
+      ${beforeBinding}
+      ${declaration}
+      const bind = useCallback((${callbackParameters}) => {
+        if (el) {
+          ${beforeAttach}
+          attached.current = el;
+          el.addEventListener("scroll", onScroll, ${options});
+          ${afterAttach}
+        } else if (attached.current) {
+          ${beforeDetach}
+          attached.current.removeEventListener("scroll", onScroll${removalOptions});
+          attached.current = null;
+          ${afterDetach}
+        }
+      }, [onScroll]);
+      return ${render};
+    ${declarationSuffix}
+    function App() { return <Scroller />; }
+    ${afterComponent}
+  `;
+
+  it("matches a passive listener through the previous ref receiver", () => {
+    const result = runRule(effectNeedsCleanup, makeComponent(), { filename: "src/scroller.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["capture mismatch", { options: "{ passive: true, capture: true }" }],
+    ["receiver overwrite", { afterAttach: "attached.current = document.body;" }],
+    ["ref escape", { afterAttach: "escape(attached);" }],
+    ["cleanup bypass", { beforeDetach: "if (skipRemoval()) return;" }],
+    ["receiver reset before removal", { beforeDetach: "attached.current = null;" }],
+    ["cleanup returned from attachment", { afterAttach: "return () => {};" }],
+    [
+      "mutable handler",
+      { declaration: "let onScroll = () => {};", afterAttach: "onScroll = () => {};" },
+    ],
+    [
+      "a live imported handler",
+      { declaration: "", imports: 'import { onScroll } from "./handlers";' },
+    ],
+    [
+      "a handler created separately for each ref call",
+      { declaration: "", callbackParameters: "el, onScroll = () => {}" },
+    ],
+    [
+      "a reused element returned from a direct component call",
+      {
+        afterComponent:
+          "function Parent() { const child = Scroller({}); return <>{child}{child}</>; }",
+      },
+    ],
+    ["an externally callable component", { afterComponent: "export { Scroller };" }],
+    [
+      "a wrapper that repeats the rendered value",
+      {
+        imports:
+          "function wrap(render) { return () => { const view = render({}); return <>{view}{view}</>; }; }",
+        declarationPrefix: "const Scroller = wrap(({ rows }) => {",
+        declarationSuffix: "});",
+      },
+    ],
+    ["a substituted JSX factory", { imports: "/** @jsx custom */" }],
+    ["a replaced remover", { afterAttach: "el.removeEventListener = () => {};" }],
+    ["an alias to the retained receiver", { beforeBinding: "remember(attached.current);" }],
+    [
+      "registration options with a getter",
+      { options: "{ get passive() { el.removeEventListener = () => {}; return true; } }" },
+    ],
+    ["cleanup options that may throw", { removalOptions: ", verifyReady() ? false : false" }],
+    ["arguments that may throw before cleanup", { removalOptions: ", false, verifyReady()" }],
+    [
+      "a capture value that changes between calls",
+      {
+        imports: "let capture = false;",
+        declaration: "const onScroll = () => { capture = !capture; };",
+        options: "{ capture }",
+        removalOptions: ", { capture }",
+      },
+    ],
+    [
+      "an internal recursive call to a named function expression",
+      {
+        declarationPrefix: "const Scroller = function Render({ rows }) {",
+        declarationSuffix: "};",
+        beforeBinding: "if (rows) { const view = Render({}); return <>{view}{view}</>; }",
+      },
+    ],
+    ["custom ref forwarding", { render: "<CustomScroller ref={bind} />" }],
+    ["repeatable ref use", { render: "rows.map(() => <div ref={bind} />)" }],
+    ["shared ref use", { render: "<><div ref={bind}/><div ref={bind}/></>" }],
+  ])("still reports %s", (_name, options) => {
+    const result = runRule(effectNeedsCleanup, makeComponent(options), {
+      filename: "src/scroller.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

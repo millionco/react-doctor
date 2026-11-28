@@ -50,7 +50,7 @@ describe("wrapWithSemanticContext", () => {
     expect(visitors.Program).toBeUndefined();
   });
 
-  it("uses the host source AST without adding a Program handler", () => {
+  it("uses the host source object without adding a Program handler", () => {
     const program = parseSourceText({
       filename: "/tmp/example.js",
       sourceText: "export const value = 1;",
@@ -58,25 +58,35 @@ describe("wrapWithSemanticContext", () => {
     if (program === null) throw new Error("Expected parsed fixture");
 
     let resolvedScopes: ScopeAnalysis | undefined;
+    let resolvedText: string | undefined;
     const callExpressionHandler = (): void => {};
     const rule: Rule = {
       id: "source-code-root",
       severity: "error",
       create: (context) => {
         resolvedScopes = context.scopes;
+        resolvedText = context.sourceCode?.getText?.();
         return {
           CallExpression: callExpressionHandler,
         };
       },
     };
 
+    const sourceCode = {
+      ast: program,
+      text: "export const value = 1;",
+      getText() {
+        return this.text;
+      },
+    };
     const visitors = wrapWithSemanticContext(rule).create({
       filename: "/tmp/example.js",
       report: () => {},
-      sourceCode: { ast: program },
+      sourceCode,
     });
 
     expect(resolvedScopes?.rootScope.node).toBe(program);
+    expect(resolvedText).toBe(sourceCode.text);
     expect(visitors.Program).toBeUndefined();
     expect(visitors.CallExpression).toBe(callExpressionHandler);
   });
